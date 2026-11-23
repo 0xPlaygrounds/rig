@@ -189,7 +189,7 @@ pub fn image_of(reply: &Value) -> Result<image_generation::ImageGenerationRespon
         })?;
     Ok(image_generation::ImageGenerationResponse {
         model: reply.str("modelVersion").map(str::to_owned),
-        response_id: Some(reply.str("responseId").unwrap_or_default().to_owned()),
+        response_id: reply.str("responseId").map(str::to_owned),
         usage: reply.get("usageMetadata").map(usage_of).unwrap_or_default(),
         ..image_generation::ImageGenerationResponse::new(image)
     })
@@ -211,13 +211,7 @@ fn create_request_body(request: ImageGenerationRequest) -> Result<Value, EncodeE
         "safetySettings": null,
         "systemInstruction": null,
     });
-    match (&mut body, request.additional_params) {
-        (Value::Object(body), Some(Value::Object(params))) => {
-            crate::completion::options::deep_merge(body, params);
-        }
-        (body, Some(params)) => *body = params,
-        (_, None) => {}
-    }
+    super::apply_params(&mut body, request.additional_params);
     Ok(body)
 }
 
@@ -276,14 +270,8 @@ impl Wire for Images {
 
     fn encode(&self, request: ImageGenerationRequest, _mode: Mode) -> Result<Encoded, EncodeError> {
         let body = serde_json::to_vec(&create_request_body(request)?)?;
-        let request = http::Request::post(format!(
-            "{}/v1beta/models/{}:generateContent?key={}",
-            self.provider.base_url,
-            self.model,
-            self.provider.api_key.expose()
-        ))
-        .header(http::header::CONTENT_TYPE, "application/json")
-        .body(Body::Bytes(body))?;
+        let path = format!("/v1beta/models/{}:generateContent", self.model);
+        let request = self.provider.post_json(&path, Body::Bytes(body))?;
         // Gemini reports no transport request-id header.
         Ok(Encoded::new(request, Framing::Whole))
     }

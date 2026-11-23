@@ -7,7 +7,8 @@ use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::ask::AskPlugin;
 use rig_harness::pick::PickPlugin;
 use rig_harness_test_support::{
-    Ended, MemoryStore, app_on, connect, first_agent, log_ended, reply, run_until, tui_view,
+    Ended, MemoryStore, app_on, connect, first_agent, log_ended, reply, run_until, scratch_dir,
+    tui_view,
 };
 use serde_json::json;
 
@@ -47,9 +48,7 @@ fn count_opened(_: On<Add<ApprovalBatch>>, mut opened: ResMut<Opened>) {
 /// A project with `README.md`, `a.txt` and `b.txt`, and a `bin/git` that
 /// records its arguments in `git.log`.
 fn project(name: &str) -> PathBuf {
-    let exe = std::env::current_exe().unwrap_or_default();
-    let dir = exe.with_file_name(format!("approval-batching-{name}-{}", std::process::id()));
-    std::fs::remove_dir_all(&dir).ok();
+    let dir = scratch_dir(&format!("approval-batching-{name}-{}", std::process::id()));
     std::fs::create_dir_all(dir.join("bin")).ok();
     for file in ["README.md", "a.txt", "b.txt"] {
         std::fs::write(dir.join(file), "x\n").ok();
@@ -240,7 +239,4 @@ fn with_nobody_to_answer_every_call_needing_approval_is_denied_without_a_questio
     std::fs::remove_dir_all(&dir).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(ApprovalBatchingPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(ApprovalBatchingPlugin);

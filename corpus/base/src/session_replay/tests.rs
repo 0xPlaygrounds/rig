@@ -333,7 +333,7 @@ fn a_model_without_its_key_replays_from_the_record_and_a_turn_without_a_model_fa
         "{report}"
     );
     assert!(report.contains("No model is connected"), "{report}");
-    assert_eq!(exit, Some(ExitReason::Failed(1)));
+    assert_eq!(exit, Some(ExitReason::Failed(FailCode::FAILURE)));
 }
 
 /// A session that ended with `/quit` under exit-notes replays whole: the
@@ -390,6 +390,102 @@ fn a_session_quit_under_exit_notes_replays_its_summary_call() {
         "{replayed:?}"
     );
 }
+
+/// A session that failed with its own exit code replays to that exit: the
+/// replay asks for the recorded exit, code and all, before its front ends
+/// the run with its own verdict.
+#[test]
+fn a_session_that_failed_replays_its_failed_exit() {
+    replays_its_exit("failed", "6", ExitReason::Failed(FailCode::or_failure(3)));
+}
+
+/// A refused session replays to its refusal, reason and all.
+#[test]
+fn a_refused_session_replays_its_refusal() {
+    let refused = ExitReason::Refused("the \"plan\" table,\nline 2 \\ \u{7}".to_owned());
+    replays_its_exit("refused", "7", refused);
+}
+
+/// A string's debug form reads back as the string; escapes it never
+/// writes read as nothing.
+#[test]
+fn a_debug_quoted_text_reads_back_whole() {
+    for text in [
+        "plain",
+        "a \"b\" \\ c",
+        "tab\tcr\rnul\0 nl\n",
+        "bell \u{7} é '",
+    ] {
+        let quoted = format!("{text:?}");
+        let inner = quoted.strip_prefix('"').and_then(|q| q.strip_suffix('"'));
+        assert_eq!(
+            inner.and_then(super::unquote).as_deref(),
+            Some(text),
+            "{quoted}"
+        );
+    }
+    for malformed in ["\\q", "\\uX41}", "\\u{41", "\\u{zz}", "\\u{+41}", "end\\"] {
+        assert_eq!(super::unquote(malformed), None, "{malformed}");
+    }
+}
+
+/// Records a session that ends with `failed`, replays it, and expects the
+/// replay to ask for `failed` first.
+fn replays_its_exit(name: &str, number: &str, failed: ExitReason) {
+    let home = scratch_home(&format!("session-replay-{name}"));
+    let id = |id: String| id.parse().unwrap_or_else(|_| SessionId::generate());
+    let (recorded_id, replay_id) = (id(format!("{number}-1")), id(format!("{number}-2")));
+    let model = MockCompletionModel::from_stream_turns([reply("done")]);
+    let (mut app, wakes) = app_in(&home, &recorded_id);
+    with_agents(&mut app, connect(&model));
+    app.add_plugins((EffectLogPlugin, ExitPlugin));
+    app.finish();
+    app.update();
+    if let Some(agent) = first_agent(app.world_mut()) {
+        let ask = Deliver::new(agent, "hello", DeliveryMode::Queue);
+        app.world_mut().trigger(ask);
+    }
+    run_until(&mut app, &wakes, |world| {
+        let mut agents = world.try_query::<&Conversation>();
+        agents.as_mut().is_some_and(|agents| {
+            let mut conversations = agents.iter(world);
+            conversations.any(|conversation| conversation.messages().len() == 2)
+        })
+    });
+    app.world_mut().trigger(Exit(failed.clone()));
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Messages<AppExit>>().is_empty()
+    });
+    // The effect log is written at the end of the frame.
+    app.update();
+
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let (mut app, wakes) = app_in(&home, &replay_id);
+    let dir = home.session(&recorded_id).path().to_string_lossy().into();
+    app.insert_resource(Invoked {
+        args: Invocation {
+            flags: vec![(REPLAY.to_owned(), Some(dir))],
+            ..Invocation::default()
+        },
+        terminal: false,
+    })
+    .add_plugins((ExitPlugin, SessionReplayPlugin))
+    .init_resource::<Exits>()
+    .add_observer(|exit: On<Exit>, mut exits: ResMut<Exits>| {
+        exits.0.push(exit.0.clone());
+    });
+    with_agents(&mut app, connect(&model));
+    let outcome = run_replay(&mut app, &wakes);
+    assert_eq!(outcome, Some((ReplayStatus::Finished, Vec::new(), (1, 0))));
+    run_until(&mut app, &wakes, |world| {
+        world.contains_resource::<ExitReason>()
+    });
+    assert_eq!(app.world().resource::<Exits>().0.first(), Some(&failed));
+}
+
+/// The exits asked for, in order.
+#[derive(Resource, Default)]
+struct Exits(Vec<ExitReason>);
 
 /// Exit-notes' summary calls started.
 #[derive(Resource, Default)]

@@ -21,7 +21,9 @@ use std::{
     task::{Context, Poll, Waker},
 };
 
-use rig_agent::run::{AgentRun, AgentRunStep, ModelTurn, PendingToolCall, RunSpec, prepare_request};
+use rig_agent::run::{
+    AgentRun, AgentRunStep, ModelTurn, PendingToolCall, PreparedRequest, RunSpec, prepare_request,
+};
 use rig_agent::tool::{ToolCatalog, ToolSet};
 use rig_agent::handlers::{Handlers, ModelHandle};
 use rig_core::completion::{
@@ -153,18 +155,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 history,
                 turn,
             } => {
-                let prepared = prepare_request(
+                let PreparedRequest {
+                    request, policy, ..
+                } = prepare_request(
                     &spec,
                     &model.capabilities(),
+                    prompt,
                     &history,
                     catalog.definitions().to_vec(),
                     run.output_tool_name(),
                     None,
                 )?;
-                run.advertise_tools(turn, prepared.tools.clone());
-                let policy = prepared.policy.clone();
-                let request = prepared
-                    .apply(CompletionRequest::new(prompt));
+                run.advertise_tools(turn, request.tools.clone());
                 let response = block_on(model.call(request))?;
                 model_calls += 1;
                 run.model_response(ModelTurn::new(

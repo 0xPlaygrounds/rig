@@ -3,12 +3,9 @@
 //!
 //! A `mod` item gated by a test-only `#[cfg(...)]`, meaning `cfg(test)` or an
 //! `all(...)` including `test`, must be a declaration whose body lives in the
-//! file rustc resolves it to. Inline bodies are rejected because they let source
-//! files grow without bound.
-//!
-//! Files reachable only through a test-gated declaration are themselves test
-//! code and may nest modules freely. Test-onlyness follows declarations
-//! transitively.
+//! file rustc resolves it to, so source files cannot grow without bound. Files
+//! reachable only through a test-gated declaration, transitively, are test
+//! code and may nest modules freely.
 //!
 //! Source is parsed with `syn`, so attributes inside strings or comments cannot
 //! trip the check and a `cfg` predicate is inspected structurally rather than by

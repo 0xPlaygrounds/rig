@@ -4,7 +4,7 @@ use std::sync::mpsc::Receiver;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness_test_support::{
-    Ended, app_in, connect, first_agent, log_ended, reply, run_until, scratch_home,
+    Ended, app_in, connect, deliver, first_agent, log_ended, reply, scratch_home,
 };
 
 use super::*;
@@ -18,8 +18,10 @@ const ROOT_CAUSE: &str = "The root cause is a stale cache entry.";
 fn start(home: &Home, id: &SessionId, new: Option<&str>) -> Option<(App, Receiver<()>, Entity)> {
     let (mut app, wakes) = app_in(home, id);
     if let Some(new) = new {
-        app.world_mut()
-            .spawn((Name::new("agent"), Agent, AgentId(new.to_owned())));
+        spawn_root(
+            app.world_mut(),
+            (Name::new("agent"), AgentId(new.to_owned())),
+        );
     }
     // The terminal view's main pane, its view alone.
     app.world_mut().spawn((TranscriptView::default(), MainPane));
@@ -35,15 +37,12 @@ fn start(home: &Home, id: &SessionId, new: Option<&str>) -> Option<(App, Receive
 /// Sends `line` as the user typed it: a command runs in that frame, a
 /// message's turn is run to its end.
 fn send(app: &mut App, wakes: &Receiver<()>, agent: Entity, line: &str) {
-    let ended = app.world().resource::<Ended>().0.len();
     let typed = Deliver::new(agent, line, DeliveryMode::Queue).with_author(Author::user());
-    app.world_mut().trigger(typed);
     if line.starts_with('/') {
+        app.world_mut().trigger(typed);
         app.update();
     } else {
-        run_until(app, wakes, |world| {
-            world.resource::<Ended>().0.len() > ended
-        });
+        deliver(app, wakes, typed);
     }
 }
 

@@ -4,10 +4,10 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 
 use super::lifecycle::{AgentDataItem, Agents};
-use super::spawn::{Brief, Role, SpawnSubagent, TaskCall};
+use super::spawn::{Brief, Defaulted, SpawnSubagent, TaskCall};
 use super::{
-    Awaits, Lifecycle, ORIGIN, OpenRequests, Peers, Request, SubagentsPlugin, Subtask, answered,
-    refused,
+    Awaiting, Awaits, Lifecycle, ORIGIN, Peers, Request, SubagentDefaults, SubagentsPlugin,
+    Subtask, answered, refused,
 };
 use rig_harness::prelude::*;
 
@@ -21,24 +21,23 @@ pub const MESSAGE: &str = "message";
 /// The tool that waits for an agent's message without ending the turn.
 pub const WAIT: &str = "wait";
 
-const TASK_DESCRIPTION: &str = "Start a new subagent on a self-contained task: a new agent with \
-    a conversation of its own, which sees only `prompt` and `environment` and works with its \
-    tools until it can answer. It starts in your working directory. The call returns at once \
-    with its id; its report, its final answer, arrives as a message headed with that id and \
-    the task title as soon as it is done. It may `message` you a question meanwhile. With \
-    `peers`, the subagents you start are told each other's ids and can message and wait for \
-    each other. Continue a subagent with `message`, not another `task`. Use `task` for work \
-    that would fill your context or can run on its own: a broad search or investigation \
-    across many files, an independent change, or a second opinion from another model; not for \
-    one quick read or edit. Write `prompt` as a full brief: the goal, what is known, where to \
-    look, and what to return. Put what it must know of the environment and cannot see in \
-    `environment`: where the work is, how to reach other machines (the exact command), what \
-    is missing locally. Do not give two subagents changes to the same files. Each `task` or \
-    `message` call is a request, answered by exactly one report: meanwhile keep working on \
-    what does not need it, or end your turn; call `wait` only when you cannot go on without a \
-    report, and never poll. Never invent, simulate or paraphrase as fact another agent's \
-    reply; if the requested interaction is not supported, say so before offering an \
-    alternative.";
+const TASK_DESCRIPTION: &str = "Start a subagent: a new agent with a conversation of its own, \
+    which sees only `prompt` and `environment`, works with its tools in your working directory \
+    and reports back. It suits a large, separable part of a task that a brief can state, a second \
+    opinion from another model, or a user's request for a subagent; a few reads, commands or \
+    edits are quicker done directly.\n\n\
+    The call returns at once with its id; its report, its final answer, arrives as a message \
+    headed with that id and the task title as soon as it is done. It may `message` you a question \
+    meanwhile. With `peers`, the subagents you start are told each other's ids and can message and \
+    wait for each other. Continue a subagent with `message`, not another `task`. Write `prompt` as \
+    a full brief: the goal, what is known, where to look, and what to return. Put what it must \
+    know of the environment and cannot see in `environment`: where the work is, how to reach other \
+    machines (the exact command), what is missing locally. Do not give two subagents changes to \
+    the same files. Each `task` or `message` call is a request, answered by exactly one report: \
+    meanwhile keep working on what does not need it, or end your turn; call `wait` only when you \
+    cannot go on without a report, and never poll. Never invent, simulate or paraphrase as fact \
+    another agent's reply; if the requested interaction is not supported, say so before offering \
+    an alternative.";
 
 const MESSAGE_DESCRIPTION: &str = "Send `text` to an agent you can reach, by its id: one of your \
     subagents, an agent that asked you something (such as the agent that started you), or, \
@@ -56,16 +55,14 @@ const WAIT_DESCRIPTION: &str = "Wait, without ending your turn, until the agent 
 
 /// What every subagent is told about its role, in a prompt section of its
 /// own after its parent's own system prompt.
-pub(super) const SUBAGENT_ROLE: &str = "You are a subagent. Another agent gave you the task in the \
-    first message and expects your answer. Decide what you can yourself and say what you \
-    assumed; when you cannot go on without that agent, `message` it your question and `wait` \
-    for its answer. A message is not your report: your final answer, when your turn ends, is \
-    sent to that agent as the task's result, so make it complete on its own, with file paths, \
-    findings and what you changed, and keep it short. That agent may send you corrections \
-    while you work and follow-ups later; answer each in your final answer. If you start \
-    subagents of your own, end your turn while they work: their reports come back to you, \
-    and you answer once they have. Never invent, simulate or paraphrase as fact another \
-    agent's reply.";
+pub(super) const SUBAGENT_ROLE: &str = "You are a subagent. Your parent agent gave you the task \
+    in the first message. Report to that agent, not to the user. State your assumptions. \
+    If blocked, use `message` to ask your parent and `wait` for its reply without ending your \
+    turn. If you cannot use those tools, state the blocker in your final answer. A `message` call \
+    is not your report. Your final answer ends your turn and reports the result. Keep it concise \
+    and self-contained. Include findings, what you changed, and file paths. Address corrections \
+    and follow-ups. If you start subagents, end your turn while they work and answer after their \
+    reports arrive. Never invent, simulate or paraphrase as fact another agent's reply.";
 
 /// What a subagent started with `peers` is told, after [`SUBAGENT_ROLE`].
 pub(super) const PEER_ROLE: &str = "Other subagents of that agent work beside you; your task names the \
@@ -89,6 +86,47 @@ pub(super) fn add(app: &mut App) {
                 .run_if(any_with_component::<Brief>)
                 .before(AgentLoop),
         );
+    describe_defaults(app.world_mut());
+}
+
+/// Says in `task`'s `model` and `tools` parameters what [`SubagentDefaults`]
+/// gives a call that names none, so the description stays true.
+fn describe_defaults(world: &mut World) {
+    let defaults = world.get_resource::<SubagentDefaults>().cloned();
+    let Some(SubagentDefaults { model, tools }) = defaults else {
+        return;
+    };
+    let model = model.map(|model| {
+        format!(
+            "A catalog model as vendor/model for the subagent. {model} when absent \
+             ([subagents] model)."
+        )
+    });
+    let tools = tools.map(|tools| {
+        format!(
+            "The tools the subagent may use, from yours, besides `message` and `wait`, which it \
+             has whenever you do. When absent: {} ([subagents] tools), refused if you lack \
+             one; an empty list gives it no others.",
+            match tools.is_empty() {
+                true => "none".to_owned(),
+                false => tools.join(", "),
+            }
+        )
+    });
+    let mut defs = world.query::<&mut ToolDef>();
+    for mut def in defs.iter_mut(world) {
+        if def.0.name.as_str() != TASK {
+            continue;
+        }
+        let def = std::sync::Arc::make_mut(&mut def.0);
+        let mut properties = def.parameters.get_mut("properties");
+        for (name, text) in [("model", &model), ("tools", &tools)] {
+            let property = properties.as_mut().and_then(|all| all.get_mut(name));
+            if let (Some(serde_json::Value::Object(property)), Some(text)) = (property, text) {
+                property.insert("description".to_owned(), text.clone().into());
+            }
+        }
+    }
 }
 
 /// The arguments of a `task` call. Any argument besides these is one
@@ -108,8 +146,8 @@ struct TaskArgs {
     /// absent and the model is yours, else the model's default.
     effort: Option<String>,
     /// The tools the subagent may use, from yours, besides `message` and
-    /// `wait`, which it always has. All of yours when absent; an empty list
-    /// gives it no others.
+    /// `wait`, which it has whenever you do. All of yours when absent; an
+    /// empty list gives it no others.
     tools: Option<Vec<String>>,
     /// What the subagent must know of its environment that it cannot see:
     /// where the work is, how to reach other machines (the exact command),
@@ -148,37 +186,49 @@ struct WaitArgs {
     agent: String,
 }
 
+/// The request a call makes: its asker and where its reply asked for it
+/// (`<agent>:m4/1`), which no later call of any agent repeats, else, for a
+/// call no reply made, its own id. A provider may use a call id again.
+fn request_of<A: Send + Sync + 'static>(
+    called: &ToolCalled<A>,
+    places: &Query<&InReply>,
+) -> RequestId {
+    let place = places.get(called.call).ok();
+    let place = place.map(|place| format!("{}:{}", called.agent_id.0, place.at().wire()));
+    RequestId(place.unwrap_or_else(|| called.tool_call.id.to_string()))
+}
+
 /// Asks for the subagent of a `task` call: a [`SpawnSubagent`], a child of
 /// the call, which answers the call once it settled.
 fn on_task(
     called: On<ToolCalled<TaskArgs>>,
     me: Option<Res<PluginEntity<SubagentsPlugin>>>,
+    defaults: Res<SubagentDefaults>,
+    places: Query<&InReply>,
     mut commands: Commands,
 ) {
     let args = &called.args;
+    let defaulted = (args.model.is_none() && defaults.model.is_some())
+        || (args.tools.is_none() && defaults.tools.is_some());
     let request = SpawnSubagent {
-        title: args.description.clone(),
-        brief: args.prompt.clone(),
-        role: Role::Task,
-        model: args.model.clone(),
+        model: args.model.clone().or_else(|| defaults.model.clone()),
         effort: args.effort.clone(),
-        tools: args.tools.clone(),
-        system_prompt: None,
+        tools: args.tools.clone().or_else(|| defaults.tools.clone()),
         environment: args.environment.clone(),
         peers: args.peers,
-        once: false,
-        id: None,
         extra: args.extra.clone(),
+        ..SpawnSubagent::task(args.description.clone(), args.prompt.clone())
     };
     let mut spawned = commands.spawn((
         request,
         ForAgent(called.agent),
         ChildOf(called.call),
-        TaskCall(RequestId(called.tool_call.id.to_string())),
+        TaskCall(request_of(&called, &places)),
     ));
     if let Some(me) = me {
         spawned.insert(ProvidedBy(me.entity()));
     }
+    spawned.insert_if(Defaulted, || defaulted);
 }
 
 /// Sends each subagent started since it last ran its task, naming its
@@ -198,7 +248,7 @@ fn send_briefs(
         let mut brief = brief.clone();
         if let Ok(me) = peers.get(child) {
             let family = families
-                .get(parent.0)
+                .get(parent.parent())
                 .into_iter()
                 .flat_map(|family| family.iter());
             let siblings = family.filter(|&sibling| sibling != child);
@@ -251,16 +301,16 @@ impl Agents<'_, '_> {
         let Ok(me) = self.agents.get(caller) else {
             return Err("You are not an agent that can reach others.".to_owned());
         };
-        let owed = self.open.get(caller).into_iter();
-        let askers = owed
-            .flat_map(|open| open.0.iter())
-            .filter_map(|request| Some((self.find(&request.asker)?, true)));
+        let askers = self
+            .askers(caller)
+            .into_iter()
+            .map(|(asker, _)| (asker, true));
         let (spawned, parent) = (me.children, me.parent);
         // Its subagents, not the helpers plugins spawned for it.
         let children = spawned.into_iter().flat_map(|spawned| spawned.iter());
         let children = children.filter(|&child| self.agents.get(child).is_ok_and(|a| a.subtask));
         let peer = |agent: &AgentDataItem| {
-            agent.peers && agent.parent.map(|of| of.0) == parent.map(|of| of.0)
+            agent.peers && agent.parent.map(SpawnedBy::parent) == parent.map(SpawnedBy::parent)
         };
         let siblings = self
             .agents
@@ -326,16 +376,17 @@ impl Agents<'_, '_> {
                 target.id.short()
             ));
         } else {
-            let request = RequestId(called.tool_call.id.to_string());
+            let request = request_of(called, &self.places);
             let asked = Request {
                 id: request.clone(),
-                asker: called.agent_id.clone(),
+                to: target.id.clone(),
             };
-            let mut entity = self.commands.entity(target.entity);
-            let mut open = entity.entry::<OpenRequests>();
+            let mut entity = self.commands.entity(caller);
+            let mut open = entity.entry::<Awaiting>();
             open.or_default().and_modify(|mut open| open.0.push(asked));
             if !busy {
-                entity.insert(EffectParent(called.effect));
+                let effect = EffectParent(called.effect);
+                self.commands.entity(target.entity).insert(effect);
             }
             Some(request)
         };

@@ -1,29 +1,18 @@
-//! The embeddings dimension matrix — and the width llama.cpp will not resize.
+//! The embeddings dimension matrix, and the width llama.cpp will not resize.
 //!
-//! **Server**: `--embeddings --pooling mean` on
+//! Recorded against `--embeddings --pooling mean` on
 //! `Qwen/Qwen3-Embedding-0.6B-GGUF` Q8_0, `--seed 42 --temp 0 -c 2048`,
-//! `llama-server` b10964-b29c606e2. A real embedding model, not a causal LM
+//! `llama-server` b10964-b29c606e2: a real embedding model, not a causal LM
 //! pooled into one.
 //!
-//! | Cell | Dimension | Pinned |
-//! | --- | --- | --- |
-//! | [`a_declared_width_llamacpp_cannot_honour_is_refused`] | wrong `ndims` | `MismatchedDimensions`, not a silent 1,024 behind an `ndims()` of 128 |
-//!
-//! # The defect this matrix exists for
-//!
-//! `llama-server` has no `dimensions` handling at all — the string does not
-//! appear anywhere under `tools/server/`. A request asking for 128 answers
-//! 200 with the loaded model's 1,024-wide vectors, and before this PR rig's
-//! `ndims()` went on reporting 128.
-//!
-//! That number is what a vector store sizes its index from, so the mismatch
-//! surfaces as an index that cannot hold its own vectors — far from the call
-//! that caused it, and with nothing in the response saying anything was wrong.
-//! Two changes close it, at the two layers involved: this provider stops
-//! sending a field the server ignores, and the shared OpenAI-compatible
-//! embeddings driver compares an **explicitly declared** width against the one
-//! that came back. A handle built without a width is untouched: it reports
-//! whatever the provider's own table says and has nothing to disagree with.
+//! `llama-server` has no `dimensions` handling, so a request asking for 128
+//! answers 200 with the loaded model's 1,024-wide vectors. A vector store sizes
+//! its index from `ndims()`, so a silent mismatch surfaces far from the call that
+//! caused it. This provider sends no `dimensions` field, and the shared
+//! OpenAI-compatible embeddings driver compares an explicitly declared width with
+//! the one that came back: [`a_declared_width_llamacpp_cannot_honour_is_refused`]
+//! pins `MismatchedDimensions`. A handle built without a width reports whatever
+//! the provider's own table says and has nothing to disagree with.
 
 use rig::error::ProviderError;
 use serde_json::Value;

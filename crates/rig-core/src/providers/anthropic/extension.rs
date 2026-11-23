@@ -22,7 +22,7 @@ use serde::ser::SerializeMap;
 use serde::{Deserialize, Serialize, Serializer};
 use serde_json::Value;
 
-use super::completion::{CLAUDE_OPUS_4_8, CLAUDE_OPUS_5, CLAUDE_OPUS_5_5};
+use super::completion::{CLAUDE_FABLE_5_2, CLAUDE_OPUS_4_8, CLAUDE_OPUS_5, CLAUDE_OPUS_5_5};
 use super::wire::MESSAGES_API;
 use crate::catalog::Sampling;
 use crate::completion::{
@@ -46,7 +46,12 @@ pub const MCP_CLIENT_BETA: &str = "mcp-client-2025-11-20";
 pub const CACHE_DIAGNOSIS_BETA: &str = "cache-diagnosis-2026-04-07";
 
 /// The models fast mode runs on.
-const FAST_MODELS: &[&str] = &[CLAUDE_OPUS_5_5, CLAUDE_OPUS_5, CLAUDE_OPUS_4_8];
+const FAST_MODELS: &[&str] = &[
+    CLAUDE_FABLE_5_2,
+    CLAUDE_OPUS_5_5,
+    CLAUDE_OPUS_5,
+    CLAUDE_OPUS_4_8,
+];
 
 /// Anthropic's typed options and extras.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -81,8 +86,9 @@ pub struct AnthropicShared {
     pub metadata_user_id: Option<String>,
     /// `inference_geo`: where inference runs.
     pub inference_geo: Option<InferenceGeo>,
-    /// `speed`. [`Speed::Fast`] + beta [`FAST_MODE_BETA`], on Claude Opus
-    /// 5.5, Opus 5 and Opus 4.8 only; refused on other listed models.
+    /// `speed`. [`Speed::Fast`] + beta [`FAST_MODE_BETA`], on Claude Fable
+    /// 5.2, Opus 5.5, Opus 5 and Opus 4.8 only; refused on other listed
+    /// models.
     pub speed: Option<Speed>,
     /// `output_config.task_budget` + beta [`TASK_BUDGETS_BETA`].
     pub task_budget: Option<TaskBudget>,
@@ -254,7 +260,7 @@ impl ExtensionOptions for AnthropicOptions {
         if self.shared.speed == Some(Speed::Fast) && !FAST_MODELS.contains(&spec.id.as_str()) {
             refused.push((
                 "speed",
-                "fast mode runs on Claude Opus 5.5, Opus 5 and Opus 4.8 only".to_owned(),
+                "fast mode runs on Claude Fable 5.2, Opus 5.5, Opus 5 and Opus 4.8 only".to_owned(),
             ));
         }
         refused
@@ -286,12 +292,14 @@ pub enum Speed {
 /// A token budget the model paces an agentic loop by, at least 20000
 /// tokens.
 #[non_exhaustive]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(tag = "type", rename = "tokens")]
 pub struct TaskBudget {
     /// The whole budget.
     pub total: u32,
     /// What is left of it, when history was rewritten and the server can no
     /// longer count it. Unset, the server counts it.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub remaining: Option<u32>,
 }
 
@@ -308,19 +316,6 @@ impl TaskBudget {
     pub fn remaining(mut self, remaining: u32) -> Self {
         self.remaining = Some(remaining);
         self
-    }
-}
-
-impl Serialize for TaskBudget {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let Self { total, remaining } = self;
-        let mut map = serializer.serialize_map(None)?;
-        map.serialize_entry("type", "tokens")?;
-        map.serialize_entry("total", total)?;
-        if let Some(remaining) = remaining {
-            map.serialize_entry("remaining", remaining)?;
-        }
-        map.end()
     }
 }
 
@@ -438,13 +433,15 @@ impl ContextManagement {
 
 /// A remote MCP server the API connects to.
 #[non_exhaustive]
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(tag = "type", rename = "url")]
 pub struct McpServer {
     /// The server's URL.
     pub url: String,
     /// The name an `mcp_toolset` tool refers to it by.
     pub name: String,
     /// An OAuth token the API sends to it.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub authorization_token: Option<String>,
 }
 
@@ -462,24 +459,6 @@ impl McpServer {
     pub fn authorization_token(mut self, token: impl Into<String>) -> Self {
         self.authorization_token = Some(token.into());
         self
-    }
-}
-
-impl Serialize for McpServer {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let Self {
-            url,
-            name,
-            authorization_token,
-        } = self;
-        let mut map = serializer.serialize_map(None)?;
-        map.serialize_entry("type", "url")?;
-        map.serialize_entry("url", url)?;
-        map.serialize_entry("name", name)?;
-        if let Some(token) = authorization_token {
-            map.serialize_entry("authorization_token", token)?;
-        }
-        map.end()
     }
 }
 
@@ -519,10 +498,8 @@ pub struct StopDetails {
     #[serde(rename = "type", default)]
     pub kind: String,
     /// The policy category, such as `"cyber"`.
-    #[serde(default)]
     pub category: Option<String>,
     /// A readable explanation.
-    #[serde(default)]
     pub explanation: Option<String>,
 }
 
@@ -565,15 +542,10 @@ pub struct Container {
 /// The reply fields [`AnthropicExtras`] reads.
 #[derive(Deserialize)]
 struct Reply {
-    #[serde(default)]
     stop_reason: Option<String>,
-    #[serde(default)]
     stop_sequence: Option<String>,
-    #[serde(default)]
     stop_details: Option<StopDetails>,
-    #[serde(default)]
     usage: Option<ReplyUsage>,
-    #[serde(default)]
     container: Option<Container>,
     /// Read for its shape only; the first block is read from the reply.
     #[serde(default, rename = "content")]
@@ -582,15 +554,10 @@ struct Reply {
 
 #[derive(Default, Deserialize)]
 struct ReplyUsage {
-    #[serde(default)]
     cache_creation: Option<CacheCreation>,
-    #[serde(default)]
     service_tier: Option<String>,
-    #[serde(default)]
     inference_geo: Option<String>,
-    #[serde(default)]
     speed: Option<String>,
-    #[serde(default)]
     server_tool_use: Option<ServerToolUse>,
 }
 
@@ -608,7 +575,7 @@ impl ReplyExtras for AnthropicExtras {
             usage,
             container,
             _content,
-        } = Reply::deserialize(raw)?;
+        } = crate::json_utils::from_value::<Reply>(raw)?;
         let usage = usage.unwrap_or_default();
         let fallback_model = raw
             .pointer("/content/0")
@@ -635,25 +602,20 @@ impl ReplyExtras for AnthropicExtras {
 /// dialects' extras read on this route.
 #[derive(Deserialize)]
 pub(crate) struct MessagesStop {
-    #[serde(default)]
     pub(crate) stop_reason: Option<String>,
-    #[serde(default)]
     pub(crate) stop_sequence: Option<String>,
 }
 
 impl MessagesStop {
-    /// The stop fields of `raw`, a reply on `api`, for `provider`'s extras.
+    /// The stop fields of `raw`, or `None` when `api` is not the Messages API.
     ///
     /// # Errors
     ///
-    /// When `api` is not the Messages API or `raw` is not an object.
-    pub(crate) fn read(provider: &str, api: &Api, raw: &Value) -> Result<Self, serde_json::Error> {
-        if api.as_str() != MESSAGES_API {
-            return Err(serde::de::Error::custom(format!(
-                "{provider} extras read a Messages reply, not one from `{api}`"
-            )));
-        }
-        Self::deserialize(raw)
+    /// When `raw` is a Messages reply but not an object.
+    pub(crate) fn of(api: &Api, raw: &Value) -> Result<Option<Self>, serde_json::Error> {
+        (api.as_str() == MESSAGES_API)
+            .then(|| crate::json_utils::from_value(raw))
+            .transpose()
     }
 }
 

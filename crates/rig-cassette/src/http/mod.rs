@@ -76,8 +76,9 @@ static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 type PanicPayload = Box<dyn Any + Send + 'static>;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 enum ReplayMatching {
+    #[default]
     Ordered,
     Unordered,
 }
@@ -152,40 +153,30 @@ impl From<&'static str> for CassetteSpec {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 struct CassettePolicy {
     required_request_headers: &'static [&'static str],
+    /// Older Gemini recordings keep a credential the client now sends as a
+    /// header. Only the expected side drops it, so a key in a URL fails replay.
+    drops_recorded_key: bool,
     replay_matching: ReplayMatching,
     body_matching: BodyMatching,
 }
 
 impl CassettePolicy {
     fn for_scenario(provider: &str, spec: CassetteSpec) -> Self {
-        let scenario = spec.scenario;
-        let required_request_headers = match provider {
-            "openai" | "doubleword" | "venice" => OPENAI_REQUIRED_REQUEST_HEADERS,
-            "chatgpt" => CHATGPT_REQUIRED_REQUEST_HEADERS,
-            "anthropic" => ANTHROPIC_REQUIRED_REQUEST_HEADERS,
-            "gemini" if scenario.starts_with("interactions_api/") => {
-                GEMINI_INTERACTIONS_REQUIRED_REQUEST_HEADERS
-            }
-            _ => NO_REQUIRED_REQUEST_HEADERS,
+        let required_request_headers: &[&str] = match provider {
+            "openai" | "doubleword" | "venice" | "chatgpt" => &["authorization"],
+            "anthropic" => &["x-api-key"],
+            "gemini" => &["x-goog-api-key"],
+            _ => &[],
         };
 
         Self {
             required_request_headers,
+            drops_recorded_key: provider == "gemini",
             replay_matching: spec.replay_matching,
             body_matching: spec.body_matching.unwrap_or(BodyMatching::Exact),
-        }
-    }
-}
-
-impl Default for CassettePolicy {
-    fn default() -> Self {
-        Self {
-            required_request_headers: NO_REQUIRED_REQUEST_HEADERS,
-            replay_matching: ReplayMatching::Ordered,
-            body_matching: BodyMatching::Exact,
         }
     }
 }
@@ -359,10 +350,7 @@ impl DirectRecorder {
             impl IntoIterator<Item = (impl AsRef<str>, impl AsRef<[u8]>)>,
         >,
     ) {
-        let mut scrubber = self
-            .scrubber
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut scrubber = crate::lock(&self.scrubber);
         let request_headers: Vec<_> = request.headers.into_iter().collect();
         let response_headers: Vec<_> = response.headers.into_iter().collect();
         let request_text = || {
@@ -531,10 +519,7 @@ impl DirectRecorder {
     }
 
     fn keep(&self, number: u64, interaction: CassetteInteraction) {
-        let mut interactions = self
-            .interactions
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut interactions = crate::lock(&self.interactions);
         let at = interactions.partition_point(|(kept, _)| *kept <= number);
         interactions.insert(at, (number, interaction));
     }
@@ -571,10 +556,7 @@ impl DirectRecorder {
     /// once it learned the exchange's URL and request headers: a transport
     /// error names the URL it failed on, query and key included.
     fn refusal_text(&self, exchange: &Exchange, text: &str) -> String {
-        let mut scrubber = self
-            .scrubber
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut scrubber = crate::lock(&self.scrubber);
         let inspection = scrubber.learn_request(
             &exchange.uri,
             crate::scrub::header_pairs(&exchange.request_headers),
@@ -589,10 +571,7 @@ impl DirectRecorder {
     }
 
     fn refuse(&self, why: String) {
-        self.refusals
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .push(why);
+        crate::lock(&self.refusals).push(why);
     }
 
     /// The kept interactions as YAML, scrubbed again with the session's
@@ -601,10 +580,7 @@ impl DirectRecorder {
     /// held and a later request sends as its key, leaves the earlier ones too.
     /// `None` when nothing was kept.
     fn recorded_yaml(&self) -> Option<String> {
-        let mut interactions: Vec<_> = self
-            .interactions
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+        let mut interactions: Vec<_> = crate::lock(&self.interactions)
             .iter()
             .map(|(_, interaction)| interaction.clone())
             .collect();
@@ -613,18 +589,12 @@ impl DirectRecorder {
         }
         // The interactions' lock is released before the scrubber's is taken:
         // the two locks are never held together.
-        self.scrubber
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .scrub_interactions(&mut interactions);
+        crate::lock(&self.scrubber).scrub_interactions(&mut interactions);
         Some(serialize_cassette_interactions(&interactions))
     }
 
     fn refusals(&self) -> Vec<String> {
-        self.refusals
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone()
+        crate::lock(&self.refusals).clone()
     }
 }
 
@@ -1032,7 +1002,7 @@ impl ProviderCassette {
     }
 
     /// Return an invalid key for recording auth failures, or the scrubbed dummy
-    /// key for replay so matched query credentials agree with the fixture.
+    /// key for replay.
     pub fn bogus_api_key(&self) -> String {
         // Handing out a rejected credential makes the rejection the subject.
         self.expect_account_failure(AccountFailure::Auth);
@@ -1884,7 +1854,7 @@ fn replay_miss_message(
                 .as_str()
                 .eq_ignore_ascii_case(&interaction.when.method);
             let path_matches = paths_match(request, &interaction.when.path);
-            let query_matches = query_matches(request, &interaction.when.query_param);
+            let query_matches = query_matches(policy, request, &interaction.when.query_param);
             let headers_match = headers_match(request, &interaction.when.header);
             let required_headers_match = required_headers_present(policy, &request.headers);
             let body_matches = body_matches(
@@ -1965,7 +1935,7 @@ fn request_line_matches(
         .as_str()
         .eq_ignore_ascii_case(&expected.method)
         && paths_match(request, &expected.path)
-        && query_matches(request, &expected.query_param)
+        && query_matches(policy, request, &expected.query_param)
         && headers_match(request, &expected.header)
         && required_headers_present(policy, &request.headers)
 }
@@ -2115,7 +2085,11 @@ fn recorded_body(body: &[u8]) -> RecordedBody {
     }
 }
 
-fn query_matches(request: &IncomingRequest, expected: &[NameValue]) -> bool {
+fn query_matches(
+    policy: CassettePolicy,
+    request: &IncomingRequest,
+    expected: &[NameValue],
+) -> bool {
     let mut scrubber = request.context().clone();
     let mut actual: Vec<_> = parsed_query_pairs(request.uri.query())
         .into_iter()
@@ -2124,6 +2098,9 @@ fn query_matches(request: &IncomingRequest, expected: &[NameValue]) -> bool {
     let mut expected = expected.to_vec();
     scrub_query_params(&mut scrubber, &mut actual);
     scrub_query_params(&mut scrubber, &mut expected);
+    expected.retain(|pair| {
+        !(policy.drops_recorded_key && pair.name == "key" && pair.value == REDACTED)
+    });
     query_pair_counts(actual.into_iter().map(|pair| (pair.name, pair.value)))
         == query_pair_counts(expected.into_iter().map(|pair| (pair.name, pair.value)))
 }
@@ -2406,12 +2383,7 @@ fn sse_body_chunks(body: &str) -> Vec<Bytes> {
     while start < body.len() {
         let target_len = CHUNK_SIZES[size_index % CHUNK_SIZES.len()];
         size_index += 1;
-
-        let mut end = (start + target_len).min(body.len());
-        while end < body.len() && !body.is_char_boundary(end) {
-            end += 1;
-        }
-
+        let end = body.ceil_char_boundary(start + target_len);
         chunks.push(Bytes::copy_from_slice(&body.as_bytes()[start..end]));
         start = end;
     }
@@ -3048,12 +3020,6 @@ const FORBIDDEN_CASSETTE_PATTERNS: &[&str] = &[
     "x-amz-security-token",
 ];
 
-const NO_REQUIRED_REQUEST_HEADERS: &[&str] = &[];
-const OPENAI_REQUIRED_REQUEST_HEADERS: &[&str] = &["authorization"];
-const CHATGPT_REQUIRED_REQUEST_HEADERS: &[&str] = &["authorization"];
-const ANTHROPIC_REQUIRED_REQUEST_HEADERS: &[&str] = &["x-api-key"];
-const GEMINI_INTERACTIONS_REQUIRED_REQUEST_HEADERS: &[&str] = &["x-goog-api-key"];
-
 const RECORDED_REQUEST_HEADERS: &[&str] = &[
     "accept",
     "content-type",
@@ -3253,13 +3219,6 @@ fn scrub_query_params(scrubber: &mut Scrubber, query_params: &mut [NameValue]) {
 
 #[cfg(test)]
 mod tests;
-
-/// Collect UTF-8 HTTP headers as owned name/value pairs.
-pub fn owned_headers(headers: &http_client::HeaderMap) -> Vec<(String, String)> {
-    crate::scrub::recordable_pairs(crate::scrub::header_pairs(headers))
-        .map(|(name, value)| (name.to_owned(), value.to_owned()))
-        .collect()
-}
 
 #[cfg(test)]
 mod explicit_destination_tests;

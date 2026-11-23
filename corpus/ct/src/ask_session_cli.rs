@@ -1,25 +1,20 @@
-//! CT-23: `rig ask-session <session> <question>`, a question about a saved
-//! session from the shell, answered on stdout.
+//! `rig ask-session <session> <question>` answers a question about a saved session from the
+//! shell, on stdout. The command is a front of its own ([`Front::on_command`]),
+//! sessionless, so a run leaves nothing behind, and its own session is kept in memory
+//! ([`Front::session_store`]). It finds the session by name, id, `last` or path, reads it
+//! through [`StoreOpener`] without writing anything ([`Material`]), and makes the run's one
+//! agent the answerer: its conversation starts with the session's conversation (so
+//! compaction, when the app has it, condenses one too large for the model), its system
+//! prompt says what it is for and lists the turns, and it may call only this plugin's two
+//! read-only tools, `search_session` and `fetch_message` ([`ToolAccess::only`]).
 //!
-//! The command is a front of its own ([`Front::on_command`]), sessionless,
-//! so a run leaves nothing behind, and its own session is kept in memory
-//! ([`Front::session_store`]). It finds the session by name, id, `last`
-//! or path, reads it through [`StoreOpener`] without writing anything
-//! ([`Material`]), and makes the run's one agent the answerer: its
-//! conversation starts with the session's conversation (so compaction,
-//! when the app has it, condenses one too large for the model), its system
-//! prompt says what it is for and lists the turns, and it may call only
-//! this plugin's two read-only tools, `search_session` and
-//! `fetch_message` ([`ToolAccess::Only`]).
-//!
-//! The answer goes to stdout and nothing else; progress and errors go to
-//! stderr. `--json` prints `{answer, cited_turns, model, tokens, cost}`:
-//! the turns of the messages the tools showed the agent, the model, and
-//! what the run's model calls used, from `rig_basics::telemetry`'s
-//! [`SessionUsage`] (null without it). `--model` picks the model, else
-//! the `[ask_session]` table's `model`, else the cheapest reachable priced
-//! model. Exit codes: 0 answered, 2 session not found or unreadable, 3 the
-//! model failed, 1 a bad command line.
+//! The answer goes to stdout and nothing else; progress and errors go to stderr. `--json`
+//! prints `{answer, cited_turns, model, tokens, cost}`: the turns of the messages the tools
+//! showed the agent, the model, and what the run's model calls used, from
+//! `rig_basics::telemetry`'s [`SessionUsage`] (null without it). `--model` picks the model,
+//! else the `[ask_session]` table's `model`, else the cheapest reachable priced model. Exit
+//! codes: 0 answered, 2 session not found or unreadable, 3 the model failed, 1 a bad
+//! command line.
 //!
 //! ```toml
 //! [ask_session]
@@ -246,7 +241,7 @@ fn end(stdout: String, status: u8, commands: &mut Commands) {
     std::io::stdout().flush().ok();
     let reason = match status {
         0 => ExitReason::Quit,
-        status => ExitReason::Failed(status),
+        status => ExitReason::Failed(FailCode::or_failure(status)),
     };
     commands.insert_resource(AskRun { stdout, status });
     commands.trigger(Exit(reason));
@@ -321,13 +316,13 @@ fn make_answerer(
             prompt.push_str(&format!(" turn {turn} at #{at};"));
         }
     }
-    commands.entity(agent).insert((
-        SystemPrompt(prompt),
-        ToolAccess::Only(vec![SEARCH.to_owned(), FETCH.to_owned()]),
-    ));
+    commands
+        .entity(agent)
+        .insert((SystemPrompt(prompt), ToolAccess::only([SEARCH, FETCH])));
     commands.trigger(SetModel {
         entity: agent,
         model: model.clone(),
+        kind: ChoiceKind::ForThisRun,
     });
     let question = format!("Question about the session above: {}", options.question);
     commands.trigger(Deliver::new(agent, question, DeliveryMode::Steer));
@@ -428,11 +423,11 @@ fn answered(
             eprintln!("ask-session: the model failed: {why}");
             return end(String::new(), 3, &mut commands);
         }
-        TurnOutcome::Stopped(why) => {
-            eprintln!(
-                "ask-session: stopped: {}",
-                why.as_deref().unwrap_or("interrupted")
-            );
+        TurnOutcome::Stopped(stop) => {
+            match stop.cause() {
+                StopCause::User => eprintln!("ask-session: stopped: interrupted"),
+                cause => eprintln!("ask-session: stopped: {cause}"),
+            }
             return end(String::new(), 3, &mut commands);
         }
     };

@@ -118,44 +118,35 @@ impl Fake {
 }
 
 impl HttpClientExt for Fake {
-    fn send<T, U>(
+    fn send(
         &self,
-        req: Request<T>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        T: Into<Bytes> + WasmCompatSend,
-        U: From<Bytes> + WasmCompatSend + 'static,
+        req: Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
         let (parts, body) = req.into_parts();
-        let body: Bytes = body.into();
         let answer = self.answer(parts.method.as_str(), &parts.uri.to_string(), &body);
         let bytes = match answer {
             Value::String(lines) => Bytes::from(lines),
             other => Bytes::from(other.to_string()),
         };
-        let body: LazyBody<U> = Box::pin(async move { Ok(U::from(bytes)) });
+        let body: LazyBody = Box::pin(async move { Ok(bytes) });
         let response = Response::builder().status(StatusCode::OK).body(body);
         future::ready(response.map_err(http_client::Error::Protocol))
     }
 
-    fn send_multipart<U>(
+    fn send_multipart(
         &self,
         _: Request<MultipartForm>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        U: From<Bytes> + WasmCompatSend + 'static,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
-        future::ready(Err(http_client::Error::NoHeaders))
+        future::ready(Err(http_client::Error::permanent("not scripted")))
     }
 
-    fn send_streaming<T>(
+    fn send_streaming(
         &self,
-        _: Request<T>,
-    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
-    where
-        T: Into<Bytes> + WasmCompatSend,
-    {
-        future::ready(Err(http_client::Error::NoHeaders))
+        _: Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend {
+        future::ready(Err(http_client::Error::permanent("not scripted")))
     }
 }
 
@@ -278,7 +269,7 @@ fn batched_turns_group_run_tools_survive_a_restart_and_resend_an_expired_item_on
     let store = MemoryStore::default();
     let fake = Fake::default();
     let (mut app, wakes) = start(&store, &fake);
-    app.world_mut().spawn(Agent);
+    spawn_root(app.world_mut(), ());
     app.update();
     let found = agents(&mut app);
     assert_eq!(found.len(), 2, "{found:?}");
@@ -291,6 +282,7 @@ fn batched_turns_group_run_tools_survive_a_restart_and_resend_an_expired_item_on
         app.world_mut().trigger(SetModel {
             entity: agent,
             model,
+            kind: ChoiceKind::ForThisRun,
         });
         let deliver = Deliver::new(agent, text, DeliveryMode::Queue);
         app.world_mut().trigger(deliver);
@@ -381,10 +373,7 @@ fn batched_turns_group_run_tools_survive_a_restart_and_resend_an_expired_item_on
     app.world_mut().trigger(deliver);
     until(&mut app, &wakes, |_| fake.items() == 6);
     let last = fake.sent("And the warnings.");
-    app.world_mut().trigger(StopTurn {
-        entity: a,
-        reason: None,
-    });
+    app.world_mut().trigger(StopTurn::new(a));
     let batch = last
         .first()
         .map(|item| item.batch.clone())
@@ -395,7 +384,4 @@ fn batched_turns_group_run_tools_survive_a_restart_and_resend_an_expired_item_on
     assert_eq!(fake.with(|api| api.cancelled.clone()), [batch]);
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(BatchProviderPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(BatchProviderPlugin);

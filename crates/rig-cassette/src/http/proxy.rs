@@ -307,7 +307,7 @@ async fn read_whole(mut response: reqwest::Response) -> http_client::Result<Byte
             Ok(Some(chunk)) => read.extend_from_slice(&chunk),
             Ok(None) => return Ok(read.into()),
             Err(error) => {
-                return Err(http_client::Error::instance(CutShort {
+                return Err(http_client::Error::transient(CutShort {
                     read: read.into(),
                     error,
                 }));
@@ -317,66 +317,50 @@ async fn read_whole(mut response: reqwest::Response) -> http_client::Result<Byte
 }
 
 /// `request`'s reply, its body read whole when awaited.
-async fn unary<U>(
+async fn unary(
     request: http_client::Result<reqwest::RequestBuilder>,
-) -> http_client::Result<http_client::Response<LazyBody<U>>>
-where
-    U: From<Bytes> + WasmCompatSend + 'static,
-{
-    let mut response = request?
-        .send()
-        .await
-        .map_err(http_client::Error::instance)?;
+) -> http_client::Result<http_client::Response<LazyBody>> {
+    let mut response = request?.send().await.map_err(rig_reqwest::from_reqwest)?;
     let head = head(&mut response);
-    let body: LazyBody<U> = Box::pin(async move { read_whole(response).await.map(U::from) });
+    let body: LazyBody = Box::pin(read_whole(response));
     head.body(body).map_err(http_client::Error::Protocol)
 }
 
 impl HttpClientExt for Raw {
-    fn send<T, U>(
+    fn send(
         &self,
-        req: http_client::Request<T>,
-    ) -> impl Future<Output = http_client::Result<http_client::Response<LazyBody<U>>>>
+        req: http_client::Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<http_client::Response<LazyBody>>>
     + WasmCompatSend
-    + 'static
-    where
-        T: Into<Bytes> + WasmCompatSend,
-        U: From<Bytes> + WasmCompatSend + 'static,
-    {
+    + 'static {
         let (parts, body) = req.into_parts();
-        unary(Ok(self.request(parts).body(body.into())))
+        unary(Ok(self.request(parts).body(body)))
     }
 
-    fn send_multipart<U>(
+    fn send_multipart(
         &self,
         req: http_client::Request<MultipartForm>,
-    ) -> impl Future<Output = http_client::Result<http_client::Response<LazyBody<U>>>>
+    ) -> impl Future<Output = http_client::Result<http_client::Response<LazyBody>>>
     + WasmCompatSend
-    + 'static
-    where
-        U: From<Bytes> + WasmCompatSend + 'static,
-    {
+    + 'static {
         let (parts, form) = req.into_parts();
         let request = self.request(parts);
         unary(rig_reqwest::multipart_form(form).map(|form| request.multipart(form)))
     }
 
-    fn send_streaming<T>(
+    fn send_streaming(
         &self,
-        req: http_client::Request<T>,
-    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
-    where
-        T: Into<Bytes> + WasmCompatSend,
-    {
+        req: http_client::Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend {
         let (parts, body) = req.into_parts();
-        let request = self.request(parts).body(body.into());
+        let request = self.request(parts).body(body);
         async move {
-            let mut response = request.send().await.map_err(http_client::Error::instance)?;
+            let mut response = request.send().await.map_err(rig_reqwest::from_reqwest)?;
             let head = head(&mut response);
             let body: BoxedStream = Box::pin(
                 response
                     .bytes_stream()
-                    .map(|chunk| chunk.map_err(http_client::Error::instance)),
+                    .map(|chunk| chunk.map_err(rig_reqwest::from_reqwest)),
             );
             head.body(body).map_err(http_client::Error::Protocol)
         }
@@ -392,19 +376,16 @@ impl HttpClientExt for Raw {
 pub(crate) struct ProviderErrors(pub(crate) DynHttpClient);
 
 /// `sent`'s reply, or the provider error of a non-success one.
-async fn checked<U>(
-    sent: impl Future<Output = http_client::Result<http_client::Response<LazyBody<Bytes>>>>,
-) -> http_client::Result<http_client::Response<LazyBody<U>>>
-where
-    U: From<Bytes> + WasmCompatSend + 'static,
-{
+async fn checked(
+    sent: impl Future<Output = http_client::Result<http_client::Response<LazyBody>>>,
+) -> http_client::Result<http_client::Response<LazyBody>> {
     let (parts, body) = sent.await?.into_parts();
     if !parts.status.is_success() {
         // The body as it was read: its bytes, or those that came before the
         // read failed and then the failure, as reqwest reported it.
         let (read, failure) = match body.await {
             Ok(bytes) => (Some(bytes), None),
-            Err(http_client::Error::Instance(error)) => (
+            Err(http_client::Error::Transient(error)) => (
                 error.downcast_ref::<CutShort>().map(|cut| cut.read.clone()),
                 Some(error.to_string()),
             ),
@@ -418,48 +399,37 @@ where
     // A framed stream is read as its client reads it. Any other body is read
     // to its end here, as the proxy reads it, so a reply checked only by its
     // status (a 204, a `HEAD`) is recorded whole.
-    let body: LazyBody<U> = if traffic::framing(&parts.headers).is_some() {
-        Box::pin(async move { body.await.map(U::from) })
+    let body: LazyBody = if traffic::framing(&parts.headers).is_some() {
+        body
     } else {
-        let body = body.await.map(U::from);
-        Box::pin(async move { body })
+        Box::pin(std::future::ready(body.await))
     };
     Ok(http_client::Response::from_parts(parts, body))
 }
 
 impl HttpClientExt for ProviderErrors {
-    fn send<T, U>(
+    fn send(
         &self,
-        req: http_client::Request<T>,
-    ) -> impl Future<Output = http_client::Result<http_client::Response<LazyBody<U>>>>
+        req: http_client::Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<http_client::Response<LazyBody>>>
     + WasmCompatSend
-    + 'static
-    where
-        T: Into<Bytes> + WasmCompatSend,
-        U: From<Bytes> + WasmCompatSend + 'static,
-    {
-        checked(self.0.send::<T, Bytes>(req))
+    + 'static {
+        checked(self.0.send(req))
     }
 
-    fn send_multipart<U>(
+    fn send_multipart(
         &self,
         req: http_client::Request<MultipartForm>,
-    ) -> impl Future<Output = http_client::Result<http_client::Response<LazyBody<U>>>>
+    ) -> impl Future<Output = http_client::Result<http_client::Response<LazyBody>>>
     + WasmCompatSend
-    + 'static
-    where
-        U: From<Bytes> + WasmCompatSend + 'static,
-    {
-        checked(self.0.send_multipart::<Bytes>(req))
+    + 'static {
+        checked(self.0.send_multipart(req))
     }
 
-    fn send_streaming<T>(
+    fn send_streaming(
         &self,
-        req: http_client::Request<T>,
-    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
-    where
-        T: Into<Bytes> + WasmCompatSend,
-    {
+        req: http_client::Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend {
         let sent = self.0.send_streaming(req);
         async move {
             let response = sent.await?;

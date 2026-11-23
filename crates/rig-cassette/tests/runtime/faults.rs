@@ -18,7 +18,7 @@ macro_rules! rows {
             #[tokio::test]
             async fn $name() {
                 let replies = rows!(@replies $($pinned)? $provider, $scenario);
-                produce(crate::wires::$wire, replies, &$cell).await;
+                produce(crate::runtime::wires::$wire, replies, &$cell).await;
             }
         )*
     };
@@ -46,7 +46,7 @@ const CHAT: faults::Scripted<rig::Model<rig::providers::openai::wire::OpenAiWire
         text_stream: "corpus_matrix/shaping_extra_context_streamed",
         tool_stream: "corpus_matrix/hooks_patch_tool_args_streamed",
         setup_reply: "corpus_faults/setup_unary",
-        wire: crate::wires::deepseek_scripted,
+        wire: crate::runtime::wires::deepseek_scripted,
     };
 
 const RESPONSES: faults::Scripted<rig::Model<rig::providers::openai::wire::OpenAiWire>> =
@@ -56,7 +56,7 @@ const RESPONSES: faults::Scripted<rig::Model<rig::providers::openai::wire::OpenA
         text_stream: "corpus_matrix_responses/shaping_extra_context_streamed",
         tool_stream: "corpus_matrix_responses/hooks_patch_tool_args_streamed",
         setup_reply: "corpus_faults_responses/setup_unary",
-        wire: crate::wires::openai_responses_image,
+        wire: crate::runtime::wires::openai_responses_image,
     };
 
 const GEMINI: faults::Scripted<
@@ -67,7 +67,7 @@ const GEMINI: faults::Scripted<
     text_stream: "corpus_matrix/shaping_extra_context_streamed",
     tool_stream: "corpus_matrix/hooks_patch_tool_args_streamed",
     setup_reply: "corpus_faults/setup_unary",
-    wire: crate::wires::gemini_preview,
+    wire: crate::runtime::wires::gemini_preview,
 };
 
 macro_rules! scripted {

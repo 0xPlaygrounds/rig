@@ -1,35 +1,21 @@
-//! FH-05: `@path` mentions and image attachments.
+//! `@path` mentions and image attachments. Each file the user names as `@path` in a message goes
+//! with it, so the agent spends no turn reading it. Paths resolve from the agent's [`WorkDir`],
+//! else the [`ProjectRoot`], in the app's [`ProjectWorkspace`].
 //!
-//! Each file the user names as `@path` in a message goes with it, so the
-//! agent spends no turn reading it. Paths resolve from the agent's
-//! [`WorkDir`], else the [`ProjectRoot`], in the app's
-//! [`ProjectWorkspace`]:
+//! A text file is attached whole, headed with its path; one over [`Mentions::max_bytes`] keeps its
+//! first and last lines with a note on what was cut. `@file:10-40` attaches those lines, as `read`
+//! shows them, and `@dir/` attaches a listing of the files under the directory. An image (`png`,
+//! `jpg`, `gif`, `webp`) is attached as an image when the agent's model reads images. Otherwise a
+//! configured vision model ([`Mentions::vision_model`]) describes it and the message waits for the
+//! description; without one, the image is dropped with a notice and the model is told so. A path
+//! with nothing there stays plain text, with a warning.
 //!
-//! - a text file is attached whole, headed with its path; one over
-//!   [`Mentions::max_bytes`] keeps its first and last lines with a note on
-//!   what was cut;
-//! - `@file:10-40` attaches those lines, as `read` shows them;
-//! - `@dir/` attaches a listing of the files under the directory;
-//! - an image (`png`, `jpg`, `gif`, `webp`) is attached as an image when
-//!   the agent's model reads images; otherwise a configured vision model
-//!   ([`Mentions::vision_model`]) describes it, and the message waits for
-//!   the description (the description call holds it); without one, the
-//!   image is dropped with a notice and the model is told so;
-//! - a path reference with nothing there stays plain text, with a warning.
-//!
-//! Each attachment goes after the message's text: pasted images, then the
-//! `@` mentions in the order the message names them. They go into the conversation as they were sent, so a
-//! resumed session shows the file contents of send time and the images
-//! are stored with the session. Each attached text file is published as
-//! read ([`FilesRead`]) on the message's effect, which the effect log
-//! records.
-//!
-//! This plugin replaces `rig_basics::coding_tools::AttachPlugin`: it turns that
-//! plugin's [`AttachSystems`] off, so the two can be loaded together.
-//! Ctrl+V in the terminal view pastes the clipboard's image as
-//! `[image N]`, in place of the view's own `@path` of it, and the message
-//! attaches it as it would an `@` image. Completion of `@` paths as you
-//! type is the view's own.
+//! Attachments go after the message's text: pasted images, then the `@` mentions in order. They are
+//! stored as sent, so a resumed session shows the file contents of send time. Each attached text
+//! file is published as read ([`FilesRead`]) on the message's effect. The plugin turns off
+//! `rig_basics::coding_tools::AttachPlugin`'s [`AttachSystems`], so the two can be loaded together.
+//! Ctrl+V in the terminal view pastes the clipboard's image as `[image N]`, attached as an `@`
+//! image would be.
 
 use std::path::Path;
 
@@ -43,7 +29,7 @@ use rig_harness::rig_core::message::{Message as ChatMessage, UserContent};
 use rig_harness::rig_core::tool::{
     FileRead, FilesRead, ToolContext, ToolExecutionError, content_hash,
 };
-use rig_tools::attach::{is_image_path, is_path_reference, read_image};
+use rig_tools::attach::{Reference, TRAILING, is_image_path, is_path_reference, read_image};
 use rig_tools::workspace::{Listing, Local, Stat, Workspace};
 use rig_tools::{blocking, show_lines};
 use rig_tui::{
@@ -160,32 +146,63 @@ const DESCRIBE: &str = "Describe this image for a coding agent that cannot see i
 shows, and every piece of text, number, error message and label in it, verbatim.";
 
 /// One `@` mention: the path as written, and the lines it asks for.
-struct Mention<'a> {
-    label: &'a str,
-    path: &'a str,
+struct Mention {
+    label: String,
+    path: String,
     lines: Option<(usize, usize)>,
 }
 
-/// The mentions in `text`, each once, in order. A token's trailing
-/// punctuation is not part of its path.
-fn mentions(text: &str) -> Vec<Mention<'_>> {
-    let mut found: Vec<Mention<'_>> = Vec::new();
-    for token in text.split_whitespace() {
-        let Some(reference) = token.strip_prefix('@') else {
-            continue;
+impl Mention {
+    /// The mention as a message writes it: its path as a [`Reference`],
+    /// then its range.
+    fn written(&self) -> String {
+        let range = self.label.strip_prefix(&self.path).unwrap_or_default();
+        format!("{}{range}", Reference::format(&self.path))
+    }
+}
+
+/// The mentions in `text` ([`Reference::parse`]), each path and range
+/// once, in order. A quoted path is taken as written, its lines following
+/// the closing quote (`@"my notes.md":10-40`).
+fn mentions(text: &str) -> Vec<Mention> {
+    let mut found: Vec<Mention> = Vec::new();
+    for reference in Reference::parse(text) {
+        let mention = match reference.quoted {
+            true => {
+                let after = text.get(reference.span.end..).unwrap_or_default();
+                let range = after.split(char::is_whitespace).next().unwrap_or_default();
+                let range = range.strip_prefix(':').unwrap_or_default();
+                let range = range.trim_end_matches(TRAILING);
+                let path = reference.path.into_owned();
+                match lines(range) {
+                    Some(lines) => Mention {
+                        label: format!("{path}:{range}"),
+                        path,
+                        lines: Some(lines),
+                    },
+                    None => Mention {
+                        label: path.clone(),
+                        path,
+                        lines: None,
+                    },
+                }
+            }
+            false => {
+                let label = reference.path.into_owned();
+                let ranged = label
+                    .rsplit_once(':')
+                    .and_then(|(path, range)| Some((path.to_owned(), lines(range)?)));
+                let (path, lines) = match ranged {
+                    Some((path, range)) => (path, Some(range)),
+                    None => (label.clone(), None),
+                };
+                Mention { label, path, lines }
+            }
         };
-        let label = reference.trim_end_matches([',', '.', ';', ':', '!', '?', ')', '"', '\'', '`']);
-        if label.is_empty() || found.iter().any(|seen| seen.label == label) {
-            continue;
+        let seen = |other: &Mention| other.path == mention.path && other.lines == mention.lines;
+        if !found.iter().any(seen) {
+            found.push(mention);
         }
-        let ranged = label
-            .rsplit_once(':')
-            .and_then(|(path, range)| Some((path, lines(range)?)));
-        let (path, lines) = match ranged {
-            Some((path, range)) => (path, Some(range)),
-            None => (label, None),
-        };
-        found.push(Mention { label, path, lines });
     }
     found
 }
@@ -214,12 +231,13 @@ struct Found {
 fn read_mentions(text: &str, base: &Path, workspace: &dyn Workspace, max_bytes: usize) -> Found {
     let mut found = Found::default();
     for mention in mentions(text) {
-        let label = mention.label;
-        let path = workspace.resolve(Some(base), mention.path);
+        let label = &mention.label;
+        let path = workspace.resolve(Some(base), &mention.path);
         let content = match workspace.stat(&path) {
-            Ok(Stat::Missing) if is_path_reference(mention.path) => {
+            Ok(Stat::Missing) if is_path_reference(&mention.path) => {
                 found.warnings.push(format!(
-                    "@{label} does not exist; it is sent as plain text."
+                    "{} does not exist; it is sent as plain text.",
+                    mention.written()
                 ));
                 continue;
             }
@@ -240,10 +258,10 @@ fn read_mentions(text: &str, base: &Path, workspace: &dyn Workspace, max_bytes: 
             Err(failure) => Err(failure.to_string()),
         };
         match content {
-            Ok(content) => found.attached.push((label.to_owned(), content)),
+            Ok(content) => found.attached.push((label.clone(), content)),
             Err(why) => found
                 .warnings
-                .push(format!("@{label} is not attached: {why}.")),
+                .push(format!("{} is not attached: {why}.", mention.written())),
         }
     }
     found
@@ -254,7 +272,8 @@ fn read_mentions(text: &str, base: &Path, workspace: &dyn Workspace, max_bytes: 
 fn listing(workspace: &dyn Workspace, path: &Path, max_bytes: usize) -> Result<String, String> {
     let files = workspace
         .files(path, None, Listing::Visible)
-        .map_err(|failure| failure.to_string())?;
+        .map_err(|failure| failure.to_string())?
+        .files;
     let mut list = String::new();
     for (at, file) in files.iter().enumerate() {
         let line = format!("{}\n", file.strip_prefix(path).unwrap_or(file).display());
@@ -272,7 +291,7 @@ fn listing(workspace: &dyn Workspace, path: &Path, max_bytes: usize) -> Result<S
 fn read_text(
     workspace: &dyn Workspace,
     path: &Path,
-    mention: &Mention<'_>,
+    mention: &Mention,
     max_bytes: usize,
 ) -> Result<(String, FileRead), String> {
     let text = workspace
@@ -287,7 +306,7 @@ fn read_text(
         None => text.clone(),
     };
     let newline = if body.ends_with('\n') { "" } else { "\n" };
-    let label = mention.label;
+    let label = &mention.label;
     let block = format!("<file path=\"{label}\">\n{body}{newline}</file>");
     let read = FileRead::new(path.to_string_lossy(), content_hash(text.as_bytes()));
     Ok((block, read))
@@ -559,11 +578,11 @@ impl Adding<'_, '_> {
         label: &str,
         image: UserContent,
     ) -> UserContent {
-        let vision = self
-            .config
-            .vision_model
-            .as_deref()
-            .map(|model| self.models.connect(model));
+        let vision = self.config.vision_model.as_deref().map(|model| {
+            self.models
+                .connect(model)
+                .map_err(|why| Models::cannot_use(model, why))
+        });
         let why = match vision {
             Some(Ok(vision)) => {
                 let model = vision.spec.reference();

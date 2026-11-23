@@ -13,7 +13,7 @@ async fn tool_prompt_across_subproviders() {
             "meta-llama/Meta-Llama-3.1-8B-Instruct",
             SubRoute::HFInference,
         ),
-        ("Meta-Llama-3.1-8B-Instruct", SubRoute::SambaNova),
+        ("meta-llama/Meta-Llama-3.1-8B-Instruct", SubRoute::SambaNova),
     ];
 
     for (model, sub_route) in cases {

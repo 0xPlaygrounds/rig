@@ -20,8 +20,8 @@
 //! takes it over, else the kernel hands what the user typed back to the
 //! views as [`Recalled`] and keeps what agents and plugins sent for the
 //! next turn. The inbox is saved with the conversation and restored after
-//! a restart. The plugin guide (rig-harness's `PLUGINS.md`, "What the user
-//! types") has the full rules.
+//! a restart. [`Unsent`], [`Recalled`] and [`DeliveredIn`] have the full
+//! rules.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -31,7 +31,6 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
 use bevy_ecs::world::DeferredWorld;
 use bevy_reflect::prelude::*;
-use rig_core::catalog::ModelSpec;
 use rig_core::completion::Message;
 use rig_core::conversation::{Aside, AsideId, Author, AuthorKind, Entry, Halt};
 use rig_core::effect::{EffectKind, HandlerKey};
@@ -81,7 +80,6 @@ pub enum DeliveryMode {
 pub struct Attachment {
     /// How the user knows it, such as its path.
     pub label: String,
-    /// The content.
     pub content: UserContent,
 }
 
@@ -102,7 +100,9 @@ pub enum MessagePart {
 /// stages (see the [module](self)): edit it in Prepare, take it over in
 /// Gate by deciding it ([`Decision`]) with an
 /// [`Outcome`]; once accepted, it is [`Started`] until the kernel answers
-/// it. A message with no text and no attachment is ignored.
+/// it. A message with no text and no attachment is ignored. A message a
+/// restart brings back to the inbox is admitted again, already
+/// [`Started`], so a Prepare system that adds to messages skips those.
 ///
 /// ```
 /// use rig_ecs::prelude::*;
@@ -198,11 +198,17 @@ impl Incoming {
 
     /// The slash command line, without its `/`, that an app with slash
     /// commands runs instead of sending this message: the user's text that
-    /// starts with `/`, unless it is [`literal`](Self::literal).
+    /// starts with `/` and a name, unless it is [`literal`](Self::literal).
+    /// A `/` and then a space, or a first word with another `/` in it (a
+    /// path such as `/etc/hosts`, or `//`), is text for the model.
     pub fn command(&self) -> Option<&str> {
         let user = self.author.kind == AuthorKind::User && !self.literal;
-        user.then(|| self.text().trim_start().strip_prefix('/'))
-            .flatten()
+        let line = user
+            .then(|| self.text().trim_start().strip_prefix('/'))
+            .flatten()?;
+        let name = line.split(char::is_whitespace).next().unwrap_or_default();
+        let spaced = line.starts_with(char::is_whitespace);
+        (!spaced && !name.contains('/')).then_some(line)
     }
 }
 
@@ -215,13 +221,13 @@ impl Incoming {
 pub struct Deliver {
     /// The agent.
     pub entity: Entity,
-    /// The message.
     pub message: Incoming,
 }
 
 impl Deliver {
     /// `text` for `agent`, as `mode` says, as the user's own text unless
-    /// [`with_author`](Self::with_author) names who wrote it.
+    /// [`with_author`](Self::with_author) names who wrote it: a plugin's
+    /// note without an author reads as the user's, to plugins too.
     pub fn new(agent: Entity, text: impl Into<String>, mode: DeliveryMode) -> Self {
         Self {
             entity: agent,
@@ -254,13 +260,12 @@ impl Deliver {
 /// refused slash command, with `why`. A view puts it back in its input. A
 /// failed turn's message comes back as the conversation holds it, after
 /// Prepare, its text only; nothing else keeps it, so it does not outlive
-/// a restart unless sent again. The text is not redacted: a view that
-/// writes it anywhere but its input redacts it ([`rig_core::redact`]).
+/// a restart unless sent again. Only the local user's own messages come
+/// back: a titled user's message, such as a chat bridge's, is taken out
+/// without coming back, and an agent's or a plugin's keeps its place.
 #[derive(Message, Clone, Debug)]
 pub struct Recalled {
-    /// The agent.
     pub agent: Entity,
-    /// The text.
     pub text: String,
     /// Why a command was refused.
     pub why: Option<String>,
@@ -271,10 +276,19 @@ pub struct Recalled {
 /// or carried on. Inserted when the message goes into the conversation, with
 /// its answer. It is no hold: a turn's end does not wait for it. An
 /// `Inform` message to an idle agent, and what a turn that ended some other way
-/// puts in the conversation, go with no turn and have none.
+/// puts in the conversation, go with no turn and have none. The message
+/// is despawned once it settles, so a plugin that marks the turn does so
+/// as this is added (`On<Add<DeliveredIn>>`) and finds the turn's calls
+/// by their `CallOf(turn)`.
 #[derive(Component, Reflect, Clone, Copy, Debug)]
 #[reflect(Component, Clone, Debug)]
 pub struct DeliveredIn(pub Entity);
+
+/// On a delivered message ([`Incoming`]): the id of the entry it became in its agent's
+/// conversation. Inserted with [`DeliveredIn`], or alone for a message that went with no turn.
+/// Not reflected: rig-core's types are not `Reflect`.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct DeliveredAs(pub rig_core::conversation::MessageId);
 
 /// On an agent whose failed turn took the user's unanswered messages out
 /// of its conversation: their texts, in order, which go back to the views
@@ -317,12 +331,9 @@ fn mark(conversation: &mut Conversation, message: &Incoming) -> InboxMark {
 
 /// The messages kept in the inbox of `conversation`, with their marks.
 pub(crate) fn kept(conversation: &Conversation) -> Vec<(InboxMark, Incoming)> {
-    let marks = conversation
+    conversation
         .asides()
-        .filter(|(_, aside)| aside.kind == INBOX_MARK);
-    let read = |aside: &Aside| Incoming::deserialize(&aside.value).ok();
-    marks
-        .filter_map(|(id, aside)| Some((InboxMark(id), read(aside)?)))
+        .filter_map(|(id, aside)| Some((InboxMark(id), aside.read(INBOX_MARK)?)))
         .collect()
 }
 
@@ -407,7 +418,6 @@ pub(crate) fn accept(
             commands.entity(entity).try_insert((Started { at }, mark));
             continue;
         }
-        let spec = connection.map(|connection| &*connection.spec);
         // An `Inform` message to an idle agent waits for the next turn.
         let turn = match joins {
             None if message.mode == DeliveryMode::Inform => None,
@@ -419,7 +429,7 @@ pub(crate) fn accept(
         let into = (turn, &mut commands);
         deliver(
             agent,
-            spec,
+            connection,
             [(entity, message)],
             conversation,
             &mut notices,
@@ -471,10 +481,9 @@ pub(crate) fn carry_on_accepted(
         let Some(next) = carry_on(inboxes.of(agent)) else {
             continue;
         };
-        let spec = connection.map(|connection| &*connection.spec);
         let conversation = &mut *conversation;
         let into = (Some(turn), &mut commands);
-        deliver(agent, spec, next, conversation, &mut notices, into);
+        deliver(agent, connection, next, conversation, &mut notices, into);
         take_outcome(&mut commands, turn, holds);
         spawn_turn_call(&mut commands, turn, agent);
     }
@@ -536,6 +545,20 @@ impl Inboxes<'_, '_> {
             .flatten()
             .any(|(message, decision)| {
                 message.mode != DeliveryMode::Inform && !decision.is_decided()
+            })
+    }
+
+    /// Whether `agent` accepted a user steering message not yet given to its
+    /// model.
+    pub(crate) fn user_steering(&self, agent: Entity) -> bool {
+        let work = self.work.get(agent).into_iter().flat_map(AgentWork::iter);
+        self.accepted
+            .iter_many(work)
+            .flatten()
+            .any(|(_, _, message, decision)| {
+                !decision.is_decided()
+                    && message.mode == DeliveryMode::Steer
+                    && message.author.kind == AuthorKind::User
             })
     }
 }
@@ -643,12 +666,11 @@ pub(crate) fn settle_unsent(
                 .try_insert_if_new(Outcome::custom("recalled"));
             typed.entry(agent).or_default().push(message.text().trim());
         } else {
-            let spec = connection.map(|connection| &*connection.spec);
             let conversation = &mut *conversation;
             let into = (None, &mut commands);
             deliver(
                 agent,
-                spec,
+                connection,
                 [(entity, message)],
                 conversation,
                 &mut notices,
@@ -670,7 +692,6 @@ pub(crate) fn settle_unsent(
 /// joined text, author and mode, without its attachments.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MessageRecord {
-    /// The text.
     pub text: String,
     /// Who wrote it.
     pub author: Author,
@@ -686,7 +707,7 @@ impl MessageRecord {
     pub fn read(kind: &EffectKind) -> Option<Self> {
         match kind {
             EffectKind::Custom { kind, payload } if &**kind == Self::KIND => {
-                serde_json::from_value(payload.clone()).ok()
+                rig_core::json_utils::from_value(payload).ok()
             }
             _ => None,
         }
@@ -708,48 +729,22 @@ pub(crate) fn message_kind(message: &Incoming) -> (HandlerKey, EffectKind) {
 }
 
 /// Puts each of `messages`, accepted by `agent`, in its `conversation`
-/// as [`pending`] does, and answers it as delivered, [`DeliveredIn`] the
-/// turn `into` names, if any.
+/// and answers it as delivered, [`DeliveredIn`] the turn `into` names, if
+/// any. Each goes in as a user message of its own by its author: its parts
+/// in order, each attachment the model of `connection` takes and each text
+/// trimmed, the first text headed by its author's line when it is not the
+/// user's own. The author is kept, and logged, unless it is the plain
+/// user, so a user's message with a title keeps it.
 pub(crate) fn deliver<'a>(
     agent: Entity,
-    spec: Option<&ModelSpec>,
+    connection: Option<&Connection>,
     messages: impl IntoIterator<Item = (Entity, &'a Incoming)>,
     conversation: &mut Conversation,
     notices: &mut MessageWriter<Notice>,
     (into, commands): (Option<Entity>, &mut Commands),
 ) {
+    let spec = connection.map(|connection| &*connection.spec);
     for (entity, message) in messages {
-        push_messages(agent, spec, [message], conversation, notices);
-        let mut delivered = commands.entity(entity);
-        delivered.try_insert_if_new(Outcome::custom("delivered"));
-        if let Some(turn) = into {
-            delivered.try_insert(DeliveredIn(turn));
-        }
-    }
-}
-
-/// The text parts of `parts`, in order.
-fn texts(parts: &[MessagePart]) -> impl Iterator<Item = &str> {
-    parts.iter().filter_map(|part| match part {
-        MessagePart::Text(text) => Some(text.as_str()),
-        MessagePart::Attachment(_) => None,
-    })
-}
-
-/// Pushes each of `messages` to `conversation`, that of `agent`, whose
-/// model is `spec`, as a user message of its own by its author: its parts
-/// in order, each attachment the model takes and each text trimmed, the
-/// first text headed by its author's line when it is not the user's own.
-/// The author is kept, and logged, unless it is the plain user, so a
-/// user's message with a title keeps it.
-pub(crate) fn push_messages<'a>(
-    agent: Entity,
-    spec: Option<&ModelSpec>,
-    messages: impl IntoIterator<Item = &'a Incoming>,
-    conversation: &mut Conversation,
-    notices: &mut MessageWriter<Notice>,
-) {
-    for message in messages {
         let mut header = message.author.header();
         let mut content = Vec::with_capacity(message.parts.len());
         let mut refused = Vec::new();
@@ -804,8 +799,22 @@ pub(crate) fn push_messages<'a>(
             true => entry,
             false => entry.by(message.author.clone()),
         };
-        conversation.push(entry);
+        let id = conversation.push(entry);
+        let mut delivered = commands.entity(entity);
+        delivered.try_insert_if_new(Outcome::custom("delivered"));
+        match into {
+            Some(turn) => delivered.try_insert((DeliveredAs(id), DeliveredIn(turn))),
+            None => delivered.try_insert(DeliveredAs(id)),
+        };
     }
+}
+
+/// The text parts of `parts`, in order.
+fn texts(parts: &[MessagePart]) -> impl Iterator<Item = &str> {
+    parts.iter().filter_map(|part| match part {
+        MessagePart::Text(text) => Some(text.as_str()),
+        MessagePart::Attachment(_) => None,
+    })
 }
 
 #[cfg(test)]

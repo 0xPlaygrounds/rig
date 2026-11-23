@@ -77,28 +77,24 @@ pub(super) fn stream(mut out: Out) {
 /// its history has it, under its id.
 pub(super) fn call_asked(
     asked: On<Add<ToolRequest>>,
-    calls: Query<(&ToolRequest, &ForAgent, &Effect, Has<Restored>)>,
-    agents: Query<(&AgentId, &Conversation)>,
+    calls: Query<(&ToolRequest, &ForAgent, &InReply, Has<Restored>)>,
+    agents: Query<&AgentId>,
     dirs: Query<&WorkDir>,
     root: Res<ProjectRoot>,
+    workspace: Res<ProjectWorkspace>,
     mut out: Out,
 ) {
-    if let Ok((request, &ForAgent(agent), effect, restored)) = calls.get(asked.entity)
-        && effect.parent.is_some()
-        && let Ok((AgentId(of), conversation)) = agents.get(agent)
+    if let Ok((request, &ForAgent(agent), in_reply, restored)) = calls.get(asked.entity)
+        && let Ok(AgentId(of)) = agents.get(agent)
         && out.main(agent)
     {
-        let calls = &out.session.calls;
-        let taken = |id: &str| calls.values().any(|shown| shown == id);
-        let Some(id) = translate::call_id_in(of, conversation, &request.call.id, taken) else {
-            return;
-        };
+        let id = translate::call_id_at(of, in_reply.at());
         out.session.calls.insert(asked.entity, id.clone());
         if restored {
             return;
         }
         let cwd = translate::cwd_of(dirs.get(agent).ok(), &root);
-        let call = translate::tool_call(&request.call, id, &cwd);
+        let call = translate::tool_call(&request.call, id, &cwd, &*workspace.0);
         out.send(acp::SessionUpdate::ToolCall(call));
     }
 }
@@ -121,20 +117,18 @@ pub(super) fn started(
 }
 
 /// A call of the main agent settles: completed or failed, with what it
-/// answered. A question settles: no longer asked.
+/// answered.
 pub(super) fn settled(
     settled: On<Add<Settled>>,
     calls: Query<&Outcome, With<ToolRequest>>,
     mut out: Out,
 ) {
-    if let Some(task) = out.session.asking.remove(&settled.entity) {
-        task.abort();
-    }
     if let Ok(outcome) = calls.get(settled.entity)
         && let Some(id) = out.session.calls.remove(&settled.entity)
     {
         let result = outcome.tool_result();
-        let done = translate::tool_done(&id, !result.is_success(), result.output().render());
+        let output = translate::tool_output(result.output().as_content());
+        let done = translate::tool_done(&id, !result.is_success(), output);
         out.send(acp::SessionUpdate::ToolCallUpdate(done));
     }
 }
@@ -169,10 +163,7 @@ pub(super) fn notices(
         .filter(|recalled| Some(recalled.agent) == agent && !cancelled)
         .map(|recalled| match &recalled.why {
             Some(why) => why.clone(),
-            None => {
-                let text = rig_harness::rig_core::redact::text(&recalled.text);
-                format!("{TAKEN_OUT} It said: {text}")
-            }
+            None => format!("{TAKEN_OUT} It said: {}", recalled.text),
         })
         .map(|why| (why, NoticeLevel::Error))
         .collect();

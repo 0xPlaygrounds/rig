@@ -7,13 +7,16 @@
 //!
 //! - `task` spawns a child with its own model, reasoning setting, tools
 //!   and what it must know of its [`Environment`], and answers with its id;
+//!   a call that names no model or tools gets the [`SubagentDefaults`] of
+//!   the `[subagents]` settings table, as `task`'s description says;
 //!   `message` sends a child or a peer a request, or any agent it can reach
 //!   a message; `wait` keeps the caller's turn open until an agent messages
 //!   it or ends its turn.
-//! - Each request stays in the owing agent's [`OpenRequests`] (saved) until
-//!   its turn ends: its final answer is its report on every request it
-//!   owes, a message marked [`Report`] to each asker. Until then it can
-//!   reach its askers. A restart reports open requests as stopped.
+//! - Each request stays in the asker's [`Awaiting`] (saved) until the
+//!   report on it arrives: the asked agent's final answer is its report on
+//!   every request it owes, a message marked [`Report`] to each asker.
+//!   Until then it can reach its askers. A restart reports open requests
+//!   as stopped, and those a finished agent owes as it finished.
 //! - Every message between agents, and every report, goes with its
 //!   addressee's next model call, or starts a turn of an idle one.
 //! - Stopping an agent's turn stops its subagents' turns too
@@ -24,21 +27,22 @@
 //!   any other.
 //! - A subagent's [`Lifecycle`] says whether it works, waits on an agent
 //!   that owes it a report, or finished.
-//! - With the default `tui` feature, each agent's status line says its
-//!   name and the agents at work; `AgentsPlugin`'s `/agents` shows one.
+//! - `/agents` ([`AgentPickerPlugin`]) lists the agents and shows one.
+//!   With the default `tui` feature, each agent's status line says its
+//!   name and the agents at work.
 //! - Subagents are told their role in prompt sections of their own
 //!   ([`SectionOf`]). A request or `wait` that would make agents wait on
 //!   each other is refused.
 //!
 //! Every agent is spawned through a [`SpawnSubagent`] effect, so other
 //! plugins shape spawning with ordinary stage systems, as below.
-//! [`SubagentPolicy`] caps nesting; a plugin spawns its own
-//! [`Role::Helper`] the same way. Reports are messages like any other, so a
-//! plugin edits or takes them over as it would any message.
+//! A plugin spawns its own [`Role::Helper`] the same way. Reports are
+//! messages like any other, so a plugin edits or takes them over as it
+//! would any message.
 //!
 //! ```
 //! use rig_harness::prelude::*;
-//! use rig_basics::subagents::{Role, SpawnSubagent, SpawnedAgent, SubagentSystems};
+//! use rig_basics::subagents::{Role, SpawnSubagent, SpawnedAgent};
 //!
 //! /// Subagents (not helpers) get only the read-only tools.
 //! fn read_only(
@@ -78,14 +82,16 @@
 //! let mut app = App::new();
 //! app.add_systems(AgentPass, (
 //!     read_only.in_set(Stage::Prepare),
-//!     one_at_a_time.in_set(Stage::Gate).after(SubagentSystems::Gate),
+//!     one_at_a_time.in_set(Stage::Gate),
 //!     with_notes.in_set(Stage::Review),
 //! ));
 //! ```
 
+use rig_ecs::session_log::Never;
 use rig_harness::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::agent_picker::AgentPickerPlugin;
 use crate::approval::ApprovalPlugin;
 
 #[cfg(feature = "tui")]
@@ -98,7 +104,7 @@ mod tools;
 
 #[cfg(feature = "tui")]
 pub use looks::SubagentLooks;
-pub use spawn::{Role, SUBAGENT, SpawnSubagent, SpawnedAgent, SubagentPolicy};
+pub use spawn::{Role, SUBAGENT, SpawnSubagent, SpawnedAgent};
 pub use tools::{MESSAGE, TASK, WAIT};
 
 /// The name the subagent tools decide effects and write notes as
@@ -106,31 +112,26 @@ pub use tools::{MESSAGE, TASK, WAIT};
 /// conversations: the module's.
 pub const ORIGIN: &str = "subagents";
 
-/// The plugin's stage system sets.
-#[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum SubagentSystems {
-    /// In Gate: refuses a request deeper than [`SubagentPolicy`] allows.
-    Gate,
-}
-
 /// Adds the `task`, `message` and `wait` tools, spawning the agents
 /// [`SpawnSubagent`] asks for, the subagents' lifecycle and the reports
-/// that answer their requests; with the `tui` feature (on by default),
+/// that answer their requests, and the kernel's
+/// [`Subagents`](rig_ecs::spawn::Subagents) marker, with which code mode
+/// offers agents; with the `tui` feature (on by default),
 /// also how the terminal view draws the tools' calls.
 #[derive(Default)]
 pub struct SubagentsPlugin;
 
 impl Plugin for SubagentsPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<ApprovalPlugin>() {
-            app.add_plugins(ApprovalPlugin);
-        }
-        app.configure_sets(AgentPass, SubagentSystems::Gate.in_set(Stage::Gate))
+        rig_harness::load::<ApprovalPlugin>(app, "rig-basics", "");
+        rig_harness::load::<AgentPickerPlugin>(app, "rig-basics", "");
+        app.init_resource::<rig_ecs::spawn::Subagents>()
+            .add_setting::<SubagentDefaults>("subagents")
             .keeps_saved::<Subtask>()
             .keeps_saved::<Helper>()
             .keeps_saved::<Peers>()
             .keeps_saved::<Environment>()
-            .keeps_saved::<OpenRequests>();
+            .keeps_saved::<Awaiting>();
         spawn::add(app);
         tools::add(app);
         lifecycle::add(app);
@@ -141,10 +142,21 @@ impl Plugin for SubagentsPlugin {
     }
 }
 
+/// The `[subagents]` settings table: what a `task` call that names no
+/// `model` or `tools` gives its subagent.
+#[derive(Resource, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct SubagentDefaults {
+    /// A catalog model as `vendor/model`; the parent's when `None`.
+    pub model: Option<String>,
+    /// Tools of the parent's; all of the parent's when `None`.
+    pub tools: Option<Vec<String>>,
+}
+
 /// On a subagent: it runs a task, whose short title is its
-/// [`AgentTitle`], which names it.
+/// [`AgentTitle`], which names it. A fork of it is no subagent.
 #[derive(Component, Reflect, Clone, Copy, Debug, Default)]
-#[reflect(Component, Saved, Default, Clone, Debug)]
+#[reflect(Component, Saved(Never), Default, Clone, Debug)]
 pub struct Subtask;
 
 /// On a helper a plugin spawned ([`Role::Helper`]); its title is its
@@ -164,14 +176,16 @@ pub struct Report;
 #[reflect(Component, Saved, Default, Clone, Debug)]
 pub struct Peers;
 
-/// On an agent: the requests other agents sent it, oldest first, until it
-/// reports on them. Each gets exactly one report, to its asker.
-/// Saved through serde, as it holds rig-core's [`RequestId`].
+/// On an agent: the requests it sent other agents, oldest first, until the
+/// report on each arrives in its conversation or inbox. The report and the
+/// clearing go into the asker's log with one append, so a restore sends
+/// again a report that log lost, and never one it kept. A restore that
+/// finds a report there takes its requests off. Saved; a fork waits for none.
 #[derive(Component, Reflect, Clone, Debug, Default, Serialize, Deserialize)]
 #[reflect(
     opaque,
     Component,
-    Saved,
+    Saved(Never),
     Default,
     Clone,
     Debug,
@@ -179,15 +193,32 @@ pub struct Peers;
     Deserialize
 )]
 #[serde(transparent)]
-pub struct OpenRequests(pub Vec<Request>);
+pub struct Awaiting(pub Vec<Request>);
 
-/// A request an agent owes a report on.
+impl Awaiting {
+    /// Takes off the requests a message by `author` reports on: when it
+    /// names one of the requests to its agent, that one and those to the
+    /// same agent before it.
+    pub(super) fn settle(&mut self, author: &Author) {
+        let (Some(from), Some(named)) = (&author.from, &author.request) else {
+            return;
+        };
+        let to = |request: &Request| request.to.0 == *from;
+        let Some(last) = self.0.iter().rposition(|r| to(r) && r.id == *named) else {
+            return;
+        };
+        self.0.extract_if(..=last, |r| to(r)).for_each(drop);
+    }
+}
+
+/// A request an agent waits for a report on.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Request {
-    /// The call that asked, which the report names.
+    /// The call that asked, by its asker and its place, which the report
+    /// names.
     pub id: RequestId,
-    /// The agent that asked, which the report goes to.
-    pub asker: AgentId,
+    /// The agent asked, which owes the report.
+    pub to: AgentId,
 }
 
 /// On a subagent: what it must know of its environment that it cannot see,

@@ -1,14 +1,10 @@
-//! Plugin corpus: 30. Auto-commit after each turn (spec `30-auto-commit.md`).
-//!
-//! A turn that changed files in a git repository ends with a commit of
-//! exactly those files: what `git status` shows at its end and did not
-//! show at its start, so the user's own uncommitted work stays out. When a
-//! message model is set (`[auto-commit] message_model` in the settings),
-//! the turn's proposed end is held by a model call that writes the
-//! commit's subject from its diff; otherwise, or when that call fails, the
-//! subject is "rig: `<first line of the request>`". `/undo` takes the last
-//! commit back and tells the agent; `/autocommit on|off` turns it on or
-//! off for the session.
+//! Auto-commit after each turn. A turn that changed files in a git repository ends with a
+//! commit of exactly those files: what `git status` shows at its end and did not show at its
+//! start, so the user's own uncommitted work stays out. When a message model is set
+//! (`[auto-commit] message_model` in the settings), the turn's proposed end is held by a model
+//! call that writes the commit's subject from its diff; otherwise, or when that call fails, the
+//! subject is "rig: `<first line of the request>`". `/undo` takes the last commit back and
+//! tells the agent; `/autocommit on|off` turns it on or off for the session.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -229,7 +225,10 @@ fn ask_subject(
             Ok(changed) if !changed.is_empty() => changed,
             _ => continue,
         };
-        let connection = match models.connect(reference) {
+        let connection = match models
+            .connect(reference)
+            .map_err(|why| Models::cannot_use(reference, why))
+        {
             Ok(connection) => connection,
             Err(why) => {
                 said.once(agent, why, &mut notices);

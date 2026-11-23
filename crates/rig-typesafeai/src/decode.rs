@@ -11,6 +11,12 @@ fn wrong_kind() -> ProviderError {
     ProviderError::Response("answer kind differs from question kind".into())
 }
 
+/// Read a choice label as a JSON string, the one path both `Choice`'s
+/// round-trip check and answer decoding use, so string newtypes decode too.
+pub(crate) fn choice_label<T: DeserializeOwned>(label: &str) -> Result<T, serde_json::Error> {
+    serde_json::from_value(serde_json::Value::String(label.to_owned()))
+}
+
 impl<T: DeserializeOwned + Ord> DecodeAnswer for crate::ChoiceAnswer<T> {
     fn decode(answer: &crate::types::Answer) -> Result<Self, ProviderError> {
         let crate::types::Answer::Choice {
@@ -21,11 +27,7 @@ impl<T: DeserializeOwned + Ord> DecodeAnswer for crate::ChoiceAnswer<T> {
         else {
             return Err(wrong_kind());
         };
-        let label = |label: &str| -> Result<T, ProviderError> {
-            Ok(T::deserialize(serde::de::value::StrDeserializer::<
-                serde_json::Error,
-            >::new(label))?)
-        };
+        let label = |label: &str| -> Result<T, ProviderError> { Ok(choice_label(label)?) };
         Ok(Self {
             choice: label(choice)?,
             probabilities: probabilities

@@ -1,36 +1,15 @@
-//! Live OpenRouter reasoning/tool block-order regression matrix.
+//! Live OpenRouter reasoning and tool block-order matrix.
 //!
-//! The five 24-cell matrices in this PR found a transport-parity gap that
-//! requires a reasoning-capable route: blocking responses normalized tool
-//! calls before reasoning, while the shared streaming adapter emitted the
-//! same turn as reasoning then tool calls. These supplemental cells pin
-//! Anthropic through OpenRouter because that live route exposes plaintext
-//! reasoning beside tool calls on both transports.
+//! A turn with reasoning beside tool calls must normalize in the same order on
+//! both transports: reasoning, then tool calls. The cells pin Anthropic through
+//! OpenRouter, with fallbacks disabled and extended reasoning at its 1024-token
+//! minimum, because that route exposes plaintext reasoning beside tool calls on
+//! both transports. A streaming agent-loop control replays the signed
+//! single-tool turn into a live follow-up, proving the streamed signature
+//! reaches replay history and is accepted by the next call.
 //!
-//! The finite raw-order space is 2 transports × 2 call shapes = 4 cells, of
-//! which the two single-call cells are tests. A streaming agent-loop control
-//! replays the signed single-tool turn into a live follow-up. The upstream and
-//! reasoning budget are intentionally fixed:
-//! OpenRouter is pinned to Anthropic with fallbacks disabled, extended
-//! reasoning is fixed at its supported 1024-token minimum. Raw responses are
-//! normalized at the exact boundary that regressed; agent controls prove the
-//! streamed signature reaches replay history and is accepted by the next live
-//! call. Parallel agent loops are not cells: signature attachment and
-//! serialization are independent of tool count. Each test maps one-to-one to
-//! `crates/rig-cassette/fixtures/cassettes/openrouter/reasoning_tool_order_matrix/<test-name>.yaml`.
-//!
-//! | dimension | values |
-//! |---|---|
-//! | transport | blocking, streaming |
-//! | call shape | one call, two parallel calls |
-//! | model/upstream | `anthropic/claude-haiku-4.5` / Anthropic pinned |
-//! | reasoning | `max_tokens: 1024` |
-//! | surface | normalized raw model for both shapes; two-turn agent for single |
-//!
-//! | recorded cells | fixtures |
-//! |---|---|
-//! | 2 raw order | `{blocking,streaming}_single.yaml` |
-//! | 1 signed agent loop | `streaming_signed_agent_roundtrip.yaml` |
+//! Parallel agent loops are not cells, because signature attachment and
+//! serialization are independent of tool count.
 
 use rig_test_support::cassette_models::OpenAiModels;
 use std::sync::{
@@ -45,7 +24,7 @@ use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use super::super::support::{pinned_order, with_openrouter_reasoning_tool_order_cassette_result};
+use super::super::support::{pinned_order, with_openrouter_cassette_result};
 use rig::completion::{CompletionRequest, Reasoning};
 
 const MODEL: &str = "anthropic/claude-haiku-4.5";
@@ -450,7 +429,7 @@ async fn blocking_single() -> Result<()> {
     };
     let observed = SharedChoice::default();
     let capture = Arc::clone(&observed);
-    with_openrouter_reasoning_tool_order_cassette_result(
+    with_openrouter_cassette_result(
         "reasoning_tool_order_matrix/blocking_single",
         |client| async move { run_cell(client, cell, capture).await },
     )
@@ -468,7 +447,7 @@ async fn streaming_single() -> Result<()> {
     };
     let observed = SharedChoice::default();
     let capture = Arc::clone(&observed);
-    with_openrouter_reasoning_tool_order_cassette_result(
+    with_openrouter_cassette_result(
         "reasoning_tool_order_matrix/streaming_single",
         |client| async move { run_cell(client, cell, capture).await },
     )
@@ -482,7 +461,7 @@ async fn streaming_signed_agent_roundtrip() -> Result<()> {
     const S: &str = "reasoning_tool_order_matrix/streaming_signed_agent_roundtrip";
     let invocations = Arc::new(AtomicUsize::new(0));
     let capture = Arc::clone(&invocations);
-    with_openrouter_reasoning_tool_order_cassette_result(
+    with_openrouter_cassette_result(
         "reasoning_tool_order_matrix/streaming_signed_agent_roundtrip",
         |client| async move { run_signed_agent(client, Transport::Streaming, capture).await },
     )

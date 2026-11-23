@@ -29,7 +29,6 @@ http = { workspace = true }
 opentelemetry = { version = "0.32", default-features = false, features = ["trace"] }
 opentelemetry-otlp = { version = "0.32", default-features = false, features = ["trace", "http-proto", "reqwest-blocking-client"] }
 opentelemetry_sdk = { version = "0.32", default-features = false, features = ["trace"] }
-regex = { workspace = true }
 rig-basics = { path = "../../plugins/rig-basics" }
 rig-cassette = { workspace = true, features = ["jsonl"] }
 rig-core = { workspace = true }

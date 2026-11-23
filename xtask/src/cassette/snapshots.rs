@@ -8,7 +8,7 @@
 //! `RIG_CASSETTE_SNAPSHOTS=check` and fails when a request differs from its
 //! snapshot. Both replay with `RIG_CASSETTE_MATCHING=shape`, so a request
 //! that keeps its recording's coarse shape is served and its difference
-//! lands in the snapshot. `--test TARGET` limits either to those targets,
+//! lands in the snapshot. `--test SUITE` limits either to those suites,
 //! and a rewrite then deletes nothing first.
 
 use std::path::{Path, PathBuf};
@@ -32,7 +32,7 @@ pub(crate) fn parse(args: &[String]) -> Result<Options, String> {
             "--check" => options.check = true,
             "--test" => options
                 .targets
-                .push(args.next().cloned().ok_or("--test needs a target")?),
+                .push(args.next().cloned().ok_or("--test needs a suite")?),
             other => return Err(format!("unknown argument {other}")),
         }
     }
@@ -76,8 +76,13 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
         "0",
         "--no-fail-fast",
     ]);
-    for target in &options.targets {
-        command.args(["--test", target]);
+    if !options.targets.is_empty() {
+        command.args([
+            "--test",
+            "integration",
+            "-E",
+            &crate::support::suite_filter(&options.targets),
+        ]);
     }
     let status = command
         .current_dir(root)

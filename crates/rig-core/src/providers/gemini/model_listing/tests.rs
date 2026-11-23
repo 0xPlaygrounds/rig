@@ -1,5 +1,6 @@
 use super::*;
 use crate::providers::gemini::GeminiConfig;
+use crate::wire::WireFrame;
 
 #[test]
 fn parse_models_page_reports_missing_model_id_when_name_is_omitted() {
@@ -47,11 +48,11 @@ fn parse_models_page_returns_parse_error_when_entry_has_no_usable_id() {
 }
 
 /// The path and query are what the recorded cassette
-/// `crates/rig-cassette/fixtures/cassettes/gemini/models/list_models_smoke.yaml` matches on —
-/// `pageSize=1000` then `key` — so their exact shape is load-bearing, the
-/// same reason `list_models_path` is pinned above.
+/// `crates/rig-cassette/fixtures/cassettes/gemini/models/list_models_smoke.yaml` matches on, so
+/// their exact shape is load-bearing, the same reason `list_models_path` is
+/// pinned above.
 #[test]
-fn models_sends_the_credential_as_the_last_query_pair() {
+fn models_sends_the_recorded_path_and_query() {
     let encoded = Models::new(GeminiConfig::new("test-key"))
         .encode(None, Mode::Unary)
         .expect("the request encodes");
@@ -61,15 +62,13 @@ fn models_sends_the_credential_as_the_last_query_pair() {
     assert_eq!(encoded.request_id_header, None);
     assert_eq!(request.method(), http::Method::GET);
     assert_eq!(request.uri().path(), "/v1beta/models");
-    assert_eq!(request.uri().query(), Some("pageSize=1000&key=test-key"));
-    assert!(request.headers().get("x-goog-api-key").is_none());
+    assert_eq!(request.uri().query(), Some("pageSize=1000"));
 }
 
-/// The Interactions API reaches the same endpoint with the credential in a
-/// header instead, and must not also leak it into the query.
+/// The listing sends the credential as a header only.
 #[test]
-fn interactions_models_sends_the_credential_as_a_header_only() {
-    let encoded = InteractionsModels::new(GeminiConfig::new("test-key"))
+fn models_sends_the_credential_as_a_header_only() {
+    let encoded = Models::new(GeminiConfig::new("test-key"))
         .encode(None, Mode::Unary)
         .expect("the request encodes");
     let request = &encoded.request;
@@ -118,7 +117,7 @@ fn a_paged_listing_folds_in_order_and_follows_the_cursor() {
     assert_eq!(continuation.uri().path(), "/v1beta/models");
     assert_eq!(
         continuation.uri().query(),
-        Some("pageSize=1000&pageToken=page-two&key=test-key"),
+        Some("pageSize=1000&pageToken=page-two"),
     );
 
     let (second, next) = page(PAGE_TWO);

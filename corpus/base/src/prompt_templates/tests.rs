@@ -170,7 +170,4 @@ fn a_template_is_a_command_that_sends_its_expansion() {
     std::fs::remove_dir_all(&root).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(PromptTemplatesPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(PromptTemplatesPlugin);

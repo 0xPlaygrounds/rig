@@ -19,13 +19,14 @@ use std::path::PathBuf;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use rig_harness_protocol::{
-    AgentDescription, DescribedCommand, DescribedFlag, DescribedSecret, env,
+    AgentDescription, DescribedCommand, DescribedFlag, DescribedSecret, REFUSED_EXIT_CODE, env,
 };
 
 use crate::host::cli::{Front, command_refusal, declared, flags};
 use crate::host::runner::finish_plugins;
 use crate::load::{PluginSource, ProvidedBy};
 use crate::secrets::Secret;
+use crate::settings::Settings;
 
 /// The build describes itself: while this is a resource, no front takes
 /// the run.
@@ -39,10 +40,22 @@ pub(crate) fn describing() -> Option<PathBuf> {
         .map(PathBuf::from)
 }
 
+/// The settings file [`env::DESCRIBE_SETTINGS`] names while the build
+/// describes itself, which it reads in place of its home's.
+pub(crate) fn described_settings() -> Option<PathBuf> {
+    describing()?;
+    std::env::var_os(env::DESCRIBE_SETTINGS)
+        .filter(|path| !path.is_empty())
+        .map(PathBuf::from)
+}
+
 /// Runs the app, or, when the launcher asks ([`env::DESCRIBE`]), builds it,
 /// writes its [`report`] to the file the launcher named and exits without
 /// running a frame: with code 2 and the reason on stderr when the report
 /// fails. The generated `main.rs` ends with it in place of `app.run()`.
+/// Since the launcher learns the build's commands, options and secrets
+/// this way, a plugin's `build` only declares: its work goes in `finish`
+/// or in systems.
 pub fn run(mut app: App) -> AppExit {
     let Some(path) = describing() else {
         return app.run();
@@ -59,15 +72,15 @@ pub fn run(mut app: App) -> AppExit {
         },
         Err(why) => {
             eprintln!("rig: {why}");
-            AppExit::from_code(2)
+            AppExit::from_code(REFUSED_EXIT_CODE)
         }
     }
 }
 
 /// What the plugins of the built app `world` add to the command line, and
 /// their [`stage_conflicts`](crate::stage_conflicts), or why the build
-/// cannot be run: two plugins adding one command, or a command the
-/// launcher cannot take, such as `build`.
+/// cannot be run: two plugins adding one command, a command the launcher
+/// cannot take, such as `build`, or settings a start would refuse.
 pub fn report(world: &mut World) -> Result<AgentDescription, String> {
     let commands: Vec<(Entity, Front)> = declared::<Front>(world)
         .into_iter()
@@ -116,6 +129,9 @@ pub fn report(world: &mut World) -> Result<AgentDescription, String> {
         })
         .collect();
     described.conflicts = crate::load::stage_conflicts(world);
+    if let Some(refusal) = world.get_resource::<Settings>().and_then(Settings::refusal) {
+        return Err(refusal);
+    }
     Ok(described)
 }
 

@@ -1,23 +1,22 @@
-//! SN-20: tool reliability statistics. Every tool call that settles, a
-//! subagent's too, is counted from its effect record as the session's
-//! effect log gets it: calls, errors, cancelled and refused calls, how long
-//! each ran, its result's size and its error message, masked so similar
-//! ones group ([`mask`]). The session's totals are saved with it; the
-//! project's are added to `RIG_HOME/tool-stats/<project>.json` by a worker
-//! thread, so no call or frame waits on the file.
+//! Tool reliability statistics. Every tool call that settles, a subagent's too, is counted from
+//! its effect record as the session's effect log gets it: calls, errors, cancelled and refused
+//! calls, how long each ran, its result's size and its error message, masked so similar ones
+//! group ([`mask`]). The session's totals are saved with it; the project's are added to
+//! `RIG_HOME/tool-stats/<project>.json` by a worker thread, so no call or frame waits on the
+//! file.
 //!
-//! `/toolstats [--by-agent] [--all] [--since 7d]` shows them, and
-//! `/toolstats reset` clears the project's after the user confirms.
+//! `/toolstats [--by-agent] [--all] [--since 7d]` shows them, and `/toolstats reset` clears the
+//! project's after the user confirms.
 
 mod stats;
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::thread::JoinHandle;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use futures::channel::oneshot;
 use rig_harness::prelude::*;
+use rig_harness::rig_core::now_ms;
 use rig_harness::rig_ecs::StopTurnsOnExit;
 use serde::{Deserialize, Serialize};
 
@@ -254,10 +253,7 @@ fn replace(path: &Path, table: &Table) -> Result<(), String> {
 
 /// Today, in days since the Unix epoch.
 fn today() -> u64 {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default();
-    (now.as_millis() as u64) / DAY_MS
+    now_ms() / DAY_MS
 }
 
 /// Counts each tool call recorded this frame, in the session's table and,

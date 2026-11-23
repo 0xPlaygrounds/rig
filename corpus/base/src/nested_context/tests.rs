@@ -6,16 +6,12 @@ use rig_harness_test_support::MemoryStore;
 use serde_json::json;
 
 use super::*;
-use rig_harness_test_support::{app_on, calls, connect, reply, run_until};
+use rig_harness_test_support::{app_on, calls, connect, reply, run_until, scratch_dir};
 
 /// A project directory next to the test binary, inside the target
 /// directory, made empty.
 fn project() -> Option<PathBuf> {
-    let exe = std::env::current_exe().ok()?;
-    let dir = exe
-        .parent()?
-        .join(format!("nested-context-{}", std::process::id()));
-    std::fs::remove_dir_all(&dir).ok();
+    let dir = scratch_dir(&format!("nested-context-{}", std::process::id()));
     std::fs::create_dir_all(dir.join("pkg")).ok()?;
     std::fs::write(dir.join("pkg/AGENTS.md"), "Use tabs.\n").ok()?;
     std::fs::write(dir.join("pkg/a.txt"), "alpha\n").ok()?;
@@ -91,7 +87,4 @@ fn a_nested_agents_md_comes_with_the_first_read_under_it_only() {
     assert!(!second.contains("Use tabs."), "{second}");
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(NestedContextPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(NestedContextPlugin);

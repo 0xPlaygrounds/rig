@@ -1,6 +1,5 @@
-//! What the model reads about its tool calls: a tool's result shaped as a
-//! tool result, the error result of a call that never ran, what a call
-//! that did not finish says ([`not_finished`]), and the feedback for
+//! What the model reads about its tool calls: the error result of a call
+//! that never ran, what a call that did not finish says ([`not_finished`]), and the feedback for
 //! unavailable tool names and arguments that do not fit a tool.
 //!
 //! ```
@@ -12,18 +11,7 @@
 use crate::message::{
     self, AssistantContent, CallId, ToolCall, ToolName, ToolResultContent, UserContent,
 };
-use crate::tool::{ToolResult, Touches};
-
-/// Shape a tool's result as the tool result the model reads, without
-/// reparsing text. Anything but a success is an error result.
-pub fn tool_result_output(call: CallId, name: ToolName, result: &ToolResult) -> UserContent {
-    UserContent::ToolResult(message::ToolResult {
-        call,
-        name,
-        content: result.output().clone().into_content(),
-        is_error: !result.is_success(),
-    })
-}
+use crate::tool::Touches;
 
 /// Constructs the error result of a call that never ran, its text verbatim,
 /// such as recovery feedback or a skip reason. JSON-shaped text is not
@@ -67,7 +55,7 @@ pub fn unknown_tool_feedback<'a>(name: &str, tools: impl IntoIterator<Item = &'a
 /// What the model reads for its call to `tool` that its reply ended in the
 /// middle of, having reached the output limit after sending `raw` of the
 /// arguments (a response's
-/// [`unfinished_calls`](crate::completion::CompletionResponse::unfinished_calls)):
+/// [`cut_off_calls`](crate::completion::CompletionResponse::cut_off_calls)):
 /// the tool never ran, and sending as much again would be cut off again.
 /// `raw` is echoed up to [`ECHOED_CHARS`].
 pub fn output_limit_feedback(tool: &str, raw: &str) -> String {
@@ -79,6 +67,23 @@ pub fn output_limit_feedback(tool: &str, raw: &str) -> String {
     )
 }
 
+/// What the model reads, in place of its call `call`, of a reply that was
+/// stopped before the call ran, such as while its arguments streamed: the
+/// call never ran. Its arguments are echoed up to [`ECHOED_CHARS`]: as the
+/// model sent them when they are cut off (not a whole object), else whole.
+pub fn stopped_call_note(call: &ToolCall) -> String {
+    let tool = call.function.name.as_str();
+    let arguments = match &call.function.invalid_arguments {
+        Some(raw) if !raw.trim().is_empty() => format!(" Its arguments began: {}", echoed(raw)),
+        Some(_) => " It had no arguments yet.".to_owned(),
+        None => format!(
+            " Its arguments were: {}",
+            echoed(&call.function.arguments_json())
+        ),
+    };
+    format!("[This reply was stopped before its call to `{tool}` ran.{arguments}]")
+}
+
 /// How much of a call's raw arguments its feedback echoes, in characters.
 pub const ECHOED_CHARS: usize = 200;
 
@@ -88,7 +93,7 @@ fn echoed(raw: &str) -> String {
         Some((end, _)) => format!(
             "{}… ({} more characters)",
             raw.get(..end).unwrap_or_default(),
-            raw.len().saturating_sub(end)
+            raw.get(end..).map_or(0, |rest| rest.chars().count())
         ),
         None => raw.to_owned(),
     }
@@ -100,17 +105,20 @@ pub const TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER: &str =
     "Tool not executed because another tool call in the same assistant turn was invalid.";
 
 /// The tool results answering a turn with an invalid call, in call order:
-/// `feedback` for the call `invalid`, [`TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER`]
-/// for every other call. Empty when `content` has no tool calls.
+/// `feedback` for the call at position `invalid_at` in `content`,
+/// [`TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER`] for every other call. The call is
+/// picked by position because a peer may share its id. Empty when `content`
+/// has no tool calls.
 pub fn invalid_call_feedback(
     content: &[AssistantContent],
-    invalid: &CallId,
+    invalid_at: usize,
     feedback: &str,
 ) -> Vec<UserContent> {
     content
         .iter()
-        .filter_map(|part| match part {
-            AssistantContent::ToolCall(call) if &call.id == invalid => Some(tool_result_message(
+        .enumerate()
+        .filter_map(|(at, part)| match part {
+            AssistantContent::ToolCall(call) if at == invalid_at => Some(tool_result_message(
                 call.id.clone(),
                 call.function.name.clone(),
                 feedback.to_owned(),

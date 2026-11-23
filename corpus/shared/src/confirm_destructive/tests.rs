@@ -161,7 +161,4 @@ fn with_nobody_at_the_terminal_a_destructive_command_is_denied_at_once() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(ConfirmDestructivePlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(ConfirmDestructivePlugin);

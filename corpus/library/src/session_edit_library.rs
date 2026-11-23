@@ -200,7 +200,7 @@ impl Opened {
     /// else the start of its first message.
     fn shown(&self) -> Option<String> {
         let title = Some(self.meta.title.clone()).filter(|title| !title.is_empty());
-        self.dir.name().or(title)
+        self.dir.name().ok().flatten().or(title)
     }
 }
 
@@ -327,12 +327,9 @@ fn tool_names(message: &Message) -> Vec<String> {
             .tool_calls()
             .map(|call| call.function.name.as_str().to_owned())
             .collect(),
-        Message::User { content } => content
-            .iter()
-            .filter_map(|part| match part {
-                UserContent::ToolResult(result) => Some(result.name.as_str().to_owned()),
-                _ => None,
-            })
+        Message::User { .. } => message
+            .results()
+            .map(|result| result.name.as_str().to_owned())
             .collect(),
         Message::System { .. } => Vec::new(),
     }
@@ -462,12 +459,9 @@ pub fn cut_lines(text: &str) -> Option<(String, usize)> {
 fn call_ids(message: &Message) -> Vec<CallId> {
     match message {
         Message::Assistant(turn) => turn.tool_calls().map(|call| call.id.clone()).collect(),
-        Message::User { content } => content
-            .iter()
-            .filter_map(|part| match part {
-                UserContent::ToolResult(result) => Some(result.call.clone()),
-                _ => None,
-            })
+        Message::User { .. } => message
+            .results()
+            .map(|result| result.call.clone())
             .collect(),
         Message::System { .. } => Vec::new(),
     }

@@ -10,7 +10,8 @@ use crate::completion::{CompletionResponse, Effort, Message, OnUnsupported};
 use crate::error::ProviderError;
 use crate::operation::Completion;
 use crate::providers::anthropic::completion::{
-    CLAUDE_HAIKU_4_5, CLAUDE_OPUS_4_8, CLAUDE_OPUS_5_5, CLAUDE_SONNET_4_6, CLAUDE_SONNET_5_5,
+    CLAUDE_FABLE_5_2, CLAUDE_HAIKU_4_5, CLAUDE_OPUS_4_8, CLAUDE_OPUS_5_5, CLAUDE_SONNET_4_6,
+    CLAUDE_SONNET_5_5,
 };
 use crate::providers::anthropic::wire::{AnthropicConfig, Dialect, MINIMAX, Messages, ZAI};
 use crate::wire::{Body, Mode, Operation, Wire, WireFrame};
@@ -92,11 +93,10 @@ fn inference_geo_is_sent() {
 /// model that does not; the standard speed goes anywhere.
 #[test]
 fn speed_is_sent_where_the_model_offers_it() {
-    let body = sent(
-        CLAUDE_OPUS_5_5,
-        AnthropicOptions::default().speed(Speed::Fast),
-    );
-    assert_eq!(body["speed"], "fast");
+    for model in [CLAUDE_FABLE_5_2, CLAUDE_OPUS_5_5] {
+        let body = sent(model, AnthropicOptions::default().speed(Speed::Fast));
+        assert_eq!(body["speed"], "fast", "{model}");
+    }
     let fast = with(
         CompletionRequest::new("hi"),
         &AnthropicOptions::default().speed(Speed::Fast),

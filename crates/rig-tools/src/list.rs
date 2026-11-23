@@ -2,7 +2,6 @@
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use rig_core::completion::ToolAnnotations;
 use rig_core::tool::{
@@ -12,8 +11,8 @@ use rig_core::tool::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::fs::{listed, shown};
-use crate::workspace::{Listing, Local, Workspace};
+use crate::fs::{listed, shown, unread};
+use crate::workspace::{Listing, Root, Workspace};
 use crate::{MAX_BYTES, MAX_LINES, blocking};
 
 /// Lists the files under a directory, as far down as asked, honouring
@@ -21,27 +20,10 @@ use crate::{MAX_BYTES, MAX_LINES, blocking};
 /// when the glob names a hidden path): one path per line below the listed directory, and each
 /// directory deeper than the listing goes once, as `dir/`. Publishes what
 /// it listed ([`FilesListed`]) and, when the list was cut, [`OutputCut`].
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct List {
-    /// Where the files are listed.
-    pub workspace: Arc<dyn Workspace>,
-    /// The directory a relative path is listed from; `None` is the
-    /// workspace's working directory.
-    pub base: Option<PathBuf>,
-    /// Whether a path that resolves outside `base` is refused, before
-    /// anything is listed.
-    pub confine: bool,
-}
-
-impl Default for List {
-    /// Lists this machine's files, from this process's working directory.
-    fn default() -> Self {
-        Self {
-            workspace: Arc::new(Local),
-            base: None,
-            confine: false,
-        }
-    }
+    /// Where the files are, and the directory a relative path is taken from.
+    pub root: Root,
 }
 
 /// Arguments of [`List`].
@@ -138,8 +120,7 @@ impl Tool for List {
 
     fn footprint(&self, args: &ListArgs) -> Touches {
         Touches::Reads(Scope::Paths(vec![
-            self.workspace
-                .resolve(self.base.as_deref(), args.path.as_deref().unwrap_or(".")),
+            self.root.resolve(args.path.as_deref().unwrap_or(".")),
         ]))
     }
 
@@ -148,12 +129,8 @@ impl Tool for List {
         context: &mut ToolContext,
         args: ListArgs,
     ) -> Result<String, ToolExecutionError> {
-        let root = self.workspace.place(
-            self.base.as_deref(),
-            self.confine,
-            args.path.as_deref().unwrap_or("."),
-        )?;
-        let workspace = self.workspace.clone();
+        let root = self.root.place(args.path.as_deref().unwrap_or("."))?;
+        let workspace = self.root.workspace.clone();
         let (text, listed, cut) = blocking(move || list(&*workspace, &root, &args)).await?;
         context.insert_result(listed)?;
         if let Some(cut) = cut {
@@ -170,9 +147,17 @@ fn list(
     root: &Path,
     args: &ListArgs,
 ) -> Result<(String, FilesListed, Option<OutputCut>), ToolExecutionError> {
-    let files = listed(workspace, root, args.glob.as_deref(), args.listing())?;
-    let depth = args.depth.unwrap_or(usize::MAX).max(1);
-    let entries: BTreeSet<String> = files
+    let listed = listed(workspace, root, args.glob.as_deref(), args.listing())?;
+    let depth = match args.depth {
+        Some(0) => {
+            return Err(ToolExecutionError::invalid_args(
+                "depth must be at least 1; leave it out to list every level",
+            ));
+        }
+        depth => depth.unwrap_or(usize::MAX),
+    };
+    let entries: BTreeSet<String> = listed
+        .files
         .iter()
         .filter_map(|file| {
             let below = file.strip_prefix(root).ok()?;
@@ -209,7 +194,26 @@ fn list(
             spill: None,
         }
     });
-    if total == 0 {
+    if !listed.failed.is_empty() {
+        let failed = listed.failed.iter().map(|(path, error)| {
+            let below = path.strip_prefix(root).ok();
+            let below = below
+                .filter(|below| !below.as_os_str().is_empty())
+                .unwrap_or(path);
+            (shown(below).display().to_string(), error.to_string())
+        });
+        if total == 0 {
+            text.push_str("No files in the directories read.\n");
+        }
+        text.push_str(&unread(
+            failed,
+            [
+                "what is in it is not listed",
+                "what is in them is not listed",
+            ],
+        ));
+        text.push('\n');
+    } else if total == 0 {
         text.push_str("No files.\n");
     }
     let listed = FilesListed {

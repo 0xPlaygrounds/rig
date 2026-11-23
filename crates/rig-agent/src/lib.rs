@@ -30,6 +30,13 @@ pub mod handlers;
 /// Ready-made integrations: the CLI chatbot.
 pub mod integrations;
 pub(crate) use rig_core::json_utils;
+
+/// Lock `mutex`, taking the guard even if a panicking holder poisoned it.
+pub(crate) fn lock<T>(mutex: &std::sync::Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
 pub mod prelude;
 pub mod run;
 pub mod streaming;

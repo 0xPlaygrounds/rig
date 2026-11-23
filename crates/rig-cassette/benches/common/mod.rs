@@ -65,35 +65,27 @@ fn refused() -> http_client::Error {
 }
 
 impl HttpClientExt for Replay {
-    fn send<T, U>(
+    fn send(
         &self,
-        _req: Request<T>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        T: Into<Bytes> + WasmCompatSend,
-        U: From<Bytes> + WasmCompatSend + 'static,
+        _req: Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
         std::future::ready(Err(refused()))
     }
 
-    fn send_multipart<U>(
+    fn send_multipart(
         &self,
         _req: Request<MultipartForm>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        U: From<Bytes> + WasmCompatSend + 'static,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
         std::future::ready(Err(refused()))
     }
 
-    fn send_streaming<T>(
+    fn send_streaming(
         &self,
-        req: Request<T>,
-    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
-    where
-        T: Into<Bytes> + WasmCompatSend,
-    {
-        let body: Bytes = req.into_body().into();
+        req: Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend {
+        let body = req.into_body();
         if let Ok(mut sent) = self.sent.lock() {
             *sent = body;
         }

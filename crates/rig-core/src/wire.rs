@@ -20,9 +20,6 @@ use crate::http_client::MultipartForm;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 
 pub use crate::http_client::framing::{Framing, WireFrame};
-pub use crate::observe::{
-    AdapterErrorEnvelope, AdapterEvent, AdapterUsage, AdapterVerdict, ObservationSink,
-};
 
 mod citation;
 pub mod document;
@@ -52,21 +49,7 @@ pub struct Encoded {
     /// replays Responses bodies without it). A *wrong* content type is
     /// still rejected.
     pub relaxed_content_type: bool,
-    /// Stable endpoint template for observation grouping, without base-URL
-    /// prefixes or interpolated values. `None` uses the concrete request path.
-    pub route: Option<&'static str>,
-    /// Reads observation facts off each raw reply payload before
-    /// normalization discards them. `None` projects nothing.
-    pub project: Option<Projector>,
-    /// Whether a frame carries only analysis metadata: it still decodes, but
-    /// does not advance observation's EOF and corruption positions.
-    pub analysis_only: Option<fn(&WireFrame) -> bool>,
 }
-
-/// Reads one raw payload's observation facts (verdicts, usage, ids, error
-/// envelopes) through the sink. Text it forwards goes through
-/// [`ObservationSink::scrub`]: a payload can echo credentials.
-pub type Projector = fn(&[u8], &mut ObservationSink<'_>);
 
 impl Encoded {
     /// One request whose provider reports no transport request id.
@@ -76,9 +59,6 @@ impl Encoded {
             framing,
             request_id_header: None,
             relaxed_content_type: false,
-            route: None,
-            project: None,
-            analysis_only: None,
         }
     }
 
@@ -91,25 +71,6 @@ impl Encoded {
     /// Accept a streamed reply that names no content type.
     pub fn with_relaxed_content_type(mut self) -> Self {
         self.relaxed_content_type = true;
-        self
-    }
-
-    /// Name the endpoint template observation groups attempts under.
-    pub fn with_route(mut self, route: Option<&'static str>) -> Self {
-        self.route = route;
-        self
-    }
-
-    /// Read observation facts off each reply payload through `project`.
-    pub fn with_projection(mut self, project: Projector) -> Self {
-        self.project = Some(project);
-        self
-    }
-
-    /// Exempt frames `analysis_only` accepts from observation's frame
-    /// positions.
-    pub fn with_analysis_only(mut self, analysis_only: fn(&WireFrame) -> bool) -> Self {
-        self.analysis_only = Some(analysis_only);
         self
     }
 }
@@ -153,8 +114,6 @@ impl std::fmt::Debug for Encoded {
             .field("framing", &self.framing)
             .field("request_id_header", &self.request_id_header)
             .field("relaxed_content_type", &self.relaxed_content_type)
-            .field("route", &self.route)
-            .field("project", &self.project.is_some())
             .finish()
     }
 }
@@ -207,15 +166,6 @@ pub trait Operation: Sized + 'static {
     ) -> Result<Self::Request, ProviderError> {
         let _ = wire;
         Ok(request)
-    }
-
-    /// The normalized usage one reply's `end` carries. The driver hands it
-    /// to the attempt's one closing call when the reply ends, so the
-    /// observation is the usage the decoder already normalized and never a
-    /// second parse of the payload. Observes nothing by default.
-    fn observed_usage(end: &Self::End) -> Option<&crate::completion::Usage> {
-        let _ = end;
-        None
     }
 }
 
@@ -334,6 +284,9 @@ pub(crate) mod reply {
         pub(crate) fold: Op::Fold,
         pub(crate) items: VecDeque<Result<Item<Op::Event>, ProviderError>>,
         pub(crate) end: Option<Op::End>,
+        /// The usage the provider reported before the end that no relay
+        /// has forwarded yet.
+        pub(crate) usage: Option<crate::completion::Usage>,
         pub(crate) raw: Option<serde_json::Value>,
         /// The response a relayed reply's origin already folded.
         pub(crate) response: Option<Op::Response>,
@@ -350,6 +303,7 @@ pub(crate) mod reply {
                 fold,
                 items: VecDeque::new(),
                 end: None,
+                usage: None,
                 raw: None,
                 response: None,
                 request_id: None,
@@ -403,7 +357,7 @@ pub(crate) mod reply {
         }
     }
 
-    /// What the reply's end closes before it is recorded.
+    /// What the reply's end closes, after it is recorded.
     pub trait Closing<Op: Operation> {
         fn close(shared: &mut Shared<Op>);
     }
@@ -625,18 +579,25 @@ impl<'id, Op: Operation> Out<'id, Op> {
     }
 
     pub(crate) fn lock(&self) -> std::sync::MutexGuard<'id, Shared<Op>> {
-        self.shared
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+        crate::lock(self.shared)
     }
 
     /// End the reply with what the provider sent at its end. It consumes the
     /// writer: nothing is written after the end.
     pub fn end(self, end: Op::End) -> Flow {
         let mut shared = self.lock();
-        <Op::Emit as reply::Closing<Op>>::close(&mut shared);
+        // Recorded first: what closes the open parts may read how it ended.
         shared.end = Some(end);
+        <Op::Emit as reply::Closing<Op>>::close(&mut shared);
         Flow::Ended(Ended(()))
+    }
+
+    /// What the provider reported the reply used so far, before its end,
+    /// such as the input counted as it starts. A relay forwards it as
+    /// [`Relayed::Usage`](crate::streaming::Relayed::Usage); a later report
+    /// replaces it, and the end's usage is the whole.
+    pub fn usage(&mut self, usage: crate::completion::Usage) {
+        self.lock().usage = Some(usage);
     }
 
     /// A payload the provider sent that this decoder does not model. It
@@ -833,7 +794,7 @@ where
             Ok(document) => document,
             Err(error) => return WireEvent::Corrupt(error),
         };
-        match <Op::End as serde::Deserialize>::deserialize(&document) {
+        match crate::json_utils::from_value::<Op::End>(&document) {
             Ok(end) => WireEvent::Known((end, document)),
             Err(error) => WireEvent::Corrupt(error),
         }
@@ -882,8 +843,6 @@ impl<'id, Op: Operation, Event> Decoder<'id, Op> for DocumentDecoder<Op, Event> 
 pub type Request<W> = <<W as Wire>::Op as Operation>::Request;
 /// A wire's response type.
 pub type Response<W> = <<W as Wire>::Op as Operation>::Response;
-/// A wire's event type.
-pub type Event<W> = <<W as Wire>::Op as Operation>::Event;
 
 #[cfg(test)]
 mod tests;

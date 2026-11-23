@@ -3,16 +3,16 @@
 
 use std::collections::BTreeMap;
 
-use serde::de::{DeserializeOwned, Visitor};
 use serde::{Deserialize, Serialize};
 
 use super::details::{
     CostDetails, CostTier, Interleaved, Mode, ModelDetails, ProviderOverride, Rates, Tier,
 };
 use super::spec::{
-    CacheSupport, Compat, Modalities, ModelSpec, Pricing, ReasoningSupport, Sampling,
+    CacheSupport, ChatTools, Compat, Modalities, ModelSpec, Pricing, ReasoningSupport, Sampling,
 };
 use crate::completion::{CacheRetention, Effort};
+use crate::json_utils::struct_fields;
 use crate::providers::registry::{Format, ProviderId};
 
 /// A models.dev model row, every field models.dev publishes but its `id`,
@@ -159,7 +159,7 @@ struct Facts {
     #[serde(skip_serializing_if = "Option::is_none")]
     prompt_cache_options: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    chat_tools_need_reasoning_off: Option<bool>,
+    chat_tools: Option<ChatTools>,
     #[serde(skip_serializing_if = "Option::is_none")]
     prefill: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -171,30 +171,19 @@ struct Facts {
 /// [`Catalog::with_models_dev`](super::Catalog::with_models_dev) leaves a
 /// pinned key as it is, so a refresh from models.dev keeps it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub(super) enum Pinned {
-    #[serde(rename = "name")]
     Name,
-    #[serde(rename = "description")]
     Description,
-    #[serde(rename = "family")]
     Family,
-    #[serde(rename = "type")]
     Type,
-    #[serde(rename = "reasoning")]
     Reasoning,
-    #[serde(rename = "reasoning_options")]
     ReasoningOptions,
-    #[serde(rename = "tool_call")]
     ToolCall,
-    #[serde(rename = "structured_output")]
     StructuredOutput,
-    #[serde(rename = "temperature")]
     Temperature,
-    #[serde(rename = "attachment")]
     Attachment,
-    #[serde(rename = "interleaved")]
     Interleaved,
-    #[serde(rename = "modalities")]
     Modalities,
     #[serde(rename = "limit.context")]
     LimitContext,
@@ -220,19 +209,12 @@ pub(super) enum Pinned {
     CostTiers,
     #[serde(rename = "cost.context_over_200k")]
     CostContextOver200k,
-    #[serde(rename = "knowledge")]
     Knowledge,
-    #[serde(rename = "release_date")]
     ReleaseDate,
-    #[serde(rename = "last_updated")]
     LastUpdated,
-    #[serde(rename = "open_weights")]
     OpenWeights,
-    #[serde(rename = "status")]
     Status,
-    #[serde(rename = "provider")]
     Provider,
-    #[serde(rename = "experimental")]
     Experimental,
 }
 
@@ -358,7 +340,7 @@ impl Row {
                 rejects_forced_tool_choice: Some(compat.rejects_forced_tool_choice),
                 binds_context: Some(compat.binds_context),
                 prompt_cache_options: Some(compat.prompt_cache_options),
-                chat_tools_need_reasoning_off: Some(compat.chat_tools_need_reasoning_off),
+                chat_tools: compat.chat_tools,
                 prefill: Some(compat.prefill),
                 pinned: None,
             },
@@ -589,7 +571,7 @@ impl Row {
             match option.kind.as_str() {
                 "effort" => {
                     for value in &option.values {
-                        match effort(value) {
+                        match Effort::named(value) {
                             Some(level) if !levels.contains(&level) => levels.push(level),
                             Some(_) => {}
                             None => can_disable |= value == "none",
@@ -646,9 +628,7 @@ impl Facts {
                 .or(self.rejects_forced_tool_choice),
             binds_context: over.binds_context.or(self.binds_context),
             prompt_cache_options: over.prompt_cache_options.or(self.prompt_cache_options),
-            chat_tools_need_reasoning_off: over
-                .chat_tools_need_reasoning_off
-                .or(self.chat_tools_need_reasoning_off),
+            chat_tools: over.chat_tools.or(self.chat_tools),
             prefill: over.prefill.or(self.prefill),
             pinned: over.pinned.or(self.pinned),
         }
@@ -663,7 +643,7 @@ impl Facts {
             rejects_forced_tool_choice: self.rejects_forced_tool_choice.unwrap_or(false),
             binds_context: self.binds_context.unwrap_or(false),
             prompt_cache_options: self.prompt_cache_options.unwrap_or(false),
-            chat_tools_need_reasoning_off: self.chat_tools_need_reasoning_off.unwrap_or(false),
+            chat_tools: self.chat_tools,
             prefill: self.prefill.unwrap_or(false),
         }
     }
@@ -675,75 +655,27 @@ impl Facts {
 /// body or the names of its modes.
 pub(super) fn known_fields(path: &[&str]) -> Option<Vec<&'static str>> {
     Some(match path {
-        [] => fields::<Row>().to_vec(),
-        ["limit"] => fields::<Limit>().to_vec(),
-        ["cost"] => fields::<Cost>().to_vec(),
-        ["rig"] => fields::<Facts>().to_vec(),
-        ["modalities"] => fields::<RowModalities>().to_vec(),
-        ["reasoning_options", _] => fields::<ReasoningOption>().to_vec(),
+        [] => struct_fields::<Row>().to_vec(),
+        ["limit"] => struct_fields::<Limit>().to_vec(),
+        ["cost"] => struct_fields::<Cost>().to_vec(),
+        ["rig"] => struct_fields::<Facts>().to_vec(),
+        ["modalities"] => struct_fields::<RowModalities>().to_vec(),
+        ["reasoning_options", _] => struct_fields::<ReasoningOption>().to_vec(),
         // `interleaved` is `true`, `false`, or this object.
         ["interleaved"] => vec!["field"],
         ["cost", "context_over_200k"] | ["experimental", "modes", _, "cost"] => {
-            fields::<Rates>().to_vec()
+            struct_fields::<Rates>().to_vec()
         }
         // A tier's rates are flattened beside it, which serde does not list.
-        ["cost", "tiers", _] => [fields::<Rates>(), &["tier"]].concat(),
-        ["cost", "tiers", _, "tier"] => fields::<Tier>().to_vec(),
+        ["cost", "tiers", _] => [struct_fields::<Rates>(), &["tier"]].concat(),
+        ["cost", "tiers", _, "tier"] => struct_fields::<Tier>().to_vec(),
         ["provider"] | ["experimental", "modes", _, "provider"] => {
-            fields::<ProviderOverride>().to_vec()
+            struct_fields::<ProviderOverride>().to_vec()
         }
-        ["experimental"] => fields::<Experimental>().to_vec(),
-        ["experimental", "modes", _] => fields::<Mode>().to_vec(),
+        ["experimental"] => struct_fields::<Experimental>().to_vec(),
+        ["experimental", "modes", _] => struct_fields::<Mode>().to_vec(),
         _ => return None,
     })
-}
-
-/// The fields `T`'s derived `Deserialize` reads, as the input spells them.
-fn fields<T: DeserializeOwned>() -> &'static [&'static str] {
-    let mut fields: &'static [&'static str] = &[];
-    // The deserializer only records the field list and then fails, so the
-    // error is expected.
-    let _ = T::deserialize(FieldNames(&mut fields));
-    fields
-}
-
-/// A deserializer that records the field names a struct asks for.
-struct FieldNames<'a>(&'a mut &'static [&'static str]);
-
-impl<'de> serde::Deserializer<'de> for FieldNames<'_> {
-    type Error = serde::de::value::Error;
-
-    fn deserialize_any<V: Visitor<'de>>(self, _: V) -> Result<V::Value, Self::Error> {
-        Err(serde::de::Error::custom(
-            "only a struct's field names are read",
-        ))
-    }
-
-    fn deserialize_struct<V: Visitor<'de>>(
-        self,
-        _: &'static str,
-        fields: &'static [&'static str],
-        _: V,
-    ) -> Result<V::Value, Self::Error> {
-        *self.0 = fields;
-        Err(serde::de::Error::custom(
-            "only a struct's field names are read",
-        ))
-    }
-
-    serde::forward_to_deserialize_any! {
-        bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str string
-        bytes byte_buf option unit unit_struct newtype_struct seq tuple
-        tuple_struct map enum identifier ignored_any
-    }
-}
-
-/// The effort level `word` names, by [`Effort`]'s serde names.
-fn effort(word: &str) -> Option<Effort> {
-    use serde::de::IntoDeserializer;
-    let word: serde::de::value::StrDeserializer<'_, serde::de::value::Error> =
-        word.into_deserializer();
-    Effort::deserialize(word).ok()
 }
 
 /// The modalities `words` names, as models.dev spells them.
@@ -860,14 +792,7 @@ fn provider(base: ProviderOverride, over: ProviderOverride) -> ProviderOverride 
 fn json(base: serde_json::Value, over: serde_json::Value) -> serde_json::Value {
     match (base, over) {
         (serde_json::Value::Object(mut base), serde_json::Value::Object(over)) => {
-            for (key, value) in over {
-                match base.get_mut(&key) {
-                    Some(slot) => *slot = json(slot.take(), value),
-                    None => {
-                        base.insert(key, value);
-                    }
-                }
-            }
+            crate::json_utils::deep_merge(&mut base, over);
             serde_json::Value::Object(base)
         }
         (_, over) => over,

@@ -1,11 +1,16 @@
+use std::future::Future;
 use std::sync::mpsc::Receiver;
 
 use rig_basics::models::ModelsPlugin;
 use rig_basics::subagents::SubagentsPlugin;
 use rig_core::completion::CompletionRequest;
-use rig_core::http_client::{HeaderMap, StatusCode};
+use rig_core::http_client::{
+    Bytes, DynHttpClient, HttpClientExt, LazyBody, MultipartForm, Request, Response, StatusCode,
+    StreamingResponse,
+};
 use rig_core::providers::registry::ConnectOptions;
 use rig_core::test_utils::MockCompletionModel;
+use rig_core::wasm_compat::WasmCompatSend;
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     Collected, Ended, app_on, calls, collect, first_agent, log_ended, reply, run_until,
@@ -247,35 +252,27 @@ impl Refusing {
 }
 
 impl HttpClientExt for Refusing {
-    fn send<T, U>(
+    fn send(
         &self,
-        req: Request<T>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        T: Into<Bytes> + WasmCompatSend,
-        U: From<Bytes> + WasmCompatSend + 'static,
+        req: Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
-        std::future::ready(self.refuse(req.map(Into::into)))
+        std::future::ready(self.refuse(req))
     }
 
-    fn send_multipart<U>(
+    fn send_multipart(
         &self,
         _: Request<MultipartForm>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        U: From<Bytes> + WasmCompatSend + 'static,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
         std::future::ready(Err(http_client::Error::StreamEnded))
     }
 
-    fn send_streaming<T>(
+    fn send_streaming(
         &self,
-        req: Request<T>,
-    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
-    where
-        T: Into<Bytes> + WasmCompatSend,
-    {
-        std::future::ready(self.refuse(req.map(Into::into)))
+        req: Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend {
+        std::future::ready(self.refuse(req))
     }
 }
 
@@ -368,7 +365,4 @@ seed = 7
     assert_eq!(streams, Some(true), "the wire's own fields stay");
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(ModelParamsPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(ModelParamsPlugin);

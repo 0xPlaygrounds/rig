@@ -16,17 +16,14 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{Map, Value, json};
 
-use crate::completion::FinishReason;
+use crate::completion::{FinishReason, token_sum};
 use crate::error::ProviderError;
 use crate::json_utils::Lenient;
 use crate::message::{CallId, DocumentRange, Source, SourceLocation, ToolName};
-use crate::observe::ObservedError;
 use crate::operation::{Block, CallFragment, Completion, Finish};
 use crate::providers::internal::set_fields;
 use crate::providers::internal::wire;
-use crate::wire::{
-    AdapterVerdict, Decoder, Flow, ObservationSink, Out, WireCitation, WireEvent, WireFrame,
-};
+use crate::wire::{Decoder, Flow, Out, WireCitation, WireEvent, WireFrame};
 
 /// Recognized Messages event tags; any other tag classifies as unknown.
 /// `message` is the whole message a unary reply is.
@@ -112,21 +109,31 @@ impl Counts {
 
     /// Rig's usage: its input is `input_tokens` plus the cache reads and
     /// writes counted beside it, its output `output_tokens` (thinking
-    /// included), and its total their sum when both are known.
-    fn usage(&self) -> crate::completion::Usage {
-        let input = self.input.map(|uncached| {
-            uncached + self.cache_read.unwrap_or(0) + self.cache_creation.unwrap_or(0)
-        });
-        crate::completion::Usage {
+    /// included), and its total their sum when both are known; an error
+    /// when a sum overflows.
+    fn usage(&self) -> Result<crate::completion::Usage, ProviderError> {
+        let (read, written) = (
+            self.cache_read.unwrap_or(0),
+            self.cache_creation.unwrap_or(0),
+        );
+        let input = self
+            .input
+            .map(|uncached| token_sum([uncached, read, written]))
+            .transpose()?;
+        let total = input
+            .zip(self.output)
+            .map(|(input, output)| token_sum([input, output]))
+            .transpose()?;
+        Ok(crate::completion::Usage {
             input_tokens: input,
             output_tokens: self.output,
             cached_input_tokens: self.cache_read,
             cache_creation_input_tokens: self.cache_creation,
             reasoning_tokens: self.thinking,
-            total_tokens: input.zip(self.output).map(|(input, output)| input + output),
+            total_tokens: total,
             tool_use_prompt_tokens: None,
-            cost: None,
-        }
+            ..Default::default()
+        })
     }
 
     /// What the cache writes cost at `pricing` by their TTL split:
@@ -253,7 +260,6 @@ fn replayed_start(
 /// Decodes Messages replies, a whole message or a stream of events.
 /// `content_block_stop` states a block complete; a stop reason states every
 /// block still open complete, but a call whose input is not yet JSON.
-/// [`Default`] decodes Anthropic's own dialect.
 #[derive(Debug)]
 pub struct MessagesDecoder {
     /// Each open block's kind and the input JSON streamed to it.
@@ -278,12 +284,6 @@ pub struct MessagesDecoder {
     message_id: Option<String>,
     response_model: Option<String>,
     container: Option<Value>,
-}
-
-impl Default for MessagesDecoder {
-    fn default() -> Self {
-        Self::new(super::wire::Quirks::anthropic())
-    }
 }
 
 impl MessagesDecoder {
@@ -544,9 +544,10 @@ impl MessagesDecoder {
     }
 
     /// End the reply with Anthropic's terminal record. Every block still
-    /// open is complete, but a call whose input is not JSON yet: the end of
-    /// the reply closes it unfinished. The container the reply ran in is a
-    /// last opaque block.
+    /// open is complete, but a call whose input is not JSON yet, and any
+    /// call of a reply the output limit cut, whose `content_block_stop`
+    /// never came: the end of the reply closes it unfinished. The container
+    /// the reply ran in is a last opaque block.
     fn end(
         &mut self,
         usage: &Counts,
@@ -554,13 +555,17 @@ impl MessagesDecoder {
         details: Option<&Value>,
         mut out: Out<'_, Completion>,
     ) -> Result<Flow, ProviderError> {
+        let (reason, error) = stop_reason.map_or((None, None), |reason| finish_of(reason, details));
+        let cut = reason.as_ref().is_some_and(FinishReason::truncated_output);
         let open: Vec<usize> = self
             .open
             .iter()
             .filter(|(_, (kind, json))| {
                 *kind != Kind::Call
-                    || json.is_empty()
-                    || crate::json_utils::parse_tool_arguments(json).is_ok_and(|v| v.is_object())
+                    || !cut
+                        && (json.is_empty()
+                            || crate::json_utils::parse_tool_arguments(json)
+                                .is_ok_and(|v| v.is_object()))
             })
             .map(|(index, _)| *index)
             .collect();
@@ -572,8 +577,7 @@ impl MessagesDecoder {
             let item = json!({ "type": "container", "container": container });
             out.whole(index, Block::Opaque { replay: true }, item, "")?;
         }
-        let (reason, error) = stop_reason.map_or((None, None), |reason| finish_of(reason, details));
-        let mut counted = usage.usage();
+        let mut counted = usage.usage()?;
         if self.cache_ttl_pricing {
             counted.cost = out
                 .catalog_pricing(self.response_model.as_deref())
@@ -623,6 +627,13 @@ impl MessagesDecoder {
             message.get("stop_details"),
             out,
         )
+    }
+
+    /// Reports the running counters as the usage so far.
+    fn report(&self, out: &mut Out<'_, Completion>) {
+        if let Ok(usage) = self.start.usage() {
+            out.usage(usage);
+        }
     }
 
     /// A `message_delta`'s counters, falling back to the running ones for
@@ -675,6 +686,7 @@ impl<'id> Decoder<'id, Completion> for MessagesDecoder {
                 {
                     self.message_started = true;
                     self.metadata(message);
+                    self.report(&mut out);
                 }
             }
             "content_block_start" => {
@@ -695,6 +707,7 @@ impl<'id> Decoder<'id, Completion> for MessagesDecoder {
                 let Some(reason) = delta.and_then(|delta| delta.str("stop_reason")) else {
                     if let Some(usage) = event.fields.get("usage") {
                         self.start = self.terminal(Some(usage));
+                        self.report(&mut out);
                     }
                     return Ok(Flow::More);
                 };
@@ -714,36 +727,6 @@ impl<'id> Decoder<'id, Completion> for MessagesDecoder {
             _ => {}
         }
         Ok(Flow::More)
-    }
-}
-
-impl MessagesDecoder {
-    /// Messages metadata projected before normalization can discard it: the
-    /// stop reason, the model, the message id and any error envelope, on the
-    /// unary reply and on the stream's `message_start`, `message_delta` and
-    /// `error` events.
-    pub(crate) fn project(payload: &[u8], sink: &mut ObservationSink<'_>) {
-        let Ok(payload) = serde_json::from_slice::<Value>(payload) else {
-            return;
-        };
-        let fields = payload
-            .get("message")
-            .filter(|m| m.is_object())
-            .unwrap_or(&payload);
-        let stop_reason = fields
-            .str("stop_reason")
-            .or_else(|| payload.at("/delta/stop_reason").and_then(Value::as_str));
-        let verdict = AdapterVerdict {
-            finish_reason: stop_reason.map(|reason| sink.scrub(reason)),
-            block_reason: None,
-            detail: None,
-            model: fields.str("model").map(|model| sink.scrub(model)),
-        };
-        let response_id = fields.str("id").map(|id| sink.scrub(id));
-        sink.provider(verdict, response_id);
-        if let Some(error) = ObservedError::of(&payload) {
-            error.emit(sink);
-        }
     }
 }
 

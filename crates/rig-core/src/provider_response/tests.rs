@@ -56,6 +56,15 @@ fn funnel_preserves_status_and_body() {
     let err = E::from_provider_body("");
     assert_eq!(err.provider_response_body(), Some(""));
     assert!(err.provider_response_json().expect("ok").is_none());
+    // A plain-text body is kept, and reading it as JSON fails.
+    let err = E::from_provider_body("not json");
+    assert_eq!(err.provider_response_body(), Some("not json"));
+    assert!(err.provider_response_json().is_err());
+    // A rig diagnostic is not a provider's reply.
+    let err = E::Provider("internal diagnostic".to_string());
+    assert_eq!(err.provider_response_body(), None);
+    assert_eq!(err.provider_response_status(), None);
+    assert_eq!(err.provider_response_json().expect("no body"), None);
 
     // A transport that reported the reply as an error routes through the
     // same funnel: status, body and headers -> ProviderResponse; no
@@ -85,7 +94,7 @@ fn funnel_preserves_status_and_body() {
     .into();
     assert!(matches!(err, E::ProviderResponse(_)));
 
-    // rig#2210 — headers are only present when a capture path
+    // Headers are only present when a capture path
     // preserved them. The status+body funnels never have any...
     for err in [
         E::from_http_response(StatusCode::TOO_MANY_REQUESTS, body),
@@ -147,7 +156,7 @@ fn retry_after_headers() -> http::HeaderMap {
     headers
 }
 
-/// rig#2314: the transport id stamps onto the preserved response, so
+/// The transport id stamps onto the preserved response, so
 /// status, body and id all stay recoverable and the id appears in the
 /// logged message.
 #[test]
@@ -201,7 +210,7 @@ fn stamping_never_overwrites_an_earlier_id_and_is_a_no_op_without_a_slot() {
     assert_eq!(error.provider_request_id(), None);
 }
 
-/// rig#2210 × rig#2314: the two pieces of transport metadata are captured
+/// The two pieces of transport metadata are captured
 /// on the same path and must not evict each other.
 #[test]
 fn request_id_and_headers_coexist_on_one_error() {
@@ -273,7 +282,7 @@ fn attaching_headers_to_a_slotless_variant_is_a_no_op() {
     assert!(error.provider_response_headers().is_none());
 }
 
-/// Display goldens (rig#2315 error matrix): error strings are what
+/// Display goldens: error strings are what
 /// callers grep and alert on — message churn must be a reviewed diff.
 #[test]
 fn display_goldens_for_error_shapes() {
@@ -312,7 +321,7 @@ fn display_goldens_for_error_shapes() {
         "Invalid status code 404 Not Found with message: x"
     );
 
-    // rig#2210: capturing headers must never change the text a caller logs.
+    // Capturing headers must never change the text a caller logs.
     for build in [
         crate::error::ProviderError::from_http_response,
         |status, body| {
@@ -372,8 +381,8 @@ fn provider_response_error_round_trips_its_identity_and_not_its_headers() {
 
 /// A provider error that arrives with no HTTP status (an error frame inside
 /// a stream, a gRPC reply) is still retried when the provider's own code
-/// says the condition is transient. Ported from #2524, with one deliberate
-/// change: a known code now outranks the `transient` hint.
+/// says the condition is transient. A known code outranks the `transient`
+/// hint.
 #[test]
 fn a_body_borne_transient_code_is_retryable_without_a_status() {
     let overloaded = ProviderResponseError::without_status(
@@ -540,9 +549,9 @@ fn the_code_table_decides_known_codes_in_any_case() {
     }
 }
 
-/// Precedence: refusal > non-success status > known code > `transient`.
+/// Precedence: refusal > final code > non-success status > known code > `transient`.
 #[test]
-fn a_known_code_outranks_the_hint_and_a_status_outranks_the_code() {
+fn a_final_code_outranks_the_status_which_outranks_any_other_code() {
     let overloaded = r#"{"error":{"type":"overloaded_error"}}"#;
     let quota = r#"{"error":{"type":"insufficient_quota"}}"#;
     let unknown = r#"{"error":{"type":"mystery"}}"#;
@@ -570,9 +579,19 @@ fn a_known_code_outranks_the_hint_and_a_status_outranks_the_code() {
             .with_code(Some("mystery".to_owned()))
             .is_retryable()
     );
-    // A non-success status decides before any code.
+    // A non-success status decides before a transient code.
     assert!(!ProviderResponseError::new(StatusCode::BAD_REQUEST, overloaded).is_retryable());
-    assert!(ProviderResponseError::new(StatusCode::SERVICE_UNAVAILABLE, quota).is_retryable());
+    // A final code decides before the status: a spent quota answers 429, and waiting refills none.
+    for status in [
+        StatusCode::TOO_MANY_REQUESTS,
+        StatusCode::SERVICE_UNAVAILABLE,
+    ] {
+        assert!(!ProviderResponseError::new(status, quota).is_retryable());
+        let coded = ProviderResponseError::new(status, "opaque")
+            .with_code(Some("insufficient_quota".to_owned()));
+        assert!(!coded.is_retryable());
+    }
+    assert!(ProviderResponseError::new(StatusCode::TOO_MANY_REQUESTS, unknown).is_retryable());
     // A 2xx envelope is classified by its code, as in band.
     assert!(ProviderResponseError::new(StatusCode::OK, overloaded).is_retryable());
     // A refusal beats everything.
@@ -599,10 +618,10 @@ fn a_deserialized_record_re_derives_its_verdict_from_the_body() {
     assert_eq!(back, reply);
 }
 
-/// The located error as JSON: nested errors under `error`, an error event
-/// as itself.
+/// The error a body carries, as JSON: nested errors under `error`, an
+/// error event as itself.
 #[test]
-fn the_envelope_json_is_the_located_error() {
+fn the_envelope_json_is_the_error_the_body_carries() {
     use serde_json::json;
     for (body, error) in [
         (

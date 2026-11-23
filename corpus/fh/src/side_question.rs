@@ -1,27 +1,18 @@
-//! FH-14: side questions while the agent works.
+//! Side questions while the agent works. `/btw <question>` starts a side agent at once, even while
+//! the agent shown is mid-turn: a helper subagent ([`SpawnSubagent::helper`]) seeded with a copy of
+//! the agent's conversation as it is at that moment, offered only the tools whose footprint only
+//! reads, on the agent's model unless the `[btw]` table of the settings names another. The `/btw`
+//! line is a command, so it never reaches the agent, and the agent's requests never carry the side
+//! question.
 //!
-//! `/btw <question>` starts a side agent at once, even while the agent
-//! shown is mid-turn: a helper subagent ([`SpawnSubagent::helper`]) seeded
-//! with a copy of the agent's conversation as it is at that moment (its
-//! tool calls still running answered as such), offered only the tools
-//! whose footprint only reads, on the agent's model unless the `[btw]`
-//! table of the settings names another. The `/btw` line is a command, so
-//! it never reaches the agent, and the side agent's conversation is its
-//! own: the agent's requests never carry the side question.
-//!
-//! The side agent is drawn live in a [`TranscriptPane`] under the
-//! terminal view's transcript, its answer streaming in, over an [`Editor`]
-//! panel that takes the keys ([`SideChat`]): what is typed there and sent
-//! with Enter is a follow-up to the same side agent, as is `/btw` while it
-//! is open (`/btw new <question>` replaces it), Ctrl+Y copies the last
-//! answer into the main input without sending it and closes both, and Esc
-//! closes them. Closing retires the side agent. Each
-//! side conversation is a [`Note`] aside of the agent it was asked beside,
-//! after the message it was asked at: titled by its first question
-//! and drawn whole, kept with the session, never part of the
-//! conversation. Its model calls are the side agent's, so its cost is that
-//! agent's spending, with the purpose [`PURPOSE`]. Interrupting either
-//! agent stops only that one.
+//! The side agent is drawn live in a [`TranscriptPane`] under the terminal view's transcript, over
+//! an [`Editor`] panel that takes the keys ([`SideChat`]). What is typed there and sent with Enter
+//! is a follow-up to the same side agent, as is `/btw` while it is open (`/btw new <question>`
+//! replaces it). Ctrl+Y copies the last answer into the main input without sending it and closes
+//! both, and Esc closes them. Closing retires the side agent. Each side conversation is a [`Note`]
+//! aside of the agent it was asked beside, kept with the session and never part of the
+//! conversation. Its cost is the side agent's spending, with the purpose [`PURPOSE`]. Interrupting
+//! either agent stops only that one.
 //!
 //! ```toml
 //! [btw]
@@ -31,6 +22,7 @@
 use rig_basics::subagents::{SpawnSubagent, SpawnedAgent};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::pairing::{close_pending_with, pending_calls};
+use rig_harness::rig_ecs::session_log::Never;
 use rig_tui::crossterm::event::KeyCode;
 use rig_tui::ratatui::layout::Constraint;
 use rig_tui::{
@@ -78,7 +70,7 @@ pub struct SideExchange {
 /// On a side agent, kept with the session: one a restore brings back is
 /// retired, its panel being gone.
 #[derive(Component, Reflect, Clone, Copy, Debug, Default)]
-#[reflect(Component, Saved, Default)]
+#[reflect(Component, Saved(Never), Default)]
 pub struct SideAgent;
 
 /// On a side agent's spawn request: the conversation it starts from.
@@ -172,9 +164,7 @@ pub struct SideQuestionPlugin;
 
 impl Plugin for SideQuestionPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<TuiPlugin>() {
-            app.add_plugins(TuiPlugin);
-        }
+        rig_harness::load::<TuiPlugin>(app, "rig-tui", "");
         // Spawned in this order, the editor is laid out under the pane.
         let world = app.world_mut();
         let editor = world
@@ -292,7 +282,7 @@ fn ask_side(
     }
     let reading = tools
         .iter()
-        .filter(|(def, footprint)| footprint.0.reads_only() && access.allows(def.0.name.as_str()))
+        .filter(|(def, footprint)| footprint.0.reads_only() && access.keeps(def.0.name.as_str()))
         .map(|(def, _)| def.0.name.to_string())
         .collect();
     let mut request = SpawnSubagent::helper(TITLE);

@@ -1,18 +1,13 @@
-//! Plugin corpus: 15. Model fallback chain (spec `15-model-fallback.md`).
+//! Model fallback chain. When a turn's model call fails for good with a rate limit, an
+//! overload, a server error or a refused key, the same request goes on, in the same turn, to
+//! the next model of the chain that is not cooling down, and the model that failed is skipped
+//! for the cooldown; after it, new turns go back to it. A context overflow is left to
+//! compaction, and a failure another plugin holds or superseded is left to it.
 //!
-//! When a turn's model call fails for good with a rate limit, an overload,
-//! a server error or a refused key, the same request goes on, in the same
-//! turn, to the next model of the chain that is not cooling down, and the
-//! model that failed is skipped for the cooldown; after it, new turns go
-//! back to it. A Review system reads the kernel's [`RetryVerdict`] (the
-//! retries gave up, or a retry would not help) and supersedes the call; a
-//! Prepare system sends a call bound for a cooling model to the chain
-//! instead. A context overflow is left to compaction, and a failure another
-//! plugin holds or superseded is left to it. Both systems are in the public
-//! [`FallbackSystems`] sets, in the stages' phases: a call is routed in
-//! [`PrepareSystems::Edit`], before compaction measures it, and a failure
-//! is taken over in [`ReviewSystems::Act`], once reviewers edited its
-//! verdict. The `[model-fallback]` table of `settings.toml`:
+//! Both systems are in the public [`FallbackSystems`] sets: a call bound for a cooling model is
+//! routed in [`PrepareSystems::Edit`], before compaction measures it, and a failure is taken
+//! over in [`ReviewSystems::Act`], once reviewers edited its [`RetryVerdict`]. The
+//! `[model-fallback]` table of `settings.toml`:
 //!
 //! ```toml
 //! [model-fallback]

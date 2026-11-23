@@ -190,6 +190,30 @@ async fn registry_copilot_preserves_explicit_configuration_after_reload() {
     assert_eq!(body["model"], super::super::GPT_4O);
 }
 
+/// A model the catalogue lists on the Responses API routes there
+/// whatever its name, as `gpt-5.5` does, which Copilot serves only on
+/// `/responses`; the name check routes a Codex model the catalogue does
+/// not route, and everything else stays on Chat Completions.
+#[test]
+fn completion_routes_by_the_catalogue_then_by_the_name() {
+    use crate::providers::openai::wire::OpenAiWire;
+    for (model, responses) in [
+        ("gpt-6-luna", true),
+        (super::super::GPT_5_5, true),
+        ("gpt-6.1-terra", true),
+        (super::super::GPT_5_1_CODEX, true),
+        (super::super::GPT_4O, false),
+        ("claude-sonnet-4.6", false),
+    ] {
+        let wire = copilot().completion(model);
+        assert_eq!(
+            matches!(wire, OpenAiWire::Responses(_)),
+            responses,
+            "{model}"
+        );
+    }
+}
+
 // ── the two completion routes, folded from recorded replies ─────────────
 
 /// The chat route's recorded turn folds to the normalized response.
@@ -336,13 +360,11 @@ fn the_embeddings_request_sends_the_resolved_width() {
 #[tokio::test]
 async fn the_model_listing_folds_its_recorded_catalogue() {
     let body = cassette_body("models/list_models_smoke.yaml", "then");
-    let models = crate::driver::Model::new(
-        super::super::model_listing::Models::new(copilot()),
-        RecordingHttpClient::new(Bytes::from(body)),
-    )
-    .list()
-    .await
-    .expect("the recorded catalogue folds");
+    let models = copilot()
+        .connect(RecordingHttpClient::new(Bytes::from(body)))
+        .list_models()
+        .await
+        .expect("the recorded catalogue folds");
 
     let opus = models
         .iter()
@@ -350,6 +372,63 @@ async fn the_model_listing_folds_its_recorded_catalogue() {
         .expect("the recorded catalogue names claude-opus-4.7");
     assert_eq!(opus.name.as_deref(), Some("Claude Opus 4.7"));
     assert_eq!(opus.r#type.as_deref(), Some("chat"));
+    assert_eq!(opus.supports_tool_calls, Some(true));
+}
+
+/// The client's listing reads Copilot's catalogue as the Copilot wire does,
+/// from the dialect's own models path.
+#[tokio::test]
+async fn the_client_listing_reads_the_copilot_catalogue() {
+    let body = cassette_body("models/list_models_smoke.yaml", "then");
+    let dialect = Dialect {
+        quirks: Quirks {
+            models_path: "/catalogue",
+            ..DIALECT.quirks
+        },
+        ..DIALECT
+    };
+    let config = OpenAIConfig::with_key(&dialect, "tid=copilot-session-token");
+    let base = config.base_url.clone();
+    let transport = RecordingHttpClient::new(Bytes::from(body));
+    let models = config
+        .connect(transport.clone())
+        .list_models()
+        .await
+        .expect("the recorded catalogue folds");
+
+    let opus = models
+        .iter()
+        .find(|model| model.id == "claude-opus-4.7")
+        .expect("the recorded catalogue names claude-opus-4.7");
+    assert_eq!(opus.supports_tool_calls, Some(true));
+    assert_eq!(opus.r#type.as_deref(), Some("chat"));
+    assert_eq!(opus.owned_by.as_deref(), Some("Anthropic"));
+    let uris: Vec<_> = transport
+        .requests()
+        .into_iter()
+        .map(|request| request.uri)
+        .collect();
+    assert_eq!(uris, [format!("{base}/catalogue")]);
+}
+
+/// The recording reports only `true`, so this catalogue covers the other cases.
+#[tokio::test]
+async fn the_model_listing_keeps_tool_call_support_distinct() {
+    let body = r#"{"data": [
+        {"id": "tools", "capabilities": {"supports": {"tool_calls": true}}},
+        {"id": "no-tools", "capabilities": {"supports": {"tool_calls": false}}},
+        {"id": "unreported", "capabilities": {"supports": {}}},
+        {"id": "no-capabilities"},
+        {"id": "malformed", "capabilities": {"supports": {"tool_calls": "true"}}}
+    ]}"#;
+    let models = copilot()
+        .connect(RecordingHttpClient::new(Bytes::from(body)))
+        .list_models()
+        .await
+        .expect("the catalogue folds");
+
+    let support: Vec<_> = models.iter().map(|m| m.supports_tool_calls).collect();
+    assert_eq!(support, [Some(true), Some(false), None, None, None]);
 }
 
 // ── the configuration is storable data ──────────────────────────────────
@@ -384,6 +463,7 @@ fn named_dialect_persistence_rejects_replaced_hook_definitions() {
         model_route: HOOKS.model_route,
         completion_envelope: HOOKS.completion_envelope,
         modality_envelope: None,
+        model_listing: HOOKS.model_listing,
     };
     let changed = Dialect {
         quirks: Quirks {

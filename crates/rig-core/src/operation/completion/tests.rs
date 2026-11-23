@@ -193,7 +193,7 @@ fn a_restated_response_streams_the_same_blocks() {
         out.finish(1)
     });
     let original = response(decoded);
-    let events = events_of(&original).expect("restates");
+    let events = events_of(&original);
     let transcript = StreamRecord::from_items(events.clone()).expect("a valid sequence");
     let ended: Vec<_> = transcript
         .events()
@@ -311,7 +311,7 @@ fn a_reply_records_where_each_item_keeps_its_blob() {
     };
     let streamed = ended(events(&decoded));
     let response = response(decoded);
-    let restated = events_of(&response).expect("restates");
+    let restated = events_of(&response);
     let restated = StreamRecord::from_items(restated).expect("a valid sequence");
     let restated = ended(restated.events().cloned().collect());
     let signed = ["a", "b", "", "c"].map(|sig| Some(sig.to_owned()).filter(|sig| !sig.is_empty()));
@@ -353,6 +353,44 @@ fn a_call_the_reply_ends_in_the_middle_of_is_unfinished() {
         out.finish(0)
     });
     assert_eq!(response(whole).unfinished_calls().count(), 0);
+}
+
+/// A call whose index another call takes over before its arguments form a
+/// whole object is unfinished only when the output limit then ends the
+/// reply. A reply that stops normally keeps it as a call with what its
+/// arguments state, and the turn goes on.
+#[test]
+fn a_call_another_takes_the_index_of_mid_arguments_is_unfinished_only_when_cut() {
+    use crate::completion::FinishReason;
+    let fragment = |id: &'static str, arguments: &'static str| CallFragment {
+        id: Some(id),
+        name: Some("write"),
+        arguments: Some(arguments),
+    };
+    for (reason, cut) in [
+        (FinishReason::Length, true),
+        (FinishReason::ToolCalls, false),
+    ] {
+        let decoded = write_on_wire(None, stop(reason.clone()), |out| {
+            out.fragment(Some(0), fragment("first", r#"{"path":"a"#))?;
+            out.fragment(Some(0), fragment("second", r#"{"path":"b"}"#))?;
+            out.finish(0)
+        });
+        let reply = response(decoded);
+        let unfinished: Vec<String> = reply
+            .unfinished_calls()
+            .map(|call| call.id.wire().into_owned())
+            .collect();
+        let expected: &[&str] = if cut { &["first"] } else { &[] };
+        assert_eq!(unfinished, expected, "{reason:?}");
+        assert!(!reply.stop().is_failure(), "{reason:?}: {:?}", reply.stop());
+        assert_eq!(
+            reply.tool_calls().count(),
+            2,
+            "{reason:?}: {:?}",
+            reply.choice
+        );
+    }
 }
 
 #[test]
@@ -742,13 +780,102 @@ fn a_restated_call_starts_with_its_name() {
         crate::message::Origin::new("test", "test", "test"),
         Value::Null,
     );
-    let items = events_of(&response).expect("restates");
+    let items = events_of(&response);
     let transcript = StreamRecord::from_items(items).expect("a valid sequence");
     let events: Vec<StreamEvent> = transcript.events().cloned().collect();
     assert_eq!(
         shape(&events),
         ["0:start:add", r#"0:args:{"x":1}"#, "0:end"]
     );
+}
+
+/// A call whose arguments did not parse restates the text the model sent,
+/// the same text a stream of that call carried.
+#[test]
+fn a_restated_malformed_call_carries_its_arguments_as_sent() {
+    let streamed = events(&write(|out| {
+        out.fragment(
+            Some(0),
+            CallFragment {
+                id: Some("call_1"),
+                name: Some("add"),
+                arguments: Some(r#"{"x": 1"#),
+            },
+        )
+    }));
+    let choice: Vec<AssistantContent> = streamed
+        .iter()
+        .filter_map(|event| match event {
+            StreamEvent::End { content, .. } => Some(content.clone()),
+            _ => None,
+        })
+        .collect();
+    let response = CompletionResponse::new(
+        choice,
+        Usage::default(),
+        crate::message::Origin::new("test", "test", "test"),
+        Value::Null,
+    );
+    let items = events_of(&response);
+    let transcript = StreamRecord::from_items(items).expect("a valid sequence");
+    let restated: Vec<StreamEvent> = transcript.events().cloned().collect();
+    assert_eq!(
+        shape(&restated),
+        ["0:start:add", r#"0:args:{"x": 1"#, "0:end"]
+    );
+    assert_eq!(
+        streamed_and_final(&restated, 0).0,
+        streamed_and_final(&streamed, 0).0
+    );
+}
+
+/// A call stopped before the model sent any argument text, which keeps
+/// that empty text as sent, restates no arguments, as its stream carried
+/// none.
+#[test]
+fn a_restated_call_with_no_argument_text_carries_no_arguments() {
+    let mut function = crate::message::ToolFunction::parse(name("add"), "");
+    function.invalid_arguments = Some(String::new());
+    let call = ToolCall::from_wire("call_1", function);
+    let response = CompletionResponse::new(
+        vec![AssistantContent::ToolCall(call)],
+        Usage::default(),
+        crate::message::Origin::new("test", "test", "test"),
+        Value::Null,
+    );
+    let items = events_of(&response);
+    let transcript = StreamRecord::from_items(items).expect("a valid sequence");
+    let events: Vec<StreamEvent> = transcript.events().cloned().collect();
+    assert_eq!(shape(&events), ["0:start:add", "0:end"]);
+}
+
+/// Restating a finished reply states its calls as the reply holds them,
+/// two that share an id included, so a caller running the calls from the
+/// events files each result under an id the reply contains.
+#[test]
+fn a_restated_reply_keeps_a_repeated_call_id() {
+    let call = |x| {
+        AssistantContent::ToolCall(ToolCall::from_wire(
+            "call_1",
+            crate::message::ToolFunction::new(name("add"), json!({ "x": x })),
+        ))
+    };
+    let response = CompletionResponse::new(
+        vec![call(1), call(2)],
+        Usage::default(),
+        crate::message::Origin::new("test", "test", "test"),
+        Value::Null,
+    );
+    let items = events_of(&response);
+    let transcript = StreamRecord::from_items(items).expect("a valid sequence");
+    let ended: Vec<_> = transcript
+        .events()
+        .filter_map(|event| match event {
+            StreamEvent::End { content, .. } => Some(content.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(ended, response.choice);
 }
 
 /// A call keeps the first name it is given, so a later fragment naming
@@ -804,6 +931,34 @@ fn a_placeholder_null_never_replaced_streams_the_ended_arguments() {
     assert_eq!(shape(&events), ["0:start:noop", "0:args:{}", "0:end"]);
     let (streamed, ended) = streamed_and_final(&events, 0);
     assert_eq!(serde_json::from_str::<Value>(&streamed).ok(), Some(ended));
+}
+
+/// A call cut off inside what could still be a placeholder `null` streams
+/// the text the model sent when it ends, as the same call restated does.
+#[test]
+fn a_call_cut_off_inside_a_placeholder_streams_the_text_sent() {
+    let decoded = write(|out| {
+        out.fragment(
+            Some(0),
+            CallFragment {
+                id: Some("call_1"),
+                name: Some("noop"),
+                arguments: Some("nu"),
+            },
+        )?;
+        Ok(())
+    });
+    let streamed = events(&decoded);
+    assert_eq!(shape(&streamed), ["0:start:noop", "0:args:nu", "0:end"]);
+    let restated = events_of(&response(decoded));
+    let restated: Vec<StreamEvent> = restated
+        .into_iter()
+        .filter_map(|item| match item {
+            Item::Event(event) => Some(event),
+            Item::Unknown(_) => None,
+        })
+        .collect();
+    assert_eq!(restated, streamed);
 }
 
 /// Restating an item with no text of its own changes nothing.
@@ -1324,4 +1479,37 @@ fn a_wire_that_names_no_replay_target_cannot_prepare_a_request() {
         error.to_string().contains("`bare` names no replay target"),
         "{error}"
     );
+}
+
+/// Two calls closed unfinished at one reused wire index are both held
+/// until the reply ends: each ends with it, in the order they opened, and
+/// each is one of the reply's unfinished calls.
+#[test]
+fn calls_closed_unfinished_at_one_index_both_end_with_the_reply() {
+    let decoded = decode_with(ReplyFold::relayed("test"), "test", |reply| {
+        let mut out = reply.out();
+        for (id, arguments) in [("call_a", r#"{"x":"#), ("call_b", r#"{"y":"#)] {
+            out.open(
+                0,
+                Block::Call {
+                    id: CallId::from_wire(id),
+                    name: name("lookup"),
+                },
+                Value::Null,
+            )?;
+            out.push(0, arguments)?;
+            out.close(0)?;
+        }
+        let _ = out.end(Finish {
+            reason: Some(crate::completion::FinishReason::Length),
+            ..Finish::default()
+        });
+        Ok(())
+    });
+    let response = response(decoded);
+    let unfinished: Vec<String> = response
+        .unfinished_calls()
+        .map(|call| call.id.to_string())
+        .collect();
+    assert_eq!(unfinished, ["call_a", "call_b"], "{:?}", response.choice);
 }

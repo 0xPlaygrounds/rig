@@ -13,7 +13,7 @@ use rig_core::completion::Message;
 use rig_core::conversation::{Author, Change, ChangeRecord};
 use rig_core::message::DocumentSourceKind::{Base64, Raw, Unknown, Url};
 use rig_core::message::{Image, ImageMediaType};
-use sha2::{Digest, Sha256};
+use rig_core::tool::content_hash;
 
 use crate::Files;
 
@@ -49,21 +49,16 @@ fn inline(image: &Image) -> bool {
     matches!(image.data, Base64(_) | Raw(_))
 }
 
-/// `message` as it is saved: the data of each image in it stored in
-/// `store` once per content, and named there instead. Borrowed when it has
+/// Where a save puts each blob it stores, by name.
+pub(crate) type PutBlob<'a> = dyn FnMut(String, Vec<u8>) -> io::Result<()> + 'a;
+
+/// `message` as it is saved: the data of each image in it given to
+/// `put` once per content, and named there instead. Borrowed when it has
 /// no image data to store; data that is not valid base64 stays inline.
 ///
 /// # Errors
 ///
-/// When the store cannot store a blob.
-pub fn store_images<'m>(message: &'m Message, store: &dyn Files) -> io::Result<Cow<'m, Message>> {
-    store_images_with(message, &mut |name, bytes| put_blob(store, &name, &bytes))
-}
-
-/// Where a save puts each blob it stores, by name.
-pub(crate) type PutBlob<'a> = dyn FnMut(String, Vec<u8>) -> io::Result<()> + 'a;
-
-/// [`store_images`], each blob given to `put`.
+/// When `put` fails.
 pub(crate) fn store_images_with<'m>(
     message: &'m Message,
     put: &mut PutBlob<'_>,
@@ -81,7 +76,7 @@ pub(crate) fn store_images_with<'m>(
         if let Some(bytes) = bytes {
             let extension = image.media_type.as_ref();
             let extension = extension.map_or("bin", ImageMediaType::extension);
-            let name = format!("{:x}.{extension}", Sha256::digest(&bytes));
+            let name = format!("{}.{extension}", content_hash(&bytes).0);
             image.data = Url(format!("{BLOB}{name}"));
             put(name, bytes)?;
         }
@@ -89,24 +84,22 @@ pub(crate) fn store_images_with<'m>(
     Ok(Cow::Owned(message))
 }
 
-/// Puts the data of each image `message` names in `store` back in place.
+/// Puts the data of each image `message` names back in place, from the
+/// blobs `blob` reads.
 /// An image whose blob cannot be read has no data any more ([`Unknown`]),
-/// which a request sends as a placeholder; the first such failure is
-/// returned.
+/// which a request sends as a placeholder; the first failure is returned,
+/// unless a later one is other than a missing blob, so a missing blob
+/// never hides a failing store.
 ///
 /// # Errors
 ///
-/// The first blob that could not be read.
-pub fn load_images(message: &mut Message, store: &dyn Files) -> io::Result<()> {
-    load_images_with(message, &|name| read_blob(store, name))
-}
-
-/// [`load_images`] from the blobs `blob` reads.
+/// The first blob that could not be read for a reason other than that it
+/// is gone, else the first that is gone.
 pub(crate) fn load_images_with(
     message: &mut Message,
     blob: &dyn Fn(&str) -> io::Result<Vec<u8>>,
 ) -> io::Result<()> {
-    let mut gone = Ok(());
+    let mut gone = None;
     for image in message.images_mut() {
         if let Url(url) = &image.data
             && let Some(name) = url.strip_prefix(BLOB)
@@ -114,13 +107,17 @@ pub(crate) fn load_images_with(
             image.data = match blob(name) {
                 Ok(bytes) => Base64(STANDARD.encode(bytes)),
                 Err(failure) => {
-                    gone = gone.and(Err(failure));
+                    let missing = |failure: &io::Error| failure.kind() == io::ErrorKind::NotFound;
+                    match &gone {
+                        Some(first) if !missing(first) || missing(&failure) => {}
+                        _ => gone = Some(failure),
+                    }
                     Unknown
                 }
             };
         }
     }
-    gone
+    gone.map_or(Ok(()), Err)
 }
 
 /// Adds the name of every blob `bytes` names (`blob:<name>`) to `named`.
@@ -176,7 +173,7 @@ pub(crate) fn messages_mut(
 }
 
 /// `change` as it is saved, its messages' images stored as blobs
-/// ([`store_images`], [`messages_mut`]); `None` when it has none to store.
+/// ([`store_images_with`], [`messages_mut`]); `None` when it has none to store.
 /// The whole value of a [`Change::Reset`] keeps its images inline.
 pub(crate) fn store_change(change: &Change, put: &mut PutBlob<'_>) -> io::Result<Option<Change>> {
     let has_inline = match change {

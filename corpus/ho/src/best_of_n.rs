@@ -1,24 +1,20 @@
-//! Plugin corpus (held-out): H16: Best-of-N attempts in git worktrees (spec
-//! `H16-best-of-n.md`).
+//! Best-of-N attempts in git worktrees. `/best-of 3 --verify "cargo test" fix the flaky test in
+//! net.rs` makes 3 git worktrees of the project as it is now (HEAD plus the uncommitted changes, as
+//! a snapshot commit) under `.rig/best-of/<id>/<k>`, and spawns one one-job helper agent per
+//! worktree with the task. Each candidate has the project's directory in its worktree as its
+//! `WorkDir`, so its file and shell tools work there and refuse paths outside it. When a
+//! candidate's turn ends, its tree is snapshotted, its diff measured and the verify command run in
+//! it.
 //!
-//! `/best-of 3 --verify "cargo test" fix the flaky test in net.rs` makes 3
-//! git worktrees of the project as it is now (HEAD plus the uncommitted
-//! changes, as a snapshot commit) under `.rig/best-of/<id>/<k>`, and spawns
-//! one one-job helper agent per worktree with the task. Each candidate has
-//! the project's directory in its worktree as its `WorkDir`, so its file
-//! and shell tools work there and refuse paths outside it. When a
-//! candidate's turn ends, its tree is snapshotted, its diff measured and
-//! the verify command run in it. Once all are done, a picker lists them
-//! (passing first, then the smaller diff) with their diffs; `--auto`, or a
-//! run nobody answers, takes the first passing one. The winner is merged
-//! into the project's tree with a 3-way merge against the user's changes
-//! since the start, refused on a conflict, and the agent gets a note naming
-//! the winner. `--models a,b,c` gives each candidate its model; N is capped
-//! at 5. Stopping the agent cancels every candidate. Worktrees are removed
-//! after an apply or a discard; `/best-of clean` removes leftovers.
+//! Once all are done, a picker lists them (passing first, then the smaller diff) with their diffs;
+//! `--auto`, or a run nobody answers, takes the first passing one. The winner is merged into the
+//! project's tree with a 3-way merge against the user's changes since the start, refused on a
+//! conflict, and the agent gets a note naming the winner. `--models a,b,c` gives each candidate its
+//! model; N is capped at 5. Stopping the agent cancels every candidate. Worktrees are removed after
+//! an apply or a discard; `/best-of clean` removes leftovers.
 //!
-//! Every git step and verify run is an effect of the agent (`best-of-*`),
-//! recorded, gateable and cancelled with its run, which kills its process.
+//! Every git step and verify run is an effect of the agent (`best-of-*`), recorded, gateable and
+//! cancelled with its run, which kills its process.
 
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
@@ -30,6 +26,7 @@ use rig_basics::subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::{Answered, EffectKind};
 use rig_harness::rig_core::error::ErrorReport;
+use rig_harness::rig_ecs::session_log::Never;
 use rig_tools::process::{KillOnDrop, Launcher, OutputLine, Spawn};
 use rig_tools::{MAX_BYTES, OutputLimit, Shell, ShellArgs, blocking};
 use serde::{Deserialize, Serialize};
@@ -71,9 +68,7 @@ pub struct BestOfPlugin;
 
 impl Plugin for BestOfPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<SubagentsPlugin>() {
-            app.add_plugins(SubagentsPlugin);
-        }
+        rig_harness::load::<SubagentsPlugin>(app, "rig-basics", "");
         app.init_resource::<ProjectRoot>()
             .init_resource::<Processes>()
             .add_setting::<BestOfConfig>("best_of")
@@ -171,7 +166,7 @@ pub struct CandidateOf {
 /// Saved on a candidate, so one a restart brings back without its run is
 /// retired.
 #[derive(Component, Reflect, Default)]
-#[reflect(Component, Saved, Default)]
+#[reflect(Component, Saved(Never), Default)]
 pub struct WasCandidate;
 
 /// On a candidate's `SpawnSubagent` request.
@@ -277,7 +272,8 @@ impl Work {
 }
 
 /// Spawns `work` as an effect of `agent`, a child of `run` when it has one
-/// so it is cancelled with it.
+/// so it is cancelled with it. Every job may change the project, so none
+/// starts once the session can no longer be saved.
 fn spawn_job(commands: &mut Commands, agent: Entity, run: Option<Entity>, work: Work) {
     let kind = EffectKind::Custom {
         kind: work.name().into(),
@@ -288,7 +284,8 @@ fn spawn_job(commands: &mut Commands, agent: Entity, run: Option<Entity>, work: 
         handler: None,
     };
     let name = Name::new(work.name());
-    let mut job = commands.spawn((request, ForAgent(agent), name, Job { run, work }));
+    let job = (request, Footprint::default(), ForAgent(agent), name);
+    let mut job = commands.spawn((job, Job { run, work }));
     if let Some(run) = run {
         job.insert(ChildOf(run));
     }
@@ -457,7 +454,7 @@ fn best_of(
         tools: TOOLS
             .iter()
             .filter(|tool| defs.iter().any(|def| def.0.name.as_str() == **tool))
-            .filter(|tool| access.get(agent).is_ok_and(|access| access.allows(tool)))
+            .filter(|tool| access.get(agent).is_ok_and(|access| access.keeps(tool)))
             .map(|tool| (*tool).to_owned())
             .collect(),
         candidates,
@@ -532,6 +529,7 @@ impl Git {
         let how = Spawn {
             stdin,
             merge_stderr: false,
+            ..Spawn::default()
         };
         let mut process = launcher
             .spawn("git", all, how)
@@ -545,8 +543,8 @@ impl Git {
             let (mut out, mut err) = (String::new(), String::new());
             for line in process.lines().iter() {
                 match line {
-                    OutputLine::Out(text) => out.push_str(&text),
-                    OutputLine::Err(text) => err.push_str(&text),
+                    OutputLine::Out(bytes) => out.push_str(&String::from_utf8_lossy(&bytes)),
+                    OutputLine::Err(bytes) => err.push_str(&String::from_utf8_lossy(&bytes)),
                 }
             }
             Ok((status.success(), out, err))
@@ -1072,7 +1070,10 @@ fn candidate_done(
     let failed = match outcome {
         TurnOutcome::Answered(_) => None,
         TurnOutcome::Failed(why) => Some(why.clone()),
-        TurnOutcome::Stopped(why) => Some(why.clone().unwrap_or_else(|| "stopped".to_owned())),
+        TurnOutcome::Stopped(stop) => Some(match stop.cause() {
+            StopCause::User => "stopped".to_owned(),
+            cause => cause.to_string(),
+        }),
     };
     match (failed, run.base.clone()) {
         (None, Some(base)) => {
@@ -1095,16 +1096,19 @@ fn candidate_done(
     }
 }
 
-/// Stopping the agent cancels its runs: the candidates are retired, which
-/// stops their turns and commands, the run's effects are cancelled with it,
-/// and its worktrees are removed.
+/// A stop that reaches the agent cancels its runs: the candidates are
+/// retired, which stops their turns and commands, the run's effects are
+/// cancelled with it, and its worktrees are removed.
 fn cancel_on_interrupt(
-    interrupt: On<StopTurn>,
+    interrupt: On<StopReached>,
     runs: Query<(Entity, &Run)>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    for (run_entity, run) in runs.iter().filter(|(_, run)| run.owner == interrupt.entity) {
+    for (run_entity, run) in runs
+        .iter()
+        .filter(|(_, run)| run.owner == interrupt.event_target())
+    {
         for agent in run
             .candidates
             .iter()

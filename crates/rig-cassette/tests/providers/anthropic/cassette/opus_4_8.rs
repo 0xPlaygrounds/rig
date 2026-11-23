@@ -5,7 +5,6 @@ use rig::completion::{
 };
 use rig::providers::anthropic::completion::CLAUDE_OPUS_4_8;
 use rig::providers::anthropic::extension::AnthropicExt;
-use serde::Deserialize;
 use serde_json::Value;
 use serde_json::json;
 
@@ -174,16 +173,6 @@ fn content_raw_type(content: &AssistantContent) -> Option<&str> {
     }
 }
 
-#[derive(Deserialize)]
-struct RecordedInteraction {
-    when: RecordedRequest,
-}
-
-#[derive(Deserialize)]
-struct RecordedRequest {
-    body: Option<String>,
-}
-
 fn assert_cassette_preserves_system_role_after_server_tool_result(
     scenario: &str,
     expected_system_text: &str,
@@ -252,23 +241,9 @@ fn assert_cassette_preserves_system_role_after_server_tool_result(
 }
 
 fn recorded_request_bodies(scenario: &str) -> Vec<Value> {
-    let cassette_path = crate::cassettes::cassette_path("anthropic", scenario);
-    let contents = std::fs::read_to_string(&cassette_path).unwrap_or_else(|error| {
-        panic!(
-            "provider cassette {} should be readable after recording: {error}",
-            cassette_path.display()
-        )
-    });
-
-    serde_yaml::Deserializer::from_str(&contents)
-        .filter_map(|document| {
-            let interaction = RecordedInteraction::deserialize(document)
-                .expect("cassette interaction should deserialize");
-            interaction
-                .when
-                .body
-                .and_then(|body| serde_json::from_str::<Value>(&body).ok())
-        })
+    crate::cassettes::recorded_interaction_bodies("anthropic", scenario)
+        .into_iter()
+        .filter_map(|(request, _)| serde_json::from_str(&request).ok())
         .collect()
 }
 

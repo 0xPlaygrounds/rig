@@ -58,6 +58,7 @@ fn saved_session(
     app.world_mut().trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     for (turn, ask) in asks.iter().enumerate() {
         app.world_mut()

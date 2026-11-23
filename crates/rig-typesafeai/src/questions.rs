@@ -224,12 +224,9 @@ impl<T: Serialize + DeserializeOwned + Ord> Choice<T> {
                     "choice values must serialize to strings",
                 ));
             };
-            let decoded: T =
-                serde_json::from_value(Value::String(label.clone())).map_err(|_| {
-                    ProviderError::request(
-                        "choice labels must deserialize to their original values",
-                    )
-                })?;
+            let decoded: T = crate::decode::choice_label(&label).map_err(|_| {
+                ProviderError::request("choice labels must deserialize to their original values")
+            })?;
             if decoded != value {
                 return Err(ProviderError::request(
                     "choice labels must round-trip without changing values",
@@ -469,7 +466,7 @@ fn select_response<Q: Query>(query: &Q, response: &Value) -> Result<Q::Response,
                 .ok_or_else(|| ProviderError::Response(format!("missing answer: {id}")))
         })
         .collect::<Result<serde_json::Map<_, _>, _>>()?;
-    Ok(serde_json::from_value(Value::Object(selected))?)
+    Ok(rig_core::json_utils::from_value(&Value::Object(selected))?)
 }
 
 /// A serializable query with a typed projection of its validated answers.

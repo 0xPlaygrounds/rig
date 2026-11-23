@@ -15,6 +15,7 @@ use schemars::{JsonSchema, schema_for};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
+use rig_core::structured_output;
 use rig_core::wasm_compat::{WasmBoxedFuture, WasmCompatSend};
 use tracing_futures::Instrument;
 
@@ -50,22 +51,6 @@ pub struct TypedPromptResponse<T> {
 }
 
 impl<T> TypedPromptResponse<T> {
-    /// A response of `output` with the run's `usage`.
-    pub fn new(output: T, usage: Usage) -> Self {
-        Self {
-            output,
-            usage,
-            completion_calls: Vec::new(),
-            messages: Vec::new(),
-        }
-    }
-
-    /// Attach completion call details to this response.
-    pub fn with_completion_calls(mut self, completion_calls: Vec<CompletionCall>) -> Self {
-        self.completion_calls = completion_calls;
-        self
-    }
-
     /// Returns successfully completed completion requests made by this agent run.
     ///
     /// An entry whose counters are all `None` means the provider reported no
@@ -168,10 +153,14 @@ where
                     retries - attempt
                 );
             }
-            let (result, error_usage) = runner.clone().run_with_error_usage(ambient.clone()).await;
+            let (result, attempt_usage) =
+                runner.clone().run_with_error_usage(ambient.clone()).await;
+            // An attempt that finished no call is not a call that reported nothing.
+            if attempt_usage != Usage::default() {
+                usage += attempt_usage;
+            }
             let outcome = match result {
                 Ok(response) => {
-                    usage += response.usage;
                     recover_output(&response, source).map(|output| TypedPromptResponse {
                         output,
                         usage,
@@ -179,10 +168,7 @@ where
                         messages: response.messages,
                     })
                 }
-                Err(err) => {
-                    usage += error_usage;
-                    Err(StructuredOutputError::Prompt(err))
-                }
+                Err(err) => Err(StructuredOutputError::Prompt(err)),
             };
             match outcome {
                 Ok(response) => return Ok(response),
@@ -212,7 +198,7 @@ fn recover_output<T: DeserializeOwned>(
             if output.is_empty() {
                 return Err(StructuredOutputError::EmptyResponse);
             }
-            deserialize_structured_output(&output)
+            structured_output::json_in_text(&output)
                 .map_err(|error| deserialization_error(&output, error))
         }
         OutputSource::OutputTool => {
@@ -245,26 +231,6 @@ fn deserialization_error(output: &str, error: serde_json::Error) -> StructuredOu
     StructuredOutputError::Deserialization {
         output: output.to_string(),
         error,
-    }
-}
-
-/// Deserialize final text directly, then try one value starting at the first
-/// object or array delimiter. Returns a parse error if neither attempt yields `T`.
-pub(crate) fn deserialize_structured_output<T: DeserializeOwned>(
-    text: &str,
-) -> Result<T, serde_json::Error> {
-    let trimmed = text.trim();
-    match serde_json::from_str::<T>(trimmed) {
-        Ok(value) => Ok(value),
-        Err(direct_err) => {
-            let Some(start) = trimmed.find(['{', '[']) else {
-                return Err(direct_err);
-            };
-            serde_json::Deserializer::from_str(&trimmed[start..])
-                .into_iter::<T>()
-                .next()
-                .unwrap_or(Err(direct_err))
-        }
     }
 }
 

@@ -52,6 +52,7 @@ fn run(home: &Home, turns: &[&str], script: Vec<Vec<MockStreamEvent>>) -> (Sessi
     app.world_mut().trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     for (done, prompt) in turns.iter().enumerate() {
         app.world_mut()
@@ -183,7 +184,7 @@ fn prunes_old_sessions_but_what_is_named_or_open() {
 
     // No terminal, no --yes: refused.
     let (exit, _) = prune(&home, &["prune", "--older-than", "30d"]);
-    assert_eq!(exit, Some(ExitReason::Failed(2)));
+    assert_eq!(exit, Some(ExitReason::Failed(FailCode::or_failure(2))));
     assert!(home.session(&s1).path().exists());
 
     // Deleted.
@@ -233,6 +234,6 @@ fn prunes_old_sessions_but_what_is_named_or_open() {
     // No rule: refused.
     assert_eq!(
         prune(&home, &["prune", "--dry-run"]).0,
-        Some(ExitReason::Failed(2))
+        Some(ExitReason::Failed(FailCode::or_failure(2)))
     );
 }

@@ -15,7 +15,6 @@ tui = []
 [dependencies]
 corpus-shared = { path = "../shared" }
 async-channel = { workspace = true }
-bevy_app = { workspace = true }
 bevy_ecs = { workspace = true }
 bevy_log = { workspace = true }
 bevy_reflect = { workspace = true }
@@ -24,7 +23,6 @@ chrono = { workspace = true }
 futures = { workspace = true }
 futures-timer = { workspace = true }
 glob = { workspace = true }
-libc = { workspace = true }
 regex = { workspace = true }
 rig-basics = { path = "../../plugins/rig-basics" }
 rig-core = { workspace = true }

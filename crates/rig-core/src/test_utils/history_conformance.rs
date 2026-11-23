@@ -40,7 +40,7 @@ pub fn cut<W: Wire<Op = Completion>>(
     let mut reassembler = wire.reassembler();
     let mut failure = None;
     for frame in frames {
-        match crate::driver::step(&mut decoder, Some(&mut reassembler), &shared, frame, None) {
+        match crate::driver::step(&mut decoder, Some(&mut reassembler), &shared, frame) {
             Ok(crate::wire::Flow::More) => {}
             Ok(crate::wire::Flow::Ended(_)) => break,
             Err(error) => {

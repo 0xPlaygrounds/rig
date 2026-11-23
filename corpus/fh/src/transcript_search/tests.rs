@@ -1,4 +1,4 @@
-use rig_core::message::CallId;
+use rig_core::conversation::CallRef;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::pick::PickPlugin;
@@ -7,7 +7,7 @@ use rig_harness_test_support::{
     tui_view,
 };
 use rig_tui::crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
-use rig_tui::{DrawnRow, Editor, MainEditor};
+use rig_tui::{CallItem, DrawnRow, Editor, MainEditor};
 
 use super::*;
 
@@ -151,6 +151,7 @@ fn finds_an_error_in_a_tool_output_counts_regex_matches_and_scrolls_back() {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     let asks = ["Where does it start?", "Run cargo build.", LAST_ASK];
     for (turn, ask) in asks.into_iter().enumerate() {
@@ -164,7 +165,17 @@ fn finds_an_error_in_a_tool_output_counts_regex_matches_and_scrolls_back() {
     app.world_mut().resource_mut::<ShownAgent>().0 = Some(agent);
 
     // Turn 2's `shell` output, with the error.
-    let call = TranscriptItem::Call(CallId::from_wire("c1"));
+    let asked = app.world().get::<Conversation>(agent).and_then(|conversation| {
+        let mut entries = conversation.entries();
+        let reply = entries.find(|entry| {
+            matches!(entry.message, rig_core::message::Message::Assistant(reply) if reply.tool_calls().next().is_some())
+        });
+        reply.map(|entry| entry.id)
+    });
+    let Some(reply) = asked else {
+        return;
+    };
+    let call = TranscriptItem::Call(CallItem::Reply(CallRef { reply, index: 0 }));
     let whole = laid_out(&mut app, agent, u16::MAX);
     let rows = whole.rows_of(&call).unwrap_or_default();
     let before: Vec<&str> = whole
@@ -175,11 +186,10 @@ fn finds_an_error_in_a_tool_output_counts_regex_matches_and_scrolls_back() {
         .collect();
     assert!(before.iter().any(|row| row.contains("Run cargo build.")));
     assert!(before.iter().all(|row| !row.contains(LAST_ASK)));
-    let row = whole.item(&call).and_then(|call| {
-        call.rows()
-            .iter()
-            .position(|row| row.text.contains("E0425"))
-    });
+    let row = whole
+        .rows()
+        .get(rows.clone())
+        .and_then(|call| call.iter().position(|row| row.text.contains("E0425")));
 
     // `/` on the input starts a slash command, also after typing ended
     // the reading of a selected item.
@@ -278,8 +288,9 @@ fn finds_an_error_in_a_tool_output_counts_regex_matches_and_scrolls_back() {
     assert!(narrow.rows().iter().all(|row| !row.text.contains(split)));
     assert_eq!(narrow.lit_in(&call), 1);
     let hits = Regex::new(split).map_or_else(|_| Vec::new(), |regex| find(&regex, agent, &narrow));
-    let narrow = narrow.item(&call).unwrap_or_default();
-    let lit = narrow.rows().iter().position(|row| row.lit_total() > 0);
+    let rows = narrow.rows_of(&call).unwrap_or_default();
+    let narrow = narrow.rows().get(rows).unwrap_or_default();
+    let lit = narrow.iter().position(|row| row.lit_total() > 0);
     let starts = |hit: &Hit| hit.item() == Some(&call) && Some(hit.row) == lit;
     assert!(
         matches!(hits.as_slice(), [hit] if starts(hit)),

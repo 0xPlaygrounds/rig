@@ -1,44 +1,20 @@
 //! Raw provider response capture through the OpenAI agent surfaces
 //! (hook events, `completion_calls`, the streamed terminal).
 //!
-//! # What this pins
+//! The agent erases the model, so a caller reaches the provider's own response only through
+//! the agent's surfaces: `raw` on the `CompletionResponse` and `ModelTurnFinished` hook events,
+//! which fire once per accepted model turn on both drivers (`HookContext::is_streaming` tells
+//! them apart); `CompletionCall::raw` on `PromptResponse::completion_calls`; and the streamed
+//! `StreamedAssistantContent::Final` record. Capture is unconditional, so every surface carries
+//! the payload of its own attempt, and a `Value::Null` there would mean a record built without
+//! a provider response, which an agent run never does.
 //!
-//! The agent erases the model, so a caller can only reach the provider's own
-//! response through the surfaces the agent exposes: the `raw` on the
-//! `CompletionResponse` and `ModelTurnFinished` hook events — both fire once
-//! per accepted model turn on both drivers, tool-only turns included, with
-//! `HookContext::is_streaming` telling the drivers apart; `CompletionCall::raw`
-//! on `PromptResponse::completion_calls`; and
-//! the streamed `StreamedAssistantContent::Final` terminal record. Capture is
-//! unconditional — there is no agent-, run- or request-level switch — so every
-//! one of those surfaces carries the payload on every attempt, and a
-//! `Value::Null` there could only mean the record was built without a
-//! provider response behind it, which an agent run never does. Each surface carries the payload
-//! **per attempt**: a multi-turn tool run records two different payloads, a
-//! retried turn records the retried attempt's own.
-//!
-//! The chat route is the primary surface (each turn's payload is the
-//! provider's reply document, whose `id` is a `chatcmpl-` id); the
-//! Responses route repeats the hook and multi-turn cells (payload
-//! the Responses response object, `resp_` ids). Per-attempt
-//! identity is proven the way `response_identity.rs` proves it: each
-//! recorded interaction's response id, in wire order, is the id the matching
-//! `raw` carries — replay-exact, presence-checked while recording because
-//! fixtures are placeholder-scrubbed.
-//!
-//! # Matrix
-//!
-//! | # | Cell | Dimension | expected | Status |
-//! |---|------|-----------|----------|--------|
-//! | 2 | `chat_streamed_hooks_see_raw` | chat, streamed | `CompletionResponse`/`ModelTurnFinished` hooks, `Final`, `CompletionCall` see raw | recorded |
-//! | 6 | `responses_blocking_hooks_see_raw` | Responses, blocking | as 1 | recorded |
-//! | 7 | `responses_streamed_hooks_see_raw` | Responses, streamed | as 2 | recorded |
-//!
-//! Every cell is recorded; none is unit-only. Premise, re-derived from each
-//! cell's fixture after the wrapper returns: the fixture holds exactly as many
-//! interactions as the run made calls, each a completed turn with a response
-//! id — a run whose attempts did not each get their own provider response
-//! could not prove per-attempt capture.
+//! The chat route is the primary surface (`chat_streamed_hooks_see_raw`, payloads with
+//! `chatcmpl-` ids); the Responses route repeats the hook cells
+//! (`responses_blocking_hooks_see_raw`, `responses_streamed_hooks_see_raw`, `resp_` ids).
+//! Per-attempt identity is proven as in `response_identity.rs`: each recorded interaction's
+//! response id, in wire order, is the id the matching `raw` carries. Each cell first checks its
+//! fixture holds one completed interaction per call the run made.
 
 use std::future::Future;
 use std::pin::Pin;
@@ -318,7 +294,7 @@ fn assert_calls_carry_recorded_raw(
             &format!("{scenario}: completion_calls[{index}] raw id vs fixture interaction {index}"),
         );
         assert_matches_recorded_token(
-            call.response_id.as_deref(),
+            call.identity.response_id.as_deref(),
             Some(recorded_id),
             &format!("{scenario}: completion_calls[{index}] response_id vs fixture"),
         );
@@ -361,7 +337,7 @@ fn assert_blocking_hooks_see_raw(
         "{scenario}: CompletionResponse hook sees the call's raw"
     );
     assert_eq!(
-        responses[0].identity.response_id, observation.calls[0].response_id,
+        responses[0].identity.response_id, observation.calls[0].identity.response_id,
         "{scenario}: CompletionResponse hook and record agree on the attempt"
     );
     let turns = probe.turns();
@@ -371,7 +347,7 @@ fn assert_blocking_hooks_see_raw(
         "{scenario}: ModelTurnFinished hook sees the call's raw"
     );
     assert_eq!(
-        turns[0].0.response_id, observation.calls[0].response_id,
+        turns[0].0.response_id, observation.calls[0].identity.response_id,
         "{scenario}: hook and record agree on the attempt"
     );
 }
@@ -402,7 +378,7 @@ fn assert_streamed_hooks_see_raw(
         "{scenario}: CompletionResponse hook sees the terminal's raw"
     );
     assert_eq!(
-        responses[0].identity.response_id, observation.calls[0].response_id,
+        responses[0].identity.response_id, observation.calls[0].identity.response_id,
         "{scenario}: CompletionResponse hook and record agree on the attempt"
     );
     let turns = probe.turns();

@@ -1,48 +1,27 @@
-//! CT-06: a searchable archive of compacted history.
+//! A searchable archive of compacted history. Whenever an agent's conversation is
+//! condensed, the messages that leave the model's view stay findable: `history_search
+//! {query, kind?, limit?}` searches them (user messages, replies, tool calls and results)
+//! and answers short snippets with archive ids and turn numbers, and `history_get {id,
+//! context?, from_line?, to_line?}` answers one whole, a large one cut with a note saying
+//! how to read the rest by lines, and optionally its neighbours. Each summary gets one more
+//! line, [`ARCHIVED_LINE`], that points the model at the archive.
 //!
-//! Whenever an agent's conversation is condensed, the messages that leave
-//! the model's view stay findable: `history_search {query, kind?, limit?}`
-//! searches them (user messages, replies, tool calls and results) and
-//! answers short snippets with archive ids and turn numbers, and
-//! `history_get {id, context?, from_line?, to_line?}` answers one whole,
-//! a large one cut with a note saying how to read the rest by lines, and
-//! optionally its neighbours.
+//! The archive is the session's own log, read with rig-memory's [`history`], so nothing is
+//! copied. An agent's archive is what the condensations still standing took out, whichever
+//! plugin made them. Repeated compactions add only what they took out, and an undone
+//! compaction's messages leave the archive. The archive survives restarts with the log, and
+//! a message deleted or redacted while the session is stopped is gone from it too.
 //!
-//! The archive is the session's own log, read with rig-memory's
-//! [`history`]: every message an agent ever had is in its log, so nothing
-//! is copied. A condensation is a splice that takes entries out and puts
-//! in at least one entry made after all of them (a summary), whichever
-//! plugin made it; `rig_basics::compaction`'s are such splices. An agent's archive
-//! is what the condensations still standing took out: a condensation
-//! stands while its summary is in the conversation, or was itself taken
-//! out by one that stands. So:
-//!
-//! - repeated compactions add only what they took out, and an earlier
-//!   summary condensed again is archived with them;
-//! - an undone compaction's messages are back in view and leave the
-//!   archive;
-//! - the archive survives restarts with the log, and a message deleted or
-//!   redacted while the session is stopped (rig-memory's `rewrite`) is
-//!   gone from it too, as that rewrites the log in place;
-//! - each agent searches its own log; a subagent also searches the log of
-//!   the agent that spawned it only with the `share_with_subagents`
-//!   setting of the `[compaction_archive]` table.
-//!
-//! An archived message is shown as the log last had it, but for in-place
-//! edits by `rig_basics::compaction` (its clearing of old tool outputs), so the
-//! real output is found, not the placeholder.
-//!
-//! Each summary gets one more line, [`ARCHIVED_LINE`]: `rig_basics::compaction`'s
-//! as a reviewer of its text ([`Summarizing::summary`]), before it
-//! replaces anything and so before the request built from it, and any
-//! other plugin's once its splice is committed.
+//! An archived message is shown as the log last had it, but for the clearing of old tool outputs
+//! an earlier `rig_basics::compaction` saved, so the real output is found, not the placeholder. Each
+//! agent searches its own log. A subagent also searches the log of the agent that spawned
+//! it only with the `share_with_subagents` setting of the `[compaction_archive]` table.
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 use rig_basics::compaction::Summarizing;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::Conversation as Chat;
-use rig_harness::rig_core::message::ToolResultContent;
 use rig_harness::rig_ecs::session_log::SessionStore;
 use rig_harness::rig_memory::{LogRecord, SessionError, summary_author};
 use schemars::JsonSchema;
@@ -295,11 +274,7 @@ pub fn text_of(message: &message::Message) -> String {
                 match item {
                     UserContent::Text(text) => parts.push(text.text.clone()),
                     UserContent::ToolResult(result) => {
-                        parts.extend(result.content.iter().map(|part| match part {
-                            ToolResultContent::Text(text) => text.text.clone(),
-                            ToolResultContent::Json { value } => value.to_string(),
-                            ToolResultContent::Image(_) => "[image]".to_owned(),
-                        }));
+                        parts.extend(result.content.iter().map(|part| part.to_text("[image]")));
                     }
                     UserContent::Image(_)
                     | UserContent::Audio(_)
@@ -412,7 +387,7 @@ fn archive_of(
     let mut archive = read(agent, OWN)?;
     let parent = agents.get(agent).ok().and_then(|(_, _, by)| by);
     if settings.share_with_subagents
-        && let Some(&SpawnedBy(parent)) = parent
+        && let Some(parent) = parent.map(SpawnedBy::parent)
     {
         archive.extend(read(parent, PARENT)?);
     }
@@ -522,7 +497,7 @@ fn read_one(archive: &[Scoped], args: &GetArgs) -> Result<String, String> {
     let context = args.context.unwrap_or(0);
     let near = |scoped: &Scoped| {
         let text = scoped.archived.text();
-        let end = boundary(&text, NEIGHBOUR_CHARS);
+        let end = text.floor_char_boundary(NEIGHBOUR_CHARS);
         let more = if end < text.len() { "…" } else { "" };
         format!(
             "{}:\n{}{more}",
@@ -558,7 +533,9 @@ fn cut(text: &str, lines: &[&str]) -> String {
     let total = lines.len();
     if shown == 0 {
         let first = lines.first().copied().unwrap_or_default();
-        let first = first.get(..boundary(first, MAX_CHARS)).unwrap_or_default();
+        let first = first
+            .get(..first.floor_char_boundary(MAX_CHARS))
+            .unwrap_or_default();
         return format!(
             "{first}\n[truncated: line 1 of {total} cut at {MAX_CHARS} characters; ask \
              `{GET}` with from_line and to_line for the rest]"
@@ -573,22 +550,13 @@ fn cut(text: &str, lines: &[&str]) -> String {
 
 /// `text` around byte `at`, on one line.
 fn snippet(text: &str, at: usize) -> String {
-    let start = boundary(text, at.saturating_sub(SNIPPET_CHARS));
-    let end = boundary(text, at.saturating_add(SNIPPET_CHARS * 2));
+    let start = text.floor_char_boundary(at.saturating_sub(SNIPPET_CHARS));
+    let end = text.floor_char_boundary(at.saturating_add(SNIPPET_CHARS * 2));
     let inner = text.get(start..end).unwrap_or_default();
     let inner: Vec<&str> = inner.split_whitespace().collect();
     let before = if start > 0 { "…" } else { "" };
     let after = if end < text.len() { "…" } else { "" };
     format!("{before}{}{after}", inner.join(" "))
-}
-
-/// The char boundary of `text` at or before byte `at`.
-fn boundary(text: &str, at: usize) -> usize {
-    let mut at = at.min(text.len());
-    while !text.is_char_boundary(at) {
-        at = at.saturating_sub(1);
-    }
-    at
 }
 
 /// Puts [`ARCHIVED_LINE`] at the end of entry `id` of `conversation`,

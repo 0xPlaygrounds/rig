@@ -13,6 +13,7 @@ fn prepared_request_round_trips_through_serde() {
     let prepared = prepare_request(
         &spec,
         &ProviderCapabilities::default(),
+        "hi",
         &[Message::user("hi").into()],
         vec![std::sync::Arc::new(ToolDefinition {
             name: rig_core::message::ToolName::new("add").expect("tool name"),
@@ -43,7 +44,7 @@ fn resolve_output_mode_auto_keeps_native_when_provider_composes() {
 fn resolve_output_mode_degrades_to_native_when_output_tool_not_callable() {
     // Tool mode finalizes via the output-tool call; when the tool choice
     // forbids it (None / Specific), structured output must still be enforced
-    // via Native rather than silently dropped (#1928 regression guard).
+    // via Native rather than silently dropped.
     assert_eq!(
         resolve_output_mode(true, true, false, false, &OutputMode::Auto),
         OutputMode::Native,
@@ -84,6 +85,7 @@ fn hosted_tools_are_advertised_but_not_executable() {
     let prepared = prepare_request(
         &spec,
         &ProviderCapabilities::default(),
+        "hi",
         &[],
         vec![],
         None,
@@ -93,9 +95,8 @@ fn hosted_tools_are_advertised_but_not_executable() {
 
     assert_eq!(prepared.output_mode, OutputMode::Tool);
     assert!(prepared.policy.executable().is_empty());
-    let request = prepared.apply(CompletionRequest::new("hi"));
     assert_eq!(
-        request.additional_params,
+        prepared.request.additional_params,
         Some(serde_json::json!({
             "tools": [{"type": "patch"}, {"type": "web_search"}, {"type": "code"}],
         }))
@@ -110,10 +111,44 @@ fn hosted_tools_are_advertised_but_not_executable() {
     prepare_request(
         &raw,
         &ProviderCapabilities::default(),
+        "hi",
         &[],
         vec![],
         None,
         None,
     )
     .expect("raw hosted tools satisfy Required");
+}
+
+/// With provider tools, `additional_params` that is a string, array or number
+/// cannot carry them in `tools`: preparing the request fails instead of
+/// dropping the caller's value.
+#[test]
+fn non_object_additional_params_with_provider_tools_fail() {
+    for params in [
+        serde_json::json!("oops"),
+        serde_json::json!(["a", "b"]),
+        serde_json::json!(7),
+    ] {
+        let spec = RunSpec {
+            additional_params: Some(params.clone()),
+            provider_tools: vec![rig_core::completion::ProviderToolDefinition::new(
+                "web_search",
+            )],
+            ..RunSpec::default()
+        };
+        let prepared = prepare_request(
+            &spec,
+            &ProviderCapabilities::default(),
+            "hi",
+            &[],
+            vec![],
+            None,
+            None,
+        );
+        assert!(
+            matches!(prepared, Err(ProviderError::Request(_))),
+            "{params}: {prepared:?}"
+        );
+    }
 }

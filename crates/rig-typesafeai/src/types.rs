@@ -41,16 +41,22 @@ pub enum Question {
 pub enum Answer {
     Choice {
         choice: String,
+        #[serde(deserialize_with = "rig_core::json_utils::floats")]
         probabilities: BTreeMap<String, f64>,
+        #[serde(deserialize_with = "rig_core::json_utils::floats")]
         confidence: f64,
     },
     Score {
+        #[serde(deserialize_with = "rig_core::json_utils::floats")]
         score: f64,
+        #[serde(deserialize_with = "rig_core::json_utils::floats")]
         probabilities: BTreeMap<String, f64>,
         legend: BTreeMap<String, Value>,
+        #[serde(deserialize_with = "rig_core::json_utils::floats")]
         confidence: f64,
     },
     Noul {
+        #[serde(deserialize_with = "rig_core::json_utils::floats")]
         noul: f64,
     },
 }

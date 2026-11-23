@@ -5,7 +5,7 @@
 //! synthetic chunks.
 //!
 //! Re-record with:
-//! `RIG_PROVIDER_TEST_MODE=record OPENAI_API_KEY=... cargo test --test openai streaming_grammar -- --test-threads=1`
+//! `RIG_PROVIDER_TEST_MODE=record OPENAI_API_KEY=... cargo test -p rig-cassette --all-features --test integration openai::cassette::streaming_grammar -- --test-threads=1`
 //!
 //! Cassette IDs are scrub placeholders (prefixes such as `msg_`/`resp_` are
 //! preserved); assertions derive expected IDs from the recorded turn and never
@@ -103,7 +103,7 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
 
     run.choice = response.choice.clone();
     // The shared lifecycle validator runs over every recorded turn this
-    // suite drains (#2258 C1).
+    // suite drains.
     rig_core::test_utils::streaming_conformance::assert_valid_event_stream(&raw_items, &run.choice);
     run.response = Some(response);
     run
@@ -407,6 +407,37 @@ async fn three_turn_tool_session_replays_rs_ids_across_turns() {
             assert!(
                 third.tool_calls.is_empty(),
                 "third turn should not call tools"
+            );
+        },
+    )
+    .await;
+}
+
+/// The call the recorded `max_output_tokens` cut leaves with item status
+/// `incomplete` is the reply's unfinished call, so a host answers it as cut
+/// off instead of running it.
+#[tokio::test]
+async fn incomplete_mid_tool_call_is_cut_off() {
+    with_openai_cassette(
+        "streaming_grammar/incomplete_mid_tool_call",
+        |client| async move {
+            let model = client.openai.completion(openai::GPT_5_6);
+            let request = CompletionRequest::new(
+                "Add 48151.62342 and 27182.81828 using the add tool. You must call the tool.",
+            )
+            .tool(rig::tool::tool_definition(&Adder))
+            .tool_choice(rig::message::ToolChoice::Required)
+            .max_tokens(16)
+            .reasoning(Effort::Low);
+            let run = drain_stream(model.stream(request).expect("stream should start")).await;
+            let response = run.response.expect("the stream ends with a response");
+
+            let calls: Vec<_> = response.tool_calls().map(|call| &call.id).collect();
+            let cut: Vec<_> = response.cut_off_calls().map(|call| &call.id).collect();
+            assert_eq!(calls.len(), 1, "the recorded turn holds one call");
+            assert_eq!(
+                cut, calls,
+                "the call the provider left incomplete is cut off"
             );
         },
     )

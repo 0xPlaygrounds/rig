@@ -1,6 +1,6 @@
 use std::sync::mpsc::Receiver;
 
-use rig_basics::compaction::CompactionPlugin;
+use rig_basics::compaction::{CompactionDefault, CompactionPlugin};
 use rig_basics::subagents::SubagentsPlugin;
 use rig_core::catalog::{Catalog, Connector};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
@@ -8,11 +8,11 @@ use rig_harness_test_support::MemoryStore;
 
 use super::*;
 use rig_harness_test_support::{
-    Collected, Ended, app_on, collect, connect, first_agent, log_ended, reply, run_until,
+    Collected, Ended, app_on, collect, connect, first_agent, log_ended, reply, run_until, say,
 };
 
-/// The kernel, compaction, subagents and pinned notes on `store`, after
-/// the first frame restored the session, with its loop's wakes and its
+/// The kernel, compaction (keeping 1 token), subagents and pinned notes on
+/// `store`, after the first frame restored the session, with its loop's wakes and its
 /// agent, answered by `model` when given.
 fn start(
     store: &MemoryStore,
@@ -32,10 +32,15 @@ fn start(
         .add_observer(log_ended);
     if let Some(connection) = model.and_then(connect) {
         let choice = ModelChoice(connection.spec.reference());
-        app.world_mut().spawn((Agent, connection, choice));
+        spawn_root(app.world_mut(), (connection, choice));
     }
     collect::<Notice>(&mut app).finish();
     app.update();
+    // `/compact` summarizes all but the newest message of a short conversation.
+    app.world_mut()
+        .resource_mut::<CompactionDefault>()
+        .0
+        .keep_recent_tokens = 1;
     let agent = first_agent(app.world_mut())?;
     Some((app, wakes, agent))
 }
@@ -44,16 +49,6 @@ fn start(
 fn run(app: &mut App, agent: Entity, line: &str) {
     let line = line.to_owned();
     app.world_mut().trigger(RunCommand::new(agent, line));
-}
-
-/// Asks `agent` something and runs frames until its turn ended.
-fn ask(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str) {
-    let ended = app.world().resource::<Ended>().0.len();
-    app.world_mut()
-        .trigger(Deliver::new(agent, text, DeliveryMode::Steer));
-    run_until(app, wakes, |world| {
-        world.resource::<Ended>().0.len() > ended
-    });
 }
 
 #[test]
@@ -71,14 +66,14 @@ fn pins_go_with_every_request_survive_compaction_and_come_back() {
     };
 
     run(&mut app, agent, "pin Use approach B");
-    ask(&mut app, &wakes, agent, "Which approach?");
+    say(&mut app, &wakes, agent, "Which approach?");
     run(&mut app, agent, "compact");
     run_until(&mut app, &wakes, |world| {
         world
             .get::<Conversation>(agent)
             .is_some_and(|conversation| rig_basics::compaction::summarized_prefix(conversation) > 0)
     });
-    ask(&mut app, &wakes, agent, "And now?");
+    say(&mut app, &wakes, agent, "And now?");
 
     let sent: Vec<String> = model
         .requests()
@@ -185,7 +180,4 @@ fn only_a_task_with_inherit_pins_passes_the_pins_on() {
     assert!((3..=4).contains(&parent.count()), "{sent:?}");
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(PinnedNotesPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(PinnedNotesPlugin);

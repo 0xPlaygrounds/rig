@@ -1,19 +1,15 @@
-//! Handing an image *back* to the model through a tool result.
+//! Handing an image back to the model through a tool result.
 //!
-//! Official OpenAI cannot do this on Chat Completions: `gpt-4o` answers 400
-//! (*"Image URLs are only allowed for messages with role 'user'"*) and the
-//! GPT-5 family answers 200 with the image discarded, the model then describing
-//! what it never received. llama.cpp does honour it, which is why
-//! the `LLAMACPP` dialect's `supports_image_tool_results` quirk is `true` and
-//! the shared conversion is gated rather than hard-coded.
+//! Official OpenAI Chat Completions rejects or silently discards an image in a
+//! tool message, while llama.cpp honours it. That is why the `LLAMACPP`
+//! dialect's `supports_image_tool_results` quirk is `true` and the shared
+//! conversion is gated rather than hard-coded.
 //!
-//! **Server**: the `--mmproj` vision configuration —
+//! Recorded against the `--mmproj` vision configuration:
 //! `ggml-org/Qwen3-VL-2B-Instruct-GGUF` Q8_0 with its `mmproj`,
 //! `--jinja --seed 42 --temp 0 -c 4096`, `llama-server` b10964-b29c606e2. The
-//! subject and its control were recorded in one run so the negative half
-//! cannot be explained away by a bad image or a blind model.
-//!
-//! Run cassette tests in replay mode by default, or set
+//! subject and its control were recorded in one run so the negative half cannot
+//! be explained away by a bad image or a blind model. Set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against a local llama.cpp server.
 
 use rig::message::{CallId, ImageMediaType, ToolResult, ToolResultContent};
@@ -68,9 +64,7 @@ fn assistant_text(response: &rig::completion::CompletionResponse) -> String {
 /// The image reaches the model through a `role:"tool"` message.
 ///
 /// The assertion is the colour, not a 200. A cell that only checked the request
-/// was accepted would pass against a server that took the image and dropped it
-/// — which is exactly what the GPT-5 family does, and exactly the failure worth
-/// catching.
+/// was accepted would pass against a server that took the image and dropped it.
 #[tokio::test]
 async fn a_tool_result_image_is_read_by_the_model() {
     with_llamacpp_vision_cassette(

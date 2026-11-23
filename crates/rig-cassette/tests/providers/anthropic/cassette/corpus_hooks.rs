@@ -18,7 +18,7 @@ use rig::message::{AssistantContent, Message, UserContent};
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig_cassette::agent::AgentReplayExt;
 
-use super::super::support::with_anthropic_corpus_hooks_cassette;
+use super::super::support::with_anthropic_cassette;
 use crate::goldens::{
     DENY_REASON, DemandDone, DenyAdd, LOOKUP_ARGS, LookupBeforeRun, ObserveEverything,
     PIRATE_PREAMBLE, PatchAddArgs, PreambleOverride, REPLACED_ANSWER, REPLACED_RESULT,
@@ -100,7 +100,7 @@ async fn final_output(stream: &mut rig::agent::StreamingResult) -> String {
 /// every dispatch and changes nothing. The header names it.
 #[tokio::test]
 async fn observe_everything_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_hooks_cassette("corpus_hooks/observe_everything", |client| async move {
+    with_anthropic_cassette("corpus_hooks/observe_everything", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
             .name("golden")
@@ -135,7 +135,7 @@ async fn observe_everything_effect_log_is_the_golden_fixture() {
 /// the model's history keeps the call it made.
 #[tokio::test]
 async fn patch_tool_args_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_hooks_cassette("corpus_hooks/patch_tool_args", |client| async move {
+    with_anthropic_cassette("corpus_hooks/patch_tool_args", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
             .name("golden")
@@ -184,7 +184,7 @@ async fn patch_tool_args_effect_log_is_the_golden_fixture() {
 /// The same, streamed with events kept.
 #[tokio::test]
 async fn patch_tool_args_streamed_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_hooks_cassette(
+    with_anthropic_cassette(
         "corpus_hooks/patch_tool_args_streamed",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
@@ -221,7 +221,7 @@ async fn patch_tool_args_streamed_effect_log_is_the_golden_fixture() {
 /// the tool's result and answers without it.
 #[tokio::test]
 async fn deny_tool_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_hooks_cassette("corpus_hooks/deny_tool", |client| async move {
+    with_anthropic_cassette("corpus_hooks/deny_tool", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
             .name("golden")
@@ -251,7 +251,7 @@ async fn deny_tool_effect_log_is_the_golden_fixture() {
 /// The same, streamed with events kept.
 #[tokio::test]
 async fn deny_tool_streamed_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_hooks_cassette("corpus_hooks/deny_tool_streamed", |client| async move {
+    with_anthropic_cassette("corpus_hooks/deny_tool_streamed", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
         let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
             .name("golden")
@@ -281,7 +281,7 @@ async fn deny_tool_streamed_effect_log_is_the_golden_fixture() {
 /// the transcript the replacement, and the model answers from the latter.
 #[tokio::test]
 async fn replace_tool_result_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_hooks_cassette("corpus_hooks/replace_tool_result", |client| async move {
+    with_anthropic_cassette("corpus_hooks/replace_tool_result", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
             .name("golden")
@@ -321,7 +321,7 @@ async fn replace_tool_result_effect_log_is_the_golden_fixture() {
 /// replacement, the record the model's text.
 #[tokio::test]
 async fn replace_answer_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_hooks_cassette("corpus_hooks/replace_answer", |client| async move {
+    with_anthropic_cassette("corpus_hooks/replace_answer", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
             .name("golden")
@@ -354,7 +354,7 @@ async fn replace_answer_effect_log_is_the_golden_fixture() {
 /// the hook's, the spec's preamble is the builder's.
 #[tokio::test]
 async fn preamble_override_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_hooks_cassette("corpus_hooks/preamble_override", |client| async move {
+    with_anthropic_cassette("corpus_hooks/preamble_override", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
             .name("golden")
@@ -381,7 +381,7 @@ async fn preamble_override_effect_log_is_the_golden_fixture() {
 /// `DONE`, the hook asks again, the second has it. Two completions.
 #[tokio::test]
 async fn demand_done_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_hooks_cassette("corpus_hooks/demand_done", |client| async move {
+    with_anthropic_cassette("corpus_hooks/demand_done", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
             .name("golden")
@@ -410,7 +410,7 @@ async fn demand_done_effect_log_is_the_golden_fixture() {
 /// hook's own tool call is the first record, under the tool's key.
 #[tokio::test]
 async fn lookup_before_run_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_hooks_cassette("corpus_hooks/lookup_before_run", |client| async move {
+    with_anthropic_cassette("corpus_hooks/lookup_before_run", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
             .name("golden")
@@ -448,7 +448,7 @@ async fn lookup_before_run_effect_log_is_the_golden_fixture() {
 /// result in the transcript).
 #[tokio::test]
 async fn two_hooks_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_hooks_cassette("corpus_hooks/two_hooks", |client| async move {
+    with_anthropic_cassette("corpus_hooks/two_hooks", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
             .name("golden")

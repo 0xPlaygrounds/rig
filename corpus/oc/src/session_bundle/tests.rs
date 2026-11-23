@@ -9,8 +9,8 @@ use rig_harness::harness_protocol::Invocation;
 use rig_harness::host::exit::ExitPlugin;
 use rig_harness::load;
 use rig_harness_test_support::{
-    Collected, Ended, ToolOutputs, app_in, calls, collect, commit_message, log_ended,
-    log_tool_outputs, reply, run_until, scratch_home, scripted_models,
+    Collected, Ended, ToolOutputs, app_in, calls, collect, commit_message, deliver, log_ended,
+    log_tool_outputs, reply, rewrites, run_until, scratch_home, scripted_models,
 };
 use serde_json::json;
 
@@ -88,12 +88,7 @@ fn main_agent(app: &mut App) -> Entity {
 }
 
 fn turn(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str) {
-    let ended = app.world().resource::<Ended>().0.len();
-    app.world_mut()
-        .trigger(Deliver::new(agent, text, DeliveryMode::Queue));
-    run_until(app, wakes, |world| {
-        world.resource::<Ended>().0.len() > ended
-    });
+    deliver(app, wakes, Deliver::new(agent, text, DeliveryMode::Queue));
 }
 
 /// Why each command was refused, as a `--print` run fails with (exit 2).
@@ -117,11 +112,7 @@ fn a_bundle_moves_a_session_to_another_checkout() {
     // Project A: two turns edit `src/lib.rs`, a helper subagent answers,
     // and the counter plugin saves 3.
     let model = MockCompletionModel::from_stream_turns([
-        calls(
-            "w1",
-            "write",
-            json!({ "path": path_a, "content": "pub fn edited() {}\n" }),
-        ),
+        rewrites("w1", &path_a, "pub fn edited() {}\n"),
         reply("Edited."),
         calls("w2", "write", json!({ "path": path_a, "content": edited })),
         reply("Edited again."),
@@ -133,6 +124,7 @@ fn a_bundle_moves_a_session_to_another_checkout() {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model: "test/model".to_owned(),
+        kind: ChoiceKind::ForThisRun,
     });
     turn(&mut app, &wakes, agent, "Edit src/lib.rs.");
     turn(&mut app, &wakes, agent, "Edit it again.");
@@ -296,6 +288,7 @@ fn a_bundle_moves_a_session_to_another_checkout() {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model: "test/model".to_owned(),
+        kind: ChoiceKind::ForThisRun,
     });
     turn(&mut app, &wakes, agent, "What does src/lib.rs return?");
     let outputs = &app.world().resource::<ToolOutputs>().0;
@@ -303,9 +296,8 @@ fn a_bundle_moves_a_session_to_another_checkout() {
     assert!(output.contains("edited"), "{output}");
     drop(app);
 
-    // A secret typed into the conversation never reaches the session's
-    // logs (they are redacted as written), so the bundle made from them
-    // holds none and is written without asking.
+    // A secret put straight into the conversation, past every plugin, is
+    // in the session's logs as it is, so no bundle is made of them.
     let (mut app, _wakes) = start(&home, &SessionId::generate(), &a, &model, false);
     let agent = main_agent(&mut app);
     commit_message(
@@ -319,8 +311,10 @@ fn a_bundle_moves_a_session_to_another_checkout() {
         .trigger(RunCommand::new(agent, "bundle secret.rigbundle"));
     app.update();
     app.update();
-    let bundle = std::fs::read(a.join("secret.rigbundle")).unwrap_or_default();
-    assert!(!bundle.is_empty(), "{:?}", refusals(&app));
-    let secret = b"wJalrXUtnFEMIK7MDENG";
-    assert!(!bundle.windows(secret.len()).any(|window| window == secret));
+    assert!(!a.join("secret.rigbundle").exists());
+    let refused = refusals(&app);
+    assert!(
+        refused.iter().any(|why| why.contains("secrets found")),
+        "{refused:?}"
+    );
 }

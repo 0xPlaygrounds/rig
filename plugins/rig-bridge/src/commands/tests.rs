@@ -1,0 +1,354 @@
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use rig_harness::prelude::*;
+use rig_harness::rig_core::catalog::ModelSpec;
+use rig_harness::rig_core::effect::{EffectKind, FamilyDescriptor, HandlerDescriptor};
+use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
+use rig_harness::rig_core::providers::registry::ProviderId;
+use rig_harness::rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
+use serde_json::json;
+use tokio::sync::mpsc;
+
+use super::{
+    BridgeSignal, SignalInbox, antigravity_token, drain_signals, format_grok_usage_error,
+    grok_token, parse_antigravity_usage, parse_claude_usage, parse_codex_usage,
+    parse_copilot_usage, parse_grok_billing, parse_grok_usage, parse_muse_usage,
+};
+use crate::harness::Vendor;
+
+#[test]
+fn claude_usage_formats_subscription_windows() {
+    let msg = json!({
+        "type": "control_response",
+        "response": {
+            "subtype": "success",
+            "request_id": "rig-usage",
+            "response": {
+                "subscription_type": "max",
+                "rate_limits_available": true,
+                "rate_limits": {
+                    "five_hour": { "utilization": 12.4, "resets_at": "2026-11-22T14:00:00Z" },
+                    "seven_day": { "utilization": 18, "resets_at": "2026-11-23T04:59:59Z" }
+                }
+            }
+        }
+    });
+    let text = parse_claude_usage(&msg);
+    assert!(text.contains("plan max"));
+    assert!(text.contains("5h 12% used"));
+    assert!(text.contains("weekly 18% used"));
+}
+
+#[test]
+fn codex_usage_formats_rate_limits() {
+    let msg = json!({
+        "id": 2,
+        "result": {
+            "rateLimits": {
+                "planType": "promax",
+                "primary": { "usedPercent": 64, "windowDurationMins": 10080, "resetsAt": 1795376764 },
+                "secondary": null
+            }
+        }
+    });
+    let text = parse_codex_usage(&msg);
+    assert!(text.contains("plan promax"));
+    assert!(text.contains("weekly 64% used"));
+}
+
+#[test]
+fn muse_usage_formats_tier_and_windows() {
+    let val = json!({
+        "allowance": {
+            "tier": "Muse Code Max Usage",
+            "window": { "usedPercent": 5, "resetsAtMs": 1795358157000u64 },
+            "weekly": { "usedPercent": 22, "resetsAtMs": 1795392000000u64 }
+        }
+    });
+    let text = parse_muse_usage(&val);
+    assert!(text.contains("Muse Code Max Usage"));
+    assert!(text.contains("window 5% used"));
+    assert!(text.contains("weekly 22% used"));
+
+    let empty = json!({
+        "allowance": null,
+        "reason": "server_sent_no_usage",
+        "hint": "the server sent no usage data"
+    });
+    assert_eq!(
+        parse_muse_usage(&empty),
+        "unavailable (no usage data yet in this window)"
+    );
+}
+
+#[test]
+fn grok_usage_handles_percent_fields() {
+    let val = json!({ "weekly": { "usedPercent": 35 } });
+    assert_eq!(parse_grok_usage(&val), "weekly 35% used");
+    assert_eq!(
+        format_grok_usage_error(
+            "Error: `grok usage` can't show your plan's usage here yet. Run /usage inside grok instead."
+        ),
+        "unavailable (run `/usage` inside grok)"
+    );
+}
+
+#[test]
+fn grok_billing_antigravity_and_copilot_quotas_format_cleanly() {
+    let grok = json!({
+        "config": {
+            "currentPeriod": {
+                "type": "USAGE_PERIOD_TYPE_WEEKLY",
+                "end": "2026-11-29T06:48:28.227+00:00"
+            },
+            "creditUsagePercent": 2.0
+        }
+    });
+    assert_eq!(
+        parse_grok_billing(&grok).as_deref(),
+        Some("weekly 2% used (resets 2026-11-29T06:48)")
+    );
+
+    let agy = json!({
+        "models": {
+            "gemini-4-neon-high": {
+                "quotaInfo": { "remainingFraction": 0.91, "resetTime": "2026-11-22T21:56:27Z" }
+            },
+            "gemini-4-carbon-low": {
+                "quotaInfo": { "remainingFraction": 0.95, "resetTime": "2026-11-22T22:00:00Z" }
+            },
+            "claude-opus-5-5-high": {
+                "quotaInfo": { "remainingFraction": 0.98, "resetTime": "2026-11-23T01:50:31Z" }
+            }
+        }
+    });
+    assert_eq!(
+        parse_antigravity_usage(&agy).as_deref(),
+        Some("Gemini 9% used (resets 2026-11-22T21:56), Claude 2% used (resets 2026-11-23T01:50)")
+    );
+
+    let copilot = json!({
+        "copilot_plan": "individual",
+        "quota_reset_date": "2026-12-01",
+        "quota_snapshots": {
+            "premium_interactions": {
+                "unlimited": false,
+                "percent_remaining": 97.1,
+                "remaining": 1456,
+                "entitlement": 1500
+            }
+        }
+    });
+    assert_eq!(
+        parse_copilot_usage(&copilot),
+        "plan individual, premium 3% used [1456/1500 left] (resets 2026-12-01)"
+    );
+
+    // Proto3 omits default 0.0 remainingFraction when a model is 100% exhausted.
+    let agy_exhausted = json!({
+        "models": {
+            "gemini-4-neon-high": {
+                "quotaInfo": { "resetTime": "2026-11-22T21:56:27Z" }
+            },
+            "gemini-4-carbon-low": {
+                "quotaInfo": { "remainingFraction": 0.95, "resetTime": "2026-11-22T22:00:00Z" }
+            },
+            "claude-a": {
+                "quotaInfo": { "remainingFraction": 0.5 }
+            },
+            "claude-b": {
+                "quotaInfo": { "remainingFraction": 0.5, "resetTime": "2026-11-23T01:50:31Z" }
+            }
+        }
+    });
+    assert_eq!(
+        parse_antigravity_usage(&agy_exhausted).as_deref(),
+        Some(
+            "Gemini 100% used (resets 2026-11-22T21:56), Claude 50% used (resets 2026-11-23T01:50)"
+        )
+    );
+
+    // Copilot overage clamps negative remaining to 0.
+    let copilot_overage = json!({
+        "copilot_plan": "pro",
+        "quota_reset_date": "2026-12-01",
+        "quota_snapshots": {
+            "premium_interactions": {
+                "unlimited": false,
+                "percent_remaining": 0.0,
+                "remaining": -12,
+                "entitlement": 300
+            }
+        }
+    });
+    assert_eq!(
+        parse_copilot_usage(&copilot_overage),
+        "plan pro, premium 100% used [0/300 left] (resets 2026-12-01)"
+    );
+}
+
+#[test]
+fn grok_and_antigravity_token_extractors_handle_real_and_edge_shapes() {
+    // Real ~/.grok/auth.json shape + earlier empty/unrelated entries must not mask x.ai key.
+    let grok_multi = json!({
+        "aaa-empty": { "key": "" },
+        "api.other.example": { "key": "other-secret" },
+        "https://auth.x.ai::b1a00492": { "key": "xai-real-token" }
+    });
+    assert_eq!(grok_token(&grok_multi).as_deref(), Some("xai-real-token"));
+
+    // Multiple unrelated entries with no x.ai/grok host must not leak an unrelated token.
+    let grok_unrelated = json!({
+        "api.one.example": { "key": "tok-1" },
+        "api.two.example": { "key": "tok-2" }
+    });
+    assert_eq!(grok_token(&grok_unrelated), None);
+
+    // Flat shape and single-entry fallback both work.
+    assert_eq!(
+        grok_token(&json!({ "key": "flat-tok" })).as_deref(),
+        Some("flat-tok")
+    );
+    assert_eq!(
+        grok_token(&json!({ "default": { "key": "single-tok" } })).as_deref(),
+        Some("single-tok")
+    );
+
+    // Antigravity nested, top-level, nested-null fallback, and business flag.
+    assert_eq!(
+        antigravity_token(&json!({
+            "auth_method": "oauth-business",
+            "token": { "access_token": "biz-tok" }
+        })),
+        Some(("biz-tok".to_owned(), true))
+    );
+    assert_eq!(
+        antigravity_token(&json!({
+            "token": { "access_token": null },
+            "access_token": "top-tok"
+        })),
+        Some(("top-tok".to_owned(), false))
+    );
+    assert_eq!(
+        antigravity_token(&json!({ "token": { "access_token": "" } })),
+        None
+    );
+}
+
+#[test]
+fn drain_signals_updates_catalog_connection_and_refreshes_on_last_usage() {
+    struct Stub;
+    impl Serve for Stub {
+        type Family = rig_harness::rig_core::effect::family::Completion;
+        fn descriptor(&self) -> HandlerDescriptor {
+            HandlerDescriptor {
+                key: rig_harness::rig_core::effect::model_key("grok-build/grok-4.7"),
+                family: FamilyDescriptor::Completion {
+                    model: "grok-build/grok-4.7".into(),
+                    capabilities: Default::default(),
+                },
+                layers: Vec::new(),
+            }
+        }
+        async fn serve(&self, _: EffectKind, _: Dispatch) -> Reply {
+            Reply::Outcome(Err(ErrorReport::new(ErrorKind::Internal, "stub")))
+        }
+    }
+
+    let Ok(pid) = ProviderId::declare(Vendor::GrokBuild.as_str()) else {
+        return;
+    };
+    let initial = ModelSpec::new(pid, "grok-4.7").with_context_window(500_000);
+    let (tx, rx) = mpsc::unbounded_channel();
+    let inserts = Arc::new(AtomicUsize::new(0));
+    let seen_inserts = inserts.clone();
+
+    let mut app = App::new();
+    let mut models = Models::default();
+    models.0.catalog_mut().insert(initial.clone());
+    app.insert_resource(models)
+        .insert_resource(SignalInbox::new(rx))
+        .add_observer(move |_: On<Insert<Connection>>| {
+            seen_inserts.fetch_add(1, Ordering::SeqCst);
+        })
+        .add_systems(Update, drain_signals);
+
+    let agent = app
+        .world_mut()
+        .spawn((
+            Connection {
+                spec: Arc::new(initial),
+                handler: rig_harness::rig_ecs::effects::Handler(ErasedHandler::new(Stub)),
+            },
+            LastUsage(None),
+        ))
+        .id();
+    inserts.store(0, Ordering::SeqCst);
+
+    let _ = tx.send(BridgeSignal::Window {
+        vendor: Vendor::GrokBuild,
+        model: "grok-4.7".to_owned(),
+        limit: 256_000,
+    });
+    app.update();
+
+    let conn_limit = app
+        .world()
+        .get::<Connection>(agent)
+        .and_then(|c| c.spec.input_limit());
+    let cat_limit = app
+        .world()
+        .resource::<Models>()
+        .0
+        .catalog()
+        .get_exact(pid, "grok-4.7")
+        .and_then(ModelSpec::input_limit);
+    assert_eq!(conn_limit, Some(256_000));
+    assert_eq!(cat_limit, Some(256_000));
+    assert_eq!(inserts.load(Ordering::SeqCst), 1);
+
+    // Simulate Turn 1 completing (changing LastUsage): drain_signals must
+    // re-insert Connection once so rig-basics clears any stale Turn-1 InputLimit.
+    if let Some(mut last) = app.world_mut().get_mut::<LastUsage>(agent) {
+        last.0 = None;
+    }
+    app.update();
+    assert_eq!(inserts.load(Ordering::SeqCst), 2);
+    assert_eq!(
+        app.world()
+            .get::<Connection>(agent)
+            .and_then(|c| c.spec.input_limit()),
+        Some(256_000)
+    );
+}
+
+#[test]
+fn drain_signals_emits_notice_and_releases_keep_running_holder() {
+    use bevy_ecs::message::Messages;
+
+    let (tx, rx) = mpsc::unbounded_channel();
+    let mut app = App::new();
+    app.init_resource::<Messages<Notice>>()
+        .insert_resource(SignalInbox::new(rx))
+        .add_systems(Update, drain_signals);
+
+    let agent = app.world_mut().spawn_empty().id();
+    let holder = app.world_mut().spawn(KeepRunning).id();
+    let _ = tx.send(BridgeSignal::Notice {
+        agent: Some(agent),
+        warn: false,
+        text: "usage report".to_owned(),
+        release: Some(holder),
+    });
+    app.update();
+
+    assert!(app.world().get_entity(holder).is_err());
+    let notices = app.world().resource::<Messages<Notice>>();
+    let mut cursor = notices.get_cursor();
+    let texts: Vec<_> = cursor
+        .read(notices)
+        .map(|notice| (notice.agent, notice.text.as_str()))
+        .collect();
+    assert_eq!(texts, vec![(Some(agent), "usage report")]);
+}

@@ -50,7 +50,9 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
     /// representation.
     type Error: std::error::Error + WasmCompatSend + WasmCompatSync + 'static;
 
-    /// Model-facing description.
+    /// Model-facing description: what the tool does and when to pick it
+    /// over another, such as "Use it rather than `wc` in `shell`". The
+    /// model reads it with the tool's parameters.
     fn description(&self) -> String;
 
     /// JSON Schema for arguments.
@@ -90,28 +92,23 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
     ) -> impl Future<Output = Result<Self::Output, Self::Error>> + WasmCompatSend;
 }
 
-/// A tool that can be stored in a vector store and reconstructed for RAG.
+/// A tool that can be retrieved from a vector store for RAG by its
+/// embedding documents.
 pub trait ToolEmbedding: Tool {
-    /// Error returned while reconstructing the tool.
-    type InitError: std::error::Error + WasmCompatSend + WasmCompatSync + 'static;
     /// Serializable static context.
-    type Context: for<'de> Deserialize<'de> + Serialize;
-    /// Runtime initialization state.
-    type State: WasmCompatSend;
+    type Context: Serialize;
 
     /// Documents used to retrieve the tool.
     fn embedding_docs(&self) -> Vec<String>;
     /// Serializable tool context.
     fn context(&self) -> Self::Context;
-    /// Reconstruct the tool.
-    fn init(state: Self::State, context: Self::Context) -> Result<Self, Self::InitError>;
 }
 
 pub(crate) fn parse_tool_args<A>(args: &str) -> Result<A, ToolExecutionError>
 where
     A: serde::de::DeserializeOwned,
 {
-    match serde_json::from_str(args) {
+    match crate::tool::decode::decode_text(args) {
         Ok(parsed) => Ok(parsed),
         Err(original) if args.trim() == "null" => serde_json::from_str("{}").map_err(|_| {
             ToolExecutionError::invalid_args(format!("failed to parse tool arguments: {original}"))

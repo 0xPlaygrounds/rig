@@ -182,7 +182,4 @@ fn a_call_is_recorded_raw_and_redacted_and_off_records_nothing() {
     assert_eq!(raw_files(&dir), files);
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(RawStreamLogPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(RawStreamLogPlugin);

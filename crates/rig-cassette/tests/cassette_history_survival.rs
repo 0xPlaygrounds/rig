@@ -473,16 +473,24 @@ fn continuation_pairs(
     pairs
 }
 
+/// Reading the corpus is the cost, so one test reads it once for the four
+/// checks that walk it.
 #[test]
-fn delivered_opaque_fields_reach_the_next_request() {
+fn every_cassette_keeps_history_whole() {
+    let cassettes = all_cassettes(&cassette_root());
+    delivered_opaque_fields_reach_the_next_request(&cassettes);
+    same_model_replay_sends_the_recorded_output_items(&cassettes);
+    every_recorded_request_pairs_tool_calls_with_results(&cassettes);
+    every_provider_and_content_kind_is_examined(&cassettes);
+}
+
+fn delivered_opaque_fields_reach_the_next_request(cassettes: &[(String, Vec<Exchange>)]) {
     for (suffix, kind, reason) in SURVIVAL_EXEMPT {
         assert!(
             !reason.trim().is_empty(),
             "SURVIVAL_EXEMPT `{suffix}` ({kind}) needs a reason"
         );
     }
-    let root = cassette_root();
-    let cassettes = all_cassettes(&root);
     let mut losses: Vec<String> = Vec::new();
     let mut used: BTreeSet<(&str, &str)> = BTreeSet::new();
     let mut compared = 0usize;
@@ -490,7 +498,7 @@ fn delivered_opaque_fields_reach_the_next_request() {
     let mut legacy_by_scenario: BTreeMap<String, usize> = BTreeMap::new();
     let mut legacy_absent: Vec<String> = Vec::new();
 
-    for (scenario, index, earlier, later) in continuation_pairs(&cassettes) {
+    for (scenario, index, earlier, later) in continuation_pairs(cassettes) {
         if !same_model(earlier, later) {
             continue;
         }
@@ -755,20 +763,17 @@ fn chat_projection(provider: &str, message: &Value) -> Value {
     Value::Object(out)
 }
 
-#[test]
-fn same_model_replay_sends_the_recorded_output_items() {
+fn same_model_replay_sends_the_recorded_output_items(cassettes: &[(String, Vec<Exchange>)]) {
     for (suffix, reason) in VERBATIM_EXEMPT {
         assert!(
             !reason.trim().is_empty(),
             "VERBATIM_EXEMPT `{suffix}` needs a reason"
         );
     }
-    let root = cassette_root();
-    let cassettes = all_cassettes(&root);
     let mut failures = Vec::new();
     let mut used = BTreeSet::new();
     let mut compared = 0usize;
-    for (scenario, index, earlier, later) in continuation_pairs(&cassettes) {
+    for (scenario, index, earlier, later) in continuation_pairs(cassettes) {
         if !same_model(earlier, later) {
             continue;
         }
@@ -829,21 +834,18 @@ fn same_model_replay_sends_the_recorded_output_items() {
     );
 }
 
-#[test]
-fn every_recorded_request_pairs_tool_calls_with_results() {
+fn every_recorded_request_pairs_tool_calls_with_results(cassettes: &[(String, Vec<Exchange>)]) {
     for (suffix, reason) in PAIRING_EXEMPT {
         assert!(
             !reason.trim().is_empty(),
             "PAIRING_EXEMPT `{suffix}` needs a reason"
         );
     }
-    let root = cassette_root();
-    let cassettes = all_cassettes(&root);
     let mut failures = Vec::new();
     let mut used = BTreeSet::new();
     let mut checked = 0usize;
 
-    for (scenario, exchanges) in &cassettes {
+    for (scenario, exchanges) in cassettes {
         for (index, exchange) in exchanges.iter().enumerate() {
             if exchange.dialect == Dialect::Unmodeled {
                 continue;
@@ -958,8 +960,7 @@ fn every_native_request_pairs_tool_calls_with_results() {
     eprintln!("native requests checked: {requests}, with tool calls: {with_tools}");
 }
 
-#[test]
-fn every_provider_and_content_kind_is_examined() {
+fn every_provider_and_content_kind_is_examined(cassettes: &[(String, Vec<Exchange>)]) {
     for (provider, kind, reason) in KIND_COVERAGE_EXEMPT {
         assert!(
             !reason.trim().is_empty(),
@@ -970,18 +971,16 @@ fn every_provider_and_content_kind_is_examined() {
             "KIND_COVERAGE_EXEMPT `{provider}` names unknown kind {kind}"
         );
     }
-    let root = cassette_root();
-    let cassettes = all_cassettes(&root);
     let mut census: BTreeMap<String, Census> = BTreeMap::new();
 
-    for (scenario, exchanges) in &cassettes {
+    for (scenario, exchanges) in cassettes {
         let entry = census.entry(provider_of(scenario).to_owned()).or_default();
         entry.requests_paired += exchanges
             .iter()
             .filter(|exchange| exchange.dialect != Dialect::Unmodeled)
             .count();
     }
-    for (scenario, _, earlier, _) in continuation_pairs(&cassettes) {
+    for (scenario, _, earlier, _) in continuation_pairs(cassettes) {
         let entry = census.entry(provider_of(scenario).to_owned()).or_default();
         entry.continuation_pairs += 1;
         for token in

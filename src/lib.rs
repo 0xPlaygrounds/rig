@@ -5,7 +5,9 @@
 //! feature, the runtime from `rig_agent` at `rig::agent`. `rig::tool` then
 //! carries the agent's tool registry alongside the `rig-core` tool contracts,
 //! which are always available. `use rig::prelude::*;` brings in
-//! [`Model`], [`DynModel`] and, with `agent`, the common agent types.
+//! [`Model`], [`DynModel`] and, with `agent`, the common agent types. The
+//! default `cli` feature adds no library items: on native targets it builds
+//! the `rig` binary, the coding agent's launcher from `rig-cli`.
 //!
 //! Companion provider and vector-store crates are feature-gated modules, named
 //! after their features wherever module naming allows:
@@ -22,8 +24,8 @@
 //! those features, schema properties and JSON text in prompts, embeddings and
 //! tool results use sorted object keys, and parsed floats can differ in their
 //! low bits. Cargo unifies features: `rig-cassette` with `traffic` (including
-//! `rig-traffic`) enables both; `rig-claude-cloak`, `rig-mcp-client` and
-//! `rig-mongodb` through BSON enable `preserve_order`. Rig has no forwarding feature for either setting.
+//! `rig-traffic`) enables both; `rig-mcp-client` and `rig-mongodb`
+//! through BSON enable `preserve_order`. Rig has no forwarding feature for either setting.
 
 pub use rig_core::*;
 
@@ -87,11 +89,6 @@ pub mod run {
 #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
 pub mod agent {
     pub use rig_agent::agent::*;
-
-    /// Contextual tools for the classic agent runtime.
-    pub mod tool {
-        pub use rig_agent::tool::*;
-    }
 }
 
 /// Low-level completion contracts plus the classic runtime's errors.
@@ -132,7 +129,7 @@ pub mod prelude {
 ///
 /// The tool contracts come from `rig-core` and need no
 /// feature. The registry, tool set, and catalog belong to the agent runtime and
-/// need the `agent` feature; they also live at `rig::agent::tool`.
+/// need the `agent` feature.
 pub mod tool {
     /// Derive a stable serialized key for a tool-context value.
     #[cfg(feature = "derive")]

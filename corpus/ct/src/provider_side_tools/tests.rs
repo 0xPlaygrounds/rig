@@ -4,11 +4,12 @@ use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
+use rig_core::catalog::Catalog;
 use rig_core::http_client::{
     self, Bytes, DynHttpClient, HttpClientExt, LazyBody, MultipartForm, Request, Response,
     StatusCode, StreamingResponse,
 };
-use rig_core::providers::registry::{ConnectOptions, ProviderId};
+use rig_core::providers::registry::ConnectOptions;
 use rig_core::test_utils::MockCompletionModel;
 use rig_core::wasm_compat::WasmCompatSend;
 use rig_harness::settings::Settings;
@@ -49,35 +50,27 @@ impl Fake {
 }
 
 impl HttpClientExt for Fake {
-    fn send<T, U>(
+    fn send(
         &self,
-        _: Request<T>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        T: Into<Bytes> + WasmCompatSend,
-        U: From<Bytes> + WasmCompatSend + 'static,
+        _: Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
-        future::ready(Err(http_client::Error::NoHeaders))
+        future::ready(Err(http_client::Error::permanent("not scripted")))
     }
 
-    fn send_multipart<U>(
+    fn send_multipart(
         &self,
         _: Request<MultipartForm>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        U: From<Bytes> + WasmCompatSend + 'static,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
-        future::ready(Err(http_client::Error::NoHeaders))
+        future::ready(Err(http_client::Error::permanent("not scripted")))
     }
 
-    fn send_streaming<T>(
+    fn send_streaming(
         &self,
-        request: Request<T>,
-    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
-    where
-        T: Into<Bytes> + WasmCompatSend,
-    {
-        let body: Bytes = request.into_body().into();
+        request: Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend {
+        let body = request.into_body();
         let script = {
             let mut api = self.0.lock().unwrap_or_else(PoisonError::into_inner);
             api.1
@@ -86,7 +79,7 @@ impl HttpClientExt for Fake {
         };
         let chunks = script.into_iter().map(|chunk| match chunk {
             Ok(text) => Ok(Bytes::from(text)),
-            Err(why) => Err(http_client::Error::instance(std::io::Error::new(
+            Err(why) => Err(http_client::Error::transient(std::io::Error::new(
                 std::io::ErrorKind::ConnectionReset,
                 why,
             ))),
@@ -226,12 +219,13 @@ fn app(fake: &Fake, other: &MockCompletionModel) -> (App, Receiver<()>, Entity) 
          allowed_domains = [\"github.com\"]"
     );
     let Models(mut connector): Models = scripted_models([("other/model", other)]);
-    if let Some(anthropic) = ProviderId::catalog("anthropic") {
-        let options = ConnectOptions::new()
-            .api_key("test-key")
-            .http(DynHttpClient::new(fake.clone()));
-        connector.provide(anthropic, options);
+    if let Ok(claude) = Catalog::builtin().resolve(CLAUDE) {
+        connector.catalog_mut().insert(claude.spec.clone());
+        let options = ConnectOptions::new().api_key("test-key");
+        connector.provide(claude.spec.provider, options);
     }
+    let fake = fake.clone();
+    connector.wrap_http(move |_| DynHttpClient::new(fake.clone()));
     app.insert_resource(Settings::from_toml(&settings))
         .insert_resource(Models(connector))
         .add_plugins((AgentPlugin, SessionLogPlugin, ProviderToolsPlugin))
@@ -247,6 +241,7 @@ fn app(fake: &Fake, other: &MockCompletionModel) -> (App, Receiver<()>, Entity) 
     app.world_mut().trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     (app, wakes, agent)
 }
@@ -379,6 +374,7 @@ fn provider_run_search_is_kept_replayed_natively_and_sent_as_text_elsewhere() {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model: "other/model".to_owned(),
+        kind: ChoiceKind::ForThisRun,
     });
     turn(&mut app, &wakes, agent, "Summarize what you found.");
     let requests = other.requests();
@@ -410,7 +406,4 @@ fn provider_run_search_is_kept_replayed_natively_and_sent_as_text_elsewhere() {
     assert!(!format!("{:?}", requests.last()).contains("web_search_20250305"));
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(ProviderToolsPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(ProviderToolsPlugin);

@@ -1,6 +1,5 @@
-//! Plugin corpus (held-out): H05, an API-key pool with failover.
-//!
-//! `RIG_HOME/key-pool.toml` lists, per provider, keys by reference only:
+//! An API-key pool with failover. `RIG_HOME/key-pool.toml` lists, per provider, keys by reference
+//! only:
 //!
 //! ```toml
 //! [deepseek]
@@ -8,21 +7,17 @@
 //! # base_url = "http://127.0.0.1:8080/v1"; format = "openai"
 //! ```
 //!
-//! The provider's models connect with a stand-in key, and the pool wraps
-//! the HTTP client every model is reached through
-//! ([`Connector::wrap_http`]). Each request a model call of a pooled
-//! provider sends (its [`Serving`] names the provider) goes out on that
-//! pool's current key, which it stays on for the prompt cache. A rate limit
-//! or a spent quota cools the key (`Retry-After`, else 60 s doubling to 15
-//! minutes) and a refused key is disabled for the session; either way the
-//! same request is sent again at once on the next key, so no model call,
-//! a turn's, a subagent's or a plugin's own, sees the failure. With every
-//! key cooling, the failure goes up, and a Review system makes the kernel's
-//! retry wait for the key that cools down first. What each call's requests
-//! did is kept by its effect id and read back when the call settles: the
-//! requests and tokens of each key, saved with the session and shown by
-//! `/keys`, and one warning per refused key. Key values live only in the
-//! pool, never in a request an effect sees, a notice or a record.
+//! The pool wraps the HTTP client every model is reached through ([`Connector::wrap_http`]). Each
+//! request of a pooled provider's model call (its [`Serving`] names the provider) goes out on the
+//! pool's current key, which it stays on for the prompt cache. A rate limit or a spent quota cools
+//! the key (`Retry-After`, else 60 s doubling to 15 minutes), and a refused key is disabled for the
+//! session. Either way the same request is sent again at once on the next key, so no model call
+//! sees the failure. With every key cooling, the failure goes up and the kernel's retry waits for
+//! the key that cools down first.
+//!
+//! The requests and tokens of each key are saved with the session and shown by `/keys`, with one
+//! warning per refused key. Key values live only in the pool, never in a request an effect sees, a
+//! notice or a record.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -454,8 +449,9 @@ impl Rotating {
                 picked
             };
             let Some((index, key, stand_in)) = picked else {
+                // Keys cool down, so a later send may find one.
                 let why = "no key of the pool can be used";
-                return Err(http_client::Error::instance(std::io::Error::other(why)));
+                return Err(http_client::Error::transient(why));
             };
             tried.push(index);
             let error = match send(self.inner.clone(), keyed(&request, &stand_in, &key)?).await {
@@ -500,13 +496,13 @@ fn keyed(
     let uri = request.uri().to_string();
     if uri.contains(stand_in) {
         let uri = uri.replace(stand_in, key.expose());
-        *keyed.uri_mut() = uri.parse().map_err(http_client::Error::instance)?;
+        *keyed.uri_mut() = uri.parse().map_err(http_client::Error::permanent)?;
     }
     for value in keyed.headers_mut().values_mut() {
         let text = value.to_str().unwrap_or_default();
         if text.contains(stand_in) {
             let mut with_key = HeaderValue::from_str(&text.replace(stand_in, key.expose()))
-                .map_err(http_client::Error::instance)?;
+                .map_err(http_client::Error::permanent)?;
             with_key.set_sensitive(true);
             *value = with_key;
         }
@@ -515,44 +511,31 @@ fn keyed(
 }
 
 impl HttpClientExt for Rotating {
-    fn send<T, U>(
+    fn send(
         &self,
-        request: Request<T>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        T: Into<Bytes>,
-        T: WasmCompatSend,
-        U: From<Bytes>,
-        U: WasmCompatSend + 'static,
+        request: Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
-        let request = request.map(Into::into);
         self.clone()
             .send_keyed(request, |inner, request| async move {
-                inner.send::<Bytes, U>(request).await
+                inner.send(request).await
             })
     }
 
     /// A multipart body is sent once, on the current key: it cannot be
     /// sent again. No model call sends one.
-    fn send_multipart<U>(
+    fn send_multipart(
         &self,
         request: Request<MultipartForm>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        U: From<Bytes>,
-        U: WasmCompatSend + 'static,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
         self.inner.send_multipart(request)
     }
 
-    fn send_streaming<T>(
+    fn send_streaming(
         &self,
-        request: Request<T>,
-    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
-    where
-        T: Into<Bytes> + WasmCompatSend,
-    {
-        let request = request.map(Into::into);
+        request: Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend {
         self.clone()
             .send_keyed(request, |inner, request| async move {
                 inner.send_streaming(request).await

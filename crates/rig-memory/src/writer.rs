@@ -7,18 +7,18 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use rig_core::conversation::{Change, ChangeRecord, Conversation, Lineage, MessageId};
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 
 use crate::blobs::{PutBlob, put_blob, read_blob, store_change};
 use crate::fork::turn_cut;
 use crate::format::{Header, LogLines, Meta, SESSION, write_change, write_meta};
 use crate::session::{
-    Fold, Folded, fold_all, fold_lines, log_lines, read_header, read_logs, repairs, retired,
-    session_of,
+    End, Fold, Folded, ends, fold_all, fold_lines, log_lines, read_header, read_logs, repairs,
+    retired, session_of,
 };
 use crate::store::now;
 use crate::{LogWriteError, Repair, SavedAgent, Session, SessionError, Stamp, Store};
 use rig_core::now_ms;
+use rig_core::tool::content_hash;
 
 /// One log as the writer keeps it.
 #[derive(Default)]
@@ -87,6 +87,13 @@ impl Book {
             book.next_n = book.next_n.max(log.next_n);
         }
         book
+    }
+
+    /// Where each log in the store ends, with nothing of it left to write.
+    pub fn written(&self) -> impl Iterator<Item = (String, End)> + '_ {
+        let written = self.logs.iter();
+        let written = written.filter(|(_, log)| log.len > 0 && log.pending.is_empty());
+        written.map(|(name, log)| (name.clone(), (log.lineage, log.next_seq)))
     }
 
     /// Sets aside the torn line each log of `torn` ends in, given with its
@@ -403,7 +410,7 @@ impl Book {
     }
 }
 
-/// A running session's logs, the harness's appender. Every method takes
+/// A running session's logs, appended to as it runs. Every method takes
 /// `&self`, so clones share them. Nothing is logged before
 /// [`start`](Self::start), nor once a write failed; a default writer has no
 /// store and logs nothing.
@@ -448,13 +455,18 @@ impl Writer {
             }
         }
         let book = Book::after(&folded);
+        let ends = ends(&folded);
         let skipped = retired(&folded);
         folded.retain(|log| !skipped.contains(&log.name));
         let writer = Self(Arc::new(Mutex::new(Inner {
             store: Some(store),
             book,
         })));
-        Ok((writer, session_of(folded, repairs)))
+        let session = Session {
+            ends,
+            ..session_of(folded, repairs)
+        };
+        Ok((writer, session))
     }
 
     /// Starts logging, once the host restored the session: what it did to
@@ -520,7 +532,7 @@ impl Writer {
     /// result, the model owes no answer and nothing after `through` is in the
     /// conversation. What is queued is written first. The copy keeps the
     /// records' stamps, so [`as_of`](crate::as_of) and
-    /// [`undo_summary`](crate::undo_summary) read it as they read `from`,
+    /// [`summarized_in_log`](crate::summarized_in_log) read it as they read `from`,
     /// and has its own header and lineage. Returns the agent of the copy:
     /// its conversation continues the new log, and its saved values are
     /// those `from` had at the cut.
@@ -611,7 +623,7 @@ async fn set_aside_tail_async<S: crate::AsyncStore + ?Sized>(
         let log = log.to_owned();
         return Err(SessionError::Changed { log });
     };
-    let name = format!("recovered/{log}-{:x}.part", Sha256::digest(tail));
+    let name = format!("recovered/{log}-{}.part", content_hash(tail).0);
     store.write_file_async(&name, tail).await?;
     let replaced = store.replace_log_async(log, kept + cut, prefix).await;
     refused(log, replaced)?;

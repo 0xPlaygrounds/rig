@@ -12,13 +12,6 @@
 //! These cells are unit tests on decoded usage because no live turn can vary
 //! what they assert: an absent or unknown bucket, the total's arithmetic, and
 //! one usage reader shared by blocking and streaming replies.
-//!
-//! | # | Cell | Dimension | expected |
-//! |---|------|-----------|----------|
-//! | 28 | `unit_absent_details_reports_none` | decoder: no `output_tokens_details` | none |
-//! | 29 | `unit_unknown_detail_bucket_is_ignored` | decoder: forward compatibility | `> 0` |
-//! | 30 | `unit_thinking_tokens_stay_out_of_the_total` | totals arithmetic | n/a |
-//! | 31 | `unit_streaming_and_blocking_share_the_mapping` | one usage reader for both modes | n/a |
 
 use rig::completion::{CompletionRequest, Usage};
 use rig::providers::anthropic;

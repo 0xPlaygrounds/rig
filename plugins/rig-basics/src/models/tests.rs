@@ -1,6 +1,12 @@
 use std::fs;
+use std::sync::mpsc::Receiver;
 
-use rig_harness::harness_protocol::{Home, Invocation};
+use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
+use rig_harness::harness_protocol::{Home, Invocation, SessionId};
+use rig_harness::rig_core::catalog::Catalog;
+use rig_harness_test_support::{
+    Ended, Offline, app_in, first_agent, log_ended, reply, run_until, scratch_home, scripted_models,
+};
 
 use super::defaults::DefaultsPlugin;
 use super::*;
@@ -24,7 +30,7 @@ fn routed() -> (App, Entity) {
         );
     let world = app.world_mut();
     world.spawn(ModelItem::new("router", "router  per request", "route on"));
-    let agent = world.spawn(Agent).id();
+    let agent = spawn_root(world, ()).id();
     (app, agent)
 }
 
@@ -37,14 +43,16 @@ fn run(app: &mut App, agent: Entity, line: &str) {
 
 #[test]
 fn the_agent_starts_on_the_model_named_with_model() {
+    let model = MockCompletionModel::from_stream_turns([reply("hi")]);
     let mut app = App::new();
     app.insert_resource(Invoked {
         args: Invocation {
-            model: Some("deepseek/deepseek-flash".to_owned()),
+            model: Some("corpus-test/one".to_owned()),
             ..Invocation::default()
         },
         terminal: false,
     })
+    .insert_resource(scripted_models([("corpus-test/one", &model)]))
     .add_plugins((AgentPlugin, ModelsPlugin));
     app.update();
     app.update();
@@ -54,7 +62,7 @@ fn the_agent_starts_on_the_model_named_with_model() {
         .iter(world)
         .map(|choice| choice.0.clone())
         .collect();
-    assert_eq!(chosen, ["deepseek/deepseek-flash"]);
+    assert_eq!(chosen, ["corpus-test/one"]);
 }
 
 /// Every notice written so far.
@@ -63,25 +71,27 @@ struct Told(Vec<String>);
 
 #[test]
 fn model_waits_for_the_turn_a_resumed_session_continues() {
+    let model = MockCompletionModel::from_stream_turns([reply("hi")]);
     let mut app = App::new();
     app.insert_resource(Invoked {
         args: Invocation {
-            model: Some("deepseek/deepseek-flash".to_owned()),
+            model: Some("corpus-test/one".to_owned()),
             ..Invocation::default()
         },
         terminal: false,
     })
+    .insert_resource(scripted_models([("corpus-test/one", &model)]))
     .add_plugins((AgentPlugin, ModelsPlugin));
     tell(&mut app);
     // The continued turn, there before the first frame.
     let world = app.world_mut();
-    let agent = world.spawn(Agent).id();
+    let agent = spawn_root(world, ()).id();
     let turn = world.spawn(TurnOf(agent)).id();
     app.update();
     let told = &app.world().resource::<Told>().0;
     assert_eq!(
         told,
-        &["--model deepseek/deepseek-flash applies once the current turn ends."]
+        &["--model corpus-test/one applies once the current turn ends."]
     );
     assert_eq!(app.world().get::<ModelChoice>(agent), None);
     app.world_mut().entity_mut(turn).despawn();
@@ -91,8 +101,7 @@ fn model_waits_for_the_turn_a_resumed_session_continues() {
         .world()
         .get::<ModelChoice>(agent)
         .map(|choice| choice.0.as_str());
-    assert_eq!(chosen, Some("deepseek/deepseek-flash"));
-    // Said once; what the model's connection says (no key, say) is its own.
+    assert_eq!(chosen, Some("corpus-test/one"));
     let told = &app.world().resource::<Told>().0;
     let waits = told.iter().filter(|text| text.starts_with("--model "));
     assert_eq!(waits.count(), 1, "{told:?}");
@@ -120,7 +129,7 @@ fn an_unknown_model_given_with_model_leaves_the_agent_without_one() {
     })
     .add_plugins((AgentPlugin, ModelsPlugin));
     tell(&mut app);
-    // The remembered model, as `defaults.json` gives it.
+    // The remembered model, as `[model]` gives it.
     app.add_systems(
         PostStartup,
         |agents: Query<Entity, With<Agent>>, mut commands: Commands| {
@@ -130,7 +139,7 @@ fn an_unknown_model_given_with_model_leaves_the_agent_without_one() {
             }
         },
     );
-    let agent = app.world_mut().spawn(Agent).id();
+    let agent = spawn_root(app.world_mut(), ()).id();
     app.update();
     app.update();
     let world = app.world();
@@ -212,66 +221,300 @@ fn the_picker_lists_contributed_choices_first_and_the_status_line_their_label() 
     assert!(says("no model: /model picks one"), "{shown:?}");
 }
 
-#[test]
-fn the_last_model_chosen_is_kept_in_the_apps_home() {
-    let root = std::env::temp_dir().join(format!("rig-models-{}", std::process::id()));
-    fs::remove_dir_all(&root).ok();
-    let home = Home::at(&root);
-    let app = |home: &Home| {
-        let mut app = App::new();
-        app.insert_resource(RigHome(home.clone()))
-            .add_plugins((AgentPlugin, DefaultsPlugin));
-        app
-    };
-    let mut first = app(&home);
-    first.insert_resource(SessionRestored::default());
-    let world = first.world_mut();
-    let agent = world.spawn((Agent, ReasoningSetting::default())).id();
-    world
-        .entity_mut(agent)
-        .insert(ModelChoice("deepseek/deepseek-flash".to_owned()));
-    world.flush();
-    assert!(home.defaults().is_file());
+/// What `[model]` of `settings.toml` holds before each test, with a
+/// comment of the user's: a model no test chooses.
+const SAVED: &str = "# mine\n[model]\ndefault = \"corpus-test/saved\" # kept\n";
 
-    let mut next = app(&home);
-    let agent = next.world_mut().spawn(Agent).id();
-    next.update();
-    let chosen = next
-        .world()
-        .get::<ModelChoice>(agent)
-        .map(|choice| choice.0.clone());
-    assert_eq!(chosen.as_deref(), Some("deepseek/deepseek-flash"));
-    fs::remove_dir_all(&root).ok();
+/// An app in a scratch home named `name` whose saved default is `saved`,
+/// choosing among scripted `corpus-test/saved` and `corpus-test/chosen`,
+/// which answers as `chosen` does, with the defaults plugin and what
+/// `setup` adds; `-m` names `invoked`. Its first frame ran; returns its
+/// loop's wakes, the home and the agent.
+fn remembering(
+    name: &str,
+    chosen: &MockCompletionModel,
+    (invoked, saved): (Option<&str>, Option<&str>),
+    setup: impl FnOnce(&mut App),
+) -> (App, Receiver<()>, Home, Entity) {
+    let home = scratch_home(name);
+    fs::create_dir_all(home.root()).ok();
+    if let Some(saved) = saved {
+        fs::write(home.settings(), saved).ok();
+    }
+    let saved = MockCompletionModel::from_stream_turns([reply("saved")]);
+    let (mut app, wakes) = app_in(&home, &SessionId::generate());
+    let served = [
+        ("corpus-test/saved", &saved),
+        ("corpus-test/chosen", chosen),
+    ];
+    app.insert_resource(scripted_models(served))
+        .insert_resource(Invoked {
+            args: Invocation {
+                model: invoked.map(str::to_owned),
+                ..Invocation::default()
+            },
+            terminal: false,
+        })
+        .add_plugins((AgentPlugin, SessionLogPlugin, ModelsPlugin, DefaultsPlugin))
+        .init_resource::<Ended>()
+        .add_observer(log_ended);
+    setup(&mut app);
+    app.finish();
+    app.update();
+    let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
+    app.update();
+    (app, wakes, home, agent)
+}
+
+/// Sends `text` to `agent` and runs `app` until the turn ended.
+fn ask(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str) {
+    let ended = app.world().resource::<Ended>().0.len();
+    let world = app.world_mut();
+    world.trigger(Deliver::new(agent, text, DeliveryMode::Steer));
+    run_until(app, wakes, |world| {
+        world.resource::<Ended>().0.len() > ended
+    });
+}
+
+/// What `settings.toml` in `home` holds.
+fn saved(home: &Home) -> String {
+    fs::read_to_string(home.settings()).unwrap_or_default()
+}
+
+/// The model `agent` is on.
+fn model_of(app: &App, agent: Entity) -> Option<&str> {
+    let choice = app.world().get::<ModelChoice>(agent);
+    choice.map(|choice| choice.0.as_str())
+}
+
+#[test]
+fn a_model_named_with_model_is_used_for_that_run_only() {
+    let chosen = MockCompletionModel::from_stream_turns([reply("hi")]);
+    let (mut app, wakes, home, agent) = remembering(
+        "defaults-flag",
+        &chosen,
+        (Some("corpus-test/chosen"), Some(SAVED)),
+        |_| {},
+    );
+    ask(&mut app, &wakes, agent, "Hello.");
+    assert_eq!(model_of(&app, agent), Some("corpus-test/chosen"));
+    assert_eq!(chosen.request_count(), 1);
+    assert_eq!(saved(&home), SAVED);
+}
+
+#[test]
+fn a_headless_runs_automatic_pick_is_used_for_that_run_only() {
+    use crate::print::AppHeadlessExt;
+
+    let chosen = MockCompletionModel::from_stream_turns([reply("hi")]);
+    let headless = |app: &mut App| {
+        app.add_plugins(rig_harness::host::exit::ExitPlugin)
+            .run_headless(Some("Hello.".to_owned()));
+    };
+    let (mut app, wakes, home, agent) =
+        remembering("defaults-headless", &chosen, (None, None), headless);
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Ended>().0.is_empty()
+    });
+    let ended = &app.world().resource::<Ended>().0;
+    assert!(
+        matches!(ended.first(), Some(TurnOutcome::Answered(_))),
+        "{ended:?}"
+    );
+    assert!(model_of(&app, agent).is_some());
+    assert!(!home.settings().exists());
+}
+
+#[test]
+fn a_model_picked_with_model_is_remembered_once_it_answered() {
+    let chosen = MockCompletionModel::from_stream_turns([reply("hi")]);
+    let (mut app, wakes, home, agent) =
+        remembering("defaults-picked", &chosen, (None, Some(SAVED)), |_| {});
+    assert!(model_of(&app, agent).is_some());
+    run(&mut app, agent, "model corpus-test/chosen");
+    app.update();
+    assert_eq!(model_of(&app, agent), Some("corpus-test/chosen"));
+    assert_eq!(saved(&home), SAVED, "not before it answered");
+    ask(&mut app, &wakes, agent, "Hello.");
+    let kept = saved(&home);
+    assert!(
+        kept.contains("default = \"corpus-test/chosen\" # kept"),
+        "{kept}"
+    );
+    assert!(
+        kept.starts_with("# mine\n"),
+        "the user's comments stay: {kept}"
+    );
+}
+
+#[test]
+fn a_model_picked_with_model_is_not_remembered_while_it_fails() {
+    let failure = MockStreamEvent::error("no credit");
+    let chosen = MockCompletionModel::from_stream_turns([vec![failure], reply("hi")]);
+    let (mut app, wakes, home, agent) =
+        remembering("defaults-failed", &chosen, (None, Some(SAVED)), |_| {});
+    run(&mut app, agent, "model corpus-test/chosen");
+    ask(&mut app, &wakes, agent, "Hello.");
+    let ended = &app.world().resource::<Ended>().0;
+    assert!(
+        matches!(ended.last(), Some(TurnOutcome::Failed(_))),
+        "{ended:?}"
+    );
+    assert_eq!(saved(&home), SAVED);
+    // Kept until it answers.
+    ask(&mut app, &wakes, agent, "Again.");
+    assert!(
+        saved(&home).contains("\"corpus-test/chosen\""),
+        "{}",
+        saved(&home)
+    );
+}
+
+#[test]
+fn a_model_picked_while_a_turn_runs_is_not_remembered() {
+    let chosen = MockCompletionModel::from_stream_turns([reply("hi")]);
+    let (mut app, wakes, home, agent) = remembering(
+        "defaults-busy",
+        &chosen,
+        (Some("corpus-test/chosen"), Some(SAVED)),
+        |_| {},
+    );
+    // A turn runs, as one a resumed session continues.
+    let turn = app.world_mut().spawn(TurnOf(agent)).id();
+    assert!(app.world().get::<ActiveTurn>(agent).is_some());
+    // Refused: a model is not changed under a running turn.
+    run(&mut app, agent, "model corpus-test/chosen");
+    app.world_mut().entity_mut(turn).despawn();
+    ask(&mut app, &wakes, agent, "Hello.");
+    assert_eq!(chosen.request_count(), 1);
+    assert_eq!(saved(&home), SAVED);
+}
+
+#[test]
+fn a_choice_the_next_model_for_this_run_replaces_is_not_remembered() {
+    use rig_harness::rig_core::completion::Reasoning;
+
+    let chosen = MockCompletionModel::from_stream_turns([reply("hi")]);
+    let (mut app, wakes, home, agent) =
+        remembering("defaults-replaced", &chosen, (None, Some(SAVED)), |_| {});
+    run(&mut app, agent, "model corpus-test/chosen");
+    // `/effort off` on the model just picked.
+    let effort = ReasoningSetting(Some(Reasoning::Off));
+    app.world_mut().trigger(SetReasoning {
+        entity: agent,
+        effort,
+        kind: ChoiceKind::ByUser,
+    });
+    app.update();
+    assert_eq!(app.world().get::<ReasoningSetting>(agent), Some(&effort));
+    // Then the saved model again, for this run only, as `/login` switches.
+    app.world_mut().trigger(SetModel {
+        entity: agent,
+        model: "corpus-test/saved".to_owned(),
+        kind: ChoiceKind::ForThisRun,
+    });
+    app.update();
+    ask(&mut app, &wakes, agent, "Hello.");
+    assert_eq!(model_of(&app, agent), Some("corpus-test/saved"));
+    assert_eq!(saved(&home), SAVED);
+}
+
+#[test]
+fn a_model_put_on_an_agent_without_a_choice_is_never_remembered() {
+    let chosen = MockCompletionModel::from_stream_turns([reply("hi")]);
+    let (mut app, wakes, home, agent) =
+        remembering("defaults-inserted", &chosen, (None, Some(SAVED)), |_| {});
+    // As restoring a session or forking an agent does.
+    let choice = ModelChoice("corpus-test/chosen".to_owned());
+    app.world_mut().entity_mut(agent).insert(choice);
+    ask(&mut app, &wakes, agent, "Hello.");
+    assert_eq!(chosen.request_count(), 1);
+    assert_eq!(saved(&home), SAVED);
+}
+
+#[test]
+fn an_effort_picked_is_remembered_with_the_users_model_only() {
+    let found = Catalog::builtin().resolve("deepseek/deepseek-flash");
+    assert!(found.is_ok(), "the catalog lists DeepSeek Flash");
+    let Ok(found) = found else { return };
+    let choices = found.spec.reasoning.choices();
+    let level = choices.iter().find(|choice| choice.reasoning.is_some());
+    assert!(level.is_some(), "DeepSeek Flash has a reasoning level");
+    let Some(level) = level else { return };
+    let effort = ReasoningSetting(level.reasoning);
+    for (name, users) in [
+        ("defaults-effort-own", true),
+        ("defaults-effort-flag", false),
+    ] {
+        let model = MockCompletionModel::from_stream_turns([reply("hi")]);
+        let (mut app, wakes, home, agent) = remembering(name, &model, (None, Some(SAVED)), |_| {});
+        let saved_before = match users {
+            true => "[model]\ndefault = \"deepseek/deepseek-flash\"\n",
+            false => SAVED,
+        };
+        fs::write(home.settings(), saved_before).ok();
+        // On DeepSeek as `--model` leaves an agent: not the user's choice.
+        let connected = rig_harness_test_support::connect(&model);
+        assert!(connected.is_some());
+        let Some(connected) = connected else { return };
+        let choice = ModelChoice("deepseek/deepseek-flash".to_owned());
+        app.world_mut()
+            .entity_mut(agent)
+            .insert((connected, choice));
+        app.world_mut().trigger(SetReasoning {
+            entity: agent,
+            effort,
+            kind: ChoiceKind::ByUser,
+        });
+        app.update();
+        assert_eq!(saved(&home), saved_before, "not before it answered");
+        ask(&mut app, &wakes, agent, "Hello.");
+        let kept = saved(&home);
+        assert_eq!(kept != saved_before, users, "{name}: {kept}");
+    }
+}
+
+/// `{vendor}/small`, scripted, and `{vendor}-locked/big`, whose provider
+/// has no key.
+fn one_without_a_key(vendor: &str) -> Option<Models> {
+    use std::borrow::Cow;
+
+    use rig_harness::rig_core::catalog::{ModelSpec, Transport};
+    use rig_harness::rig_core::providers::registry::{ConnectError, ProviderId};
+
+    let small = MockCompletionModel::from_stream_turns([reply("hi")]);
+    let Models(mut connector) = scripted_models([(format!("{vendor}/small").as_str(), &small)]);
+    let locked = format!("{vendor}-locked");
+    let corp = ProviderId::declare(&locked).ok()?;
+    connector
+        .catalog_mut()
+        .insert(ModelSpec::new(corp, "big").with_tools(true));
+    connector.provide(corp, move |_: &ModelSpec, _: &Catalog, _: &Transport| {
+        Err(ConnectError::MissingKey {
+            vendor: locked.clone(),
+            tried: vec![Cow::Borrowed("CORP_KEY")],
+        })
+    });
+    Some(Models(connector))
+}
+
+/// Why each command line refused so far was refused.
+fn recalled(app: &App) -> Vec<String> {
+    let recalled = app.world().resource::<Messages<Recalled>>();
+    let why = recalled.iter_current_update_messages();
+    why.filter_map(|recalled| recalled.why.clone()).collect()
 }
 
 #[cfg(feature = "tui")]
 #[test]
-fn a_model_without_its_key_is_listed_with_why_and_offered_as_the_argument_once_typed() {
-    use std::borrow::Cow;
-
-    use rig_harness::rig_core::catalog::{Catalog, Connector, ModelSpec, Transport};
-    use rig_harness::rig_core::providers::registry::{ConnectError, ProviderId};
-
-    let Ok(corp) = ProviderId::declare("rig-models-corp") else {
+fn a_model_without_its_key_is_neither_listed_nor_offered_as_the_argument() {
+    let Some(models) = one_without_a_key("rig-models-corp") else {
         return;
     };
-    let mut catalog = Catalog::default();
-    catalog.insert(ModelSpec::new(corp, "big").with_tools(true));
-    let mut connector = Connector::new(catalog);
-    connector.provide(corp, |_: &ModelSpec, _: &Catalog, _: &Transport| {
-        Err(ConnectError::MissingKey {
-            vendor: "rig-models-corp".to_owned(),
-            tried: vec![Cow::Borrowed("CORP_KEY")],
-        })
-    });
     let (mut app, agent) = routed();
-    app.insert_resource(Models(connector));
+    app.insert_resource(models);
     let input = (rig_tui::Editor::default(), rig_tui::MainEditor);
     let input = app.world_mut().spawn(input).id();
-    app.update();
-    let mut completions = app.world_mut().query::<&rig_tui::CompletionSource>();
-    // Listing the catalog waits for the input to be a `/model` command.
-    assert_eq!(completions.iter(app.world()).count(), 0);
     if let Some(mut input) = app.world_mut().get_mut::<rig_tui::Editor>(input) {
         input.set("/model rig");
     }
@@ -279,21 +522,541 @@ fn a_model_without_its_key_is_listed_with_why_and_offered_as_the_argument_once_t
     run(&mut app, agent, "model");
     let world = app.world_mut();
     let mut pickers = world.query::<&rig_harness::pick::Picker>();
-    let labels: Vec<String> = pickers
+    let commands: Vec<String> = pickers
         .iter(world)
-        .flat_map(|picker| picker.items.iter().map(|item| item.label.clone()))
+        .flat_map(|picker| picker.items.iter().map(|item| item.command.clone()))
         .collect();
-    let listed = labels
-        .iter()
-        .find(|label| label.starts_with("rig-models-corp/big"));
-    let listed = listed.map(String::as_str);
-    assert!(
-        listed.is_some_and(|label| label.ends_with("(no key: set CORP_KEY)")),
-        "{labels:?}"
-    );
+    assert_eq!(commands, ["route on", "model rig-models-corp/small"]);
+    let mut completions = world.query::<&rig_tui::CompletionSource>();
     let offered: Vec<String> = completions
         .iter(world)
         .flat_map(|completion| completion.candidates.iter().map(|item| item.text.clone()))
         .collect();
-    assert_eq!(offered, ["router", "rig-models-corp/big"]);
+    assert_eq!(offered, ["router", "rig-models-corp/small"]);
+}
+
+#[test]
+fn the_picker_lists_the_agents_model_first_with_why_it_cannot_be_used() {
+    let Some(models) = one_without_a_key("rig-models-gone") else {
+        return;
+    };
+    let (mut app, agent) = routed();
+    app.insert_resource(models);
+    // As a resumed session whose key is gone has it.
+    let current = ModelChoice("rig-models-gone-locked/big".to_owned());
+    app.world_mut().entity_mut(agent).insert(current);
+    run(&mut app, agent, "model");
+    let world = app.world_mut();
+    let mut pickers = world.query::<&rig_harness::pick::Picker>();
+    let picker = pickers.iter(world).next();
+    let rows: Vec<(&str, Option<&str>)> = picker
+        .iter()
+        .flat_map(|picker| &picker.items)
+        .map(|item| (item.label.as_str(), item.detail.as_deref()))
+        .collect();
+    assert_eq!(
+        rows,
+        [
+            ("router  per request", None),
+            (
+                "rig-models-gone-locked/big  big  (no key: set CORP_KEY)",
+                Some("current")
+            ),
+            ("rig-models-gone/small  small  (no key needed)", None),
+        ]
+    );
+    assert_eq!(picker.map(|picker| picker.selected), Some(1));
+}
+
+#[test]
+fn with_no_model_to_use_the_picker_says_how_to_get_one() {
+    use rig_harness::rig_core::catalog::Connector;
+
+    let mut app = App::new();
+    app.add_plugins((AgentPlugin, ModelsPlugin))
+        .insert_resource(Models(Connector::new(Catalog::default())));
+    let agent = spawn_root(app.world_mut(), ()).id();
+    run(&mut app, agent, "model");
+    assert_eq!(
+        recalled(&app),
+        [
+            "No model can be used now: export a provider's API key, such as OPENAI_API_KEY, \
+          sign in with /login, or name a local server with OLLAMA_API_BASE_URL."
+        ]
+    );
+    let world = app.world_mut();
+    let mut pickers = world.query::<&rig_harness::pick::Picker>();
+    assert_eq!(pickers.iter(world).count(), 0);
+}
+
+#[test]
+fn a_model_without_its_key_keeps_the_current_one_connected() {
+    let Some(models) = one_without_a_key("rig-models-keyless") else {
+        return;
+    };
+    let (mut app, agent) = routed();
+    app.insert_resource(models);
+    let current = ModelChoice("rig-models-keyless/small".to_owned());
+    app.world_mut().entity_mut(agent).insert(current.clone());
+    app.update();
+    assert!(app.world().get::<Connection>(agent).is_some());
+    run(&mut app, agent, "model rig-models-keyless-locked/big");
+    assert_eq!(
+        recalled(&app),
+        ["Cannot use rig-models-keyless-locked/big: no key for \
+              `rig-models-keyless-locked`: set `CORP_KEY`. Still on \
+              rig-models-keyless/small."]
+    );
+    app.update();
+    let world = app.world();
+    assert_eq!(world.get::<ModelChoice>(agent), Some(&current));
+    let connected = world.get::<Connection>(agent);
+    let connected = connected.map(|connection| connection.spec.reference());
+    assert_eq!(connected.as_deref(), Some("rig-models-keyless/small"));
+    assert!(world.get::<ModelRefused>(agent).is_none());
+}
+
+/// For each [`ModelRefused`] inserted, whether its notice was written first.
+#[derive(Resource, Default)]
+struct NoticeFirst(Vec<bool>);
+
+/// `/model`, a model restored or set by a plugin and the agent's own model
+/// chosen again say what `--model` says of a missing key, with or without
+/// `/login`, and a refusal stored on the agent was written as a notice first.
+#[test]
+fn a_model_without_its_key_is_refused_in_the_words_of_model_everywhere() {
+    for (login, how) in [
+        (
+            true,
+            "no key for `openai`: save one with /login openai or set `OPENAI_API_KEY`.",
+        ),
+        (false, "no key for `openai`: set `OPENAI_API_KEY`."),
+    ] {
+        let Some((reference, models)) = builtin_without_a_key("openai", "OPENAI_API_KEY") else {
+            return;
+        };
+        let (mut app, agent) = routed();
+        app.insert_resource(models)
+            .init_resource::<NoticeFirst>()
+            .add_observer(
+                |added: On<Insert<ModelRefused>>,
+                 refused: Query<&ModelRefused>,
+                 notices: Res<Messages<Notice>>,
+                 mut first: ResMut<NoticeFirst>| {
+                    let written = refused.get(added.entity).is_ok_and(|refused| {
+                        (notices.iter_current_update_messages())
+                            .any(|notice| notice.text == refused.0)
+                    });
+                    first.0.push(written);
+                },
+            );
+        if login {
+            let login = |_: In<rig_harness::commands::NoArgs>| {};
+            app.add_command("login", "Sign in", login);
+        }
+        run(&mut app, agent, &format!("model {reference}"));
+        let said = format!("Cannot use {reference}: {how}");
+        assert_eq!(recalled(&app), std::slice::from_ref(&said));
+
+        let world = app.world_mut();
+        world
+            .entity_mut(agent)
+            .insert(ModelChoice(reference.clone()));
+        world.flush();
+        let refused = Some(ModelRefused(said));
+        assert_eq!(world.get::<ModelRefused>(agent), refused.as_ref());
+
+        world.entity_mut(agent).remove::<ModelRefused>();
+        run(&mut app, agent, &format!("model {reference}"));
+        let world = app.world();
+        assert_eq!(world.get::<ModelRefused>(agent), refused.as_ref());
+        assert_eq!(world.resource::<NoticeFirst>().0, [true, true]);
+    }
+}
+
+/// `LoginPlugin` alone words a missing key, naming itself, and a wording
+/// the app set first stays, whichever plugins run.
+#[test]
+fn login_alone_words_a_missing_key_and_an_apps_own_wording_stays() {
+    fn mine(_: &World, _: &ConnectError) -> Option<String> {
+        Some("mine".to_owned())
+    }
+    for own in [false, true] {
+        let Some((reference, models)) = builtin_without_a_key("openai", "OPENAI_API_KEY") else {
+            return;
+        };
+        let home = scratch_home("models-login-wording");
+        let (mut app, _) = app_in(&home, &SessionId::generate());
+        app.insert_resource(models);
+        if own {
+            app.insert_resource(ConnectWording(mine));
+        }
+        app.add_plugins(AgentPlugin);
+        if own {
+            app.add_plugins(ModelsPlugin);
+        }
+        app.add_plugins(crate::login::LoginPlugin);
+        let world = app.world_mut();
+        let agent = spawn_root(world, ()).id();
+        world
+            .entity_mut(agent)
+            .insert(ModelChoice(reference.clone()));
+        world.flush();
+        let how = if own {
+            "mine"
+        } else {
+            "no key for `openai`: save one with /login openai or set `OPENAI_API_KEY`"
+        };
+        assert_eq!(
+            world.get::<ModelRefused>(agent),
+            Some(&ModelRefused(format!("Cannot use {reference}: {how}.")))
+        );
+        fs::remove_dir_all(home.root()).ok();
+    }
+}
+
+#[test]
+fn a_model_without_its_key_given_with_model_leaves_the_agent_without_one() {
+    let Some(models) = one_without_a_key("rig-models-flag") else {
+        return;
+    };
+    let mut app = App::new();
+    app.insert_resource(Invoked {
+        args: Invocation {
+            model: Some("rig-models-flag-locked/big".to_owned()),
+            ..Invocation::default()
+        },
+        terminal: false,
+    })
+    .insert_resource(models)
+    .add_plugins((AgentPlugin, ModelsPlugin));
+    tell(&mut app);
+    // The remembered model, as `[model]` gives it.
+    app.add_systems(
+        PostStartup,
+        |agents: Query<Entity, With<Agent>>, mut commands: Commands| {
+            for agent in &agents {
+                let remembered = ModelChoice("rig-models-flag/small".to_owned());
+                commands.entity(agent).insert(remembered);
+            }
+        },
+    );
+    let agent = spawn_root(app.world_mut(), ()).id();
+    app.update();
+    app.update();
+    let world = app.world();
+    assert_eq!(world.get::<ModelChoice>(agent), None);
+    assert!(world.get::<Connection>(agent).is_none());
+    assert_eq!(
+        world.resource::<Told>().0,
+        [
+            "--model: cannot use rig-models-flag-locked/big: no key for \
+              `rig-models-flag-locked`: set `CORP_KEY`. No model is picked."
+        ]
+    );
+}
+
+#[test]
+fn a_model_without_its_key_given_with_model_names_the_login_command_when_there_is_one() {
+    let told = |vendor: &str, env: &'static str, login: bool| {
+        let Some((reference, models)) = builtin_without_a_key(vendor, env) else {
+            return Vec::new();
+        };
+        let mut app = App::new();
+        app.insert_resource(Invoked {
+            args: Invocation {
+                model: Some(reference),
+                ..Invocation::default()
+            },
+            terminal: false,
+        })
+        .insert_resource(models)
+        .add_plugins((AgentPlugin, ModelsPlugin));
+        if login {
+            // `/login` as `LoginPlugin` registers it, after `ModelsPlugin`.
+            let login = |_: In<rig_harness::commands::NoArgs>| {};
+            app.add_command("login", "Sign in", login);
+        }
+        tell(&mut app);
+        spawn_root(app.world_mut(), ());
+        app.update();
+        app.world().resource::<Told>().0.clone()
+    };
+    let says = |told: &[String], what: &str| told.iter().any(|text| text.contains(what));
+    let chatgpt = told("chatgpt", "CHATGPT_ACCESS_TOKEN", true);
+    assert!(
+        says(
+            &chatgpt,
+            "no key for `chatgpt`: sign in with /login chatgpt or set `CHATGPT_ACCESS_TOKEN`."
+        ),
+        "{chatgpt:?}"
+    );
+    let openai = told("openai", "OPENAI_API_KEY", true);
+    assert!(
+        says(
+            &openai,
+            "no key for `openai`: save one with /login openai or set `OPENAI_API_KEY`."
+        ),
+        "{openai:?}"
+    );
+    let no_login = told("chatgpt", "CHATGPT_ACCESS_TOKEN", false);
+    assert!(
+        says(
+            &no_login,
+            "no key for `chatgpt`: set `CHATGPT_ACCESS_TOKEN`. No model is picked."
+        ),
+        "{no_login:?}"
+    );
+    for text in chatgpt.iter().chain(&openai).chain(&no_login) {
+        assert!(!text.contains("ConnectOptions"), "{text}");
+    }
+}
+
+/// The built-in catalog, with `vendor`'s models refusing to connect for
+/// want of the key `env` holds; and one of them.
+fn builtin_without_a_key(vendor: &str, env: &'static str) -> Option<(String, Models)> {
+    use std::borrow::Cow;
+
+    use rig_harness::rig_core::catalog::{Connector, ModelSpec, Transport};
+    use rig_harness::rig_core::providers::registry::{ConnectError, ProviderId};
+
+    let mut connector = Connector::new(Catalog::builtin().clone());
+    let reference = connector
+        .catalog()
+        .iter()
+        .find(|spec| spec.provider.vendor() == vendor && spec.tools)?
+        .reference();
+    let owned = vendor.to_owned();
+    connector.provide(
+        ProviderId::catalog(vendor)?,
+        move |_: &ModelSpec, _: &Catalog, _: &Transport| {
+            Err(ConnectError::MissingKey {
+                vendor: owned.clone(),
+                tried: vec![Cow::Borrowed(env)],
+            })
+        },
+    );
+    Some((reference, Models(connector)))
+}
+
+#[cfg(feature = "tui")]
+#[test]
+fn the_model_picker_opens_on_the_agents_model_and_says_it_is_current() {
+    let model = MockCompletionModel::from_stream_turns([reply("hi")]);
+    let (mut app, agent) = routed();
+    let served = [("corpus-test/one", &model), ("corpus-test/two", &model)];
+    app.insert_resource(scripted_models(served));
+    let choice = ModelChoice("corpus-test/two".to_owned());
+    app.world_mut().entity_mut(agent).insert(choice);
+    run(&mut app, agent, "model");
+    let world = app.world_mut();
+    let mut pickers = world.query::<&rig_harness::pick::Picker>();
+    let picker = pickers.iter(world).next();
+    let selected = picker.and_then(|picker| picker.items.get(picker.selected));
+    assert_eq!(
+        selected.map(|item| (item.command.as_str(), item.detail.as_deref())),
+        Some(("model corpus-test/two", Some("current")))
+    );
+    let marked = picker.map(|picker| {
+        let current = picker.items.iter().filter(|item| item.detail.is_some());
+        current.count()
+    });
+    assert_eq!(marked, Some(1));
+}
+
+/// The catalog's own models, each refusing HTTP but Claude Sonnet 4.5,
+/// which takes a reasoning budget and no effort level, answered by `model`.
+fn sonnet(model: &MockCompletionModel) -> Models {
+    use rig_core::catalog::{Connector, ModelSpec, Transport};
+    use rig_core::http_client::DynHttpClient;
+    use rig_core::operation::Completion;
+    use rig_core::providers::registry::ProviderId;
+    use rig_core::serve::ErasedHandler;
+    use rig_core::serve::adapters::ModelAdapter;
+
+    let mut connector = Connector::new(Catalog::builtin().clone());
+    connector.wrap_http(|_| DynHttpClient::new(Offline));
+    let model = model.clone();
+    if let Some(anthropic) = ProviderId::catalog("anthropic") {
+        connector.provide(
+            anthropic,
+            move |spec: &ModelSpec, _: &Catalog, _: &Transport| {
+                let model = ModelAdapter::<Completion>::new(spec.reference(), model.clone());
+                Ok(ErasedHandler::new(model))
+            },
+        );
+    }
+    Models(connector)
+}
+
+/// `[model]` naming Claude Sonnet 4.5.
+const SONNET: &str = "[model]\ndefault = \"anthropic/claude-sonnet-4-5\"\n";
+
+#[test]
+fn an_effort_level_in_settings_is_its_budget_on_a_model_that_takes_a_budget() {
+    use rig_harness::rig_core::completion::Reasoning;
+
+    let model = MockCompletionModel::from_stream_turns([reply("hi")]);
+    let saved = format!("{SONNET}effort = \"high\"\n");
+    let (app, _, _, agent) = remembering(
+        "defaults-budget-level",
+        &model,
+        (None, Some(&saved)),
+        |app| {
+            app.insert_resource(sonnet(&model));
+            tell(app);
+        },
+    );
+    assert_eq!(model_of(&app, agent), Some("anthropic/claude-sonnet-4-5"));
+    let high = ReasoningSetting(Some(Reasoning::Budget { tokens: 16384 }));
+    assert_eq!(app.world().get::<ReasoningSetting>(agent), Some(&high));
+    let told = &app.world().resource::<Told>().0;
+    assert!(
+        !told.iter().any(|text| text.contains("Reasoning")),
+        "{told:?}"
+    );
+}
+
+/// An app on Claude Sonnet 4.5 from `[model]`, answering `turns` times,
+/// whose notices are [`Told`].
+fn on_sonnet(name: &str, turns: usize) -> (App, Receiver<()>, Home, Entity) {
+    let model = MockCompletionModel::from_stream_turns((0..turns).map(|_| reply("hi")));
+    remembering(name, &model, (None, Some(SONNET)), |app| {
+        app.insert_resource(sonnet(&model));
+        tell(app);
+    })
+}
+
+#[test]
+fn an_effort_in_settings_the_model_does_not_take_is_reset_out_loud() {
+    let model = MockCompletionModel::from_stream_turns([reply("hi")]);
+    let written = format!("{SONNET}effort = \"xhigh\"\n");
+    let (app, _, home, agent) = remembering(
+        "defaults-budget-xhigh",
+        &model,
+        (None, Some(&written)),
+        |app| {
+            app.insert_resource(sonnet(&model));
+            tell(app);
+        },
+    );
+    assert_eq!(
+        app.world().get::<ReasoningSetting>(agent),
+        Some(&ReasoningSetting(None))
+    );
+    let told = &app.world().resource::<Told>().0;
+    let reset = told.iter().filter(|text| {
+        text.starts_with("Reasoning reset to default: the reasoning settings are default, off, low")
+            && text.ends_with("not `xhigh`.")
+    });
+    assert_eq!(reset.count(), 1, "{told:?}");
+    assert_eq!(saved(&home), written, "the file is left as written");
+}
+
+#[test]
+fn an_effort_level_picked_on_a_budget_model_is_saved_by_its_name() {
+    let (mut app, wakes, home, agent) = on_sonnet("defaults-budget-picked", 1);
+    run(&mut app, agent, "effort high");
+    ask(&mut app, &wakes, agent, "Hello.");
+    assert_eq!(saved(&home), format!("{SONNET}effort = \"high\"\n"));
+}
+
+#[test]
+fn an_effort_picked_is_kept_by_its_name_on_the_next_model() {
+    use rig_harness::rig_core::completion::{Effort, Reasoning};
+
+    // Fable 5 takes levels only; Sonnet 4.6 takes levels and budgets.
+    for next in ["anthropic/claude-fable-5", "anthropic/claude-sonnet-4-6"] {
+        let (mut app, wakes, home, agent) = on_sonnet("defaults-budget-switched", 2);
+        run(&mut app, agent, "effort high");
+        ask(&mut app, &wakes, agent, "Hello.");
+        run(&mut app, agent, &format!("model {next}"));
+        app.update();
+        let high = ReasoningSetting(Some(Reasoning::Effort(Effort::High)));
+        assert_eq!(
+            app.world().get::<ReasoningSetting>(agent),
+            Some(&high),
+            "{next}"
+        );
+        ask(&mut app, &wakes, agent, "Again.");
+        let saved_now = format!("[model]\ndefault = \"{next}\"\neffort = \"high\"\n");
+        assert_eq!(saved(&home), saved_now);
+        let told = &app.world().resource::<Told>().0;
+        assert!(!told.iter().any(|text| text.contains("reset")), "{told:?}");
+    }
+}
+
+#[test]
+fn an_effort_that_refuses_the_run_is_not_also_reset() {
+    let model = MockCompletionModel::from_stream_turns([reply("hi")]);
+    for typo in ["hihg", "HIGHH", "4096 token"] {
+        let written = format!("{SONNET}effort = \"{typo}\"\n");
+        let (app, _, _, _) = remembering(
+            "defaults-budget-typo",
+            &model,
+            (None, Some(&written)),
+            |app| {
+                app.insert_resource(sonnet(&model));
+                tell(app);
+            },
+        );
+        let told = &app.world().resource::<Told>().0;
+        assert!(!told.iter().any(|text| text.contains("reset")), "{told:?}");
+    }
+}
+
+#[test]
+fn an_effort_in_tokens_is_taken_and_saved() {
+    use rig_harness::rig_core::completion::Reasoning;
+
+    let (mut app, wakes, home, agent) = on_sonnet("defaults-budget-tokens", 1);
+    run(&mut app, agent, "effort 4096 tokens");
+    let told = &app.world().resource::<Told>().0;
+    assert!(
+        !told.iter().any(|text| text.contains("reasoning settings")),
+        "{told:?}"
+    );
+    let budget = ReasoningSetting(Some(Reasoning::Budget { tokens: 4096 }));
+    assert_eq!(app.world().get::<ReasoningSetting>(agent), Some(&budget));
+    ask(&mut app, &wakes, agent, "Hello.");
+    assert_eq!(saved(&home), format!("{SONNET}effort = \"4096 tokens\"\n"));
+}
+
+#[test]
+fn an_effort_no_setting_is_named_refuses_the_run() {
+    let mut app = App::new();
+    app.insert_resource(rig_harness::settings::Settings::from_toml(
+        "[model]\ndefault = \"x/y\"\neffort = \"hihg\"\n",
+    ))
+    .add_plugins(DefaultsPlugin);
+    let settings = app.world().resource::<rig_harness::settings::Settings>();
+    let problems = settings.problems().join("\n");
+    assert!(
+        problems.contains("[model]") && problems.contains("hihg"),
+        "{problems}"
+    );
+}
+
+/// A hand-written `effort` with no `default` reaches the model `--model`
+/// names.
+#[test]
+fn an_effort_without_a_default_reaches_the_model_named_with_model() {
+    use rig_harness::rig_core::completion::Reasoning;
+    let model = MockCompletionModel::from_stream_turns([reply("hi")]);
+    let (mut app, wakes, _, agent) = remembering(
+        "defaults-effort-no-default",
+        &model,
+        (
+            Some("anthropic/claude-sonnet-4-5"),
+            Some("[model]\neffort = \"high\"\n"),
+        ),
+        |app| {
+            app.insert_resource(sonnet(&model));
+            tell(app);
+        },
+    );
+    ask(&mut app, &wakes, agent, "Hello.");
+    assert_eq!(model_of(&app, agent), Some("anthropic/claude-sonnet-4-5"));
+    let high = ReasoningSetting(Some(Reasoning::Budget { tokens: 16384 }));
+    assert_eq!(app.world().get::<ReasoningSetting>(agent), Some(&high));
 }

@@ -4,7 +4,7 @@
 
 use crate::sessions::ResumeLabel;
 use rig_core::completion::tokens_label;
-use rig_ecs::{StopTurnsOnExit, WriteLogs};
+use rig_ecs::StopTurnsOnExit;
 use rig_harness::prelude::*;
 
 use super::usage::SessionUsage;
@@ -39,10 +39,9 @@ pub(super) fn add(app: &mut App) {
         Last,
         (
             label_usage.run_if(resource_changed::<SessionUsage>),
-            label_context,
+            label_context.after(CurrentAgentSystems),
         )
-            .after(StopTurnsOnExit)
-            .before(WriteLogs),
+            .after(StopTurnsOnExit),
     );
 }
 
@@ -68,11 +67,11 @@ fn label_usage(spent: Res<SessionUsage>, mut labels: Query<&mut ResumeLabel, Wit
 /// `/resume`.
 fn label_context(
     agents: MainAgentQuery,
-    usage: Query<(&LastUsage, Has<ContextStale>)>,
+    usage: Query<(&LastUsage, Option<&ContextStale>)>,
     mut labels: Query<&mut ResumeLabel, With<Context>>,
 ) {
     let last = main_agent(&agents).and_then(|agent| usage.get(agent).ok());
-    let stale = last.is_some_and(|(_, stale)| stale);
+    let stale = last.is_some_and(|(_, stale)| stale.is_some());
     let text = context_label(last.and_then(|(usage, _)| usage.context()), stale);
     for mut label in &mut labels {
         label.set_if_neq(ResumeLabel::new(CONTEXT, text.clone()));

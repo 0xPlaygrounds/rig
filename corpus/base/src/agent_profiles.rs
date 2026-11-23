@@ -23,7 +23,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use rig_basics::subagents::{SpawnSubagent, SpawnedAgent, SubagentSystems, TASK};
+use rig_basics::subagents::{SpawnSubagent, SpawnedAgent, TASK};
 use rig_core::json_utils::remove_preserving_order;
 use rig_harness::prelude::*;
 use serde::Deserialize;
@@ -61,10 +61,7 @@ impl Plugin for AgentProfilesPlugin {
                 AgentPass,
                 (
                     AgentProfilesSystems::Prepare.in_set(Stage::Prepare),
-                    // A request `rig_basics::subagents` let through.
-                    AgentProfilesSystems::Gate
-                        .in_set(Stage::Gate)
-                        .after(SubagentSystems::Gate),
+                    AgentProfilesSystems::Gate.in_set(Stage::Gate),
                     AgentProfilesSystems::Review.in_set(Stage::Review),
                 ),
             )
@@ -90,8 +87,7 @@ pub enum AgentProfilesSystems {
     /// Gives a spawn request that names a profile the profile's model,
     /// reasoning setting and tools.
     Prepare,
-    /// Refuses a spawn request naming an unknown profile, after
-    /// [`SubagentSystems::Gate`].
+    /// Refuses a spawn request naming an unknown profile.
     Gate,
     /// Gives the agent spawned the profile's prompt.
     Review,
@@ -155,10 +151,7 @@ impl Profile {
     /// `tools` narrowed to this profile's allowlist: never more than it was.
     fn narrow(&self, tools: &ToolAccess) -> ToolAccess {
         match &self.tools {
-            Some(names) => {
-                let allowed = names.iter().filter(|name| tools.allows(name));
-                ToolAccess::Only(allowed.cloned().collect())
-            }
+            Some(names) => tools.narrow(names.iter().map(String::as_str)),
             None => tools.clone(),
         }
     }
@@ -211,7 +204,10 @@ fn read_profiles(
     mut profiles: ResMut<Profiles>,
     mut notices: MessageWriter<Notice>,
 ) {
-    let changed = changes.read().any(|change| dirs.contains(change.watch));
+    let changed = (changes.read())
+        .filter(|change| dirs.contains(change.watch) && change.event.names_files())
+        .count()
+        > 0;
     if !changed && !dirs.iter().any(|(.., watch)| watch.is_added()) {
         return;
     }
@@ -311,12 +307,12 @@ fn profile_spawn(
         request.model = request.model.take().or_else(|| profile.model.clone());
         request.effort = request.effort.take().or_else(|| profile.effort.clone());
         let asked = match (&request.tools, parents.get(parent)) {
-            (Some(names), _) => ToolAccess::Only(names.clone()),
+            (Some(names), _) => ToolAccess::only(names.iter().map(String::as_str)),
             (None, Ok(access)) => access.clone(),
-            (None, Err(_)) => ToolAccess::All,
+            (None, Err(_)) => ToolAccess::all(),
         };
-        if let ToolAccess::Only(names) = profile.narrow(&asked) {
-            request.tools = Some(names);
+        if let Some(names) = profile.narrow(&asked).names() {
+            request.tools = Some(names.to_vec());
         }
     }
 }
@@ -458,7 +454,9 @@ fn switch_model(
 ) -> Result<(), String> {
     match choice.filter(|choice| now != Some(choice)) {
         Some(choice) => {
-            let connection = models.connect(&choice.0)?;
+            let connection = models
+                .connect(&choice.0)
+                .map_err(|why| Models::cannot_use(&choice.0, why))?;
             agent.insert((connection, choice, effort));
         }
         None => {

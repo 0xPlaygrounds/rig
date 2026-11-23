@@ -1,12 +1,14 @@
 use std::sync::Arc;
 
 use arrow_array::{
-    ArrayRef, BinaryArray, FixedSizeListArray, Float32Array, Float64Array, GenericListArray,
-    Int8Array, Int16Array, Int32Array, Int64Array, LargeBinaryArray, LargeStringArray, MapArray,
-    RecordBatch, StringArray, StructArray, UInt8Array, UInt16Array, UInt32Array, UInt64Array,
+    Array, ArrayRef, BinaryArray, Decimal128Array, DictionaryArray, FixedSizeBinaryArray,
+    FixedSizeListArray, Float32Array, Float64Array, GenericListArray, Int8Array, Int16Array,
+    Int32Array, Int64Array, LargeBinaryArray, LargeStringArray, MapArray, RecordBatch, RunArray,
+    StringArray, StructArray, UInt8Array, UInt16Array, UInt32Array, UInt64Array,
     builder::{
-        FixedSizeListBuilder, ListBuilder, StringBuilder, StringDictionaryBuilder,
-        StringRunBuilder, UnionBuilder,
+        Decimal128Builder, FixedSizeBinaryBuilder, FixedSizeListBuilder, Int32Builder, ListBuilder,
+        MapBuilder, NullBuilder, StringBuilder, StringDictionaryBuilder, StringRunBuilder,
+        StructBuilder, UnionBuilder,
     },
     types::{Float64Type, Int8Type, Int16Type, Int32Type},
 };
@@ -205,22 +207,23 @@ async fn test_dictionary_deserialization() {
     assert_eq!(
         record_batch_to_json(&record_batch).unwrap(),
         vec![
-            json!({
-                "some_dict": {
-                    "2": ""
-                }
-            }),
-            json!({
-                "some_dict": {
-                    "0": "abc"
-                }
-            }),
-            json!({
-                "some_dict": {
-                    "1": "def"
-                }
-            })
+            json!({ "some_dict": "def" }),
+            json!({ "some_dict": null }),
+            json!({ "some_dict": "abc" }),
         ]
+    );
+
+    let no_values =
+        RunArray::<Int16Type>::try_new(&Int16Array::from(vec![1]), &StringArray::from(vec!["x"]))
+            .unwrap()
+            .slice(0, 0);
+    let null_key = DictionaryArray::new(Int8Array::from(vec![None]), Arc::new(no_values));
+    let record_batch =
+        RecordBatch::try_from_iter(vec![("d", Arc::new(null_key) as ArrayRef)]).unwrap();
+
+    assert_eq!(
+        record_batch_to_json(&record_batch).unwrap(),
+        vec![json!({ "d": null })]
     );
 }
 
@@ -277,7 +280,7 @@ async fn test_run_end_deserialization() {
                 "some_run_end": "abc"
             }),
             json!({
-                "some_run_end": ""
+                "some_run_end": null
             }),
             json!({
                 "some_run_end": "def"
@@ -288,6 +291,14 @@ async fn test_run_end_deserialization() {
             json!({
                 "some_run_end": "abc"
             })
+        ]
+    );
+
+    assert_eq!(
+        record_batch_to_json(&record_batch.slice(1, 2)).unwrap(),
+        vec![
+            json!({ "some_run_end": null }),
+            json!({ "some_run_end": "def" }),
         ]
     );
 }
@@ -480,6 +491,352 @@ async fn test_recursion() {
                     ]
                 }
             })
+        ]
+    );
+}
+
+#[test]
+fn map_entries_stay_with_their_row() {
+    let mut maps = MapBuilder::new(None, StringBuilder::new(), Int32Builder::new());
+    let rows: [&[(&str, i32)]; 4] = [
+        &[("skipped", 0)],
+        &[],
+        &[("owner", 11), ("priority", 7)],
+        &[("owner", 22)],
+    ];
+    for entries in rows {
+        for (key, value) in entries {
+            maps.keys().append_value(key);
+            maps.values().append_value(*value);
+        }
+        maps.append(true).unwrap();
+    }
+    let batch =
+        RecordBatch::try_from_iter(vec![("attributes", Arc::new(maps.finish()) as ArrayRef)])
+            .unwrap()
+            .slice(1, 3);
+
+    assert_eq!(
+        record_batch_to_json(&batch).unwrap(),
+        vec![
+            json!({ "attributes": {} }),
+            json!({ "attributes": { "owner": 11, "priority": 7 } }),
+            json!({ "attributes": { "owner": 22 } }),
+        ]
+    );
+
+    let mut null_cells = MapBuilder::new(None, StringBuilder::new(), Int32Builder::new());
+    for (key, value) in [("k0", None), ("k1", Some(4)), ("k2", None)] {
+        null_cells.keys().append_value(key);
+        null_cells.values().append_option(value);
+    }
+    null_cells.append(true).unwrap();
+    let batch = RecordBatch::try_from_iter(vec![(
+        "attributes",
+        Arc::new(null_cells.finish()) as ArrayRef,
+    )])
+    .unwrap();
+    assert_eq!(
+        record_batch_to_json(&batch).unwrap(),
+        vec![json!({ "attributes": { "k0": null, "k1": 4, "k2": null } })]
+    );
+
+    let mut null_values = MapBuilder::new(None, StringBuilder::new(), NullBuilder::new());
+    for key in ["a", "b"] {
+        null_values.keys().append_value(key);
+        null_values.values().append_null();
+    }
+    null_values.append(true).unwrap();
+    let batch = RecordBatch::try_from_iter(vec![(
+        "attributes",
+        Arc::new(null_values.finish()) as ArrayRef,
+    )])
+    .unwrap();
+    assert_eq!(
+        record_batch_to_json(&batch).unwrap(),
+        vec![json!({ "attributes": { "a": null, "b": null } })]
+    );
+
+    let mut dictionaries = MapBuilder::new(
+        None,
+        StringDictionaryBuilder::<Int32Type>::new(),
+        StringDictionaryBuilder::<Int32Type>::new(),
+    );
+    let rows: [&[(&str, Option<&str>)]; 5] = [
+        &[("k0", Some("a")), ("k1", Some("b"))],
+        &[],
+        &[("k0", Some("a")), ("k1", None), ("k2", Some("b"))],
+        &[("k1", Some("a"))],
+        &[],
+    ];
+    for entries in rows {
+        for (key, value) in entries {
+            dictionaries.keys().append_value(key);
+            match value {
+                Some(value) => dictionaries.values().append_value(value),
+                None => dictionaries.values().append_null(),
+            }
+        }
+        dictionaries.append(true).unwrap();
+    }
+    let batch = RecordBatch::try_from_iter(vec![(
+        "attributes",
+        Arc::new(dictionaries.finish()) as ArrayRef,
+    )])
+    .unwrap();
+    assert_eq!(
+        record_batch_to_json(&batch).unwrap(),
+        vec![
+            json!({ "attributes": { "k0": "a", "k1": "b" } }),
+            json!({ "attributes": {} }),
+            json!({ "attributes": { "k0": "a", "k1": null, "k2": "b" } }),
+            json!({ "attributes": { "k1": "a" } }),
+            json!({ "attributes": {} }),
+        ]
+    );
+
+    let mut all_null = MapBuilder::new(
+        None,
+        StringBuilder::new(),
+        StringDictionaryBuilder::<Int32Type>::new(),
+    );
+    all_null.keys().append_value("a");
+    all_null.values().append_null();
+    all_null.append(true).unwrap();
+    let batch = RecordBatch::try_from_iter(vec![(
+        "attributes",
+        Arc::new(all_null.finish()) as ArrayRef,
+    )])
+    .unwrap();
+    assert_eq!(
+        record_batch_to_json(&batch).unwrap(),
+        vec![json!({ "attributes": { "a": null } })]
+    );
+
+    let mut lists = MapBuilder::new(
+        None,
+        StringBuilder::new(),
+        ListBuilder::new(StringDictionaryBuilder::<Int32Type>::new()),
+    );
+    let rows: [&[(&str, &[&str])]; 3] = [
+        &[("k0", &["a", "b"]), ("k1", &["a"])],
+        &[],
+        &[("k2", &[]), ("k3", &["b", "a", "b"]), ("k4", &[])],
+    ];
+    for entries in rows {
+        for (key, items) in entries {
+            lists.keys().append_value(key);
+            for item in *items {
+                lists.values().values().append_value(item);
+            }
+            lists.values().append(true);
+        }
+        lists.append(true).unwrap();
+    }
+    lists.append(false).unwrap();
+    let batch =
+        RecordBatch::try_from_iter(vec![("attributes", Arc::new(lists.finish()) as ArrayRef)])
+            .unwrap();
+    assert_eq!(
+        record_batch_to_json(&batch).unwrap(),
+        vec![
+            json!({ "attributes": { "k0": ["a", "b"], "k1": ["a"] } }),
+            json!({ "attributes": {} }),
+            json!({ "attributes": { "k2": [], "k3": ["b", "a", "b"], "k4": [] } }),
+            json!({ "attributes": null }),
+        ]
+    );
+
+    let mut structs = MapBuilder::new(
+        None,
+        StringBuilder::new(),
+        StructBuilder::new(
+            vec![Field::new_dictionary(
+                "d",
+                DataType::Int32,
+                DataType::Utf8,
+                true,
+            )],
+            vec![Box::new(StringDictionaryBuilder::<Int32Type>::new())],
+        ),
+    );
+    for (key, value) in [("k0", "a"), ("k1", "b"), ("k2", "a")] {
+        structs.keys().append_value(key);
+        structs
+            .values()
+            .field_builder::<StringDictionaryBuilder<Int32Type>>(0)
+            .unwrap()
+            .append_value(value);
+        structs.values().append(true);
+    }
+    structs.append(true).unwrap();
+    let batch =
+        RecordBatch::try_from_iter(vec![("attributes", Arc::new(structs.finish()) as ArrayRef)])
+            .unwrap();
+    assert_eq!(
+        record_batch_to_json(&batch).unwrap(),
+        vec![json!({
+            "attributes": { "k0": { "d": "a" }, "k1": { "d": "b" }, "k2": { "d": "a" } }
+        })]
+    );
+}
+
+#[test]
+fn fixed_size_binary_has_one_value_per_row() {
+    let mut fingerprints = FixedSizeBinaryBuilder::new(2);
+    for row in 0..3u8 {
+        fingerprints.append_value([row; 2]).unwrap();
+    }
+    let batch = RecordBatch::try_from_iter(vec![(
+        "fingerprint",
+        Arc::new(fingerprints.finish()) as ArrayRef,
+    )])
+    .unwrap();
+
+    assert_eq!(
+        record_batch_to_json(&batch).unwrap(),
+        (0..3u8)
+            .map(|row| json!({ "fingerprint": [row, row] }))
+            .collect::<Vec<_>>()
+    );
+
+    // The slots under these nulls hold another row's value, as Lance can write them.
+    let nulls = Int32Array::from(vec![Some(1), None, Some(1)])
+        .nulls()
+        .cloned();
+    let mut tags = ListBuilder::new(Int32Builder::new());
+    tags.append_value([Some(1), None]);
+    tags.append_null();
+    tags.append_value([]);
+    let details = StructArray::new(
+        Fields::from(vec![Field::new("n", DataType::Int32, true)]),
+        vec![Arc::new(Int32Array::from(vec![1, 1, 1]))],
+        nulls.clone(),
+    );
+    let batch = RecordBatch::try_from_iter(vec![
+        (
+            "fingerprint",
+            Arc::new(FixedSizeBinaryArray::new(
+                2,
+                vec![4u8, 5, 4, 5, 4, 5].into(),
+                nulls.clone(),
+            )) as ArrayRef,
+        ),
+        (
+            "count",
+            Arc::new(Int32Array::new(vec![7, 7, 7].into(), nulls)) as ArrayRef,
+        ),
+        (
+            "name",
+            Arc::new(StringArray::from(vec![Some("a"), None, Some("a")])) as ArrayRef,
+        ),
+        ("tags", Arc::new(tags.finish()) as ArrayRef),
+        ("details", Arc::new(details) as ArrayRef),
+    ])
+    .unwrap();
+
+    let mut rows = vec![
+        json!({
+            "fingerprint": [4, 5], "count": 7, "name": "a",
+            "tags": [1, null], "details": { "n": 1 },
+        }),
+        json!({
+            "fingerprint": null, "count": null, "name": null, "tags": null, "details": null,
+        }),
+        json!({
+            "fingerprint": [4, 5], "count": 7, "name": "a", "tags": [], "details": { "n": 1 },
+        }),
+    ];
+    assert_eq!(record_batch_to_json(&batch).unwrap(), rows);
+    assert_eq!(
+        record_batch_to_json(&batch.slice(1, 2)).unwrap(),
+        rows.split_off(1)
+    );
+
+    // JSON can't hold this value, but the cell is null, so it must not be converted.
+    let nulls = Int32Array::from(vec![None]).nulls().cloned();
+    let amounts = Decimal128Array::new(vec![10_i128.pow(25)].into(), nulls)
+        .with_precision_and_scale(38, 0)
+        .unwrap();
+    let batch = RecordBatch::try_from_iter(vec![("d", Arc::new(amounts) as ArrayRef)]).unwrap();
+    assert_eq!(
+        record_batch_to_json(&batch).unwrap(),
+        vec![json!({ "d": null })]
+    );
+
+    // The same value as a valid child of a null parent row.
+    let decimal = DataType::Decimal128(38, 0);
+    let too_large = 10_i128.pow(25);
+    let children: ArrayRef = Arc::new(
+        Decimal128Array::from(vec![too_large, 7, too_large])
+            .with_precision_and_scale(38, 0)
+            .unwrap(),
+    );
+    let nulls = Int32Array::from(vec![None, Some(1), None]).nulls().cloned();
+    let fixed = FixedSizeListArray::new(
+        Arc::new(Field::new("item", decimal.clone(), true)),
+        1,
+        children.clone(),
+        nulls.clone(),
+    );
+    let details = StructArray::new(
+        Fields::from(vec![Field::new("n", decimal.clone(), true)]),
+        vec![children],
+        nulls,
+    );
+    let decimals = || Decimal128Builder::new().with_data_type(decimal.clone());
+    let mut list = ListBuilder::new(decimals());
+    let mut map = MapBuilder::new(None, StringBuilder::new(), decimals());
+    for (value, is_valid) in [(too_large, false), (7, true), (too_large, false)] {
+        list.values().append_value(value);
+        list.append(is_valid);
+        map.keys().append_value("k");
+        map.values().append_value(value);
+        map.append(is_valid).unwrap();
+    }
+    let batch = RecordBatch::try_from_iter(vec![
+        ("fixed", Arc::new(fixed) as ArrayRef),
+        ("details", Arc::new(details) as ArrayRef),
+        ("list", Arc::new(list.finish()) as ArrayRef),
+        ("map", Arc::new(map.finish()) as ArrayRef),
+    ])
+    .unwrap();
+    let null_row = json!({ "fixed": null, "details": null, "list": null, "map": null });
+    assert_eq!(
+        record_batch_to_json(&batch).unwrap(),
+        vec![
+            null_row.clone(),
+            json!({ "fixed": [7], "details": { "n": 7 }, "list": [7], "map": { "k": 7 } }),
+            null_row,
+        ]
+    );
+
+    // Encoded children share their values, so a null parent row must also skip those.
+    let shared = Decimal128Array::from(vec![too_large, 7])
+        .with_precision_and_scale(38, 0)
+        .unwrap();
+    let runs = RunArray::<Int16Type>::try_new(&Int16Array::from(vec![1, 2]), &shared).unwrap();
+    let keys = DictionaryArray::new(Int8Array::from(vec![0, 1]), Arc::new(shared));
+    let nulls = Int32Array::from(vec![None, Some(1)]).nulls().cloned();
+    let parent = |child: ArrayRef| -> ArrayRef {
+        let item = Field::new("item", child.data_type().clone(), true);
+        Arc::new(FixedSizeListArray::new(
+            Arc::new(item),
+            1,
+            child,
+            nulls.clone(),
+        ))
+    };
+    let batch = RecordBatch::try_from_iter(vec![
+        ("runs", parent(Arc::new(runs))),
+        ("keys", parent(Arc::new(keys))),
+    ])
+    .unwrap();
+    assert_eq!(
+        record_batch_to_json(&batch).unwrap(),
+        vec![
+            json!({ "runs": null, "keys": null }),
+            json!({ "runs": [7], "keys": [7] }),
         ]
     );
 }

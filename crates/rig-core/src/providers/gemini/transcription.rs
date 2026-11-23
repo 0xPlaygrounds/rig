@@ -13,8 +13,9 @@ use crate::wire::{Body, Descriptor, DocumentDecoder, Encoded, Framing, Mode, Wir
 const TRANSCRIPTION_PREAMBLE: &str =
     "Translate the provided audio exactly. Do not add additional information.";
 
-/// Encode audio as inline base64 with a transcription system instruction.
-/// Reject invalid generation parameters or JSON serialization failures.
+/// Encode audio as inline base64, followed by the request's prompt, with a
+/// transcription system instruction naming the output language when one is
+/// set. Reject invalid generation parameters or JSON serialization failures.
 fn transcription_body(
     request: transcription::TranscriptionRequest,
 ) -> Result<Vec<u8>, EncodeError> {
@@ -36,16 +37,27 @@ fn transcription_body(
     let mime_type = mime_guess::from_path(Path::new(&request.filename))
         .first()
         .map_or_else(|| "audio/mpeg".to_string(), |mime| mime.to_string());
+    let mut parts =
+        vec![json!({ "inlineData": { "mimeType": mime_type, "data": null }, "thought": false })];
+    parts.extend(
+        request
+            .prompt
+            .map(|prompt| json!({ "text": prompt, "thought": false })),
+    );
+    let mut instruction = vec![json!({ "text": TRANSCRIPTION_PREAMBLE, "thought": false })];
+    instruction.extend(request.language.map(|language| {
+        json!({ "text": format!("Use {language} as the output language."), "thought": false })
+    }));
     let mut body = json!({
         "contents": [{
-            "parts": [{ "inlineData": { "mimeType": mime_type, "data": null }, "thought": false }],
+            "parts": parts,
             "role": "user",
         }],
         "generationConfig": generation_config,
         "safetySettings": null,
         "toolConfig": null,
         "systemInstruction": {
-            "parts": [{ "text": TRANSCRIPTION_PREAMBLE, "thought": false }],
+            "parts": instruction,
             "role": "model",
         },
     });
@@ -101,14 +113,8 @@ impl Wire for Transcriptions {
         _mode: Mode,
     ) -> Result<Encoded, EncodeError> {
         let body = transcription_body(request)?;
-        let request = http::Request::post(format!(
-            "{}/v1beta/models/{}:generateContent?key={}",
-            self.provider.base_url,
-            self.model,
-            self.provider.api_key.expose()
-        ))
-        .header(http::header::CONTENT_TYPE, "application/json")
-        .body(Body::Bytes(body))?;
+        let path = format!("/v1beta/models/{}:generateContent", self.model);
+        let request = self.provider.post_json(&path, Body::Bytes(body))?;
         // Gemini reports no transport request-id header.
         Ok(Encoded::new(request, Framing::Whole))
     }
@@ -145,7 +151,7 @@ pub fn transcript_of(reply: &Value) -> Result<transcription::TranscriptionRespon
     }
     Ok(transcription::TranscriptionResponse {
         model: reply.str("modelVersion").map(str::to_owned),
-        response_id: Some(reply.str("responseId").unwrap_or_default().to_owned()),
+        response_id: reply.str("responseId").map(str::to_owned),
         usage: reply.get("usageMetadata").map(usage_of).unwrap_or_default(),
         ..transcription::TranscriptionResponse::new(parts.concat())
     })

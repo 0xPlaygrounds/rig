@@ -12,7 +12,7 @@ use crate::wire::Mode;
 use serde_json::json;
 
 mod envelope_regressions;
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 mod held_open;
 
 /// A fresh decoder, for its classifier.
@@ -513,8 +513,8 @@ fn cache_usage_from_message_start_survives_output_only_terminal_delta() {
 
 /// A `content_block_delta` whose `delta` omits `type` is malformed, not
 /// novel: silently skipping it would turn a compat gateway's untagged
-/// text delta into a successful *empty* completion, so it fails the reply
-/// (#2258 B5). So does a known delta whose text is not text, since the
+/// text delta into a successful *empty* completion, so it fails the reply.
+/// So does a known delta whose text is not text, since the
 /// block is built from it.
 #[test]
 fn a_delta_without_its_type_or_text_fails_the_reply() {
@@ -545,7 +545,7 @@ fn message_start_with_null_message_is_a_known_noop() {
     );
 }
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 mod terminal_emission {
     use super::super::super::completion::CLAUDE_SONNET_4_6;
     use crate::providers::anthropic::wire::AnthropicConfig;
@@ -701,13 +701,13 @@ mod terminal_emission {
         }
     }
 
-    /// A gateway that zeroes the input on the terminal `message_delta` has
-    /// the `message_start` count observed, as the response reports it: the
-    /// observation is the decoder's end, not each frame's raw snapshot.
+    /// A gateway that zeroes the input on the terminal `message_delta` keeps
+    /// the `message_start` count: the usage is the decoder's end, not each
+    /// frame's raw snapshot.
     #[tokio::test]
-    async fn a_zeroed_terminal_input_is_observed_as_the_response_reports_it() {
+    async fn a_zeroed_terminal_input_keeps_the_start_count() {
         const ZEROED_DELTA: &str = r#"{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":0,"output_tokens":3}}"#;
-        let (observed, usage) = crate::driver::tests::observed_usage(
+        let usage = crate::driver::tests::reply_usage(
             AnthropicConfig::new("test-key").completion(CLAUDE_SONNET_4_6),
             MockStreamingClient {
                 sse_bytes: sse(&[
@@ -722,7 +722,6 @@ mod terminal_emission {
         )
         .await;
         assert_eq!(usage.input_tokens, Some(5));
-        assert_eq!(observed, [crate::wire::AdapterUsage::from(&usage)]);
     }
 
     /// The first error a 200 stream carrying `frames` yields, with
@@ -784,88 +783,6 @@ mod terminal_emission {
     }
 }
 
-/// The Messages projection, driven through [`crate::driver`].
-///
-/// The projector rides on the wire's [`crate::wire::Encoded`], and the HTTP
-/// transport calls it on every raw payload — the rejection body included — so
-/// these cells exercise the wire and the driver together rather than the
-/// projector in isolation. That is the only way the *closure* facts
-/// (`Started`, `Response`, `Finished`) are observable at all: they belong to
-/// the attempt, not to the payload.
-mod projection {
-
-    use std::sync::Arc;
-
-    use crate::completion::CompletionRequest;
-    use crate::observe::{
-        Action, AdapterContext, AdapterEnding, AdapterErrorBoundary, AdapterErrorEnvelope,
-        AdapterEvent, ObservationLog, Subject,
-    };
-    use crate::providers::anthropic::wire::{AnthropicConfig, Messages};
-    use crate::test_utils::RecordingHttpClient;
-
-    fn adapter_events(log: &ObservationLog) -> Vec<AdapterEvent> {
-        log.trace()
-            .observations
-            .iter()
-            .filter_map(|o| match &o.action {
-                Action::Adapter { observation } => Some(observation.event.clone()),
-                _ => None,
-            })
-            .collect()
-    }
-
-    fn context(log: &Arc<ObservationLog>) -> AdapterContext {
-        AdapterContext::new(log.clone(), Subject::default(), "call")
-    }
-
-    fn wire() -> Messages {
-        AnthropicConfig::new("test-key").completion("claude-test")
-    }
-
-    fn request() -> CompletionRequest {
-        CompletionRequest::new("hello").max_tokens(64)
-    }
-
-    /// A rejected Messages call: the envelope's type and message, and the
-    /// closure with the one funnel's classification.
-    #[tokio::test]
-    async fn messages_rejection_projects_the_envelope() {
-        let http = RecordingHttpClient::with_error(
-            http::StatusCode::SERVICE_UNAVAILABLE,
-            r#"{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#,
-        );
-        let log = Arc::new(ObservationLog::default());
-        let error = crate::driver::Model::new(wire(), http.clone())
-            .call_observed(request(), context(&log))
-            .await
-            .expect_err("the transport rejects the call");
-        assert!(error.is_retryable());
-        let events = adapter_events(&log);
-        assert!(
-            matches!(&events[0], AdapterEvent::Started { method, route } if method == "POST" && route == "/v1/messages")
-        );
-        assert!(events.contains(&AdapterEvent::Response { status: 503 }));
-        assert!(events.contains(&AdapterEvent::ErrorEnvelope {
-            error: AdapterErrorEnvelope {
-                code: None,
-                status: Some("overloaded_error".into()),
-                message: Some("Overloaded".into()),
-            }
-        }));
-        assert_eq!(
-            events.last(),
-            Some(&AdapterEvent::Finished {
-                ending: AdapterEnding::Error {
-                    boundary: AdapterErrorBoundary::ProviderResponse,
-                    kind: "provider_response".into(),
-                    status: Some(503),
-                    retryable: true,
-                }
-            })
-        );
-    }
-}
 /// One sample per known Messages event: a new event fails here until it
 /// has a sample.
 #[test]
@@ -1034,6 +951,30 @@ fn a_stop_reason_states_every_open_block_complete() {
     assert!(unfinished.stop().is_failure(), "{:?}", unfinished.stop());
 }
 
+/// A call the output limit cut before its `content_block_stop` is one of
+/// the reply's unfinished calls, whatever its input: none yet, or a whole
+/// object whose block never closed.
+#[test]
+fn a_call_left_open_at_max_tokens_is_unfinished() {
+    for input in [None, Some("{\"x\":1}")] {
+        let mut frames = reply(Vec::new(), "max_tokens");
+        let end = frames.pop().expect("the message_delta");
+        frames.push(json!({"type": "content_block_start", "index": 0,
+            "content_block": {"type": "tool_use", "id": "toolu_a", "name": "f", "input": {}}}));
+        frames.extend(input.map(|input| {
+            json!({"type": "content_block_delta", "index": 0,
+                "delta": {"type": "input_json_delta", "partial_json": input}})
+        }));
+        frames.push(end);
+        let cut = streamed(&frames).expect("the reply folds");
+        let unfinished: Vec<String> = cut
+            .unfinished_calls()
+            .map(|call| call.id.to_string())
+            .collect();
+        assert_eq!(unfinished, ["toolu_a"], "{input:?}: {:?}", cut.choice);
+    }
+}
+
 /// A gateway that skips `content_block_start` (seen on Anthropic-format
 /// dialects) still streams the block: its first delta opens it.
 #[test]
@@ -1132,7 +1073,7 @@ fn progress_update_reply(update_text: &str, mode: Mode) -> crate::completion::Co
     .expect("the reply folds")
 }
 
-/// Ported from #2616: both thinking blocks survive decoding unmerged and in
+/// Both thinking blocks survive decoding unmerged and in
 /// order, whole and streamed, under either display, and the turn replays to
 /// its model exactly as received.
 #[test]
@@ -1524,7 +1465,7 @@ fn the_default_decoder_prices_each_cache_lifetime() {
         "anthropic",
         |reply| {
             reply.feed(
-                &mut MessagesDecoder::default(),
+                &mut MessagesDecoder::new(Quirks::anthropic()),
                 Some(document::Message::default()),
                 [WireFrame::Text(message.to_string())],
             )
@@ -1662,5 +1603,24 @@ fn cache_lifetime_pricing_does_not_apply_to_gateways() {
     assert_eq!(
         priced(Quirks::gateway(), written(100, split)),
         pricing.and_then(|pricing| pricing.cost(&usage))
+    );
+}
+
+/// Counts whose sum passes `u64::MAX` fail the reply, without a panic or a
+/// wrapped total.
+#[test]
+fn usage_counts_that_overflow_fail_the_reply() {
+    let mut frames = reply(Vec::new(), "end_turn");
+    if let Some(start) = frames.first_mut() {
+        start["message"]["usage"] = json!({
+            "input_tokens": u64::MAX, "cache_read_input_tokens": 1, "output_tokens": 1
+        });
+    }
+    let failed = streamed(&frames).map(|response| response.usage);
+    assert!(
+        failed
+            .as_ref()
+            .is_err_and(|error| error.to_string().contains("overflow")),
+        "{failed:?}"
     );
 }

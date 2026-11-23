@@ -10,7 +10,6 @@
 //! assert!(matches!(event, WireEvent::Known(_)));
 //! ```
 
-pub(crate) mod auth;
 pub(crate) mod schema;
 /// The frame classifiers every JSON wire's decoder delegates to.
 pub mod wire;
@@ -65,6 +64,20 @@ pub(crate) fn refuse_all(
 /// key, so one conversation's requests share it, or a fresh id without one.
 pub(crate) fn session_id(cache_key: Option<&str>) -> String {
     cache_key.map_or_else(crate::id::generate, str::to_owned)
+}
+
+/// `builder` with the credential header `name: value`, marked sensitive so
+/// the request's `Debug` hides it. An unusable value stays the builder's error.
+pub(crate) fn credential_header(
+    builder: http::request::Builder,
+    name: &str,
+    value: &str,
+) -> http::request::Builder {
+    let mut builder = builder.header(name, value);
+    if let Some(header) = builder.headers_mut().and_then(|h| h.get_mut(name)) {
+        header.set_sensitive(true);
+    }
+    builder
 }
 
 /// [`session_id`] for `request`. The cache key is a routing hint, which a
@@ -145,9 +158,8 @@ pub(crate) mod named_dialect {
 /// Append `pairs` to `path` as a percent-encoded query string.
 /// Encoding preserves cursor delimiters and prevents query-parameter injection.
 pub(crate) fn with_query_pairs(path: &str, pairs: &[(&str, &str)]) -> String {
-    let mut serializer = url::form_urlencoded::Serializer::new(String::new());
-    for (name, value) in pairs {
-        serializer.append_pair(name, value);
-    }
-    format!("{path}?{}", serializer.finish())
+    let query = url::form_urlencoded::Serializer::new(String::new())
+        .extend_pairs(pairs)
+        .finish();
+    format!("{path}?{query}")
 }

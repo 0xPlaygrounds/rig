@@ -10,6 +10,7 @@
 
 use crate::client::env::{self, EnvError};
 use crate::providers::anthropic::{self, AnthropicConfig};
+use crate::providers::internal::credential_header;
 use crate::providers::openai::wire::{Chat, OLLAMA, OpenAIConfig};
 use crate::wire::Secret;
 use serde::{Deserialize, Serialize};
@@ -110,9 +111,10 @@ impl OllamaConfig {
         if self.api_key.is_empty() {
             builder
         } else {
-            builder.header(
-                http::header::AUTHORIZATION,
-                format!("Bearer {}", self.api_key.expose()),
+            credential_header(
+                builder,
+                "authorization",
+                &format!("Bearer {}", self.api_key.expose()),
             )
         }
     }

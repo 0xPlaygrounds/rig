@@ -12,7 +12,8 @@ HTTP cassette engine, the committed fixture corpora, and their verification suit
 | the scrubber both share | `src/scrub.rs` | yes, `traffic` or `http` |
 | provider cassettes | `fixtures/cassettes/<provider>/...yaml` | no (`exclude`) |
 | agent effect-log goldens | `fixtures/effects/<name>.effects.json` | no (`exclude`) |
-| cassette provider suites | `tests/<provider>.rs`, `tests/providers/`, `tests/common/` | no (`exclude`) |
+| the one test binary | `tests/integration.rs` | no (`exclude`) |
+| cassette provider suites | `tests/providers/`, `tests/common/` | no (`exclude`) |
 | effect-bus verification | `tests/verify/` | no (`exclude`) |
 | minimal verification runner | `tests/minimal/Cargo.toml` (shared test sources) | no (`publish = false`, `exclude`) |
 
@@ -21,7 +22,7 @@ HTTP cassette engine, the committed fixture corpora, and their verification suit
 Defaults are empty. An effect-log-only consumer uses:
 
 ```toml
-rig-cassette = { version = "0.42.0", default-features = false }
+rig-cassette = { version = "0.47.0", default-features = false }
 ```
 
 | features | public modules | additional normal dependencies |
@@ -49,7 +50,7 @@ default transport configuration.
 The facade and provider helpers needed by this package's tests remain
 version-less path dev-dependencies, omitted from its published manifest.
 The facade dev-dependency explicitly enables its capability features so provider
-targets retain the same test inventory without relying on workspace defaults.
+suites retain the same test inventory without relying on workspace defaults.
 Independent downstream graph guards live in `src/http/paths.rs` and
 `tests/core/dependency_graph.rs`; they distinguish native-engine isolation from
 the minimal library and the agent adapter.
@@ -188,7 +189,9 @@ uncompressed: it sends `accept-encoding: identity` whatever the client asked
 for, and records the header as sent. It learns header credentials before the
 header allowlist drops them, and scrubs and keeps every exchange the same
 way; when the recording is read, the session's scrubber scrubs every kept
-exchange again with all it learned.
+exchange again with all it learned. A response header off the allowlist is absent
+from every recording, so a test that asserts a header is absent proves
+nothing unless the header is on the allowlist.
 
 A binary body with a binary media type (audio, images, video, PDF,
 `application/octet-stream` and the like) has no text to scrub and is kept as
@@ -312,20 +315,23 @@ and the root package (`tests/core/golden_*.rs`); the shared matrix driver is
 
 ## The verification suite
 
-`tests/verify/main.rs` is the single entrypoint: every matrix below is a module
-of that target, not a target of its own, so the shared corpus implementation
-(`tests/corpus/mod.rs`, which holds the program table and the dimension table of
-an effect trace as a whole) is compiled once.
+`tests/verify/main.rs` is the root of the `verify` suite, one module of the
+package's one test binary (`tests/integration.rs`): every matrix below is a
+module of it. The shared corpus implementation (`tests/corpus/mod.rs`, which
+holds the program table and the dimension table of an effect trace as a whole)
+is declared once at the binary's root, beside the providers' corpus matrices
+that also use it.
 
 The unpublished `rig-cassette-minimal` package in `tests/minimal/Cargo.toml`
-points at the same `verify` entrypoint and reuses the effect-log and classic
-replay unit-test sources through its `effect_log` target. It depends on
+links the same `verify` suite and corpus into its own one binary
+(`tests/minimal/integration.rs`) and reuses the effect-log and classic replay
+unit-test sources through its `effect_log` suite. It depends on
 `rig-cassette` with only `agent`, without the native HTTP engine, facade or
 provider helpers. Testing the main cassette package does not prove this
 isolation: its dev-dependencies enable the native engine.
 
-CI runs the minimal targets separately with zero retries, and the shared
-verification target through the default-member graph with two. The all-features
+CI runs the minimal binary separately with zero retries, and the shared
+verification suite through the default-member graph with two. The all-features
 workspace run excludes the nested package to avoid repeating the same sources
 with unified features. `core-all` separately retains the migrated classic replay
 unit tests; the default/all-features cassette library executes all migrated
@@ -353,10 +359,10 @@ the shared library regression sources.
 | P | `corpus_layers.rs` | layers |
 | Q | `corpus_causal.rs` | causal dispatch |
 | S | `corpus_header.rs` | the header's new types |
-| T | `corpus_leftovers.rs` | the leftovers of the #2443 review, and `Denied` |
+| T | `corpus_leftovers.rs` | remaining header and outcome shapes, and `Denied` |
 
-Each module carries its own dimension table, its cells and what it found; that
-header is the census, not this list. Beside the matrices, `golden_refusal.rs`
+Each module's doc states what its matrix pins; its `Cell` and `Program`
+constants are the census. Beside the matrices, `golden_refusal.rs`
 proves a stale golden refuses rather than passing on a different trace,
 `record_replay.rs` and `durable_execution.rs` pin recording and interrupted
 runs, `interpreters_agree.rs` states interpreter agreement as a proptest
@@ -386,14 +392,14 @@ replayers by effect id instead of comparing it with a committed file.
 ## Running
 
 ```sh
-RIG_PROVIDER_TEST_MODE=replay cargo nextest run --locked -p rig-cassette-minimal --test effect_log --retries 0
+RIG_PROVIDER_TEST_MODE=replay cargo nextest run --locked -p rig-cassette-minimal -E 'test(/^effect_log::/)' --retries 0
 RIG_PROVIDER_TEST_MODE=replay cargo test --locked -p rig-cassette --lib --all-features
-RIG_PROVIDER_TEST_MODE=replay cargo nextest run --locked -p rig-cassette --all-features -E 'binary(verify)'
+RIG_PROVIDER_TEST_MODE=replay cargo nextest run --locked -p rig-cassette --all-features -E 'test(/^verify::/)'
 RIG_PROVIDER_TEST_MODE=replay cargo nextest run --locked -p rig-cassette-minimal --all-features --retries 0
-RIG_PROVIDER_TEST_MODE=replay cargo nextest run --locked -p rig-cassette --all-features --test <provider>
+RIG_PROVIDER_TEST_MODE=replay cargo nextest run --locked -p rig-cassette --all-features -E 'test(/^<provider>::/)'
 ```
 
 `RIG_REGENERATE_GOLDEN` must be unset for all of them. The lane owners of these
 executions, including their retry policies and the default-member graph twins,
-are in `xtask/src/verify/checks.rs` (`default-tests`, `effect-corpus`,
+are in `xtask/src/verify/checks.rs` (`tests`, `effect-corpus`,
 `bus-verification`).

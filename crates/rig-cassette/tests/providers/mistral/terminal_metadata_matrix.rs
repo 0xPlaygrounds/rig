@@ -1,37 +1,17 @@
 //! Mistral terminal metadata and primary-choice matrix.
 //!
-//! Mistral's live API rejects `logprobs` for both accessible model families
-//! (`3051: Logprobs are not enabled for this model`), so that proposed matrix
-//! cannot provide successful provider evidence. This replacement exercises
-//! the adjacent shared paths changed by #2359: primary-choice selection,
-//! length/tool-call terminal mapping, response identity, and usage retention.
+//! Mistral's live API rejects `logprobs` for both accessible model families, so this matrix
+//! exercises the adjacent shared paths instead: primary-choice selection, length and tool-call
+//! terminal mapping, response identity, and usage retention. The space is transport, model
+//! (`mistral-small-latest`, `ministral-3b-latest`), output budget (roomy or one token) and
+//! response shape (one or two text candidates, or a forced tool).
 //!
-//! The complete input space exercised here is a 2 × 2 × 2 × 3 cross-product:
-//!
-//! | dimension | values |
-//! |---|---|
-//! | transport | blocking control, raw streaming regression |
-//! | model | `mistral-small-latest`, `ministral-3b-latest` |
-//! | output budget | roomy, one-token tiny |
-//! | response shape | one text candidate, two text candidates, forced tool |
-//!
-//! That is 24 cells, of which the five below are tests. Each proves its
-//! request and terminal premise from the fixture, then compares the native raw
-//! response/terminal metadata with those exact bytes. The `n = 2` cells
-//! additionally prove that the shared streaming adapter selects candidate zero
-//! without concatenating candidate one into it.
-//!
-//! Each test maps to
-//! `crates/rig-cassette/fixtures/cassettes/mistral/terminal_metadata_matrix/<test-name>.yaml`.
-//! `mistral-small-latest` and
-//! `ministral-3b-latest` are the two inexpensive, currently served chat/tool
-//! families. Assertions cover requests, native terminals, ids, models, finish
-//! reasons, usage including `service_tier`, primary-choice behavior, and every
-//! otherwise-unmodeled top-level SSE field (including the observed `p` key).
-//!
-//! | recorded cells | exact fixture set |
-//! |---|---|
-//! | 5 of 24 | `crates/rig-cassette/fixtures/cassettes/mistral/terminal_metadata_matrix/{blocking_ministral_3b_roomy_plain_one,blocking_ministral_3b_roomy_plain_two,blocking_ministral_3b_tiny_tool,streaming_ministral_3b_tiny_plain_one,streaming_mistral_small_tiny_plain_two}.yaml` |
+//! Each recorded cell proves its request and terminal premise from its fixture under
+//! `crates/rig-cassette/fixtures/cassettes/mistral/terminal_metadata_matrix/`, then compares the
+//! native response or terminal metadata with those bytes: ids, models, finish reasons, usage
+//! including `service_tier`, and every unmodeled top-level SSE field. The `n = 2` cells also
+//! prove the shared streaming adapter selects candidate zero without concatenating candidate
+//! one into it.
 
 use rig_test_support::cassette_models::OpenAiModels;
 use std::sync::{Arc, Mutex};
@@ -40,7 +20,7 @@ use anyhow::{Context, Result};
 use futures::StreamExt as _;
 use serde_json::{Value, json};
 
-use super::support::with_mistral_terminal_metadata_cassette_result;
+use super::support::with_mistral_cassette_result;
 use crate::support::assert_matches_recorded_document;
 use rig::completion::CompletionRequest;
 
@@ -356,7 +336,7 @@ fn cell(transport: Transport, model: ModelVariant, limit: Limit, shape: Shape) -
 // matching streaming half traverses the shared compatible stream adapter.
 
 crate::matrix::case_matrix! {
-    wrapper: with_mistral_terminal_metadata_cassette_result, family: terminal_metadata_matrix_case;
+    wrapper: with_mistral_cassette_result, family: terminal_metadata_matrix_case;
     # [tokio :: test]
     blocking_ministral_3b_roomy_plain_one: ("terminal_metadata_matrix/blocking_ministral_3b_roomy_plain_one", configured, cell (Transport :: Blocking , ModelVariant :: Ministral3b , Limit :: Roomy , Shape :: PlainOne ,));
     # [tokio :: test]

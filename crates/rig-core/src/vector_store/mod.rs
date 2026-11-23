@@ -80,7 +80,8 @@ pub enum VectorStoreError {
     /// Non-success responses arrive as the status-bearing
     /// [`crate::http_client::Error`] variants, so callers can still inspect
     /// the status code; response-less transport failures arrive as
-    /// [`crate::http_client::Error::Instance`].
+    /// [`crate::http_client::Error::Transient`] or
+    /// [`crate::http_client::Error::Permanent`].
     #[error("HTTP request error: {0}")]
     Http(#[from] crate::http_client::Error),
 

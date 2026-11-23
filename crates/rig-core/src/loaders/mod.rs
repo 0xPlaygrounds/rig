@@ -66,32 +66,18 @@ macro_rules! loader_dir_entries {
 }
 
 /// Generates the shared typestate plumbing for a loader struct with a boxed
-/// `iterator` field: the `IntoIter` type with its `IntoIterator`/`Iterator`
-/// impls, `ignore_errors` on `Result` states, and the `with_glob`/`with_dir`
-/// constructors. Pass `extra: P` for loaders carrying an extra type parameter
-/// held in a `_processor: PhantomData<P>` field.
+/// `iterator` field: its `IntoIterator` impl, `ignore_errors` on `Result`
+/// states, and the `with_glob`/`with_dir` constructors. Pass `extra: P` for
+/// loaders carrying an extra type parameter held in a `_processor:
+/// PhantomData<P>` field.
 macro_rules! loader_scaffold {
     ($Loader:ident, $Err:ty, dir: $dir_kind:ident $(, extra: $P:ident)?) => {
-        pub struct IntoIter<'a, T> {
-            iterator: Box<dyn Iterator<Item = T> + 'a>,
-        }
-
         impl<'a, T $(, $P)?> IntoIterator for $Loader<'a, T $(, $P)?> {
             type Item = T;
-            type IntoIter = IntoIter<'a, T>;
+            type IntoIter = Box<dyn Iterator<Item = T> + 'a>;
 
             fn into_iter(self) -> Self::IntoIter {
-                IntoIter {
-                    iterator: self.iterator,
-                }
-            }
-        }
-
-        impl<T> Iterator for IntoIter<'_, T> {
-            type Item = T;
-
-            fn next(&mut self) -> Option<Self::Item> {
-                self.iterator.next()
+                self.iterator
             }
         }
 

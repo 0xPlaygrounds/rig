@@ -80,10 +80,12 @@ async fn batch_multi_extract_chain() -> Result<()> {
             let names_extractor = rig::extractor::ExtractorBuilder::<Names>::new(client.completion(xai::GROK_3_MINI))
                 .append_preamble("Extract names from the given text.")
                 .retries(2)
+                .additional_params(serde_json::json!({ "store": false }))
                 .build();
             let topics_extractor = rig::extractor::ExtractorBuilder::<Topics>::new(client.completion(xai::GROK_3_MINI))
                 .append_preamble("Extract topics from the given text.")
                 .retries(2)
+                .additional_params(serde_json::json!({ "store": false }))
                 .build();
             let sentiment_extractor = rig::extractor::ExtractorBuilder::<Sentiment>::new(client.completion(xai::GROK_3_MINI))
                 .append_preamble(
@@ -91,6 +93,7 @@ async fn batch_multi_extract_chain() -> Result<()> {
                      Return sentiment normalized to the range [-1.0, 1.0] and confidence normalized to [0.0, 1.0].",
                 )
                 .retries(2)
+                .additional_params(serde_json::json!({ "store": false }))
                 .build();
 
             let inputs = vec![

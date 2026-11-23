@@ -82,11 +82,27 @@ async fn test_build_rejects_a_document_that_embeds_no_text() {
     );
 }
 
-/// The same, for a document that is not the first — the index in the
-/// message has to be the document's own, not a constant.
+/// Counts the requests it is sent and answers them as the mock does.
+#[derive(Clone, Default)]
+struct Counted(std::sync::Arc<std::sync::atomic::AtomicUsize>);
+
+impl Transport<Local<crate::operation::Embedding>> for Counted {
+    fn send(
+        &self,
+        documents: Vec<String>,
+        exchange: Exchange,
+    ) -> Opening<Step<crate::operation::Embedding>> {
+        self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        MockEmbeddings.send(documents, exchange)
+    }
+}
+
+/// The same, for a document that is not the first: the index in the
+/// message is the document's own, and nothing is sent for the others.
 #[tokio::test]
 async fn test_build_names_the_document_that_embeds_no_text() {
-    let error = EmbeddingsBuilder::new(MockEmbeddings::model())
+    let sent = Counted::default();
+    let error = EmbeddingsBuilder::new(Model::new(batches(1), sent.clone()))
         .documents(vec![
             NTexts::new(0, 2),
             NTexts::new(1, 2),
@@ -101,6 +117,7 @@ async fn test_build_names_the_document_that_embeds_no_text() {
         error.to_string().contains("document 2 produced no text"),
         "error should name document 2: {error}"
     );
+    assert_eq!(sent.0.load(std::sync::atomic::Ordering::SeqCst), 0);
 }
 
 /// A model that batches one text at a time, so *every* multi-text document

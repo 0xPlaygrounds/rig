@@ -30,16 +30,17 @@ use rig_memory::{Repair, SESSION, Session, SessionError, Store, Writer};
 
 use super::agent::{Agent, AgentId, Conversation, Notice, SpawnedBy};
 use super::restore::SavedKeys;
-use super::{SaveSystems, WriteLogs};
+use super::{Persist, StartupSystems, WriteLogs};
 
 /// Saves an agent component or a resource with the session: derive
 /// `Reflect` and add `Saved`, as `#[reflect(Component, Saved)]` or
 /// `#[reflect(Resource, Saved)]`.
 ///
-/// - Each change is logged at the end of the frame under its type path, or
-///   the key its plugin gives it ([`SavedKeys`]): an agent's in its log, a
-///   resource in the [`SESSION`] log. A value that serializes to `null`, or
-///   a removed component, is saved as absent.
+/// - Each change is logged at the end of the frame, after `Last`, under its
+///   type path, or the key its plugin gives it ([`SavedKeys`]): an agent's
+///   in its log, a resource in the [`SESSION`] log. A value that serializes
+///   to `null`, a removed component or a removed resource is saved as
+///   absent, so a restore does not bring it back.
 /// - On restore it is inserted before [`SessionRestored`] exists, on the
 ///   agent it was saved with, so an `On<Insert<T>>` observer re-arms what
 ///   it says. A resource replaces the one its plugin inserted while the app
@@ -51,35 +52,102 @@ use super::{SaveSystems, WriteLogs};
 /// - A generic type is saved only once registered. A logged type no build
 ///   registers is reported and kept in the log. A value that no longer fits
 ///   its type is reported and not inserted; its next save replaces it.
+/// - A fork ([`ForkAgent`](super::fork::ForkAgent)) copies an agent's
+///   value, unless the type says otherwise as `Saved(Reset)` ([`Reset`]) or
+///   `Saved(Never)` ([`Never`]); what the fork gets is saved with it, so a
+///   restore does not bring back the source's value.
 #[derive(Clone)]
 pub struct ReflectSaved {
     watch: fn(&mut App),
+    /// What a fork gets of the type.
+    pub(crate) fork: Fork,
+}
+
+/// A saved agent component a fork starts afresh with, as its `Default`,
+/// such as a meter of the agent's own calls:
+/// `#[reflect(Component, Saved(Reset))]`. The fork has it whether or not
+/// the source has.
+pub struct Reset;
+
+/// A saved agent component a fork does not get, such as a duty the source
+/// owes: `#[reflect(Component, Saved(Never))]`. It is removed from the
+/// fork, even when every agent requires it; restored, the fork then gets
+/// such a required one at its default, as any restored agent does.
+pub struct Never;
+
+/// What a fork gets of a saved component.
+#[derive(Clone, Copy)]
+pub(crate) enum Fork {
+    /// The source's value.
+    Copy,
+    /// The default this inserts.
+    Reset(fn(&mut EntityWorldMut)),
+    /// What this removes.
+    Never(fn(&mut EntityWorldMut)),
+}
+
+impl ReflectSaved {
+    fn of<T: Component + Reflect + TypePath>(fork: Fork) -> Self {
+        // `Changed` also sees an immutable value inserted in place of
+        // another.
+        let watch = |app: &mut App| {
+            app.add_systems(SaveFrame, log_changed::<T>);
+        };
+        Self { watch, fork }
+    }
 }
 
 impl<T: Component + Reflect + TypePath> CreateTypeData<T> for ReflectSaved {
     fn create_type_data(_: ()) -> Self {
-        // `Changed` also sees an immutable value inserted in place of
-        // another.
-        let watch = |app: &mut App| {
-            app.add_systems(Last, log_changed::<T>.in_set(SaveSystems));
-        };
-        Self { watch }
+        Self::of::<T>(Fork::Copy)
+    }
+}
+
+impl<T: Component + Reflect + TypePath + Default> CreateTypeData<T, Reset> for ReflectSaved {
+    fn create_type_data(_: Reset) -> Self {
+        Self::of::<T>(Fork::Reset(|fork| {
+            fork.insert(T::default());
+        }))
+    }
+}
+
+impl<T: Component + Reflect + TypePath> CreateTypeData<T, Never> for ReflectSaved {
+    fn create_type_data(_: Never) -> Self {
+        // A required component may have put it on the fork.
+        Self::of::<T>(Fork::Never(|fork| {
+            fork.remove::<T>();
+        }))
+    }
+}
+
+/// The log a saved value of an entity goes in.
+#[derive(SystemParam)]
+struct Owners<'w, 's> {
+    agents: Query<'w, 's, &'static AgentId, With<Agent>>,
+    resources: Query<'w, 's, (), With<IsResource>>,
+    spawned: Query<'w, 's, (), Added<Agent>>,
+}
+
+impl Owners<'_, '_> {
+    /// The log of `entity`'s saved values, and whether a change starts it:
+    /// an agent's own, which a change starts unless the agent was spawned
+    /// with it, so a session nobody used is not kept; the [`SESSION`] log
+    /// for a resource, which no change starts. `None` for another entity.
+    fn of(&self, entity: Entity) -> Option<(&str, bool)> {
+        match self.agents.get(entity) {
+            Ok(id) => Some((id.0.as_str(), !self.spawned.contains(entity))),
+            Err(_) => self.resources.contains(entity).then_some((SESSION, false)),
+        }
     }
 }
 
 /// Logs each change of the saved component `T` on the agents or as a
-/// resource, and its removal from an agent; reflection runs only for a
-/// change. A change starts its agent's log, as a message does, unless it
-/// is a value the agent was spawned with, so a session nobody used is not
-/// kept.
+/// resource, and each removal, in the log of its owner ([`Owners`]);
+/// reflection runs only for a change.
 fn log_changed<T: Component + Reflect + TypePath>(
-    changed: Query<
-        (Entity, Option<&AgentId>, &T),
-        (Or<(With<Agent>, With<IsResource>)>, Changed<T>),
-    >,
+    changed: Query<(Entity, &T), (Or<(With<Agent>, With<IsResource>)>, Changed<T>)>,
     mut removed: RemovedComponents<T>,
-    agents: Query<&AgentId, With<Agent>>,
-    spawned: Query<(), Added<Agent>>,
+    owners: Owners,
     log: Res<SessionLog>,
     registry: Res<AppTypeRegistry>,
     keys: Res<SavedKeys>,
@@ -90,21 +158,21 @@ fn log_changed<T: Component + Reflect + TypePath>(
     let path = T::type_path();
     let name = keys.key(path).unwrap_or(path);
     let registry = registry.read();
-    for (entity, id, component) in &changed {
+    for (entity, component) in &changed {
+        let Some((owner, starts)) = owners.of(entity) else {
+            continue;
+        };
         let value = TypedReflectSerializer::new(component.as_partial_reflect(), &registry);
-        let log_name = id.map_or(SESSION, |id| id.0.as_str());
-        let starts = id.is_some() && !spawned.contains(entity);
         match serde_json::to_value(value) {
-            Ok(value) => log.0.save_value(log_name, name, Some(value), starts),
+            Ok(value) => log.0.save_value(owner, name, Some(value), starts),
             Err(failure) => error!("not logging {name}: {failure}"),
         }
     }
     for entity in removed.read() {
-        if let Ok(id) = agents.get(entity)
+        if let Some((owner, starts)) = owners.of(entity)
             && !changed.contains(entity)
         {
-            log.0
-                .save_value(&id.0, name, None, !spawned.contains(entity));
+            log.0.save_value(owner, name, None, starts);
         }
     }
 }
@@ -193,7 +261,6 @@ pub fn open_session(world: &mut World, store: Arc<dyn Store>) -> Result<(), Sess
 /// before the restore) is announced all the same.
 #[derive(Message, Clone, Debug)]
 pub struct ConversationChanged {
-    /// The agent.
     pub agent: Entity,
     /// The change: what changed, who made it and when.
     pub change: ChangeRecord,
@@ -209,14 +276,15 @@ pub struct Retire {
 }
 
 /// Saves the outbox of `conversation`, that of `agent` whose id is `id`,
-/// to `log`; one [`ConversationChanged`] per change saved.
+/// to `log`, without marking it changed; one [`ConversationChanged`] per
+/// change saved.
 pub(crate) fn save_conversation(
     log: &SessionLog,
     agent: Entity,
     id: &AgentId,
-    conversation: &mut Conversation,
+    conversation: &mut Mut<Conversation>,
 ) -> Vec<ConversationChanged> {
-    let saved = log.0.save(&id.0, conversation);
+    let saved = log.0.save(&id.0, conversation.bypass_change_detection());
     let committed = |change| ConversationChanged { agent, change };
     saved.into_iter().map(committed).collect()
 }
@@ -236,8 +304,7 @@ impl Drain<'_, '_> {
     pub(crate) fn save(&mut self) -> Option<Entity> {
         let mut changed = None;
         for (agent, id, mut conversation) in &mut self.agents {
-            let conversation = conversation.bypass_change_detection();
-            let saved = save_conversation(&self.log, agent, id, conversation);
+            let saved = save_conversation(&self.log, agent, id, &mut conversation);
             if !saved.is_empty() {
                 changed = Some(agent);
                 self.committed.write_batch(saved);
@@ -249,9 +316,15 @@ impl Drain<'_, '_> {
 
 /// The schedule that saves the agent conversations changed since it last
 /// ran ([`save_now`]): right before `Update`, between the stages of each
-/// agent pass and in `Last` ([`SaveSystems`]).
+/// agent pass and in [`SaveFrame`].
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct SaveConversations;
+
+/// The kernel's schedule right after `Last`, before [`Persist`]: it queues
+/// what the frame changed for the session log, every conversation and
+/// every [`ReflectSaved`] value. No plugin adds to it.
+#[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct SaveFrame;
 
 /// An agent whose conversation [`save_conversations`] saved changes of,
 /// since [`save_now`] last took it.
@@ -291,8 +364,7 @@ pub(crate) fn save_discarded(mut world: DeferredWorld, context: HookContext) {
     if conversation.unsaved().is_empty() {
         return;
     }
-    let conversation = conversation.bypass_change_detection();
-    for committed in save_conversation(&log, agent, &id, conversation) {
+    for committed in save_conversation(&log, agent, &id, &mut conversation) {
         world.write_message(committed);
     }
 }
@@ -309,21 +381,24 @@ pub(crate) fn retire(
     let Ok((id, mut conversation)) = agents.get_mut(agent) else {
         return;
     };
-    let conversation = conversation.bypass_change_detection();
-    committed.write_batch(save_conversation(&log, agent, id, conversation));
+    committed.write_batch(save_conversation(&log, agent, id, &mut conversation));
     log.0.retire(&id.0);
     commands.entity(agent).try_despawn();
 }
 
 /// Restores the session at startup, settles what a crash or restart left
-/// half done, and logs everything after.
+/// half done, and logs everything after. It needs [`AgentPlugin`](super::AgentPlugin),
+/// which runs the schedules that save and write the logs.
 pub struct SessionLogPlugin;
 
 impl Plugin for SessionLogPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(PreStartup, super::restore::restore_session)
-            .add_systems(Startup, super::restore::reconcile)
-            .add_systems(Last, write_logs.in_set(WriteLogs))
+            .add_systems(
+                Startup,
+                super::restore::reconcile.in_set(StartupSystems::Reconcile),
+            )
+            .add_systems(Persist, write_logs.in_set(WriteLogs))
             .add_observer(open_child_log)
             .init_resource::<SavedKeys>();
     }
@@ -355,7 +430,7 @@ fn open_child_log(
     log: Res<SessionLog>,
 ) {
     if let Ok((child, parent)) = agents.get(spawned.entity)
-        && let Ok(parent) = ids.get(parent.0)
+        && let Ok(parent) = ids.get(parent.parent())
     {
         log.0.open_log(&child.0, Some(&parent.0));
     }

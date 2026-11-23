@@ -38,6 +38,7 @@ use crate::message::{StopReason, ToolCall, UserContent};
 
 mod aside;
 mod author;
+mod facts;
 mod lineage;
 mod note;
 pub mod pairing;
@@ -45,9 +46,11 @@ mod turn;
 
 pub use aside::{Aside, AsideId};
 pub use author::{Author, AuthorKind, RequestId};
+pub use facts::ResultFacts;
 pub use lineage::Lineage;
 pub use note::Note;
-pub use turn::{TURN, TurnEnd, TurnRecord};
+pub use pairing::CallRef;
+pub use turn::{StopCause, TURN, TurnEnd, TurnRecord};
 
 use pairing::{Normalized, PairingError};
 
@@ -63,6 +66,29 @@ pub const FILE_CLOSE: &str = "</file>";
 pub fn attached_file(text: &str) -> Option<(&str, &str)> {
     let rest = text.strip_prefix(FILE_OPEN)?.strip_suffix(FILE_CLOSE)?;
     rest.split_once("\">\n")
+}
+
+/// How a note that a path a user's message named is not attached starts,
+/// followed by its label and `">`.
+pub const UNATTACHED_OPEN: &str = "<unattached path=\"";
+
+/// How a note that a path a user's message named is not attached ends.
+pub const UNATTACHED_CLOSE: &str = "</unattached>";
+
+/// The label and the reason of a note that a path a user's message named
+/// is not attached, when `text` is one.
+pub fn unattached(text: &str) -> Option<(&str, &str)> {
+    let rest = text
+        .strip_prefix(UNATTACHED_OPEN)?
+        .strip_suffix(UNATTACHED_CLOSE)?;
+    rest.split_once("\">\n")
+}
+
+/// Whether `text` is what attaching put in a user's message, an
+/// [`attached_file`] or an [`unattached`] note, rather than the user's
+/// own typing.
+pub fn is_attachment_text(text: &str) -> bool {
+    attached_file(text).is_some() || unattached(text).is_some()
 }
 
 /// A conversation: its entries (each a message with an id and, when it is
@@ -123,6 +149,9 @@ struct Meta {
     /// Milliseconds since the Unix epoch: when the entry was first made.
     #[serde(default)]
     made: u64,
+    /// What the calls its results answer published.
+    #[serde(default, skip_serializing_if = "ResultFacts::is_empty")]
+    facts: ResultFacts,
 }
 
 /// A conversation as saved, checked before it becomes one.
@@ -194,7 +223,7 @@ fn saved_asides<S: Serializer>(
 impl PartialEq for Conversation {
     fn eq(&self, other: &Self) -> bool {
         let saved = |(_, aside): &&(AsideId, Aside)| aside.saved;
-        let same = |a: &Meta, b: &Meta| a.id == b.id && a.author == b.author;
+        let same = |a: &Meta, b: &Meta| a.id == b.id && a.author == b.author && a.facts == b.facts;
         self.messages == other.messages
             && self.meta.len() == other.meta.len()
             && self.meta.iter().zip(&other.meta).all(|(a, b)| same(a, b))
@@ -284,6 +313,10 @@ pub struct Entry {
     /// recorded change carries it only for such an entry.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub made: Option<u64>,
+    /// What the tool calls its results answer published, for a view to
+    /// draw them from; saved with it, never sent to a model.
+    #[serde(default, skip_serializing_if = "ResultFacts::is_empty")]
+    pub facts: ResultFacts,
 }
 
 impl Entry {
@@ -294,7 +327,14 @@ impl Entry {
             author: None,
             id: None,
             made: None,
+            facts: ResultFacts::default(),
         }
+    }
+
+    /// This entry, with what the calls its results answer published.
+    #[must_use]
+    pub fn with_facts(self, facts: ResultFacts) -> Self {
+        Self { facts, ..self }
     }
 
     /// Whether it is the [`STOPPED`] note, as
@@ -338,6 +378,8 @@ pub struct EntryRef<'c> {
     pub author: Option<&'c Author>,
     /// When it was first made, in milliseconds since the Unix epoch.
     pub made: u64,
+    /// What the tool calls its results answer published.
+    pub facts: &'c ResultFacts,
 }
 
 impl EntryRef<'_> {
@@ -353,31 +395,29 @@ impl EntryRef<'_> {
     /// not only tool results, with no author or [`AuthorKind::User`] with
     /// no title.
     pub fn is_users_own(&self) -> bool {
-        let typed = match self.message {
-            Message::User { content } => content
-                .iter()
-                .any(|item| !matches!(item, UserContent::ToolResult(_))),
-            _ => false,
-        };
-        let users = self
-            .author
-            .is_none_or(|author| author.kind == AuthorKind::User && author.title.is_none());
-        typed && users
+        self.says_something()
+            && self
+                .author
+                .is_none_or(|author| author.kind == AuthorKind::User && author.title.is_none())
     }
 
     /// Whether it asks something of the model: a user message with text
     /// or attachments, not only tool results, that is not rig's own (the
     /// [`STOPPED`] note). The user's, an agent's or a plugin's.
     pub fn is_request(&self) -> bool {
-        let asks = match self.message {
-            Message::User { content } => content
-                .iter()
-                .any(|item| !matches!(item, UserContent::ToolResult(_))),
+        self.says_something()
+            && self
+                .author
+                .is_none_or(|author| author.kind != AuthorKind::Rig)
+    }
+
+    /// Whether it is a user message with text or attachments, not only
+    /// tool results.
+    fn says_something(&self) -> bool {
+        match self.message {
+            Message::User { content } => content.iter().any(|item| !pairing::is_result(item)),
             _ => false,
-        };
-        asks && self
-            .author
-            .is_none_or(|author| author.kind != AuthorKind::Rig)
+        }
     }
 
     /// Whether it is the [`STOPPED`] note rig puts between a request the
@@ -421,14 +461,15 @@ pub enum Halt {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Change {
-    /// Entries added at the end, each with its id.
+    /// Entries added at the end, each with its id. It clears the halt.
     Push {
         /// The entries.
         entries: Vec<Entry>,
     },
     /// Entries `from..to`, whose ids were `removed`, replaced by `with`
     /// (each with its id). `removed` doubles as a check: applying it where
-    /// the range holds other ids fails.
+    /// the range holds other ids fails. One that reaches the end clears the
+    /// halt.
     Splice {
         /// The first entry replaced.
         from: usize,
@@ -540,6 +581,7 @@ impl Conversation {
             message,
             author: meta.author.as_ref(),
             made: meta.made,
+            facts: &meta.facts,
         })
     }
 
@@ -552,6 +594,7 @@ impl Conversation {
             author: meta.author.clone(),
             id: Some(meta.id),
             made: Some(meta.made),
+            facts: meta.facts.clone(),
         })
     }
 
@@ -585,6 +628,12 @@ impl Conversation {
     /// Where entry `id` is now; `None` once an edit took it out.
     pub fn index_of(&self, id: MessageId) -> Option<usize> {
         self.meta.iter().position(|meta| meta.id == id)
+    }
+
+    /// The id the next entry made gets. Every id below it was given out
+    /// before, here or in the conversation this one was copied from.
+    pub fn next_id(&self) -> MessageId {
+        MessageId(self.next_id)
     }
 
     /// Where a span that began at entry `id` begins now, such as a turn:
@@ -647,9 +696,18 @@ impl Conversation {
     }
 
     /// The tool calls of the last assistant message that nothing answers
-    /// yet. See [`pairing::pending_calls`].
-    pub fn pending_calls(&self) -> Vec<ToolCall> {
-        pairing::pending_calls(&self.messages)
+    /// yet, each with its [`CallRef`]. See [`pairing::pending_calls`].
+    pub fn pending_calls(&self) -> Vec<(CallRef, ToolCall)> {
+        let Some((at, calls)) = pairing::pending(&self.messages) else {
+            return Vec::new();
+        };
+        let Some(reply) = self.id(at) else {
+            return Vec::new();
+        };
+        let calls = calls.into_iter();
+        calls
+            .map(|(index, call)| (CallRef { reply, index }, call.clone()))
+            .collect()
     }
 
     /// Whether the messages pair every tool call with its result. See
@@ -669,22 +727,6 @@ impl Conversation {
         asides
             .find(|(known, _)| *known == id)
             .map(|(_, aside)| aside)
-    }
-
-    /// Where `aside` is drawn: before entry `position`, after entry
-    /// `position - 1`. While an edit took out the entry it follows, after
-    /// the entry that stands for it now ([`start_of`](Self::start_of)).
-    pub fn aside_position(&self, aside: &Aside) -> usize {
-        let Some(after) = aside.after else {
-            return 0;
-        };
-        match self.index_of(after) {
-            Some(index) => index.saturating_add(1),
-            None => self
-                .messages
-                .len()
-                .min(self.start_of(after).saturating_add(1)),
-        }
     }
 
     // Editing: each builds a change with every id filled in, applies it and
@@ -730,7 +772,6 @@ impl Conversation {
         });
         let entries = stop.into_iter().chain(entries).collect();
         self.record(Change::Push { entries }, by);
-        self.clear_halt();
         ids
     }
 
@@ -739,7 +780,9 @@ impl Conversation {
     /// when that id was in the range and no earlier entry of `with` kept
     /// it; any other gets a new id. Nothing merges. A splice reaching the
     /// end clears the halt. An empty range replaced by nothing changes and
-    /// records nothing.
+    /// records nothing. A provider's prompt cache is lost from the first
+    /// entry replaced on, so a splice before the end costs the requests
+    /// after it.
     pub fn splice(
         &mut self,
         range: impl RangeBounds<usize>,
@@ -792,6 +835,7 @@ impl Conversation {
                 && entry.id == self.id(at)
                 && entry.author.as_ref() == self.author(at)
                 && Some(&entry.message) == self.messages.get(at)
+                && Some(&entry.facts) == self.meta.get(at).map(|meta| &meta.facts)
         };
         let (len, count) = (self.messages.len(), entries.len());
         let start = entries
@@ -883,9 +927,6 @@ impl Conversation {
             with,
         };
         self.record(change, Some(by));
-        if to == len {
-            self.clear_halt();
-        }
         spliced
     }
 
@@ -951,6 +992,11 @@ impl Conversation {
                     author: self.author(at).cloned(),
                     id: Some(id),
                     made: None,
+                    facts: self
+                        .meta
+                        .get(at)
+                        .map(|meta| meta.facts.clone())
+                        .unwrap_or_default(),
                 }),
                 None => self.entry(at),
             })
@@ -1001,52 +1047,6 @@ impl Conversation {
         normalized
     }
 
-    /// Takes everything a log holds from `from_log`, a value read from that
-    /// log: entries, saved asides, halt, next ids, lineage and revision.
-    /// This value's unsaved asides stay, with their ids. For a host whose
-    /// log was rewritten under the value it holds.
-    ///
-    /// # Errors
-    ///
-    /// [`ApplyError::Mismatch`], changing nothing, while either value has
-    /// unsaved changes, or when an unsaved aside's id is a saved one's in
-    /// `from_log`.
-    pub fn reread(&mut self, from_log: Conversation) -> Result<(), ApplyError> {
-        if !self.unsaved.is_empty() || !from_log.unsaved.is_empty() {
-            return Err(mismatch(
-                "a value with unsaved changes is not reread".to_owned(),
-            ));
-        }
-        let mut asides = from_log.asides;
-        asides.retain(|(_, aside)| aside.saved);
-        let unsaved = self.asides.iter().filter(|(_, aside)| !aside.saved);
-        if let Some((id, _)) = unsaved
-            .clone()
-            .find(|(id, _)| asides.iter().any(|(saved, _)| saved == id))
-        {
-            return Err(mismatch(format!("aside id {} is saved in the log", id.0)));
-        }
-        let next_aside = unsaved
-            .clone()
-            .map(|(id, _)| id.0.saturating_add(1))
-            .fold(from_log.next_aside, u64::max);
-        asides.extend(unsaved.cloned());
-        asides.sort_by_key(|(id, _)| *id);
-        *self = Self {
-            messages: from_log.messages,
-            meta: from_log.meta,
-            asides,
-            halted: from_log.halted,
-            next_id: from_log.next_id,
-            next_aside,
-            revision: from_log.revision,
-            lineage: from_log.lineage,
-            unsaved: Vec::new(),
-            clock: self.clock,
-        };
-        Ok(())
-    }
-
     /// Leaves the user's last message unanswered, for `halt`. Whether it
     /// was halted now: not when the model owes no answer.
     pub fn halt(&mut self, halt: Halt) -> bool {
@@ -1055,12 +1055,6 @@ impl Conversation {
             self.record(Change::Halt { halt: Some(halt) }, None);
         }
         halts
-    }
-
-    fn clear_halt(&mut self) {
-        if self.halted.is_some() {
-            self.record(Change::Halt { halt: None }, None);
-        }
     }
 
     /// Puts `aside` after the asides already put and returns its id. An
@@ -1277,6 +1271,7 @@ impl Conversation {
             id: entry.id.unwrap_or_default(),
             author: entry.author.clone(),
             made,
+            facts: entry.facts.clone(),
         };
         match change {
             Change::Push { entries } => {
@@ -1287,6 +1282,7 @@ impl Conversation {
                     self.meta.push(meta(entry, entry.made.unwrap_or(at)));
                 }
                 self.next_id = next;
+                self.halted = None;
             }
             Change::Splice {
                 from,
@@ -1295,6 +1291,7 @@ impl Conversation {
                 with,
             } => {
                 let (from, to) = (*from, *to);
+                let reaches_end = to == self.meta.len();
                 let replaced = self.meta.get(from..to).ok_or_else(|| {
                     mismatch(format!(
                         "splice of {from}..{to} in {} entries",
@@ -1318,6 +1315,9 @@ impl Conversation {
                     .splice(from..to, with.iter().map(|entry| entry.message.clone()));
                 self.meta.splice(from..to, metas);
                 self.next_id = next;
+                if reaches_end {
+                    self.halted = None;
+                }
             }
             Change::Halt { halt } => self.halted = *halt,
             Change::Aside {

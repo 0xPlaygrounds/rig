@@ -50,10 +50,6 @@ pub struct ApiResponse<T> {
 
     /// Error messages if the request failed.
     pub errors: Vec<ApiErrorDetail>,
-
-    /// Informational messages.
-    #[allow(dead_code)]
-    pub messages: Vec<ApiMessage>,
 }
 
 /// Error detail from the Cloudflare API.
@@ -63,17 +59,6 @@ pub struct ApiErrorDetail {
     pub code: u32,
 
     /// Error message.
-    pub message: String,
-}
-
-/// Informational message from the Cloudflare API.
-#[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
-pub struct ApiMessage {
-    /// Message code.
-    pub code: Option<u32>,
-
-    /// Message text.
     pub message: String,
 }
 

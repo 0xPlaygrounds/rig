@@ -4,3 +4,6 @@ crates/rig-cassette/fixtures/cassettes/doubleword/**/*.yaml whitespace=-blank-at
 # blank-at-eof whitespace check so `git diff --check` stays meaningful
 # elsewhere without corrupting recordings.
 crates/rig-cassette/fixtures/cassettes/** whitespace=-blank-at-eof
+# Sync writes the catalog with LF line ends, and `cargo xtask catalog check`
+# compares it byte for byte, so a CRLF checkout must not rewrite it.
+crates/rig-core/src/catalog/models.json text eol=lf

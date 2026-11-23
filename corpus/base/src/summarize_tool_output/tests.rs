@@ -159,7 +159,4 @@ fn an_output_past_the_cheap_models_input_limit_is_cut_for_it() {
     clean(&root);
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(SummarizeToolOutputPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(SummarizeToolOutputPlugin);

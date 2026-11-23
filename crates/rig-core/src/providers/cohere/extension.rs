@@ -1,5 +1,5 @@
 //! Cohere's typed request options and reply extras. The shared section
-//! goes to both routes, the Compatibility API and the native chat API; the
+//! goes to both APIs, the Compatibility API and the native chat API; the
 //! `"cohere.chat"` section goes to the native API only and is skipped on a
 //! request the Compatibility API takes.
 //!
@@ -13,10 +13,10 @@
 //! let request = CompletionRequest::new("hi").provider_option(options);
 //! ```
 
-use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize, Serializer};
 use serde_json::Value;
 
+use crate::completion::provider_options::reply_field;
 use crate::completion::{ExtensionOptions, ProviderExtension, ReplyExtras};
 use crate::message::Api;
 
@@ -34,7 +34,7 @@ impl ProviderExtension for CohereExt {
 #[non_exhaustive]
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct CohereOptions {
-    /// The fields both routes read.
+    /// The fields both APIs read.
     #[serde(rename = "*")]
     pub shared: CohereShared,
     /// The fields only the native chat API reads.
@@ -95,7 +95,7 @@ impl CohereOptions {
     }
 }
 
-/// The fields both Cohere routes read.
+/// The fields both Cohere APIs read.
 #[non_exhaustive]
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct CohereShared {
@@ -180,7 +180,7 @@ pub enum SafetyMode {
 #[non_exhaustive]
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct CohereExtras {
-    /// `id`, on both routes.
+    /// `id`, on both APIs.
     pub id: Option<String>,
     /// `finish_reason` as Cohere spells it (`COMPLETE`, `MAX_TOKENS`, ...).
     pub finish_reason: Option<String>,
@@ -236,24 +236,16 @@ pub struct Logprob {
     pub logprobs: Vec<f64>,
 }
 
-/// The value at `pointer` in `raw`, or `None` when it is absent or `null`.
-fn at<T: DeserializeOwned>(raw: &Value, pointer: &str) -> Result<Option<T>, serde_json::Error> {
-    match raw.pointer(pointer) {
-        None | Some(Value::Null) => Ok(None),
-        Some(value) => T::deserialize(value).map(Some),
-    }
-}
-
 impl ReplyExtras for CohereExtras {
     fn from_reply(_api: &Api, raw: &Value) -> Result<Self, serde_json::Error> {
         Ok(Self {
-            id: at(raw, "/id")?,
-            finish_reason: at(raw, "/finish_reason")?,
-            billed_units: at(raw, "/usage/billed_units")?,
-            tokens: at(raw, "/usage/tokens")?,
-            cached_tokens: at(raw, "/usage/cached_tokens")?,
-            tool_plan: at(raw, "/message/tool_plan")?,
-            logprobs: at(raw, "/logprobs")?,
+            id: reply_field(raw, "/id")?,
+            finish_reason: reply_field(raw, "/finish_reason")?,
+            billed_units: reply_field(raw, "/usage/billed_units")?,
+            tokens: reply_field(raw, "/usage/tokens")?,
+            cached_tokens: reply_field(raw, "/usage/cached_tokens")?,
+            tool_plan: reply_field(raw, "/message/tool_plan")?,
+            logprobs: reply_field(raw, "/logprobs")?,
         })
     }
 }

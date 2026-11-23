@@ -1,13 +1,8 @@
 //! Live fact behind Rig replaying OpenRouter Claude turns verbatim: on each
-//! route OpenRouter serves Claude Opus 5.5 from, a turn's signed
-//! `reasoning_details` go back after the tool list changes, and the request
-//! succeeds. So Chat does not bind context on OpenRouter.
-//!
-//! | # | Cell | Route |
-//! |---|------|-------|
-//! | 1 | `anthropic` | Anthropic |
-//! | 2 | `amazon_bedrock` | Amazon Bedrock |
-//! | 3 | `google_vertex` | Google Vertex |
+//! route OpenRouter serves Claude Opus 5.5 from (Anthropic, Amazon Bedrock and
+//! Google Vertex), a turn's signed `reasoning_details` go back after the tool
+//! list changes, and the request succeeds. So Chat does not bind context on
+//! OpenRouter.
 
 use rig::completion::{CompletionRequest, Effort, Message, ToolDefinition};
 use rig::message::{ToolName, ToolResultContent, UserContent};

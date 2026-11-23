@@ -12,7 +12,7 @@ use rig::operation::Completion;
 use rig::providers::openai;
 use rig_cassette::agent::AgentReplayExt;
 
-use super::super::support::{OpenAiCassette, with_openai_corpus_host_cassette};
+use super::super::support::{OpenAiCassette, with_openai_cassette};
 use crate::goldens::{EMBED_KEY, EmbedPrompt, families};
 use crate::support::BASIC_PREAMBLE;
 
@@ -111,7 +111,7 @@ async fn embeds_over_host_with(
 
 #[tokio::test]
 async fn embed_prompt_effect_log_is_the_golden_fixture() {
-    with_openai_corpus_host_cassette("corpus_host/embed_prompt", |client| async move {
+    with_openai_cassette("corpus_host/embed_prompt", |client| async move {
         let log = embeds_over_host(client, false).await;
         crate::goldens::golden_effects("openai_host_embed_prompt", &log);
     })
@@ -120,7 +120,7 @@ async fn embed_prompt_effect_log_is_the_golden_fixture() {
 
 #[tokio::test]
 async fn embed_prompt_streamed_effect_log_is_the_golden_fixture() {
-    with_openai_corpus_host_cassette("corpus_host/embed_prompt_streamed", |client| async move {
+    with_openai_cassette("corpus_host/embed_prompt_streamed", |client| async move {
         let log = embeds_over_host(client, true).await;
         assert!(log.records[1].events.is_some(), "events are kept");
         crate::goldens::golden_effects("openai_host_embed_prompt_streamed", &log);
@@ -133,7 +133,7 @@ async fn embed_prompt_streamed_effect_log_is_the_golden_fixture() {
 /// the bus, and replays the same recording.
 #[tokio::test]
 async fn a_model_chosen_from_config_yields_the_golden_effect_log() {
-    with_openai_corpus_host_cassette("corpus_host/embed_prompt", |client| async move {
+    with_openai_cassette("corpus_host/embed_prompt", |client| async move {
         let config = client.openai.config.clone();
         let http = rig_test_support::rebased::Rebased::new(
             "https://api.openai.com/v1",

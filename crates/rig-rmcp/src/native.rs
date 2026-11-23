@@ -154,11 +154,6 @@ impl McpTool {
         self
     }
 
-    /// The per-call timeout, if any.
-    pub fn timeout(&self) -> Option<Duration> {
-        self.timeout
-    }
-
     /// The MCP tool definition this adapter wraps.
     pub fn definition(&self) -> &rmcp::model::Tool {
         &self.definition
@@ -172,14 +167,6 @@ impl McpTool {
     }
 }
 
-/// Valid JSON that cannot be represented by MCP's object-valued arguments.
-#[derive(Debug, thiserror::Error)]
-pub(crate) enum McpArgumentError {
-    /// The JSON kind given instead of an object or null.
-    #[error("expected a JSON object or null, got {0}")]
-    NonObject(&'static str),
-}
-
 pub(crate) fn json_value_kind(value: &serde_json::Value) -> &'static str {
     match value {
         serde_json::Value::Null => "null",
@@ -188,20 +175,6 @@ pub(crate) fn json_value_kind(value: &serde_json::Value) -> &'static str {
         serde_json::Value::String(_) => "string",
         serde_json::Value::Array(_) => "array",
         serde_json::Value::Object(_) => "object",
-    }
-}
-
-/// Returns no argument map for explicit JSON `null`, and an MCP argument map
-/// for a JSON object. Other shapes are rejected: silently turning an array or
-/// scalar into a no-argument request can execute a different operation than
-/// the model requested.
-pub(crate) fn mcp_arguments(
-    value: serde_json::Value,
-) -> Result<Option<JsonObject>, McpArgumentError> {
-    match value {
-        serde_json::Value::Null => Ok(None),
-        serde_json::Value::Object(arguments) => Ok(Some(arguments)),
-        value => Err(McpArgumentError::NonObject(json_value_kind(&value))),
     }
 }
 
@@ -229,23 +202,18 @@ pub(crate) async fn send_mcp_request(
     request: ClientRequest,
     deadline: Option<(tokio::time::Instant, Duration)>,
 ) -> Result<ServerResult, rmcp::ServiceError> {
+    let send = peer.send_cancellable_request(request, PeerRequestOptions::no_options());
     let handle = match deadline {
         Some((deadline, timeout)) => {
             let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
             if remaining.is_zero() {
                 return Err(rmcp::ServiceError::Timeout { timeout });
             }
-            rig_core::wasm_compat::timeout(
-                remaining,
-                peer.send_cancellable_request(request, PeerRequestOptions::no_options()),
-            )
-            .await
-            .map_err(|_| rmcp::ServiceError::Timeout { timeout })??
+            rig_core::wasm_compat::timeout(remaining, send)
+                .await
+                .map_err(|_| rmcp::ServiceError::Timeout { timeout })??
         }
-        None => {
-            peer.send_cancellable_request(request, PeerRequestOptions::no_options())
-                .await?
-        }
+        None => send.await?,
     };
 
     let Some((deadline, timeout)) = deadline else {
@@ -282,14 +250,6 @@ pub(crate) fn cancel_timed_out_request(
 }
 
 impl McpTool {
-    fn invalid(&self, error: McpArgumentError) -> ToolExecutionError {
-        ToolExecutionError::invalid_args(format!(
-            "MCP tool '{}' received invalid arguments: {error}",
-            self.definition.name
-        ))
-        .with_source(error)
-    }
-
     /// The request `_meta` for one call: the context's [`McpMeta`] with the
     /// [`Self::with_call_meta`] entries over it.
     fn request_meta(
@@ -361,40 +321,38 @@ pub(crate) fn mcp_content_block_to_tool_content(
 ) -> Result<ToolResultContent, ToolExecutionError> {
     match content {
         ContentBlock::Text(text) => Ok(ToolResultContent::text(text.text.clone())),
-        ContentBlock::Image(image) => match ImageMediaType::from_mime_type(&image.mime_type) {
-            Some(media_type) => Ok(ToolResultContent::image_base64(
-                image.data.clone(),
-                Some(media_type),
-                None,
-            )),
-            None => mcp_content_block_as_json(content),
-        },
+        ContentBlock::Image(image) => image_or_json(content, &image.data, &image.mime_type),
         ContentBlock::Resource(resource) => match &resource.resource {
+            ResourceContents::BlobResourceContents {
+                mime_type: Some(mime_type),
+                blob,
+                ..
+            } => image_or_json(content, blob, mime_type),
             // Rig has no resource-content variant. Serializing the complete MCP
             // block keeps its URI, MIME type, metadata, annotations, and body
             // together instead of presenting only the body to the model.
-            ResourceContents::TextResourceContents { .. } => mcp_content_block_as_json(content),
-            ResourceContents::BlobResourceContents {
-                mime_type, blob, ..
-            } => match mime_type
-                .as_deref()
-                .and_then(ImageMediaType::from_mime_type)
-            {
-                Some(media_type) => Ok(ToolResultContent::image_base64(
-                    blob.clone(),
-                    Some(media_type),
-                    None,
-                )),
-                _ => mcp_content_block_as_json(content),
-            },
             _ => mcp_content_block_as_json(content),
         },
-        ContentBlock::ResourceLink(_) | ContentBlock::Audio(_) => {
-            mcp_content_block_as_json(content)
-        }
-        // ContentBlock is non-exhaustive. Preserve future protocol variants in
-        // full rather than replacing them with a lossy placeholder.
+        // Links, audio and, as ContentBlock is non-exhaustive, future protocol
+        // variants are kept in full rather than replaced with a lossy placeholder.
         _ => mcp_content_block_as_json(content),
+    }
+}
+
+/// `data` as an image of `mime_type`, or `content` whole when Rig has no
+/// such image type.
+fn image_or_json(
+    content: &ContentBlock,
+    data: &str,
+    mime_type: &str,
+) -> Result<ToolResultContent, ToolExecutionError> {
+    match ImageMediaType::from_mime_type(mime_type) {
+        Some(media_type) => Ok(ToolResultContent::image_base64(
+            data,
+            Some(media_type),
+            None,
+        )),
+        None => mcp_content_block_as_json(content),
     }
 }
 
@@ -503,7 +461,20 @@ impl TryFrom<McpTool> for DynamicTool {
             move |context: &mut ToolContext, args: serde_json::Value| {
                 let tool = Arc::clone(&tool);
                 Box::pin(async move {
-                    let arguments = mcp_arguments(args).map_err(|error| tool.invalid(error))?;
+                    // An array or scalar is refused, not sent as no arguments,
+                    // which could run a different operation than the model asked.
+                    let arguments = match args {
+                        serde_json::Value::Null => None,
+                        serde_json::Value::Object(arguments) => Some(arguments),
+                        other => {
+                            return Err(ToolExecutionError::invalid_args(format!(
+                                "MCP tool '{}' received invalid arguments: expected a JSON \
+                                 object or null, got {}",
+                                tool.definition.name,
+                                json_value_kind(&other)
+                            )));
+                        }
+                    };
                     let meta = tool.request_meta(arguments.as_ref(), context)?;
                     let result = tool.call(arguments, meta).await?;
                     let is_error = result.is_error == Some(true);

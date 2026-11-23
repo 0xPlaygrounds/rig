@@ -1,7 +1,5 @@
-//! The plugins of the fresh held-out series (FH): one plugin per module, each written only against the harness's public API.
-//!
-//! Each module was its own package; they share a crate so their tests
-//! link one binary instead of one each.
+//! The plugins of the fresh held-out series: one plugin per module, each written only against the
+//! harness's public API. They share a crate so their tests link one binary instead of one each.
 
 pub mod apply_patch_tool;
 pub mod audit_log;

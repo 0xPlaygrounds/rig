@@ -156,6 +156,7 @@ fn a_correction_becomes_a_saved_rule_without_holding_up_the_turns() {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     let agents_md = project.join("AGENTS.md");
     let dismissed = project.join(".rig").join("dismissed-rules.txt");

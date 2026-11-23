@@ -35,6 +35,22 @@ impl AnthropicConfig {
             provider: self.clone(),
         }
     }
+
+    /// One `GET /v1/models` page's request, after `cursor` when the previous
+    /// page named one.
+    fn models_request(&self, cursor: Option<&str>) -> Result<http::Request<Body>, EncodeError> {
+        let uri = match cursor {
+            Some(cursor) => format!(
+                "{}{}",
+                self.base_url,
+                crate::providers::internal::with_query_pairs("/v1/models", &[("after_id", cursor)],)
+            ),
+            None => format!("{}/v1/models", self.base_url),
+        };
+        self.headers(http::Request::get(uri))
+            .body(Body::empty())
+            .map_err(EncodeError::from)
+    }
 }
 
 /// The model-listing wire: `GET /v1/models`, cursor-paged.
@@ -58,7 +74,7 @@ impl Wire for Models {
 
     fn encode(&self, cursor: Option<String>, _mode: Mode) -> Result<Encoded, EncodeError> {
         Ok(Encoded::new(
-            self.models_request(cursor.as_deref())?,
+            self.provider.models_request(cursor.as_deref())?,
             Framing::Whole,
         ))
     }
@@ -80,24 +96,6 @@ impl Wire for Models {
     }
 }
 
-impl Models {
-    /// One page's request, after `cursor` when the previous page named one.
-    fn models_request(&self, cursor: Option<&str>) -> Result<http::Request<Body>, EncodeError> {
-        let uri = match cursor {
-            Some(cursor) => format!(
-                "{}{}",
-                self.provider.base_url,
-                crate::providers::internal::with_query_pairs("/v1/models", &[("after_id", cursor)],)
-            ),
-            None => format!("{}/v1/models", self.provider.base_url),
-        };
-        self.provider
-            .headers(http::Request::get(uri))
-            .body(Body::empty())
-            .map_err(EncodeError::from)
-    }
-}
-
 /// One page of `GET /v1/models`.
 #[derive(Debug, Deserialize)]
 #[doc(hidden)]
@@ -105,7 +103,6 @@ pub struct ModelsPage {
     data: Vec<ModelEntry>,
     #[serde(default)]
     has_more: bool,
-    #[serde(default)]
     last_id: Option<String>,
 }
 
@@ -142,14 +139,10 @@ impl Wire for Verify {
     }
 
     fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, EncodeError> {
-        let request = self
-            .provider
-            .headers(http::Request::get(format!(
-                "{}/v1/models",
-                self.provider.base_url
-            )))
-            .body(Body::empty())?;
-        Ok(Encoded::new(request, Framing::Whole))
+        Ok(Encoded::new(
+            self.provider.models_request(None)?,
+            Framing::Whole,
+        ))
     }
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {

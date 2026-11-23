@@ -14,41 +14,31 @@ use rig_ecs::model::ReasoningSetting;
 use rig_ecs::session_log::{SessionLog, SessionLogPlugin, SessionStore};
 use rig_harness_protocol::{Home, Invocation, SessionDir, SessionId, StartReason};
 use rig_harness_test_support::{commit_message, first_agent, scratch_home};
-use rig_memory::migration::KEPT;
-use rig_memory::migration::testing::{self, SYNTHETIC};
 use rig_memory::{DirStore, Files, MemoryStore, SessionMeta, Store, Strings, save};
 
 use super::{
-    AppStart, DeleteSession, Scratch, SessionDeleteFailed, SessionDeleted, SessionPaths,
-    SessionPlugin, StoreOpener, log_layer, rewrite_stopped,
+    AppStart, DeleteSession, Scratch, SessionDeleted, SessionPaths, SessionPlugin, StoreOpener,
+    log_layer, paths_in, rewrite_stopped,
 };
 use crate::host::cli::{AppCliExt, Front};
 use crate::host::exit::ExitReason;
 use crate::host::launcher::{Invoked, LauncherRun};
 use crate::load::AppKeepsExt;
 use crate::plugin_data::PluginData;
-use crate::services::RigHome;
+use crate::services::{ProjectRoot, RigHome};
 
 /// What the session plugin said, frame after frame.
 #[derive(Resource, Default)]
 struct Seen {
     deleted: Vec<SessionId>,
-    failed: Vec<(SessionId, String)>,
     notices: Vec<String>,
 }
 
 fn watch(
-    (mut deleted, mut failed): (
-        MessageReader<SessionDeleted>,
-        MessageReader<SessionDeleteFailed>,
-    ),
+    mut deleted: MessageReader<SessionDeleted>,
     mut notices: MessageReader<Notice>,
     mut seen: ResMut<Seen>,
 ) {
-    let failed = failed
-        .read()
-        .map(|failed| (failed.id.clone(), failed.why.clone()));
-    seen.failed.extend(failed);
     seen.deleted
         .extend(deleted.read().map(|deleted| deleted.0.clone()));
     seen.notices
@@ -121,13 +111,67 @@ fn another_session_can_be_deleted_but_not_this_one_nor_one_another_rig_runs() {
     let seen = app.world().resource::<Seen>();
     assert_eq!(seen.deleted, std::slice::from_ref(&to));
     assert!(!copy.path().exists());
-    assert_eq!(seen.notices.len(), 2, "{:?}", seen.notices);
-    let failed = [
-        (to, "another rig runs it".to_owned()),
-        (id, "it is this session".to_owned()),
+    let refused = [
+        format!("Could not delete session {to}: another rig runs it."),
+        format!("Could not delete session {id}: it is this session."),
     ];
-    assert_eq!(seen.failed, failed);
+    assert_eq!(seen.notices, refused);
     fs::remove_dir_all(&root).ok();
+}
+
+/// A delete holds the session's launcher lock, as a rewrite does, from
+/// its check until the session is gone, so no launcher resumes it in
+/// between; one another rig runs is refused with a rewrite's text.
+#[test]
+fn a_delete_holds_the_session_lock_as_a_rewrite_does() {
+    let home = scratch_home("rig-session-delete-held");
+    let (Some(id), Some(here)) = (
+        "1700000000-30".parse::<SessionId>().ok(),
+        "1700000000-31".parse::<SessionId>().ok(),
+    ) else {
+        return;
+    };
+    let (session, here) = (home.session(&id), home.session(&here));
+    let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let saw = seen.clone();
+    let stores = StoreOpener::new(move |dir| {
+        if let Ok(mut saw) = saw.lock() {
+            saw.push(dir.runs_elsewhere());
+        }
+        Ok(Arc::new(DirStore::open(dir.path())?))
+    });
+    fs::create_dir_all(session.path()).ok();
+    let mut app = App::new();
+    app.add_message::<Notice>()
+        .init_resource::<Seen>()
+        .insert_resource(RigHome(home.clone()))
+        .insert_resource(SessionPaths(here.clone()))
+        .insert_resource(stores.clone())
+        .add_plugins(SessionPlugin)
+        .add_systems(Last, watch);
+    drop(std::panic::take_hook());
+    app.update();
+    let lock = File::create(session.launcher_lock()).ok();
+    assert!(lock.as_ref().is_some_and(|lock| lock.try_lock().is_ok()));
+    let rewrite = rewrite_stopped(&stores, &here, &session, Author::plugin("p"), &redact());
+    app.world_mut().trigger(DeleteSession(id.clone()));
+    app.update();
+    drop(lock);
+    let refused = format!(
+        "Could not delete session {id}: {}.",
+        rewrite.err().unwrap_or_default()
+    );
+    assert_eq!(app.world().resource::<Seen>().notices, [refused]);
+    if let Ok(mut seen) = seen.lock() {
+        seen.clear();
+    }
+    app.world_mut().trigger(DeleteSession(id.clone()));
+    app.update();
+    assert!(!session.path().exists());
+    assert_eq!(app.world().resource::<Seen>().deleted, [id]);
+    let held = seen.lock().map(|seen| seen.clone()).unwrap_or_default();
+    assert_eq!(held, [true], "its store was opened under the lock");
+    fs::remove_dir_all(home.root()).ok();
 }
 
 /// A delete reaches a store a plugin keeps outside the session's
@@ -281,6 +325,10 @@ fn resuming_a_session_an_older_rig_saved_changes_none_of_its_bytes() {
         app.update();
         let stored = app.world().contains_resource::<SessionStore>();
         let data = app.world().contains_resource::<PluginData>();
+        let refusal = match app.world().get_resource::<ExitReason>() {
+            Some(ExitReason::Refused(why)) => why.clone(),
+            _ => String::new(),
+        };
         drop((app, layer));
         assert!(!stored, "the refused session has no store");
         assert!(
@@ -288,7 +336,6 @@ fn resuming_a_session_an_older_rig_saved_changes_none_of_its_bytes() {
             "a refused run has plugin data, its session's in memory"
         );
         assert_eq!(snapshot(session.path()), before);
-        let refusal = fs::read_to_string(run.refusal()).unwrap_or_default();
         assert!(
             refusal.contains("made by another version of rig; start a new session"),
             "{refusal}"
@@ -297,46 +344,6 @@ fn resuming_a_session_an_older_rig_saved_changes_none_of_its_bytes() {
         assert!(logged.starts_with("this run\n"), "{logged}");
         fs::remove_dir_all(run.path()).ok();
     }
-    fs::remove_dir_all(home.root()).ok();
-}
-
-/// A session in an earlier format a step of the chain starts from is
-/// migrated through its store as the run opens it, and restored; the
-/// store keeps a copy of it as it was. The chain of this crate's tests
-/// starts from the synthetic format.
-#[test]
-fn resuming_a_session_in_an_earlier_format_migrates_and_restores_it() {
-    let home = scratch_home("rig-session-migrated");
-    let session = home.session(&SessionId::generate());
-    let written = dir_store(&session).map(|store| testing::write_fixture(&store));
-    assert!(matches!(written, Some(Ok(()))), "{written:?}");
-    session.mark_saved().ok();
-
-    let mut app = App::new();
-    app.insert_resource(RigHome(home.clone()))
-        .insert_resource(SessionPaths(session.clone()))
-        .add_plugins((TaskPoolPlugin::default(), AgentPlugin, SessionLogPlugin))
-        .add_plugins(SessionPlugin);
-    app.finish();
-    app.update();
-    app.update();
-    let stored = app.world().contains_resource::<SessionStore>();
-    let mut conversations = app.world_mut().query::<&Conversation>();
-    let restored = conversations
-        .iter(app.world())
-        .any(|conversation| conversation.messages().len() == 2);
-    drop(app);
-    assert!(stored && restored, "stored {stored}, restored {restored}");
-    let store = dir_store(&session);
-    let read = store
-        .as_ref()
-        .map(|store| rig_memory::Session::read(store).is_ok());
-    assert_eq!(read, Some(true));
-    let files = store
-        .and_then(|store| store.files().ok())
-        .unwrap_or_default();
-    let kept = format!("{KEPT}{SYNTHETIC}/logs/agent.jsonl");
-    assert!(files.contains(&kept), "{files:?}");
     fs::remove_dir_all(home.root()).ok();
 }
 
@@ -363,7 +370,7 @@ fn a_sessionless_front_leaves_no_directory_and_a_failed_run_keeps_its_log() {
             .insert_resource(RigHome(home.clone()))
             .insert_resource(SessionPaths(session.clone()))
             .insert_resource(LauncherRun(run.clone()))
-            .add_plugins(SessionPlugin)
+            .add_plugins((rig_ecs::AgentPlugin, SessionPlugin))
             .add_front(front);
         assert!(app.runs_front("replay"));
         app.world_mut().write_message(exit);
@@ -382,12 +389,11 @@ fn a_sessionless_front_leaves_no_directory_and_a_failed_run_keeps_its_log() {
     std::fs::remove_dir_all(&root).ok();
 }
 
-/// A run that leaves its session before anything was saved there, such
-/// as one switching to another session at startup, removes its directory,
-/// whatever its front; a reload, which runs the session again, and a
-/// saved session keep it. A switch the launcher is told of (its switch
-/// file) keeps it too: the launcher reads where to go from there, then
-/// removes the unsaved session itself.
+/// A run that quits its session before anything was saved there removes
+/// its directory, whatever its front; a reload, which runs the session
+/// again, and a saved session keep it. A switch keeps it too: the launcher
+/// reads where to go in its run directory, then removes the unsaved
+/// session itself, or runs it on when the next cannot run.
 #[test]
 fn an_unsaved_session_left_for_good_leaves_no_directory() {
     let home = scratch_home("rig-unsaved-left");
@@ -398,14 +404,11 @@ fn an_unsaved_session_left_for_good_leaves_no_directory() {
         if saved {
             session.mark_saved().ok()?;
         }
-        if id.as_str() == "1700000000-20" {
-            fs::write(session.switch(), "1700000000-19").ok()?;
-        }
         let mut app = App::new();
         app.add_message::<Notice>()
             .insert_resource(RigHome(home.clone()))
             .insert_resource(SessionPaths(session.clone()))
-            .add_plugins(SessionPlugin);
+            .add_plugins((rig_ecs::AgentPlugin, SessionPlugin));
         app.update();
         app.world_mut().write_message(reason.exit());
         app.insert_resource(reason);
@@ -416,20 +419,12 @@ fn an_unsaved_session_left_for_good_leaves_no_directory() {
     let quit = left("1700000000-17", ExitReason::Quit, false);
     let reloaded = left("1700000000-18", ExitReason::Reload, false);
     let saved = left("1700000000-19", ExitReason::Switch(None), true);
-    let told = left("1700000000-20", ExitReason::Switch(None), false);
-    let switch_file = "1700000000-20"
-        .parse()
-        .ok()
-        .map(|id| home.session(&id).switch());
-    let switch_file = switch_file.and_then(|path| fs::read_to_string(path).ok());
     drop(std::panic::take_hook());
     fs::remove_dir_all(home.root()).ok();
-    assert_eq!(switched, Some(false), "switched away at startup");
+    assert_eq!(switched, Some(true), "a switch");
     assert_eq!(quit, Some(false), "quit");
     assert_eq!(reloaded, Some(true), "reloaded");
     assert_eq!(saved, Some(true), "saved");
-    assert_eq!(told, Some(true), "a switch the launcher is told of");
-    assert_eq!(switch_file.as_deref(), Some("1700000000-19"));
 }
 
 /// A front whose runs keep no session never takes a resumed one, such as
@@ -448,7 +443,7 @@ fn a_sessionless_front_refuses_a_resumed_session_and_keeps_it() {
             .insert_resource(RigHome(home.clone()))
             .insert_resource(SessionPaths(session.clone()))
             .insert_resource(AppStart(reason))
-            .add_plugins(SessionPlugin)
+            .add_plugins((rig_ecs::AgentPlugin, SessionPlugin))
             .add_front(Front::new("export").headless().sessionless());
         let refusal = crate::host::cli::refusal(&mut app);
         app.world_mut().write_message(AppExit::Success);
@@ -681,10 +676,11 @@ fn change_a_setting(app: &mut App) -> bool {
         .is_some_and(SessionLog::has_written)
 }
 
-/// A session that only changed a setting is logged but not saved, and is
-/// gone after its exit.
+/// A session that only changed a setting is logged but not saved: its
+/// exit keeps it, as it keeps whatever its agent logs hold, but it is not
+/// listed to resume.
 #[test]
-fn a_session_that_only_changed_a_setting_is_removed_on_exit() {
+fn a_session_that_only_changed_a_setting_is_kept_unlisted() {
     let home = scratch_home("rig-session-settings-only");
     let Some((mut app, session)) = new_session(&home, "1700000000-20") else {
         return;
@@ -694,15 +690,17 @@ fn a_session_that_only_changed_a_setting_is_removed_on_exit() {
     app.world_mut().write_message(AppExit::Success);
     app.update();
     drop(app);
-    assert!(!session.path().exists());
+    let kept = (session.path().exists(), home.saved_sessions().is_empty());
     std::fs::remove_dir_all(home.root()).ok();
+    assert_eq!(kept, (true, true), "(kept on disk, listed nowhere)");
 }
 
 /// The running session's store comes from the app's stores; the session
 /// is marked saved once its log wrote and a conversation has a message,
-/// and stays saved after the conversation is emptied and a clean exit.
+/// stays saved through a clean exit, and has no files of the store's own
+/// beside the store.
 #[test]
-fn a_session_opened_by_the_stores_is_saved_by_its_first_message_and_stays_saved() {
+fn a_session_opened_by_the_stores_is_saved_by_its_first_message() {
     let home = scratch_home("rig-session-saved");
     let Some((mut app, session)) = new_session(&home, "1700000000-5") else {
         return;
@@ -716,16 +714,6 @@ fn a_session_opened_by_the_stores_is_saved_by_its_first_message_and_stays_saved(
     assert_eq!(said, Some(Ok(())));
     app.update();
     assert!(session.is_saved());
-    let mut conversation = agent.and_then(|agent| app.world_mut().get_mut::<Conversation>(agent));
-    if let Some(conversation) = conversation.as_mut() {
-        conversation.splice(0.., [], Author::plugin("undo"));
-    }
-    app.update();
-    let left = agent.and_then(|agent| app.world().get::<Conversation>(agent));
-    assert_eq!(
-        left.map(|conversation| conversation.messages().len()),
-        Some(0)
-    );
     app.world_mut().write_message(AppExit::Success);
     app.update();
     drop(app);
@@ -738,6 +726,34 @@ fn a_session_opened_by_the_stores_is_saved_by_its_first_message_and_stays_saved(
     assert!(session.started().exists());
     assert_eq!(files, Some(Vec::new()));
     std::fs::remove_dir_all(home.root()).ok();
+}
+
+/// A session whose only message is taken out again, as a failed first
+/// turn gives it back, is no longer saved: the launcher offers no resume
+/// for it, and its exit keeps it unlisted, as its agent log holds it.
+#[test]
+fn a_session_whose_only_message_is_taken_out_is_not_listed() {
+    let home = scratch_home("rig-session-emptied");
+    let Some((mut app, session)) = new_session(&home, "1700000000-6") else {
+        return;
+    };
+    let agent = first_agent(app.world_mut());
+    let said = agent.map(|agent| commit_message(app.world_mut(), agent, Message::user("hi")));
+    assert_eq!(said, Some(Ok(())));
+    app.update();
+    assert!(session.is_saved());
+    let mut conversation = agent.and_then(|agent| app.world_mut().get_mut::<Conversation>(agent));
+    if let Some(conversation) = conversation.as_mut() {
+        conversation.splice(0.., [], Author::plugin("undo"));
+    }
+    app.update();
+    assert!(!session.is_saved());
+    app.world_mut().write_message(AppExit::Success);
+    app.update();
+    drop(app);
+    let kept = (session.path().exists(), home.saved_sessions().is_empty());
+    std::fs::remove_dir_all(home.root()).ok();
+    assert_eq!(kept, (true, true), "(kept on disk, listed nowhere)");
 }
 
 /// The text log moves where a plugin puts the scratch place, and is gone
@@ -857,7 +873,10 @@ fn a_rewrite_of_a_stopped_session_reaches_its_scratch_files() {
     let done = rewrite_stopped(&stores, &session, &stopped, by(), &redact());
     assert_eq!(done.map(|done| done.logs.len()), Ok(1));
     assert_eq!(secret_in(stopped.path()), Vec::<PathBuf>::new());
-    assert_eq!(stopped.name().as_deref(), Some("key [REDACTED]"));
+    assert_eq!(
+        stopped.name().ok().flatten().as_deref(),
+        Some("key [REDACTED]")
+    );
     fs::remove_dir_all(home.root()).ok();
 }
 
@@ -878,11 +897,11 @@ impl rig_memory::Rewrite for Secret {
     }
 }
 
-/// An edit and a rewrite of a stopped session keep its listing, as a
-/// running rig does: a listed value set or rewritten is listed (an unlisted
-/// one is not), the message count follows, and `updated` moves on.
+/// A rewrite of a stopped session keeps its listing, as a running rig
+/// does: a listed value rewritten is listed (an unlisted one is not), the
+/// message count follows, and `updated` moves on.
 #[test]
-fn an_edit_or_a_rewrite_of_a_stopped_session_keeps_its_listing() {
+fn a_rewrite_of_a_stopped_session_keeps_its_listing() {
     let home = scratch_home("rig-stopped-listing");
     let (Ok(here), Ok(there)) = (
         "1700000000-41".parse::<SessionId>(),
@@ -897,8 +916,15 @@ fn an_edit_or_a_rewrite_of_a_stopped_session_keeps_its_listing() {
     let Some(store) = store else {
         return;
     };
-    let mut said = conversation::Conversation::from_messages([Message::user("hi")]);
+    let mut said = conversation::Conversation::from_messages([
+        Message::user("hi"),
+        Message::assistant("hello"),
+    ]);
     assert!(save(&*store, "agent-1", &mut said).is_ok());
+    let mut read = rig_memory::Session::read(&*store).unwrap_or_default();
+    read.saved.insert("goals.goal".to_owned(), "ship".into());
+    read.saved.insert("goals.count".to_owned(), 3.into());
+    assert!(read.save(&*store).is_ok());
     let old = SessionMeta {
         title: "hi".to_owned(),
         updated: 1,
@@ -917,24 +943,8 @@ fn an_edit_or_a_rewrite_of_a_stopped_session_keeps_its_listing() {
     app.finish();
     app.update();
     let stores = app.world().resource::<StoreOpener>().clone();
-    let edited = super::edit_stopped(&stores, &session, &stopped, |read| {
-        read.saved.insert("goals.goal".to_owned(), "ship".into());
-        read.saved.insert("goals.count".to_owned(), 3.into());
-        let agent = read.agent_mut("agent-1").ok_or("no agent")?;
-        agent.conversation.push(Message::assistant("hello"));
-        Ok(())
-    });
-    assert_eq!(edited, Ok(()));
     let listed =
         |goal: &str| BTreeMap::from([("goals.goal".to_owned(), serde_json::Value::from(goal))]);
-    let meta = SessionMeta::read(&*store).unwrap_or_default();
-    assert_eq!(
-        (meta.title.as_str(), meta.messages, &meta.listed),
-        ("hi", 2, &listed("ship"))
-    );
-    assert!(meta.updated > 1, "updated");
-
-    assert!(old.write(&*store).is_ok());
     let by = Author::plugin("redact");
     let rewritten = rewrite_stopped(&stores, &session, &stopped, by, &Secret);
     assert!(rewritten.is_ok());
@@ -943,4 +953,163 @@ fn an_edit_or_a_rewrite_of_a_stopped_session_keeps_its_listing() {
     assert!(meta.updated > 1, "updated");
     drop(app);
     fs::remove_dir_all(home.root()).ok();
+}
+
+/// Folders of one project share its plugin data.
+#[test]
+fn the_folders_of_a_project_share_its_data() {
+    let home = scratch_home("project-data-roots");
+    let repo = home.root().join("repo");
+    for dir in [".git", "a", "b"] {
+        assert!(fs::create_dir_all(repo.join(dir)).is_ok());
+    }
+    let data = |dir: &str| {
+        let mut world = World::new();
+        world.insert_resource(RigHome(home.clone()));
+        world.insert_resource(ProjectRoot(repo.join(dir)));
+        super::insert_plugin_data(&mut world);
+        world.remove_resource::<PluginData>()
+    };
+    let written = data("a").map(|data| data.project.write_file("test/value", b"shared"));
+    assert!(matches!(written, Some(Ok(()))));
+    let read = data("b").and_then(|data| data.project.read_file("test/value").ok());
+    assert_eq!(read, Some(b"shared".to_vec()));
+    fs::remove_dir_all(home.root()).ok();
+}
+
+/// A harness started without the launcher creates `sessions/` and its
+/// session's directory for the user alone.
+#[cfg(unix)]
+#[test]
+fn a_session_directory_made_without_the_launcher_is_private_to_the_user() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = std::env::temp_dir().join(format!("rig-private-paths-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let home = Home::at(&root);
+    let paths = paths_in(&home);
+    let mode = |path: &Path| {
+        fs::metadata(path)
+            .map(|meta| meta.permissions().mode() & 0o777)
+            .ok()
+    };
+    let modes = (mode(&home.sessions()), mode(paths.0.path()));
+    fs::remove_dir_all(&root).ok();
+    let private = |mode: Option<u32>| mode.is_some_and(|mode| mode & 0o077 == 0);
+    assert!(private(modes.0) && private(modes.1), "{modes:?}");
+}
+
+/// Starts a session, logs a setting, then takes away the right to write in
+/// its directory, so writing the saved marker fails while the agent logs,
+/// in `logs/`, still write, and logs a user message. `None` when the
+/// directory stays writable, as under root.
+#[cfg(unix)]
+fn a_marker_that_cannot_be_written(home: &Home, id: &str) -> Option<(App, SessionDir)> {
+    let (mut app, session) = new_session(home, id)?;
+    assert!(change_a_setting(&mut app), "the log file exists");
+    assert!(read_only(&session, true).is_ok());
+    if fs::write(session.path().join("probe"), b"").is_ok() {
+        assert!(read_only(&session, false).is_ok());
+        return None;
+    }
+    let agent = first_agent(app.world_mut());
+    let said = agent.map(|agent| commit_message(app.world_mut(), agent, Message::user("hi")));
+    assert_eq!(said, Some(Ok(())));
+    app.update();
+    let logged = app.world().get_resource::<SessionLog>();
+    assert!(
+        logged.is_some_and(|log| log.failure().is_none()),
+        "the log wrote"
+    );
+    assert!(!session.is_saved(), "the marker write failed");
+    Some((app, session))
+}
+
+#[cfg(unix)]
+fn read_only(session: &SessionDir, read_only: bool) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let bits = if read_only { 0o500 } else { 0o700 };
+    fs::set_permissions(session.path(), fs::Permissions::from_mode(bits))
+}
+
+/// A session whose saved marker could not be written once, while its log
+/// wrote the conversation, is marked once the write can succeed, and its
+/// exit keeps it.
+#[cfg(unix)]
+#[test]
+fn a_failed_saved_marker_write_does_not_lose_the_conversation() {
+    let home = scratch_home("rig-session-marker-fails");
+    let Some((mut app, session)) = a_marker_that_cannot_be_written(&home, "1700000000-77") else {
+        return;
+    };
+    assert!(read_only(&session, false).is_ok());
+    app.update();
+    app.world_mut().write_message(AppExit::Success);
+    app.update();
+    drop(app);
+    let kept = (session.path().exists(), session.is_saved());
+    fs::remove_dir_all(home.root()).ok();
+    assert_eq!(kept, (true, true), "(kept on disk, marked saved)");
+}
+
+/// Set, to the id of the session marked deleting, in the copy of
+/// [`an_app_without_a_rig_home_finishes_deletes_in_the_environments`] that
+/// runs with `RIG_HOME` set.
+const CUT_SHORT: &str = "RIG_TEST_CUT_SHORT_DELETE";
+
+/// An app with no [`RigHome`] deletes in the home the environment names, so
+/// it also finishes there the deletes a crash cut short.
+#[cfg(unix)]
+#[test]
+#[allow(clippy::disallowed_methods, reason = "runs this test binary again")]
+fn an_app_without_a_rig_home_finishes_deletes_in_the_environments() {
+    let Some(cut) = std::env::var_os(CUT_SHORT) else {
+        let home = scratch_home("rig-session-delete-env");
+        let saved = |id: &str| {
+            let id: SessionId = id.parse().ok()?;
+            let session = home.session(&id);
+            fs::create_dir_all(session.path()).ok()?;
+            session.mark_saved().ok()?;
+            Some((id, session))
+        };
+        let sessions = (saved("1700000000-30"), saved("1700000000-31"));
+        assert!(matches!(sessions, (Some(_), Some(_))), "saved");
+        let (Some((cut, cut_dir)), Some(_)) = sessions else {
+            return;
+        };
+        assert!(cut_dir.mark_deleting().is_ok());
+        let name =
+            "host::session::tests::an_app_without_a_rig_home_finishes_deletes_in_the_environments";
+        let output = std::env::current_exe().and_then(|test| {
+            std::process::Command::new(test)
+                .args(["--exact", name, "--nocapture", "--test-threads", "1"])
+                .env(rig_harness_protocol::env::HOME, home.root())
+                .env(CUT_SHORT, cut.as_str())
+                .output()
+        });
+        let ran = output.map(|output| {
+            let passed = String::from_utf8_lossy(&output.stdout).contains("1 passed");
+            let said = String::from_utf8_lossy(&output.stderr).into_owned();
+            (output.status.success() && passed, said)
+        });
+        assert!(ran.as_ref().is_ok_and(|(passed, _)| *passed), "{ran:?}");
+        assert!(!cut_dir.path().exists());
+        fs::remove_dir_all(home.root()).ok();
+        return;
+    };
+    let here: Option<SessionId> = "1700000000-31".parse().ok();
+    assert!(here.is_some());
+    let Some(here) = here.map(|id| Home::from_env().session(&id)) else {
+        return;
+    };
+    let mut app = App::new();
+    app.add_message::<Notice>()
+        .init_resource::<Seen>()
+        .insert_resource(SessionPaths(here))
+        .add_plugins(SessionPlugin)
+        .add_systems(Last, watch);
+    drop(std::panic::take_hook());
+    app.update();
+    let deleted = &app.world().resource::<Seen>().deleted;
+    let deleted: Vec<String> = deleted.iter().map(ToString::to_string).collect();
+    assert_eq!(deleted, [cut.to_string_lossy()]);
 }

@@ -1,3 +1,6 @@
+// This is the model the fixtures were recorded with.
+const GPT_5_4: &str = "gpt-5.4";
+
 mod harness_switch {
     //! One `GenerationOptions` value, applied to five providers by a harness
     //! that switches between them, encodes to each provider's own JSON. The
@@ -215,7 +218,7 @@ mod harness_switch {
 mod no_silent_drop {
     //! A cache asked of a dialect that cannot cache on request is refused,
     //! or skipped with a warning under `Ignore`; it is never dropped
-    //! without a word, as `Chat::with_prompt_caching` was.
+    //! without a word.
     //!
     //! Encode-only: a refused option sends no request to record.
 
@@ -234,8 +237,8 @@ mod no_silent_drop {
             .on_unsupported(policy)
     }
 
-    /// Cohere's Compatibility route, the default `CohereChat` route.
-    pub(super) fn cohere() -> rig::providers::cohere::CohereChat {
+    /// Cohere's Compatibility API wire.
+    pub(super) fn cohere() -> Chat {
         CohereConfig::new(KEY).completion(COMMAND_A_03_2025)
     }
 
@@ -334,7 +337,7 @@ mod no_silent_drop {
 }
 
 mod option_matrix {
-    //! A golden of section 6: each option set alone on each wire gives
+    //! A golden of the option mapping table: each option set alone on each wire gives
     //! exactly the body delta or the refusal its cell names. `omit` passes
     //! only where the cell says "omit", because any other cell expects a
     //! change or an error; a wire that answers `Mapping::Nothing` for a set
@@ -373,7 +376,7 @@ mod option_matrix {
 
     type Encode = Box<dyn Fn(CompletionRequest) -> Result<Value, ProviderError>>;
 
-    /// What one cell of section 6 says the wire does.
+    /// What one cell of the option mapping table says the wire does.
     enum Cell {
         /// The body equals the baseline with this object deep-merged in.
         Merge(Value),
@@ -409,7 +412,7 @@ mod option_matrix {
     }
 
     /// One row per wire, one cell per field of `one_field_each`, read from
-    /// section 6 for the model each wire uses. The request has no tools and
+    /// the option mapping table for the model each wire uses. The request has no tools and
     /// no preamble.
     fn cells() -> Vec<(&'static str, Encode, [Cell; 8])> {
         let mut rows: Vec<(&'static str, Encode, [Cell; 8])> = vec![
@@ -860,7 +863,7 @@ mod option_matrix {
             (
                 // The backend gets the ciphertext asked for on every request.
                 "chatgpt",
-                responses(&chatgpt::DIALECT, chatgpt::GPT_5_4),
+                responses(&chatgpt::DIALECT, super::GPT_5_4),
                 [
                     Merge(json!({"reasoning": {"effort": "high", "summary": "auto"}})),
                     Refuse,
@@ -1200,9 +1203,8 @@ mod precedence {
     //! `additional_params.tools` join rig's own tools rather than replacing
     //! them, a `null` in `additional_params` is a value that is sent, and
     //! the writes a wire makes after the merge read the merged body, so a
-    //! raw key still drives them. Two wires change, as section 12.0 states:
-    //! OpenAI Responses now sends a raw `null`, and Gemini Interactions
-    //! refuses a raw `tools` that is not an array. The ChatGPT backend still
+    //! raw key still drives them. OpenAI Responses sends a raw `null`, and
+    //! Gemini Interactions refuses a raw `tools` that is not an array. The ChatGPT backend still
     //! gets no typed field it does not accept.
 
     use rig::completion::{CompletionRequest, ServiceTier, ToolDefinition, Verbosity};
@@ -1288,7 +1290,7 @@ mod precedence {
         assert_eq!(sent.get("top_p"), Some(&Value::Null), "{sent}");
         assert_eq!(sent.get("user"), Some(&Value::Null), "{sent}");
 
-        // Responses skips a raw `null` today; it is now sent as on Chat.
+        // Responses sends a raw `null` as Chat does.
         let sent = encode(
             &openai_responses(),
             CompletionRequest::new("Reply with the single word: pong")
@@ -1315,7 +1317,7 @@ mod precedence {
     fn codex_still_omits_the_typed_fields_the_backend_refuses() {
         let wire = Responses::new(
             OpenAIConfig::with_key(&chatgpt::DIALECT, KEY),
-            chatgpt::GPT_5_4,
+            super::GPT_5_4,
         );
         let schema = schemars::json_schema!({
             "type": "object",

@@ -1,23 +1,21 @@
-//! Plugin corpus (held-out): H13: Hunk-by-hunk review after each turn (spec `H13-hunk-review.md`).
+//! Hunk-by-hunk review after each turn. Each file an `edit` or `write` call is about to change is
+//! snapshotted the first time one does, on the top-level agent the call works for (a subagent's go
+//! to its top-level parent), and each `shell` command is noted as not reviewable. When that agent's
+//! turn ends, each file's snapshot is diffed with the file as the turn left it, and a [`Picker`]
+//! steps through the hunks: keep, revert, revert with a comment (typed), keep the rest. Esc defers
+//! it and `/review` reopens it. `/review keep <n>`, `/review revert <n> [comment]` and `/review
+//! done` do the same.
 //!
-//! A Gate system snapshots each file an `edit` or `write` call is about to
-//! change, the first time one does, and notes each `shell` command as not
-//! reviewable, on the top-level agent the call works for (a subagent's go
-//! to its top-level parent). When that agent's turn ends, each file's
-//! snapshot is diffed with the file as the turn left it, and a [`Picker`]
-//! steps through the hunks: keep, revert, revert with a comment (typed),
-//! keep the rest; Esc defers it and `/review` reopens it. `/review keep
-//! <n>`, `/review revert <n> [comment]` and `/review done` do the same.
-//! A revert applies the reverse hunk unless the lines it covers changed
-//! since the turn ended (a conflict, skipped and reported). Once done, a
-//! queued message tells the agent what the user reverted and why. When no
-//! front answers, as with `--print`, everything is kept and a summary goes
-//! to stderr.
+//! A revert applies the reverse hunk unless the lines it covers changed since the turn ended (a
+//! conflict, skipped and reported). Once done, a queued message tells the agent what the user
+//! reverted and why. When no front answers, as with `--print`, everything is kept and a summary
+//! goes to stderr.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::path::Path;
 
+use rig_harness::commands::run_chosen;
 use rig_harness::prelude::*;
 use rig_tools::fs::write_atomic;
 use rig_tools::{Edit, Shell, Write};
@@ -105,7 +103,7 @@ struct Noted;
 
 /// The top-level agent `agent` works for.
 fn top(mut agent: Entity, parents: &Query<&SpawnedBy>) -> Entity {
-    while let Ok(&SpawnedBy(parent)) = parents.get(agent) {
+    while let Ok(parent) = parents.get(agent).map(SpawnedBy::parent) {
         agent = parent;
     }
     agent
@@ -357,7 +355,7 @@ fn open(review: &mut HunkReview, agent: Entity, root: &Path, commands: &mut Comm
                 match (comment, index) {
                     (Some(Some(comment)), Some(index)) => {
                         let line = format!("review revert {index} {comment}");
-                        commands.trigger(RunCommand::new(agent, line));
+                        commands.queue(run_chosen(agent, line));
                     }
                     (None, _) => {
                         if let Ok(mut review) = reviews.get_mut(agent)

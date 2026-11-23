@@ -1,7 +1,5 @@
-//! The first plugin corpus: one plugin per module, each written only against the harness's public API.
-//!
-//! Each module was its own package; they share a crate so their tests
-//! link one binary instead of one each.
+//! The base plugins of the corpus: one plugin per module, each written only against the
+//! harness's public API. They share a crate so their tests link one binary instead of one each.
 
 pub mod agent_profiles;
 pub mod ask_user;
@@ -12,7 +10,6 @@ pub mod check_after_turn;
 pub mod checkpoint_rewind;
 pub mod code_search_index;
 pub mod context_inspector;
-pub mod cost_budget;
 pub mod cron_agent;
 pub mod custom_provider;
 pub mod debate;
@@ -38,14 +35,13 @@ pub mod pinned_notes;
 pub mod prompt_templates;
 pub mod retry_with_model;
 pub mod review_agent;
-pub mod secret_redaction;
 pub mod session_goal;
 pub mod session_replay;
 pub mod share;
 pub mod shell_rewrite;
 pub mod shell_sandbox;
 pub mod skills;
-pub mod subagent_policy;
+pub mod src_only_writes;
 pub mod summarize_tool_output;
 pub mod supervisor;
 pub mod text_tool_calls;
@@ -55,3 +51,4 @@ pub mod tool_rate_limit;
 pub mod tool_search;
 pub mod voice;
 pub mod window_gui;
+pub mod word_count;

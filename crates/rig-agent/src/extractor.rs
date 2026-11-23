@@ -16,7 +16,7 @@
 use std::marker::PhantomData;
 
 use schemars::JsonSchema;
-use serde::{Serialize, de::DeserializeOwned};
+use serde::de::DeserializeOwned;
 
 use rig_core::{
     message::{Message, ToolChoice},
@@ -24,7 +24,7 @@ use rig_core::{
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 
-use crate::agent::{Agent, AgentBuilder, AgentHook, ModelRef, OutputMode, TypedRun};
+use crate::agent::{Agent, AgentBuilder, AgentHook, OutputMode, TypedRun};
 
 const SUBMIT_TOOL_NAME: &str = "submit";
 
@@ -44,27 +44,6 @@ impl<T> Extractor<T>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend + WasmCompatSync,
 {
-    /// Set a different default model for this extractor's subsequent runs.
-    /// Use the model registered under `label` in the extractor's handler table.
-    pub fn with_model_label(mut self, label: impl Into<ModelRef>) -> Self {
-        self.agent.set_model_label(label);
-        self
-    }
-
-    /// Register `model` in the extractor's handler table and use it.
-    pub fn with_model(
-        mut self,
-        model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
-    ) -> Self {
-        self.agent.set_model(model);
-        self
-    }
-
-    /// The agent behind this extractor.
-    pub fn agent(&self) -> &Agent {
-        &self.agent
-    }
-
     /// Extract structured data from `text`.
     ///
     /// The returned run supports history, a per-run model, and retry overrides,
@@ -88,11 +67,11 @@ where
 /// Builder for the Extractor
 pub struct ExtractorBuilder<T>
 where
-    T: JsonSchema + DeserializeOwned + Serialize + WasmCompatSend + WasmCompatSync + 'static,
+    T: JsonSchema + DeserializeOwned + WasmCompatSend + WasmCompatSync + 'static,
 {
     agent_builder: AgentBuilder,
     _t: PhantomData<T>,
-    retries: Option<usize>,
+    retries: usize,
 }
 
 /// Generate setters forwarding to the matching inner [`AgentBuilder`] methods.
@@ -111,7 +90,7 @@ macro_rules! forward_agent_builder {
 
 impl<T> ExtractorBuilder<T>
 where
-    T: JsonSchema + DeserializeOwned + Serialize + WasmCompatSend + WasmCompatSync + 'static,
+    T: JsonSchema + DeserializeOwned + WasmCompatSend + WasmCompatSync + 'static,
 {
     /// An extractor of `T` over `model`.
     pub fn new(model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>) -> Self {
@@ -134,7 +113,7 @@ where
                 .output_schema::<T>()
                 .tool_choice(ToolChoice::Required)
                 .output_mode(OutputMode::Tool),
-            retries: None,
+            retries: 0,
             _t: PhantomData,
         }
     }
@@ -182,7 +161,7 @@ where
 
     /// Set the maximum number of retries for the extractor.
     pub fn retries(mut self, retries: usize) -> Self {
-        self.retries = Some(retries);
+        self.retries = retries;
         self
     }
 
@@ -191,7 +170,7 @@ where
         Extractor {
             agent: self.agent_builder.build(),
             _t: PhantomData,
-            retries: self.retries.unwrap_or(0),
+            retries: self.retries,
         }
     }
 }

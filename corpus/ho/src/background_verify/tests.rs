@@ -2,11 +2,11 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::Receiver;
 use std::time::SystemTime;
 
-use rig_basics::coding_tools::{EditTool, ShellTool, WriteTool};
+use rig_basics::coding_tools::{EditTool, ReadTool, ShellTool, WriteTool};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::clock::ClockPlugin;
 use rig_harness_test_support::{
-    Ended, MemoryStore, app_on, calls, connect, first_agent, log_ended, reply, run_until,
+    Ended, MemoryStore, app_on, calls, connect, first_agent, log_ended, reply, rewrites, run_until,
     scratch_home,
 };
 
@@ -37,14 +37,9 @@ fn edit(id: &str, root: &Path, old: &str, new: &str) -> Vec<MockStreamEvent> {
     )
 }
 
-/// A reply that writes `content` to `a.rs`.
+/// A reply that reads `a.rs`, then writes `content` to it.
 fn write(id: &str, root: &Path, content: &str) -> Vec<MockStreamEvent> {
-    let path = root.join("a.rs").display().to_string();
-    calls(
-        id,
-        "write",
-        serde_json::json!({ "path": path, "content": content }),
-    )
+    rewrites(id, &root.join("a.rs").display().to_string(), content)
 }
 
 /// A reply whose shell call runs until the file `go` exists, so the agent
@@ -79,7 +74,7 @@ fn app(dir: &Path, model: &MockCompletionModel) -> (App, Receiver<()>, Entity) {
     ))
     .insert_resource(ProjectRoot(dir.to_path_buf()))
     .add_plugins((AgentPlugin, SessionLogPlugin, ClockPlugin))
-    .add_plugins((EditTool, WriteTool, ShellTool))
+    .add_plugins((ReadTool, EditTool, WriteTool, ShellTool))
     .add_plugins(BackgroundVerifyPlugin)
     .init_resource::<Ended>()
     .add_observer(log_ended);
@@ -288,7 +283,4 @@ fn a_note_left_when_a_busy_agents_turn_ends_is_still_withdrawn_by_a_pass() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(BackgroundVerifyPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(BackgroundVerifyPlugin);

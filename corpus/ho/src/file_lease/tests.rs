@@ -8,7 +8,7 @@ use rig_core::tool::{FileChange, FilesChanged, ToolContext};
 use rig_harness::clock::ClockPlugin;
 use rig_harness_test_support::{
     Ended, MemoryStore, ToolOutputs, app_on, calls, log_ended, log_tool_outputs, reply, run_until,
-    scripted_models,
+    scratch_dir, scripted_models,
 };
 use serde::Deserialize;
 
@@ -122,18 +122,11 @@ fn wait_of(world: &mut World, agent: Entity) -> Option<(Entity, String)> {
         .map(|(hold, _, name)| (hold, name))
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(FileLeasePlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(FileLeasePlugin);
 
 #[test]
 fn writes_to_one_file_wait_for_its_lease_and_its_owner_hears_of_the_change() {
-    let dir = std::env::current_exe()
-        .unwrap_or_default()
-        .with_file_name("file-lease-project");
-    std::fs::remove_dir_all(&dir).ok();
-    std::fs::create_dir_all(&dir).ok();
+    let dir = scratch_dir("file-lease-project");
     let dir = dir.canonicalize().unwrap_or(dir);
     let write = |id: &str, path: &str, text: &str| {
         calls(
@@ -180,9 +173,7 @@ fn writes_to_one_file_wait_for_its_lease_and_its_owner_hears_of_the_change() {
     .add_observer(log_ended);
     let mut agent = |name: &str| {
         let choice = ModelChoice(format!("lease/{}", name.to_lowercase()));
-        app.world_mut()
-            .spawn((Agent, Name::new(name.to_owned()), choice))
-            .id()
+        spawn_root(app.world_mut(), (Name::new(name.to_owned()), choice)).id()
     };
     let [agent_a, agent_b, agent_c, agent_d] = ["A", "B", "C", "D"].map(&mut agent);
     app.finish();

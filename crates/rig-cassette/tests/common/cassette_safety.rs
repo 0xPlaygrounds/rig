@@ -5,8 +5,6 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 
-use syn::{Expr, ExprLit, Lit};
-
 const CASSETTE_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/cassettes");
 
 struct ProviderCassetteSuite {
@@ -21,13 +19,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         source_dir: "tests/providers/openai/cassette",
         wrapper_names: &[
             "with_openai_cassette",
-            "with_openai_corpus_retrieval_cassette",
-            "with_openai_corpus_output_cassette",
-            "with_openai_corpus_host_cassette",
-            "with_openai_corpus_delta_cassette",
-            "with_openai_corpus_breadth_cassette",
             "with_openai_lifecycle_cassette",
-            "with_openai_prompt_caching_cassette",
             "with_openai_completions_prompt_caching_cassette",
             "with_openai_cassette_bogus_key",
             "with_openai_completions_cassette",
@@ -36,16 +28,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
             "with_openai_vllm_cassette",
             "with_local_reasoning_content_cassette",
             "with_local_dual_reasoning_keys_cassette",
-            "with_openai_refusal_cassette",
-            "with_openai_max_tokens_cassette",
-            "with_openai_image_params_cassette",
             "with_openai_truncation_cassette",
-            "with_openai_chat_stream_logprobs_cassette_result",
-            "with_openai_tool_truncation_cassette_result",
-            "with_openai_tool_lifecycle_cassette_result",
-            "with_openai_terminal_metadata_cassette_result",
-            "with_openai_history_roundtrip_cassette_result",
-            "with_openai_transcription_cassette",
             "with_openai_audio_cassette",
             "with_openai_websocket_cassette",
             "with_openai_long_run_cassette",
@@ -84,19 +67,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
             "with_anthropic_cassette_bogus_key",
             "with_anthropic_files_cassette",
             "with_anthropic_gateway_cassette",
-            "with_anthropic_stop_sequence_cassette",
-            "with_anthropic_empty_stop_cassette",
             "with_anthropic_reasoning_usage_cassette",
-            "with_anthropic_corpus_request_shape_cassette",
-            "with_anthropic_corpus_hooks_cassette",
-            "with_anthropic_corpus_serving_cassette",
-            "with_anthropic_corpus_outcome_cassette",
-            "with_anthropic_corpus_endings_cassette",
-            "with_anthropic_corpus_output_cassette",
-            "with_anthropic_corpus_host_cassette",
-            "with_anthropic_corpus_shaping_cassette",
-            "with_anthropic_corpus_oracle_cassette",
-            "with_anthropic_corpus_causal_cassette",
         ],
     },
     ProviderCassetteSuite {
@@ -108,7 +79,6 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         provider: "doubleword",
         source_dir: "tests/providers/doubleword/cassette",
         wrapper_names: &[
-            "with_doubleword_prompt_caching_cassette",
             "with_doubleword_cassette",
             "with_doubleword_bogus_key_cassette",
             "with_doubleword_cassette_result",
@@ -118,16 +88,12 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
     ProviderCassetteSuite {
         provider: "cohere",
         source_dir: "tests/providers/cohere/cassette",
-        wrapper_names: &[
-            "with_cohere_cassette",
-            "with_cohere_prompt_caching_cassette",
-        ],
+        wrapper_names: &["with_cohere_cassette"],
     },
     ProviderCassetteSuite {
         provider: "venice",
         source_dir: "tests/providers/venice/cassette",
         wrapper_names: &[
-            "with_venice_prompt_caching_cassette",
             "with_venice_cassette",
             "with_venice_cassette_result",
             "with_venice_direct_cassette",
@@ -137,19 +103,12 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         provider: "gemini",
         source_dir: "tests/providers/gemini/cassette",
         wrapper_names: &[
-            "with_gemini_prompt_caching_cassette",
             "with_gemini_cassette",
             "with_gemini_checked_cassette",
-            "with_gemini_corpus_retrieval_cassette",
-            "with_gemini_corpus_delta_cassette",
-            "with_gemini_corpus_breadth_cassette",
             "with_gemini_lifecycle_cassette",
             "with_gemini_turn_metadata_cassette",
             "with_gemini_cassette_bogus_key",
-            "with_gemini_code_execution_cassette",
-            "with_gemini_interactions_cassette",
             "with_gemini_stream_terminal_cassette",
-            "with_gemini_thought_text_cassette",
             "with_gemini_auto_caching_cassette",
         ],
     },
@@ -176,7 +135,6 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
             "with_llamacpp_llama_family_cassette",
             "with_llamacpp_mistral_family_cassette",
             "with_llamacpp_gemma_family_cassette",
-            "with_llamacpp_prompt_caching_cassette",
             "with_llamacpp_large_vision_cassette",
             "with_llamacpp_raw_http_cassette",
             "with_llamacpp_api_key_cassette",
@@ -187,7 +145,6 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         provider: "xai",
         source_dir: "tests/providers/xai",
         wrapper_names: &[
-            "with_xai_prompt_caching_cassette",
             "with_xai_cassette",
             "with_xai_cassette_bogus_key",
             "with_xai_cassette_result",
@@ -197,36 +154,22 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         provider: "openrouter",
         source_dir: "tests/providers/openrouter/cassette",
         wrapper_names: &[
-            "with_openrouter_prompt_caching_cassette",
             "with_openrouter_cassette",
             "with_openrouter_checked_cassette",
             "with_openrouter_cassette_result",
             "with_openrouter_cassette_bogus_key_result",
             "with_openrouter_jev_cassette_result",
             "with_openrouter_openai_cassette",
-            "with_openrouter_refusal_cassette",
-            "with_openrouter_usage_cassette",
-            "with_openrouter_stream_logprobs_cassette_result",
             "with_openrouter_tool_truncation_cassette_result",
-            "with_openrouter_tool_lifecycle_cassette_result",
-            "with_openrouter_terminal_metadata_cassette_result",
-            "with_openrouter_history_roundtrip_cassette_result",
-            "with_openrouter_reasoning_tool_order_cassette_result",
         ],
     },
     ProviderCassetteSuite {
         provider: "deepseek",
         source_dir: "tests/providers/deepseek",
         wrapper_names: &[
-            "with_deepseek_prompt_caching_cassette",
             "with_deepseek_cassette",
             "with_deepseek_cassette_result",
             "with_deepseek_cassette_bogus_key_result",
-            "with_deepseek_truncation_cassette_result",
-            "with_deepseek_block_order_cassette_result",
-            "with_deepseek_wire_shape_cassette_result",
-            "with_deepseek_followup_hunt_cassette_result",
-            "with_deepseek_stream_logprobs_cassette_result",
         ],
     },
     ProviderCassetteSuite {
@@ -242,27 +185,15 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         provider: "mistral",
         source_dir: "tests/providers/mistral",
         wrapper_names: &[
-            "with_mistral_embedding_cassette",
-            "with_mistral_prompt_caching_cassette",
+            "with_mistral_cassette",
             "with_mistral_cassette_result",
-            "with_mistral_multimodal_cassette",
             "with_mistral_cassette_bogus_key_result",
-            "with_mistral_capability_cassette",
-            "with_mistral_terminal_metadata_cassette_result",
-            "with_mistral_tool_truncation_cassette_result",
-            "with_mistral_tool_lifecycle_cassette_result",
-            "with_mistral_history_roundtrip_cassette_result",
-            "with_mistral_request_shape_cassette_result",
-            "with_mistral_logprobs_rejection_cassette_result",
         ],
     },
     ProviderCassetteSuite {
         provider: "perplexity",
         source_dir: "tests/providers/perplexity/cassette",
-        wrapper_names: &[
-            "with_perplexity_cassette",
-            "with_perplexity_prompt_caching_cassette",
-        ],
+        wrapper_names: &["with_perplexity_cassette"],
     },
     ProviderCassetteSuite {
         provider: "mistralrs",
@@ -282,29 +213,9 @@ fn cassettes_do_not_contain_obvious_secrets() {
         return;
     }
 
-    // Each provider binary scans only its own `crates/rig-cassette/fixtures/cassettes/<provider>`
-    // directory. This module compiles into every provider test binary, and
-    // the scan (YAML parse + scrub + re-serialize + base64 decode + several
-    // regex families per file) is expensive — when every binary scanned the
-    // whole tree, CI ran the identical full-tree scan once per binary, and
-    // that duplication alone was the single largest execution cost in the PR
-    // gate's test sweep (~16s × 16 binaries per run).
-    //
-    // Scoping is safe because the partition below is asserted, in every
-    // binary, before anything is skipped:
-    //
-    //   * every top-level entry under `crates/rig-cassette/fixtures/cassettes` must be a directory
-    //     named after a suite registered in `PROVIDER_CASSETTE_SUITES` — a
-    //     stray file or an unregistered provider directory fails everywhere
-    //     rather than silently escaping the scan;
-    //   * every registered suite's `tests/<provider>.rs` must include this
-    //     module — so each registered directory is provably scanned by
-    //     exactly the binary that owns it, and adding a suite without wiring
-    //     the scan into its binary fails everywhere too;
-    //   * every registered provider name must be a valid crate identifier —
-    //     `env!("CARGO_CRATE_NAME")` mangles hyphens to underscores, so a
-    //     hyphenated provider would resolve `own_dir` to a path that never
-    //     exists and skip its own scan without a single failure.
+    // Every top-level entry must be a registered provider directory, so a
+    // stray file or an unregistered directory fails instead of escaping the
+    // scan of every registered one below.
     let mut failures = Vec::new();
 
     let registered: BTreeSet<&str> = PROVIDER_CASSETTE_SUITES
@@ -318,42 +229,21 @@ fn cassettes_do_not_contain_obvious_secrets() {
         if !entry.path().is_dir() {
             failures.push(format!(
                 "crates/rig-cassette/fixtures/cassettes/{name} is not a provider directory; loose files under the \
-                 cassette root are scanned by no binary"
+                 cassette root are scanned by no test"
             ));
         } else if !registered.contains(name.as_str()) {
             failures.push(format!(
                 "crates/rig-cassette/fixtures/cassettes/{name} has no PROVIDER_CASSETTE_SUITES entry, so no test \
-                 binary scans it for secrets — register it in \
+                 scans it for secrets: register it in \
                  tests/common/cassette_safety.rs"
             ));
         }
     }
     for suite in PROVIDER_CASSETTE_SUITES {
-        if !suite
-            .provider
-            .chars()
-            .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_')
-        {
-            failures.push(format!(
-                "provider {:?} is not equal to its test binary's CARGO_CRATE_NAME (hyphens and \
-                 other non-identifier characters are mangled), so its cassette directory would \
-                 be scanned by no binary — rename the provider or its directory",
-                suite.provider
-            ));
+        let dir = root.join(suite.provider);
+        if dir.is_dir() {
+            scan_dir(&dir, &mut failures);
         }
-        let binary_source = repo_path(&format!("tests/{}.rs", suite.provider));
-        if !binary_compiles_cassette_scan(&binary_source) {
-            failures.push(format!(
-                "tests/{}.rs does not include common/cassette_safety.rs as an unconditional \
-                 `mod`, so crates/rig-cassette/fixtures/cassettes/{} is scanned for secrets by no binary",
-                suite.provider, suite.provider
-            ));
-        }
-    }
-
-    let own_dir = root.join(env!("CARGO_CRATE_NAME"));
-    if own_dir.is_dir() {
-        scan_dir(&own_dir, &mut failures);
     }
 
     assert!(
@@ -404,19 +294,28 @@ fn cassette_files_match_registered_scenarios() {
 /// of the cell that recorded it: declared on its `CassetteSpec`, or by the
 /// wrapper that presents the rejected credential. The recorder refuses an
 /// undeclared one at record time; this keeps the committed corpus to the
-/// same rule. Each binary checks its own provider's fixtures.
+/// same rule, for every registered provider.
 #[test]
 fn account_failures_are_declared_by_their_cells() {
-    let own = env!("CARGO_CRATE_NAME");
-    let Some(suite) = PROVIDER_CASSETTE_SUITES
-        .iter()
-        .find(|suite| suite.provider == own)
-    else {
-        return;
-    };
     let mut failures = Vec::new();
+    for suite in PROVIDER_CASSETTE_SUITES {
+        undeclared_account_failures(suite, &mut failures);
+    }
+    assert!(
+        failures.is_empty(),
+        "account failures without a declaring cell:\n{}",
+        failures.join("\n")
+    );
+}
 
-    let mut declaring = std::collections::BTreeMap::<String, Vec<String>>::new();
+/// Appends to `failures` each account failure in `suite`'s fixtures that no
+/// cell of its sources declares.
+fn undeclared_account_failures(suite: &ProviderCassetteSuite, failures: &mut Vec<String>) {
+    let own = suite.provider;
+
+    // Every definition of each helper name: its file and what it declares.
+    let mut definitions =
+        std::collections::BTreeMap::<String, Vec<(PathBuf, BTreeSet<String>)>>::new();
     for dir in [format!("tests/providers/{own}"), "tests/common".to_owned()] {
         let dir = repo_path(&dir);
         if !dir.exists() {
@@ -427,12 +326,10 @@ fn account_failures_are_declared_by_their_cells() {
             match rig_test_support::scenario_registry::declaring_functions(&contents) {
                 Ok(functions) => {
                     for (function, kinds) in functions {
-                        let entry = declaring.entry(function).or_default();
-                        for kind in kinds {
-                            if !entry.contains(&kind) {
-                                entry.push(kind);
-                            }
-                        }
+                        definitions
+                            .entry(function)
+                            .or_default()
+                            .push((source.clone(), kinds.into_iter().collect()));
                     }
                 }
                 Err(error) => failures.push(format!("{}: {error}", display_repo_path(&source))),
@@ -454,6 +351,33 @@ fn account_failures_are_declared_by_their_cells() {
             }
         };
         for site in sites {
+            // Calls name a helper by its last path segment, so same-named
+            // helpers that disagree cannot be told apart: the call is refused,
+            // never credited with their union.
+            let reached = definitions
+                .get(&site.wrapper)
+                .map(Vec::as_slice)
+                .unwrap_or_default();
+            let wrapper_kinds = match reached.split_first() {
+                None => BTreeSet::new(),
+                Some(((_, first), rest)) if rest.iter().all(|(_, kinds)| kinds == first) => {
+                    first.clone()
+                }
+                Some(_) => {
+                    failures.push(format!(
+                        "{}: `{}` is defined in {} with different account-failure \
+                         declarations; rename one so the call names one helper",
+                        display_repo_path(&source),
+                        site.wrapper,
+                        reached
+                            .iter()
+                            .map(|(file, _)| display_repo_path(file))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ));
+                    BTreeSet::new()
+                }
+            };
             let kinds = declared
                 .entry(crate::cassettes::cassette_path(
                     suite.provider,
@@ -461,7 +385,7 @@ fn account_failures_are_declared_by_their_cells() {
                 ))
                 .or_default();
             kinds.extend(site.declared);
-            kinds.extend(declaring.get(&site.wrapper).into_iter().flatten().cloned());
+            kinds.extend(wrapper_kinds);
         }
     }
 
@@ -483,12 +407,6 @@ fn account_failures_are_declared_by_their_cells() {
             }
         }
     }
-
-    assert!(
-        failures.is_empty(),
-        "account failures without a declaring cell:\n{}",
-        failures.join("\n")
-    );
 }
 
 /// Fixtures recorded before the recorder refused stored state: each stores a
@@ -502,7 +420,6 @@ const STORED_STATE_GRANDFATHERED: &str = include_str!("stored_state_grandfathere
 /// state, or names no fixture, is stale and must go.
 #[test]
 fn stored_responses_are_deleted_or_grandfathered() {
-    let own = env!("CARGO_CRATE_NAME");
     let grandfathered: BTreeSet<&str> = STORED_STATE_GRANDFATHERED
         .lines()
         .map(str::trim)
@@ -511,30 +428,29 @@ fn stored_responses_are_deleted_or_grandfathered() {
     let root = Path::new(CASSETTE_ROOT);
     let mut failures = Vec::new();
     let mut storing = BTreeSet::new();
-    for fixture in collect_yaml_files(&root.join(own)) {
-        let contents = fs::read_to_string(&fixture).expect("cassette should be readable");
-        let stored = crate::cassettes::cassette_stored_state(own, &contents);
-        let relative = fixture
-            .strip_prefix(root)
-            .expect("fixture under the cassette root")
-            .display()
-            .to_string();
-        if stored.is_empty() {
-            continue;
-        }
-        storing.insert(relative.clone());
-        if !grandfathered.contains(relative.as_str()) {
-            failures.push(format!(
-                "{relative} stores responses it never deletes ({}): send `store: false` or \
-                 delete them in the same cassette",
-                stored.join(", ")
-            ));
+    for suite in PROVIDER_CASSETTE_SUITES {
+        for fixture in collect_yaml_files(&root.join(suite.provider)) {
+            let contents = fs::read_to_string(&fixture).expect("cassette should be readable");
+            let stored = crate::cassettes::cassette_stored_state(suite.provider, &contents);
+            let relative = fixture
+                .strip_prefix(root)
+                .expect("fixture under the cassette root")
+                .display()
+                .to_string();
+            if stored.is_empty() {
+                continue;
+            }
+            storing.insert(relative.clone());
+            if !grandfathered.contains(relative.as_str()) {
+                failures.push(format!(
+                    "{relative} stores responses it never deletes ({}): send `store: false` or \
+                     delete them in the same cassette",
+                    stored.join(", ")
+                ));
+            }
         }
     }
-    for line in grandfathered
-        .iter()
-        .filter(|line| line.split('/').next() == Some(own))
-    {
+    for line in &grandfathered {
         if !storing.contains(*line) {
             failures.push(format!(
                 "stored_state_grandfathered.txt lists {line}, which no longer stores state: \
@@ -551,13 +467,15 @@ fn stored_responses_are_deleted_or_grandfathered() {
 
 /// No cassette test compares a volatile key (one the recorder normalizes)
 /// exactly outside replay: such a comparison passes in CI and fails only on
-/// the next recording. Each binary checks its own provider's sources and the
-/// shared ones.
+/// the next recording. It checks every provider's sources and the shared ones.
 #[test]
 fn volatile_keys_are_not_compared_exactly_outside_replay() {
-    let own = env!("CARGO_CRATE_NAME");
     let mut failures = Vec::new();
-    for dir in [format!("tests/providers/{own}"), "tests/common".to_owned()] {
+    let dirs = PROVIDER_CASSETTE_SUITES
+        .iter()
+        .map(|suite| format!("tests/providers/{}", suite.provider))
+        .chain(["tests/common".to_owned()]);
+    for dir in dirs {
         let dir = repo_path(&dir);
         if !dir.exists() {
             continue;
@@ -695,43 +613,6 @@ fn collect_rust_files_in_dir(dir: &Path, files: &mut Vec<PathBuf>) {
             files.push(path);
         }
     }
-}
-
-/// Structural, not substring: the guarded claim is "this binary *compiles*
-/// the secret scan", so the check must parse the source and find an actual
-/// `#[path = ".../common/cassette_safety.rs"] mod …` item with no `#[cfg]`
-/// attached. A raw `contents.contains(...)` would stay satisfied by a
-/// commented-out include or by a cfg-gated one — a false green on the safety
-/// net itself, the same paper-claim failure mode the streaming-conformance
-/// registry's CI-step check guards against.
-fn binary_compiles_cassette_scan(source: &Path) -> bool {
-    let Ok(contents) = fs::read_to_string(source) else {
-        return false;
-    };
-    let Ok(syntax) = syn::parse_file(&contents) else {
-        return false;
-    };
-    syntax.items.iter().any(|item| {
-        let syn::Item::Mod(module) = item else {
-            return false;
-        };
-        let cfg_gated = module
-            .attrs
-            .iter()
-            .any(|attr| attr.path().is_ident("cfg") || attr.path().is_ident("cfg_attr"));
-        let includes_scan = module.attrs.iter().any(|attr| {
-            attr.path().is_ident("path")
-                && matches!(
-                    &attr.meta,
-                    syn::Meta::NameValue(name_value) if matches!(
-                        &name_value.value,
-                        Expr::Lit(ExprLit { lit: Lit::Str(path), .. })
-                            if path.value().ends_with("common/cassette_safety.rs")
-                    )
-                )
-        });
-        includes_scan && !cfg_gated
-    })
 }
 
 fn cassette_scenarios_in_file(

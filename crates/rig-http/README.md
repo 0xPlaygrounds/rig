@@ -5,7 +5,7 @@ provider sends through:
 
 - `http_client`: `HttpClientExt`, the trait a transport implements; `DynHttpClient`, an erased
   client with middleware (`HttpMiddleware`); request framing, multipart forms and the error type;
-- `ws_client` (feature `websocket`): the websocket connection contract the
+- `ws_client`: the websocket connection contract the
   Responses WebSocket session is written against;
 - `wasm_compat`: the `Send`/`Sync` bounds and boxed futures that relax on
   browser wasm;

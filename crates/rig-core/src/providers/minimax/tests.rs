@@ -9,7 +9,6 @@ use crate::error::ErrorKind;
 use crate::providers::openai::wire::{MINIMAX, OpenAIConfig};
 use crate::test_utils::{RecordingHttpClient, json_body};
 use crate::wire::{Mode, Wire};
-#[cfg(feature = "audio")]
 use crate::{
     http_client::multipart::PartContent,
     providers::minimax::voice_clone::{CloneAudio, VoiceClone, VoiceCloneRequest, VoiceClones},
@@ -21,7 +20,6 @@ use crate::{
 /// leaves the size out for an `aspect_ratio` or a model that reads none, and
 /// refuses a size MiniMax rejects, such as the builder's 256 by 256 default. The reply's first
 /// base64 image is the response, its trace id the response id.
-#[cfg(feature = "image")]
 #[tokio::test]
 async fn an_image_request_asks_for_base64_and_decodes_the_first_image() {
     use crate::image_generation::ImageGenerationRequestBuilder;
@@ -116,7 +114,6 @@ async fn an_image_request_asks_for_base64_and_decodes_the_first_image() {
 /// MiniMax reports a failure under HTTP 200 with a nonzero `base_resp`
 /// status, which must fail the call with the body rather than read as a
 /// reply with no image.
-#[cfg(feature = "image")]
 #[tokio::test]
 async fn a_failed_status_under_http_200_is_a_provider_error() {
     use crate::image_generation::ImageGenerationRequestBuilder;
@@ -145,7 +142,6 @@ async fn a_failed_status_under_http_200_is_a_provider_error() {
 
 /// The speech body nests the voice and speed under `voice_setting`, a
 /// caller's `voice_setting` adds to it, and the hex audio decodes to bytes.
-#[cfg(feature = "audio")]
 #[tokio::test]
 async fn a_speech_request_nests_the_voice_and_decodes_hex_audio() {
     use crate::audio_generation::AudioGenerationRequestBuilder;
@@ -230,7 +226,6 @@ async fn a_speech_request_nests_the_voice_and_decodes_hex_audio() {
 /// The upload is a multipart form with the purpose beside the file, and
 /// refuses a format MiniMax does not take; the clone is a JSON body with the
 /// prompt, preview and extra fields.
-#[cfg(feature = "audio")]
 #[test]
 fn voice_cloning_requests_are_the_documented_shapes() {
     let wire = VoiceClones::new(OpenAIConfig::with_key(&MINIMAX, "key"));
@@ -318,7 +313,6 @@ fn voice_cloning_requests_are_the_documented_shapes() {
 
 /// An upload reply yields its file id exactly, past `f64` precision, and a
 /// clone reply its preview link and the voice id the request created.
-#[cfg(feature = "audio")]
 #[tokio::test]
 async fn voice_cloning_replies_decode() {
     let wire = || VoiceClones::new(OpenAIConfig::with_key(&MINIMAX, "key"));

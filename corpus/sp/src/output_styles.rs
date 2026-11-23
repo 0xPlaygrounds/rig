@@ -63,7 +63,10 @@ impl Plugin for OutputStylesPlugin {
             .init_resource::<ProjectRoot>()
             .init_resource::<RigHome>()
             .add_systems(Startup, (read_now, watch))
-            .add_systems(Update, (reload, restyle).chain().before(AgentLoop))
+            .add_systems(
+                Update,
+                (reload, restyle).chain().after(PollTasks).before(AgentLoop),
+            )
             .add_observer(styled)
             .add_observer(unstyled)
             .add_observer(read)
@@ -205,6 +208,7 @@ fn read_styles(workspace: &dyn Workspace, dirs: &[PathBuf]) -> (Styles, Vec<Stri
     for dir in dirs {
         let mut files = workspace
             .files(dir, Some("*.md"), Files::All)
+            .map(|listed| listed.files)
             .unwrap_or_default();
         files.retain(|path| path.parent() == Some(dir.as_path()));
         files.sort();
@@ -257,9 +261,9 @@ fn reload(
     watches: Query<(), With<StyleWatch>>,
     mut commands: Commands,
 ) {
-    let mine = changes
-        .read()
-        .fold(false, |mine, change| mine | watches.contains(change.watch));
+    let mine = changes.read().fold(false, |mine, change| {
+        mine | (watches.contains(change.watch) && change.event.names_files())
+    });
     if mine {
         commands.queue(read_now);
     }
@@ -378,7 +382,7 @@ fn inherit(
     styles: Res<Styles>,
     mut commands: Commands,
 ) {
-    let Ok(&SpawnedBy(parent)) = children.get(spawned.entity) else {
+    let Ok(parent) = children.get(spawned.entity).map(SpawnedBy::parent) else {
         return;
     };
     let Ok(OutputStyle(name)) = agents.get(parent) else {
@@ -424,11 +428,11 @@ fn picker(styles: &Styles, agent: Entity, current: &str) -> Picker {
     for (at, style) in styles.styles.iter().enumerate() {
         let mark = if style.name == current { "● " } else { "  " };
         picker.items.push(PickItem {
-            label: format!("{mark}{}", style.name),
-            command: format!("style {}", style.name),
             detail: Some(style.description.clone()).filter(|text| !text.is_empty()),
-            more: None,
-            checked: false,
+            ..PickItem::new(
+                format!("{mark}{}", style.name),
+                format!("style {}", style.name),
+            )
         });
         if style.name == current {
             picker.selected = at;

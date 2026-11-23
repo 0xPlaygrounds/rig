@@ -14,7 +14,7 @@ fn transcription_request() -> transcription::TranscriptionRequest {
 
 /// The bytes one transcription puts on the wire, pinned by
 /// `crates/rig-cassette/fixtures/cassettes/gemini/transcription/transcription_smoke.yaml`: the path,
-/// the `key` query parameter and the whole JSON document, down to the `null`
+/// the empty query and the whole JSON document, down to the `null`
 /// fields Gemini's request shape keeps. The cassette's `inlineData.data` is a
 /// 32 KB mp3; this request's audio is [`transcription_request`]'s, so only
 /// that one string differs.
@@ -35,7 +35,7 @@ fn the_wire_encodes_the_recorded_generate_content_request() {
         request.uri().path(),
         "/v1beta/models/gemini-3-flash-preview:generateContent"
     );
-    assert_eq!(request.uri().query(), Some("key=test-key"));
+    assert_eq!(request.uri().query(), None);
     assert_eq!(
         request
             .headers()
@@ -82,4 +82,36 @@ fn additional_params_that_are_not_an_object_are_refused() {
         error.to_string().contains("should be an object, got [1]"),
         "{error}"
     );
+}
+
+/// The prompt goes beside the audio, and the output language joins the
+/// system instruction.
+#[test]
+fn the_prompt_and_language_reach_the_wire() {
+    let request = transcription::TranscriptionRequest {
+        prompt: Some("Names: \"Rig\", café.".to_owned()),
+        language: Some("fr".to_owned()),
+        ..transcription_request()
+    };
+    let body: Value =
+        serde_json::from_slice(&transcription_body(request).expect("the request encodes"))
+            .expect("the body is JSON");
+
+    assert_eq!(
+        body.pointer("/contents/0/parts/1"),
+        Some(&json!({ "text": "Names: \"Rig\", café.", "thought": false }))
+    );
+    assert_eq!(
+        body.pointer("/systemInstruction/parts/1"),
+        Some(&json!({ "text": "Use fr as the output language.", "thought": false }))
+    );
+}
+
+#[test]
+fn transcript_without_response_id_reports_none() {
+    let reply = serde_json::json!({
+        "candidates": [{"content": {"parts": [{"text": "hello"}]}}]
+    });
+    let transcript = transcript_of(&reply).expect("a transcript");
+    assert_eq!(transcript.response_id, None);
 }

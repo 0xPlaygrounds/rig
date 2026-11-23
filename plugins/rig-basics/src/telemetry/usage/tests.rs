@@ -1,12 +1,21 @@
 use std::sync::Arc;
 use std::sync::mpsc::Receiver;
 
+use bevy_tasks::futures_lite::{StreamExt, stream};
+use rig_core::catalog::Catalog;
 use rig_core::completion::{CompletionRequest, Message};
+use rig_core::effect::family::Dynamic;
+use rig_core::effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey};
+use rig_core::error::ErrorReport;
+use rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
+use rig_core::streaming::{Item, Part, Relayed, StreamEvent};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
+use rig_ecs::effects::Handler;
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{Ended, app_on, connect, log_ended, reply, run_until};
 
 use super::*;
+use rig_ecs::spawn::{AgentSpec, Origin, spawn};
 
 /// An app on `store` that counts spending, after its first frame.
 fn start(store: &MemoryStore) -> (App, Receiver<()>) {
@@ -35,7 +44,7 @@ fn spending_is_split_per_model_and_purpose_and_outlives_its_agent() {
     };
     let reference = connection.spec.reference();
     let world = app.world_mut();
-    let agent = world.spawn((Agent, connection)).id();
+    let agent = spawn_root(world, connection).id();
     world.trigger(Deliver::new(agent, "hello", DeliveryMode::Steer));
     run_until(&mut app, &wakes, |world| {
         world.resource::<Ended>().0.len() == 1
@@ -92,7 +101,7 @@ fn usage_labels_catalog_costs_as_estimates_not_subscription_charges() {
     );
     let world = app.world_mut();
     world.resource_mut::<SessionUsage>().0 = spent.clone();
-    let agent = world.spawn((Agent, spent)).id();
+    let agent = spawn_root(world, spent).id();
     notices(world);
     world.trigger(RunCommand::new(agent, "usage".to_owned()));
     world.flush();
@@ -101,6 +110,89 @@ fn usage_labels_catalog_costs_as_estimates_not_subscription_charges() {
     assert!(shown.contains("API list-price estimates"), "{shown}");
     assert!(
         shown.contains("not subscription charges or verified invoices"),
+        "{shown}"
+    );
+}
+
+/// What `tokens` output tokens used, as one call reports it.
+fn output(tokens: u64) -> Usage {
+    Usage::new().input_tokens(0).output_tokens(tokens)
+}
+
+#[test]
+fn a_call_counts_below_every_agent_above_it_after_its_agent_is_gone() {
+    let store = MemoryStore::default();
+    let (mut app, _wakes) = start(&store);
+    let world = app.world_mut();
+    let root = spawn_root(world, ()).id();
+    let below = |world: &mut World, parent| {
+        spawn(world, Origin::ChildOf(parent), AgentSpec::default()).ok()
+    };
+    let child = below(world, root);
+    let grandchild = child.and_then(|child| below(world, child));
+    assert!(grandchild.is_some(), "a child and a grandchild");
+    let (Some(child), Some(grandchild)) = (child, grandchild) else {
+        return;
+    };
+    let spent = |agent, tokens, purpose: &str| Spent {
+        agent: Some(agent),
+        turn: None,
+        model: Some("test/model".to_owned()),
+        purpose: Some(purpose.to_owned()),
+        usage: output(tokens),
+    };
+    world.trigger(spent(child, 10, "turn"));
+    world.trigger(spent(grandchild, 100, "helper"));
+    world.flush();
+    // The grandchild is done and gone, as a one-job helper is.
+    world.despawn(grandchild);
+    app.update();
+
+    let usage = |world: &World, agent| world.get::<AgentUsage>(agent).cloned().unwrap_or_default();
+    let tokens = |totals: &UsageTotals| (totals.calls, totals.total_tokens());
+    let world = app.world();
+    assert_eq!(tokens(&usage(world, root).total), (0, 0));
+    assert_eq!(tokens(&usage(world, root).below), (2, 110));
+    assert_eq!(tokens(&usage(world, child).total), (1, 10));
+    assert_eq!(tokens(&usage(world, child).below), (1, 100));
+    let session = &world.resource::<SessionUsage>().0;
+    assert_eq!(tokens(&session.total), (2, 110), "each call once");
+    let helper = session.purposes.get("helper").map(tokens);
+    assert_eq!(helper, Some((1, 100)));
+
+    // `/usage` and `/agents` say what the root's tree spent.
+    let world = app.world_mut();
+    notices(world);
+    world.trigger(RunCommand::new(root, "usage".to_owned()));
+    world.flush();
+    let shown = notices(world).join("\n");
+    assert!(
+        shown.contains("This agent: no model call yet.")
+            && shown.contains("This agent and below: 2 model calls"),
+        "{shown}"
+    );
+    let mut columns = world.query::<(&AgentColumn, &ColumnOf)>();
+    let column = (columns.iter(world)).find(|(column, of)| of.0 == child && column.tag == "spent");
+    let text = column.map(|(column, _)| column.text.clone());
+    assert_eq!(text.as_deref(), Some("spent 10 tokens, 100 tokens below"));
+    let column = (columns.iter(world)).find(|(column, of)| of.0 == root && column.tag == "spent");
+    let text = column.map(|(column, _)| column.text.clone());
+    assert_eq!(
+        text.as_deref(),
+        Some("110 tokens below"),
+        "no call of its own"
+    );
+
+    // A helper whose spend is not all known makes these a lower bound.
+    world.insert_resource(UnknownSpend(1));
+    world.trigger(RunCommand::new(root, "usage".to_owned()));
+    world.flush();
+    let shown = notices(world).join("\n");
+    assert!(
+        shown.contains(
+            "One helper's spend in this session is not all known: what was spent is \
+             at least these totals."
+        ),
         "{shown}"
     );
 }
@@ -135,7 +227,7 @@ fn the_context_is_against_the_window_of_the_model_a_call_went_to() {
     app.insert_resource(RouteTo(routed))
         .add_systems(AgentPass, route.in_set(PrepareSystems::Edit));
     let world = app.world_mut();
-    let agent = world.spawn((Agent, connection)).id();
+    let agent = spawn_root(world, connection).id();
     world.trigger(Deliver::new(agent, "hello", DeliveryMode::Steer));
     run_until(&mut app, &wakes, |world| {
         world.resource::<Ended>().0.len() == 1
@@ -178,7 +270,7 @@ fn a_superseded_call_counts_its_call_usage_under_the_model_it_went_to() {
     };
     let reference = connection.spec.reference();
     let world = app.world_mut();
-    let agent = world.spawn(Agent).id();
+    let agent = spawn_root(world, ()).id();
     let turn = world.spawn(TurnOf(agent)).id();
     let winner = world.spawn_empty().id();
     let mut used = Usage::default();
@@ -221,7 +313,7 @@ fn stale_context_survives_restore_and_unreported_replies_for_each_agent() {
     let Some(connection) = connect(&model) else {
         return;
     };
-    let agent = app.world_mut().spawn((Agent, connection)).id();
+    let agent = spawn_root(app.world_mut(), connection).id();
     app.world_mut()
         .trigger(Deliver::new(agent, "hello", DeliveryMode::Steer));
     run_until(&mut app, &wakes, |world| {
@@ -248,14 +340,21 @@ fn stale_context_survives_restore_and_unreported_replies_for_each_agent() {
         )
         .is_ok()
     );
-    let child = app
-        .world_mut()
-        .spawn((Agent, SpawnedBy(agent), ContextStale {}))
-        .id();
+    let child = spawn(
+        app.world_mut(),
+        Origin::ChildOf(agent),
+        AgentSpec::default(),
+    );
+    let child = child.unwrap_or(Entity::PLACEHOLDER);
+    app.world_mut()
+        .entity_mut(child)
+        .insert(ContextStale::default());
     for message in [Message::user("child task"), Message::assistant("done")] {
         assert!(rig_harness_test_support::commit_message(app.world_mut(), child, message).is_ok());
     }
-    app.world_mut().entity_mut(agent).insert(ContextStale {});
+    app.world_mut()
+        .entity_mut(agent)
+        .insert(ContextStale::default());
     app.update();
     let ids = [agent, child].map(|agent| app.world().get::<AgentId>(agent).cloned());
     app.world_mut()
@@ -333,15 +432,12 @@ fn a_context_change_after_a_reply_in_the_same_pass_stays_stale() {
     let Some(connection) = connect(&model) else {
         return;
     };
-    let agent = app
-        .world_mut()
-        .spawn((Agent, connection, ContextStale {}))
-        .id();
+    let agent = spawn_root(app.world_mut(), (connection, ContextStale::default())).id();
     app.add_systems(
         AgentPass,
         (|agents: Query<Entity, Changed<LastUsage>>, mut commands: Commands| {
             for agent in &agents {
-                commands.entity(agent).insert(ContextStale {});
+                commands.entity(agent).insert(ContextStale::default());
             }
         })
         .after(Stage::Commit)
@@ -376,10 +472,9 @@ fn the_meter_shows_unknown_until_the_stale_marker_is_removed() {
         .output_tokens(100);
     let mut spent = AgentUsage::default();
     spent.total.calls = 1;
-    let agent = app
-        .world_mut()
-        .spawn((
-            Agent,
+    let agent = spawn_root(
+        app.world_mut(),
+        (
             connection,
             spent,
             LastUsage(Some(rig_memory::Anchor {
@@ -387,8 +482,9 @@ fn the_meter_shows_unknown_until_the_stale_marker_is_removed() {
                 through: MessageId::default(),
             })),
             rig_tui::StatusItems::default(),
-        ))
-        .id();
+        ),
+    )
+    .id();
     let context = |world: &World| {
         world
             .get::<rig_tui::StatusItems>(agent)
@@ -398,10 +494,282 @@ fn the_meter_shows_unknown_until_the_stale_marker_is_removed() {
     app.update();
     assert_eq!(context(app.world()).as_deref(), Some("ctx 500/2.0k (25%)"));
     // The marker alone, with no usage changing, as after clearing outputs.
-    app.world_mut().entity_mut(agent).insert(ContextStale {});
+    app.world_mut()
+        .entity_mut(agent)
+        .insert(ContextStale::default());
     app.update();
     assert_eq!(context(app.world()).as_deref(), Some("ctx ?/2.0k"));
     app.world_mut().entity_mut(agent).remove::<ContextStale>();
     app.update();
     assert_eq!(context(app.world()).as_deref(), Some("ctx 500/2.0k (25%)"));
+}
+
+/// A fork's meter starts afresh with no calls of its own. A fork of the
+/// whole conversation has its source's context, and one cut earlier has it
+/// unknown until its first reply, in the status line and in `/usage`.
+#[cfg(feature = "tui")]
+#[test]
+fn a_fork_starts_with_no_calls_and_the_context_it_copied() {
+    // Every agent has a status line, as in the terminal view.
+    let (mut app, wakes) = app_on(&MemoryStore::default());
+    app.add_plugins((AgentPlugin, SessionLogPlugin, UsagePlugin))
+        .register_required_components::<Agent, rig_tui::StatusItems>()
+        .init_resource::<Ended>()
+        .add_observer(log_ended);
+    app.finish();
+    app.update();
+    let model = MockCompletionModel::from_stream_turns([reply("hi"), reply("again")]);
+    let Some(mut connection) = connect(&model) else {
+        return;
+    };
+    connection.spec = Arc::new((*connection.spec).clone().with_context_window(2_000));
+    let source = spawn_root(app.world_mut(), connection).id();
+    for (said, turns) in [("hello", 1), ("more", 2)] {
+        app.world_mut()
+            .trigger(Deliver::new(source, said, DeliveryMode::Steer));
+        run_until(&mut app, &wakes, |world| {
+            world.resource::<Ended>().0.len() == turns
+        });
+    }
+    let usage = rig_core::completion::Usage::new()
+        .input_tokens(400)
+        .output_tokens(100);
+    let mut spent = AgentUsage::default();
+    spent.total.calls = 1;
+    let last = LastUsage(Some(rig_memory::Anchor {
+        usage,
+        through: MessageId::default(),
+    }));
+    app.world_mut().entity_mut(source).insert((spent, last));
+    app.world_mut()
+        .spawn(rig_ecs::fork::ForkAgent::new(source, None));
+    app.update();
+    let world = app.world_mut();
+    let mut forks = world.query_filtered::<Entity, With<rig_ecs::fork::ForkedFrom>>();
+    let fork = forks.iter(world).next();
+    assert!(fork.is_some(), "a fork is made");
+    let Some(fork) = fork else { return };
+    let context = |world: &World, agent| {
+        world
+            .get::<rig_tui::StatusItems>(agent)
+            .and_then(|items| items.iter().find(|item| item.name == "context"))
+            .map(|item| item.text.clone())
+    };
+    assert_eq!(
+        context(app.world(), source).as_deref(),
+        Some("ctx 500/2.0k (25%)")
+    );
+    assert_eq!(
+        context(app.world(), fork).as_deref(),
+        Some("ctx 500/2.0k (25%)")
+    );
+    let calls = app
+        .world()
+        .get::<AgentUsage>(fork)
+        .map(|spent| spent.total.calls);
+    assert_eq!(calls, Some(0));
+    let world = app.world_mut();
+    notices(world);
+    world.trigger(RunCommand::new(fork, "usage".to_owned()));
+    world.flush();
+    let shown = notices(world).join("\n");
+    assert!(shown.contains("This agent: no model call yet."), "{shown}");
+    assert!(!shown.contains("Context: unknown"), "{shown}");
+
+    // Cut after the first turn, the fork's context is unknown.
+    let first = app
+        .world()
+        .get::<Conversation>(source)
+        .and_then(|conversation| conversation.id(1));
+    app.world_mut()
+        .spawn(rig_ecs::fork::ForkAgent::new(source, first));
+    app.update();
+    let world = app.world_mut();
+    let mut forks = world.query_filtered::<Entity, With<rig_ecs::fork::ForkedFrom>>();
+    let cut = forks.iter(world).find(|other| *other != fork);
+    assert!(cut.is_some(), "a second fork is made");
+    let Some(cut) = cut else { return };
+    assert_eq!(context(app.world(), cut).as_deref(), Some("ctx ?/2.0k"));
+    let world = app.world_mut();
+    notices(world);
+    world.trigger(RunCommand::new(cut, "usage".to_owned()));
+    world.flush();
+    let shown = notices(world).join("\n");
+    assert!(
+        shown.contains("Context: unknown until the next reply."),
+        "{shown}"
+    );
+}
+
+/// A model that relays its items, then never finishes: a reply the user
+/// stops mid-stream.
+struct Stalls(Vec<Relayed>);
+
+impl Serve for Stalls {
+    type Family = Dynamic;
+
+    fn descriptor(&self) -> HandlerDescriptor {
+        HandlerDescriptor {
+            key: HandlerKey::from("stalls"),
+            family: FamilyDescriptor::Custom {
+                kind: "test:stalls".into(),
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    async fn serve(&self, _: EffectKind, _: Dispatch) -> Reply {
+        let items: Vec<Result<Relayed, ErrorReport>> = self.0.iter().cloned().map(Ok).collect();
+        Reply::Stream(Box::pin(stream::iter(items).chain(stream::pending())))
+    }
+}
+
+/// A priced catalog model, answered by [`Stalls`] relaying `items`.
+pub(crate) fn stalling(items: Vec<Relayed>) -> Option<Connection> {
+    let spec = Catalog::builtin()
+        .resolve("deepseek/deepseek-flash")
+        .ok()?
+        .shared();
+    let handler = Handler(ErasedHandler::new(Stalls(items)));
+    Some(Connection { spec, handler })
+}
+
+/// A text fragment of the reply's first part.
+pub(crate) fn text(text: &str) -> Relayed {
+    Relayed::Item(Item::Event(StreamEvent::Text {
+        part: Part::new(0),
+        text: text.to_owned(),
+    }))
+}
+
+/// The usage a provider reports while its reply streams.
+pub(crate) fn reported(input: u64, output: u64) -> Relayed {
+    Relayed::Usage(Usage::new().input_tokens(input).output_tokens(output))
+}
+
+/// Whether a turn call of `agent` that has not settled was sent, and has
+/// streamed `streamed` into its partial reply, if anything.
+pub(crate) fn streaming(world: &World, agent: Entity, streamed: Option<&str>) -> bool {
+    let Some(mut calls) = world.try_query_filtered::<(&ForAgent, &Partial, Has<SentTo>), (With<TurnCall>, Without<Settled>)>() else {
+        return false;
+    };
+    calls.iter(world).any(|(of, partial, sent)| {
+        of.0 == agent && sent && streamed.is_none_or(|streamed| partial.text == streamed)
+    })
+}
+
+/// Sends `agent` a message on a model relaying `items`, stops its turn
+/// once the reply streamed `streamed`, and returns what `/usage` said then.
+fn stopped(items: Vec<Relayed>, streamed: Option<&str>) -> Option<(App, Entity, String)> {
+    let store = MemoryStore::default();
+    let (mut app, wakes) = start(&store);
+    let connection = stalling(items)?;
+    let world = app.world_mut();
+    let agent = spawn_root(world, connection).id();
+    world.trigger(Deliver::new(agent, "hello", DeliveryMode::Steer));
+    run_until(&mut app, &wakes, |world| streaming(world, agent, streamed));
+    app.world_mut().trigger(StopTurn::new(agent));
+    run_until(&mut app, &wakes, |world| {
+        world.resource::<Ended>().0.len() == 1
+    });
+    app.update();
+    let world = app.world_mut();
+    notices(world);
+    world.trigger(RunCommand::new(agent, "usage".to_owned()));
+    world.flush();
+    // The line every priced `/usage` has, on list prices as estimates.
+    let shown: Vec<String> = (notices(world).join("\n").lines())
+        .filter(|line| !line.contains("API list-price estimates"))
+        .map(str::to_owned)
+        .collect();
+    Some((app, agent, shown.join("\n")))
+}
+
+/// (a) A call stopped after its provider reported usage counts what the
+/// provider reported, exactly, and is not called an estimate.
+#[test]
+fn a_stopped_call_counts_the_usage_its_provider_reported() {
+    let items = vec![text("The answer"), reported(1000, 7), text(" is")];
+    let Some((app, agent, shown)) = stopped(items, Some("The answer is")) else {
+        return;
+    };
+    let spent = app
+        .world()
+        .get::<AgentUsage>(agent)
+        .cloned()
+        .unwrap_or_default();
+    assert_eq!(spent.total.calls, 1, "{shown}");
+    assert_eq!(spent.total.tokens.input_tokens, Some(1000), "{shown}");
+    assert_eq!(spent.total.tokens.output_tokens, Some(7), "{shown}");
+    assert_eq!(app.world().resource::<SessionUsage>().0, spent);
+    assert!(!shown.to_lowercase().contains("estimat"), "{shown}");
+}
+
+/// (b) A call stopped after it streamed, whose provider reported no usage,
+/// counts an estimate of what it was sent and streamed, and `/usage` says
+/// it is an estimate.
+#[test]
+fn a_stopped_call_with_no_reported_usage_counts_an_estimate() {
+    let Some((app, agent, shown)) = stopped(vec![text("The answer is")], Some("The answer is"))
+    else {
+        return;
+    };
+    let spent = app
+        .world()
+        .get::<AgentUsage>(agent)
+        .cloned()
+        .unwrap_or_default();
+    assert_eq!(spent.total.calls, 1, "{shown}");
+    let tokens = spent.total.tokens;
+    assert!(
+        tokens.input_tokens.is_some_and(|tokens| tokens > 0),
+        "{shown}"
+    );
+    assert!(
+        tokens.output_tokens.is_some_and(|tokens| tokens > 0),
+        "{shown}"
+    );
+    assert!(shown.to_lowercase().contains("estimat"), "{shown}");
+}
+
+/// (c) A call stopped before anything streamed, whose provider reported
+/// nothing, counts no made-up number, and `/usage` says its spend is not
+/// known.
+#[test]
+fn a_call_stopped_before_anything_streamed_is_shown_as_unknown() {
+    let Some((app, agent, shown)) = stopped(Vec::new(), None) else {
+        return;
+    };
+    let spent = app
+        .world()
+        .get::<AgentUsage>(agent)
+        .cloned()
+        .unwrap_or_default();
+    let session = &app.world().resource::<SessionUsage>().0;
+    for totals in [&spent.total, &session.total] {
+        assert_eq!(totals.total_tokens(), 0, "{shown}");
+        assert_eq!(totals.cost, 0.0, "{shown}");
+    }
+    let shown_lower = shown.to_lowercase();
+    assert!(
+        shown_lower.contains("not known") || shown_lower.contains("unknown"),
+        "{shown}"
+    );
+}
+
+/// Cumulative reports replace earlier counters instead of adding to them.
+#[test]
+fn a_stopped_call_uses_the_latest_cumulative_report() {
+    let items = vec![reported(1000, 3), reported(1000, 7), text("done")];
+    let Some((app, agent, shown)) = stopped(items, Some("done")) else {
+        return;
+    };
+    let spent = app
+        .world()
+        .get::<AgentUsage>(agent)
+        .cloned()
+        .unwrap_or_default();
+    assert_eq!(spent.total.calls, 1, "{shown}");
+    assert_eq!(spent.total.tokens.input_tokens, Some(1000), "{shown}");
+    assert_eq!(spent.total.tokens.output_tokens, Some(7), "{shown}");
 }

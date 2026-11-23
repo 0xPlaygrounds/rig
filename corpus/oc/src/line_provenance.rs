@@ -1,34 +1,24 @@
-//! OC-21: which prompt wrote this line? `git blame` for agent work.
+//! Line provenance: which prompt wrote each line, like `git blame` for agent work. Every file
+//! change an agent's tool call makes is recorded per project in the project's [`PluginData`]
+//! (outside the repository, kept across sessions): the session, agent, turn, the prompt the user
+//! typed to start the turn, the tool call, the time, and which lines it wrote. Only changes the
+//! file tools publish (`FilesChanged`) are recorded. A call that may write anywhere, such as
+//! `shell`, publishes none, so its lines count as the user's.
 //!
-//! Every file change an agent's tool call makes is recorded per project,
-//! in the project's [`PluginData`] (outside the repository, kept across
-//! sessions): the session, agent, turn, the prompt the user typed to start
-//! the turn, the tool call and the time, and which lines it wrote. The
-//! file tools publish what they changed (`FilesChanged`), and so does any
-//! call that may write anywhere, such as `shell`, through the harness's
-//! checkpoint around it; each change carries the file's text before and
-//! its hunks.
+//! Each line's origin is carried forward through every later change, so it follows code that moves.
+//! A line of an agent's that the user changed is marked "changed by you", and a line the user added
+//! is no agent's.
 //!
-//! Each line's origin is carried forward through every later change, by
-//! the change's hunks for an agent's and by a line diff against the text
-//! last seen for the user's, so it follows code that moves. A change the
-//! user made is found where the text an agent's change found, or the file
-//! when asked, is not what was last seen: a line of an agent's they
-//! changed is marked "changed by you", a line they added is no agent's.
-//!
-//! - `/provenance <file>[:<line>[-<line>]]` lists the lines in runs of one
-//!   origin, and offers a picker of the agents' entries: choosing one opens
-//!   that turn's session, read from its store, in a read-only
-//!   [`TranscriptPane`] over the screen scrolled to the turn; Esc closes it.
-//! - `/provenance --forget <session>` drops one session's records.
-//! - `rig provenance <file>[:<line>[-<line>]] [--json]` prints the same from
-//!   the command line, without a session; `--forget` works there too.
+//! `/provenance <file>[:<line>[-<line>]]` lists the lines in runs of one origin and offers a picker
+//! of the agents' entries. Choosing one opens that turn's session in a read-only [`TranscriptPane`]
+//! over the screen, scrolled to the turn; Esc closes it. `/provenance --forget <session>` drops one
+//! session's records. `rig provenance <file>[:<line>[-<line>]] [--json]` prints the same from the
+//! command line, without a session, and takes `--forget` too.
 
 use std::io::Write as _;
 use std::path::Path;
 
 use bevy_log::warn;
-use rig_basics::checkpoint::CheckpointPlugin;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::Conversation as Log;
@@ -65,9 +55,6 @@ pub struct LineProvenancePlugin;
 
 impl Plugin for LineProvenancePlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<CheckpointPlugin>() {
-            app.add_plugins(CheckpointPlugin);
-        }
         app.init_resource::<ProjectRoot>()
             .init_resource::<ProjectWorkspace>()
             .add_observer(call_settled)
@@ -220,7 +207,7 @@ fn prompt(
         if let Some(text) = asked.and_then(|at| typed(conversation, at)) {
             return text;
         }
-        let parents = parent.and_then(|&SpawnedBy(parent)| {
+        let parents = parent.map(SpawnedBy::parent).and_then(|parent| {
             let (.., active) = agents.get(parent).ok()?;
             let turn = turns.get(active?.turn()).ok()?;
             Some((parent, turn.start))
@@ -342,7 +329,7 @@ impl Asking<'_> {
     fn session_label(&self, session: &str) -> String {
         let named = self.home.as_ref().and_then(|home| {
             let id: SessionId = session.parse().ok()?;
-            home.0.session(&id).name()
+            home.0.session(&id).name().ok().flatten()
         });
         named.unwrap_or_else(|| session.get(..8).unwrap_or(session).to_owned())
     }
@@ -643,7 +630,7 @@ fn command_line(invoked: Option<Res<Invoked>>, asking: Asking, mut commands: Com
     std::io::stdout().flush().ok();
     let reason = match run.status {
         0 => ExitReason::Quit,
-        status => ExitReason::Failed(status),
+        status => ExitReason::Failed(FailCode::or_failure(status)),
     };
     commands.insert_resource(run);
     commands.trigger(Exit(reason));

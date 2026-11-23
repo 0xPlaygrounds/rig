@@ -3,8 +3,9 @@
 //! Checks properties no build catches: that the facade tarball ships only its
 //! own source and registry documents rather than the workspace root, that every
 //! declared dependency is actually used, that the facade feature guard lists
-//! every facade feature, and that docs.rs documents every facade feature not
-//! excluded here with a reason.
+//! every facade feature, that docs.rs documents every facade feature not
+//! excluded here with a reason, and that the root package alone has a `rig`
+//! binary.
 //!
 //! Manifest data comes from `cargo metadata` and the file list from
 //! `cargo package --list`, which reports what Cargo will do without building a
@@ -120,13 +121,14 @@ pub(crate) fn check(workspace: &Path) -> Result<(), String> {
     failures.extend(dependencies_are_used(&packages)?);
     failures.extend(facade_guard_covers_every_feature(workspace, &packages)?);
     failures.extend(docs_rs_documents_every_feature(&metadata, &packages)?);
+    failures.extend(one_package_owns_the_rig_binary(&metadata));
 
     if failures.is_empty() {
         println!(
             "ok: the facade publishes only its allowlist, {} published crates are under \
              {SIZE_CEILING} B uncompressed and name only dependencies their sources use, \
-             the facade guard covers every root feature, and docs.rs documents every \
-             feature not excluded",
+             the facade guard covers every root feature, docs.rs documents every \
+             feature not excluded, and only the facade has a `rig` binary",
             packages.len()
         );
         return Ok(());
@@ -289,9 +291,8 @@ fn facade_guard_covers_every_feature(
     let facade = packages
         .get("rig")
         .ok_or_else(|| "the workspace has no `rig` package".to_string())?;
-    // `default` is what the guard's other rows already build, and
-    // `facade-build-tests` only selects the guard itself.
-    let exempt = ["default", "facade-build-tests"];
+    // `default` is what the guard's other rows already build.
+    let exempt = ["default"];
     let mut missing: Vec<&str> = facade
         .features
         .keys()
@@ -343,6 +344,38 @@ fn docs_rs_documents_every_feature(
         all_features,
         &excluded,
     ))
+}
+
+/// 6. The root package `rig` is the only workspace package with a binary
+///    target named `rig`. Two would write the same `target/<profile>/rig`, and
+///    `cargo install` of one would hand the other's installed `rig` to it.
+fn one_package_owns_the_rig_binary(metadata: &Value) -> Vec<String> {
+    let owners: Vec<&str> = field(metadata, "packages")
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|package| {
+            field(package, "targets")
+                .as_array()
+                .into_iter()
+                .flatten()
+                .any(|target| {
+                    field(target, "name").as_str() == Some("rig")
+                        && field(target, "kind")
+                            .as_array()
+                            .is_some_and(|kinds| kinds.iter().any(|kind| kind == "bin"))
+                })
+        })
+        .filter_map(|package| field(package, "name").as_str())
+        .collect();
+    if owners == ["rig"] {
+        return Vec::new();
+    }
+    vec![format!(
+        "  the `rig` binary must belong to the root package `rig` alone; packages with a `rig` \
+         binary: [{}]",
+        owners.join(", ")
+    )]
 }
 
 /// The mismatches between the facade's features and its docs.rs feature list.

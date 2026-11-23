@@ -2,6 +2,9 @@ use rig_test_support::cassette_models::OpenAiModels;
 mod support;
 
 mod cassette {
+    // The model the fixtures were recorded with.
+    const GPT_5_4: &str = "gpt-5.4";
+
     mod codex_behaviors;
     mod codex_sessions;
     mod codex_tool_args;
@@ -26,13 +29,16 @@ mod streaming;
 mod streaming_tools;
 
 use rig::http_client::DynHttpClient;
+use rig::providers::auth::{DeviceCodeHandler, FileTokenStore, MemoryTokenStore, TokenStore};
 use rig::providers::chatgpt;
 use rig::providers::openai::OpenAIConfig;
 use serde::Deserialize;
 use std::path::PathBuf;
 
 const TOKEN_EXPIRY_SKEW_SECONDS: i64 = 60;
-pub(crate) const LIVE_MODEL: &str = chatgpt::GPT_5_3_CODEX;
+// The model the fixtures were recorded with. ChatGPT accounts no longer
+// get it, so a new recording names a model the account lists.
+pub(crate) const LIVE_MODEL: &str = "gpt-5.3-codex";
 
 #[derive(Debug, Deserialize)]
 struct CachedAuthRecord {
@@ -54,14 +60,14 @@ async fn live_provider(http: &DynHttpClient) -> OpenAIConfig {
             .expect("the ChatGPT environment should describe a provider");
     }
 
-    let store: std::sync::Arc<dyn chatgpt::auth::TokenStore> = match default_auth_dir() {
-        Some(dir) => std::sync::Arc::new(chatgpt::auth::FileTokenStore::new(dir)),
-        None => std::sync::Arc::new(chatgpt::auth::MemoryTokenStore::default()),
+    let store: std::sync::Arc<dyn TokenStore> = match default_auth_dir() {
+        Some(dir) => std::sync::Arc::new(FileTokenStore::new(dir)),
+        None => std::sync::Arc::new(MemoryTokenStore::default()),
     };
     let authenticator = chatgpt::auth::Authenticator::new(
         chatgpt::auth::AuthSource::OAuth,
         store,
-        chatgpt::auth::DeviceCodeHandler::default(),
+        DeviceCodeHandler::default(),
         true,
     );
     let context = authenticator
@@ -92,8 +98,8 @@ pub(crate) async fn live_client() -> OpenAiModels {
 }
 
 fn has_usable_oauth_cache() -> bool {
-    let Some(path) = default_auth_dir()
-        .map(|dir| chatgpt::auth::FileTokenStore::new(dir).path(chatgpt::PROVIDER_NAME))
+    let Some(path) =
+        default_auth_dir().map(|dir| FileTokenStore::new(dir).path(chatgpt::PROVIDER_NAME))
     else {
         return false;
     };

@@ -1,30 +1,24 @@
-//! CT-11: undo for conversation changes. Every change to an agent's
-//! conversation that is not simply appending (a cut, a summary, an edit, a
-//! reorder, a branch switch), by any plugin or command,
-//! is kept as a numbered [`Version`] with its time, its author, a one-line
-//! description, and the conversation as it was before it. The versions
-//! are saved with the session ([`ConvVersions`]) and trimmed to the
-//! `[conv-history]` table's `keep` count and `max_age_days`, oldest first.
+//! Undo for conversation changes. Every change to an agent's conversation that is not
+//! simply appending (a cut, a summary, an edit, a reorder, a branch switch), by any plugin
+//! or command, as the kernel's [`ConversationChanged`] messages report it, is kept as a
+//! numbered [`Version`] with its time, its author, a one-line description, and the
+//! conversation as it was before it. The versions are saved with the session
+//! ([`ConvVersions`]) and trimmed to the `[conv-history]` table's `keep` count and
+//! `max_age_days`, oldest first.
 //!
-//! - `/conv-log` lists them newest first, with message and token counts
-//!   before and after.
-//! - `/conv-diff <n>` shows what version `n` removed, added and replaced.
-//! - `/conv-restore <n>` makes the conversation what it was just before
-//!   version `n`, then puts back on top, verbatim, the entries appended
-//!   since; the restore is a version too.
-//!
-//! The changes are read from the kernel's [`ConversationChanged`] messages. A splice
-//! names the ids it removed, not their messages, so the plugin keeps a copy
-//! of each conversation ([`Shadow`]) folded from the same messages, and
-//! takes the "before" from it.
+//! `/conv-log` lists them newest first, with message and token counts before and after.
+//! `/conv-diff <n>` shows what version `n` removed, added and replaced. `/conv-restore <n>`
+//! makes the conversation what it was just before version `n`, then puts back on top,
+//! verbatim, the entries appended since; the restore is a version too.
 
 use std::collections::{HashMap, HashSet};
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::Message;
 use rig_harness::rig_core::conversation::Conversation as Chat;
-use rig_harness::rig_ecs::WriteLogs;
-use rig_harness::rig_memory::{HeuristicTokenCounter, TokenCounter, summary_in};
+use rig_harness::rig_ecs::Persist;
+use rig_harness::rig_memory::{HeuristicTokenCounter, summary_in};
+use rig_harness::rig_tools::shorten;
 use serde::{Deserialize, Serialize};
 
 /// The plugin's name: its settings table and the author of its restores.
@@ -40,7 +34,9 @@ impl Plugin for HistoryVersionsPlugin {
         app.add_setting::<HistorySettings>(NAME)
             .register_required_components::<Agent, ConvVersions>()
             .keeps_saved::<ConvVersions>()
-            .add_systems(Last, (record, prune).chain().after(WriteLogs))
+            // After the kernel's save, which sends the changes it records;
+            // its own change is saved with the next frame.
+            .add_systems(Persist, (record, prune).chain())
             .add_command("conv-log", "List the versions of the conversation, newest first", log)
             .add_command("conv-diff", "What version N of the conversation changed: /conv-diff N", diff)
             .add_command(
@@ -326,14 +322,8 @@ fn preview(message: &Message) -> String {
     let text = match message {
         Message::System { content } => format!("system: {content}"),
         Message::User { content } => {
-            let text = content.iter().find_map(|part| match part {
-                UserContent::Text(text) => Some(text.text.clone()),
-                _ => None,
-            });
-            format!(
-                "user: {}",
-                text.unwrap_or_else(|| "[tool results]".to_owned())
-            )
+            let text = content.iter().find_map(UserContent::as_text);
+            format!("user: {}", text.unwrap_or("[tool results]"))
         }
         Message::Assistant(assistant) => {
             let calls: Vec<&str> = assistant
@@ -346,11 +336,7 @@ fn preview(message: &Message) -> String {
             }
         }
     };
-    let line = text.lines().next().unwrap_or_default();
-    match line.char_indices().nth(60) {
-        Some((at, _)) => format!("{}…", line.get(..at).unwrap_or(line)),
-        None => line.to_owned(),
-    }
+    shorten(text.lines().next().unwrap_or_default(), 61)
 }
 
 /// How long ago `at` was.

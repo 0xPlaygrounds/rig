@@ -1,4 +1,4 @@
-//! Perplexity cassette coverage for regressions found during the #2040 provider migration.
+//! Perplexity cassette coverage for request and response shapes that regressed before.
 use rig::providers::perplexity;
 use serde_json::json;
 

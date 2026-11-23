@@ -8,7 +8,8 @@
 //!
 //! [`HeadlessPlugins`] is what a terminal app takes from Bevy, and
 //! [`RigHarnessPlugins`] is the harness. The launcher's generated `main.rs`
-//! adds the plugins `plugins.toml` lists with [`load`]. The error handler is
+//! adds the plugins the settings turn on as a [`PluginGroup`] of [`Loaded`]
+//! plugins. The error handler is
 //! the application's to set:
 //!
 //! ```no_run
@@ -37,10 +38,6 @@
 #[doc = include_str!("../PLUGINS.md")]
 pub mod plugin_guide {}
 
-/// Where the plugin guide ([`plugin_guide`]) is on disk, for an agent
-/// that reads it: in this crate's own source, from a checkout or from
-/// crates.io alike.
-pub const PLUGIN_GUIDE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/PLUGINS.md");
 pub mod agent_title;
 pub mod ask;
 pub mod clock;
@@ -53,6 +50,7 @@ pub mod per_call;
 pub mod pick;
 pub mod plugin_data;
 pub mod progress;
+pub mod run;
 pub mod secrets;
 pub mod services;
 pub mod settings;
@@ -63,20 +61,19 @@ pub mod workspace;
 
 pub use describe::run;
 pub use load::{
-    AppKeepsExt, Keeps, PluginEntity, PluginSource, PluginSystems, ProvidedBy, Provides, SavedAs,
-    check_stages_at_start, load, stage_conflicts,
+    AppKeepsExt, Keeps, Loaded, PluginEntity, PluginSource, PluginSystems, ProvidedBy, Provides,
+    SavedAs, check_stages_at_start, load, stage_conflicts,
 };
 
 use bevy::MinimalPlugins;
 use bevy::diagnostic::FrameCountPlugin;
 use bevy::time::TimePlugin;
 use bevy_app::{
-    Plugin, PluginGroup, PluginGroupBuilder, ScheduleRunnerPlugin, TaskPoolOptions, TaskPoolPlugin,
-    TaskPoolThreadAssignmentPolicy,
+    Plugin, ScheduleRunnerPlugin, TaskPoolOptions, TaskPoolPlugin, TaskPoolThreadAssignmentPolicy,
 };
 use bevy_log::LogPlugin;
 
-pub use bevy_app::{App, AppExit};
+pub use bevy_app::{App, AppExit, PluginGroup, PluginGroupBuilder};
 /// Bevy's error handlers, for [`App::set_error_handler`]: `warn` logs a
 /// failing system, observer or command instead of stopping the app.
 pub use bevy_ecs::error;
@@ -95,12 +92,18 @@ pub use rig_memory;
 /// The tool library this app is built on, for the process runner
 /// [`Processes`](services::Processes) hands out
 /// (`rig_harness::rig_tools::process::Spawn`) and the file tools' rules
-/// (`rig_harness::rig_tools::fs::place`).
+/// (`<dyn rig_harness::rig_tools::workspace::Workspace>::place`).
 pub use rig_tools;
 
 /// What a plugin needs, so a typical one imports only this: the kernel's
-/// prelude and the harness's services. A plugin crate's own types come from
-/// that crate, such as the terminal view's panels from `rig-tui`.
+/// prelude (with Bevy's) and the harness's services. A plugin crate's own
+/// types come from that crate, such as the terminal view's panels from
+/// `rig-tui`.
+///
+/// It holds common names such as [`Project`](crate::services::Project) and
+/// [`Settings`](crate::settings::Settings). A file that also glob-imports a
+/// module with a `Project` of its own gets an ambiguity error (E0659) where
+/// it uses the name, so it imports that one by name: `use domain::{Project, *};`.
 pub mod prelude {
     pub use rig_ecs::prelude::*;
 
@@ -109,35 +112,41 @@ pub mod prelude {
     pub use bevy_app::OnAppExitSystems;
 
     pub use crate::agent_title::AgentTitle;
-    pub use crate::ask::{Answer, Answerer, Answerers, Ask, AskSystems, Choice};
+    pub use crate::ask::{Answer, AnswerRefused, Answerer, Answerers, Ask, AskSystems, Choice};
     pub use crate::clock::{Due, KeepAwake, WakeAt};
     pub use crate::commands::{
-        AppCommandsExt, CommandArgs, CommandSystems, RunCommand, SlashCommand,
+        AppCommandsExt, Args, CommandArgs, CommandSystems, NoArgs, RunCommand, SlashCommand,
     };
+    pub use crate::harness_protocol::end::FailCode;
     pub use crate::harness_protocol::{Home, StartReason};
     pub use crate::host::cli::{AppCliExt, Declared, Flag, Front};
     pub use crate::host::exit::{Exit, ExitReason, ExitRequest};
     pub use crate::host::launcher::{self, Invoked};
     pub use crate::host::session::{
-        AppStart, DeleteSession, Logged, LoggedQueue, Scratch, SessionDeleteFailed, SessionDeleted,
-        SessionPaths, StoreOpener, edit_stopped, rewrite_stopped,
+        AppStart, DeleteSession, Logged, LoggedQueue, Scratch, SessionDeleted, SessionPaths,
+        StoreOpener, rewrite_stopped,
     };
     pub use crate::host::signals::{self, ExitWhenUnread};
-    pub use crate::main_agent::{MainAgentQuery, ShownAgent, main_agent};
-    pub use crate::per_call::{
-        AppPerCallExt, CallPlace, PerCall, PerCallSystems, PerCallTool, PerCallTools,
+    pub use crate::main_agent::{
+        CurrentAgent, CurrentAgentPlugin, CurrentAgentSystems, MainAgentQuery, ShownAgent,
+        main_agent,
     };
-    pub use crate::pick::{Chosen, Highlighted, Pick, PickItem, PickPreview, Picked, Picker};
+    pub use crate::per_call::{
+        AppPerCallExt, CallPlace, FilesSeen, PerCall, PerCallShell, PerCallSystems, PerCallTool,
+        PerCallTools, ShellOutput,
+    };
+    pub use crate::pick::{
+        Chosen, Highlighted, Pick, PickItem, PickPreview, Picked, Picker, ShowsPickers,
+    };
     pub use crate::plugin_data::PluginData;
     pub use crate::progress::{CallOutput, ToolProgress};
+    pub use crate::run::{AppRunExt, KeepRunning, RunStart, Starting, Work};
     pub use crate::secrets::{Secret, Secrets};
-    pub use crate::services::{Processes, ProjectRoot, RigHome, TokioRuntime, WorkDir};
-    pub use crate::settings::{
-        AppSettingsExt, ProjectSetting, ProjectSettings, ProjectSettingsSystems, Settings,
-    };
+    pub use crate::services::{Processes, Project, ProjectRoot, RigHome, TokioRuntime, WorkDir};
+    pub use crate::settings::{AppSettingsExt, Settings};
     pub use crate::successor::resend;
     pub use crate::timings::{PluginTimings, SystemTimings};
-    pub use crate::watch::{FileChanges, FileWatch};
+    pub use crate::watch::{FileChanges, FileWatch, WatchEvent};
     pub use crate::workspace::ProjectWorkspace;
     pub use crate::{
         AppKeepsExt, HeadlessPlugins, Keeps, PluginEntity, PluginSource, PluginSystems, ProvidedBy,
@@ -152,8 +161,9 @@ pub mod prelude {
 /// ([`rig_ecs::AgentPlugin`], [`rig_ecs::session_log::SessionLogPlugin`]),
 /// the launcher protocol, and the services every agent uses: slash
 /// commands, the clock the loop sleeps by, file watches, the questions and
-/// pickers every front answers, and tool progress. Everything else is a
-/// plugin `plugins.toml` lists, which can leave it out.
+/// pickers every front answers, the run's start and `--tools`
+/// ([`run`](mod@run)), and tool progress. Everything else is a
+/// plugin the settings turn on, which can leave it out.
 pub struct RigHarnessPlugins;
 
 impl PluginGroup for RigHarnessPlugins {
@@ -170,6 +180,7 @@ impl PluginGroup for RigHarnessPlugins {
             .add(watch::WatchPlugin)
             .add(ask::AskPlugin)
             .add(pick::PickPlugin)
+            .add(run::RunPlugin)
             .add(progress::ProgressPlugin)
     }
 }
@@ -207,7 +218,18 @@ impl PluginGroup for HeadlessPlugins {
 /// `plugins`, such as Bevy's `DefaultPlugins`, without what
 /// [`HeadlessPlugins`] already sets: the log, the task pools, the frame
 /// count, the clock, the signal handler and the loop. Its windowing plugin
-/// then runs the loop; [`plugin_guide`] shows how a window plugin wakes it.
+/// then runs the loop.
+///
+/// A window crate depends on `bevy` at exactly
+/// [`BEVY_VERSION`](rig_harness_protocol::BEVY_VERSION), without default
+/// features, with `ui`. A window beside the terminal view
+/// ([`Invoked::interactive`](prelude::Invoked::interactive)) sets
+/// `ExitCondition::DontExit`, so closing it leaves the agent running, and
+/// `WinitSettings` with `UpdateMode::reactive_low_power` of a second. In
+/// `Plugin::finish` it points the agent's [`Wake`](rig_ecs::tasks::Wake)
+/// at winit's `EventLoopProxyWrapper`, sending `WinitUserEvent::WakeUp`, so
+/// agent work wakes the window. A window that is the run's front offers
+/// itself with [`Front::on_flag`](prelude::Front::on_flag).
 pub fn windowed(plugins: impl PluginGroup) -> PluginGroupBuilder {
     let plugins = without::<LogPlugin>(plugins.build());
     let plugins = without::<TaskPoolPlugin>(plugins);

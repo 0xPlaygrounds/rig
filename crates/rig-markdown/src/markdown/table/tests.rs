@@ -1,0 +1,108 @@
+use ratatui_core::style::Modifier;
+use ratatui_core::text::Line;
+use unicode_width::UnicodeWidthStr;
+
+use crate::markdown::{Palette, Plain, render};
+
+fn rendered(markdown: &str, width: Option<usize>) -> Vec<Line<'static>> {
+    let lines = render(markdown, &Palette::default(), width, &Plain);
+    lines.into_iter().map(|(line, _)| line).collect()
+}
+
+fn text(markdown: &str, width: usize) -> Vec<String> {
+    let lines = rendered(markdown, Some(width));
+    lines
+        .iter()
+        .map(|line| line.to_string().trim_end().to_owned())
+        .collect()
+}
+
+const WIDE: &str = "\
+| Tool | What it did |
+| --- | --- |
+| read | Read the first five lines of the workspace manifest, which name the package and its edition |
+| shell | Ran ls on a path that does not exist and failed with exit code 2 |
+";
+
+#[test]
+fn a_table_that_fits_is_drawn_at_its_widest_cells_with_a_bold_header() {
+    let markdown = "| a | bb |\n| - | - |\n| ccc | d |\n";
+    assert_eq!(text(markdown, 80), ["a     bb", "ccc   d"]);
+    let lines = rendered(markdown, Some(80));
+    let header = lines
+        .first()
+        .and_then(|line| line.spans.iter().find(|span| span.content == "a"));
+    let bold = Modifier::BOLD | Modifier::UNDERLINED;
+    assert!(header.is_some_and(|span| span.style.add_modifier.contains(bold)));
+}
+
+#[test]
+fn a_wide_table_wraps_its_cells_in_columns_that_fit() {
+    let lines = text(WIDE, 50);
+    assert!(lines.iter().all(|line| line.width() <= 50), "{lines:#?}");
+    let words = |text: &str| {
+        text.split_whitespace()
+            .map(str::to_owned)
+            .collect::<Vec<_>>()
+    };
+    let drawn: Vec<String> = lines.iter().flat_map(|line| words(line)).collect();
+    assert!(
+        words(WIDE)
+            .iter()
+            .filter(|word| word.chars().all(char::is_alphanumeric))
+            .all(|word| drawn.contains(word)),
+        "{lines:#?}"
+    );
+    // Each row's first line starts with its tool, the second column beside it.
+    assert!(
+        lines
+            .iter()
+            .any(|line| line.starts_with("read") && line.contains("Read the")),
+        "{lines:#?}"
+    );
+    // Rows that wrapped are apart.
+    assert!(lines.iter().any(String::is_empty), "{lines:#?}");
+}
+
+#[test]
+fn a_table_too_narrow_for_its_columns_is_drawn_as_records() {
+    let lines = text(WIDE, 16);
+    assert!(lines.iter().all(|line| line.width() <= 16), "{lines:#?}");
+    assert_eq!(
+        lines.first().map(String::as_str),
+        Some("Tool"),
+        "{lines:#?}"
+    );
+    assert_eq!(
+        lines.get(1).map(String::as_str),
+        Some("  read"),
+        "{lines:#?}"
+    );
+    assert!(lines.iter().any(|line| line == "What it did"), "{lines:#?}");
+}
+
+#[test]
+fn a_br_breaks_a_cell_and_a_line() {
+    let lines = text("| a | b |\n| - | - |\n| one<br>two | x |\n", 80);
+    assert_eq!(lines, ["a     b", "one   x", "two"]);
+    assert_eq!(text("first<br/>second", 80), ["first", "second"]);
+}
+
+/// A tab in a cell is measured as the four spaces it is drawn as, so the
+/// cell stays on one row when there is room.
+#[test]
+fn a_cell_with_a_tab_fits_on_one_row() {
+    let markdown = "| a\tb | c |\n| - | - |\n| d | e |\n";
+    assert_eq!(text(markdown, 80), ["a    b   c", "d        e"]);
+}
+
+/// A tab in a header is drawn as four spaces in its record label, and the
+/// values after the labels stay in one column.
+#[test]
+fn a_records_label_with_a_tab_keeps_its_values_aligned() {
+    let markdown = "| a\tb | c | d |\n| - | - | - |\n| abcdef | abcdef | abcdef |\n";
+    let lines = rendered(markdown, Some(22));
+    let rows = crate::wrap::wrap_all(&lines, 22);
+    let rows: Vec<String> = rows.iter().map(ToString::to_string).collect();
+    assert_eq!(rows, ["a    b  abcdef", "c       abcdef", "d       abcdef"]);
+}

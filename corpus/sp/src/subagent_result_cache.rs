@@ -1,21 +1,18 @@
-//! SP-06: a subagent answer cache. A `task` whose subagent only read files
-//! and listed or searched directories is recorded when its first turn
-//! answers: its task text (whitespace-normalized), its kind, model and tool
-//! set, its answer, the files it read with their content hashes and the
-//! files under each directory it listed or searched. A later `task` of the
-//! same agent with the same task, kind, model and tools is answered from
-//! the record, with no subagent, model call or tool call, while every
-//! recorded file has the same hash and every directory the same files.
+//! A subagent answer cache. A `task` whose subagent only read files and listed or searched
+//! directories is recorded when its first turn answers: its task text (whitespace-normalized),
+//! its kind, model and tool set, its answer, the files it read with their content hashes and
+//! the files under each directory it listed or searched. A later `task` of the same agent with
+//! the same task, kind, model and tools is answered from the record, with no subagent, model
+//! call or tool call, while every recorded file has the same hash and every directory the same
+//! files.
 //!
-//! The records are agent state saved with the session. `/subcache` lists
-//! them;
-//! `/subcache off|on|clear` turns the cache off or on for the session, or
-//! forgets the records.
+//! The records are agent state saved with the session. `/subcache` lists them; `/subcache
+//! off|on|clear` turns the cache off or on for the session, or forgets the records.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use rig_basics::subagents::{Role, SpawnSubagent, SpawnedAgent};
+use rig_basics::subagents::{MESSAGE, Role, SpawnSubagent, SpawnedAgent, WAIT};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::{FilesChanged, FilesRead, content_hash};
 use rig_harness::rig_tools::workspace::{Listing as Files, Stat, Workspace};
@@ -31,9 +28,7 @@ pub struct SubagentResultCachePlugin;
 
 impl Plugin for SubagentResultCachePlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<rig_basics::subagents::SubagentsPlugin>() {
-            app.add_plugins(rig_basics::subagents::SubagentsPlugin);
-        }
+        rig_harness::load::<rig_basics::subagents::SubagentsPlugin>(app, "rig-basics", "");
         app.init_resource::<ProjectWorkspace>()
             .init_resource::<SubcacheSwitch>()
             .keeps_saved::<SubagentCache>()
@@ -135,8 +130,9 @@ type Parent<'a> = (
     &'a ToolAccess,
 );
 
-/// The key of `request` from `parent`'s settings, as `rig_basics::subagents` would
-/// settle them, or `None` when it is no task the cache takes.
+/// The key of `request` from `parent`'s settings, as
+/// `rig_basics::subagents` would settle them, or `None` when it is no task
+/// the cache takes or its tools are refused.
 fn key_of(
     request: &SpawnSubagent,
     (model, &effort, access): Parent,
@@ -155,14 +151,28 @@ fn key_of(
     let (Some(model), effort) = inherited.ok()? else {
         return None;
     };
-    let mut tools: Vec<String> = match &request.tools {
-        Some(asked) => asked.clone(),
-        None => tools
-            .iter()
-            .map(|def| def.0.name.to_string())
-            .filter(|name| access.allows(name))
-            .collect(),
+    let spec = models.0.catalog().resolve(&model.0).ok()?.spec;
+    let effort = spec.reasoning.name_of(effort.0);
+    let registered: Vec<&str> = tools.iter().map(|def| def.0.name.as_str()).collect();
+    // The access `task` gives: the parent's own, or the tools asked with
+    // those that reach the parent; a list it refuses is no task to take.
+    let given = match &request.tools {
+        None => access.clone(),
+        Some(asked) => {
+            let mut asked = asked.clone();
+            let reaching = [MESSAGE, WAIT].into_iter();
+            for tool in reaching.filter(|tool| access.keeps(tool) && registered.contains(tool)) {
+                if !asked.iter().any(|name| name == tool) {
+                    asked.push(tool.to_owned());
+                }
+            }
+            access.grant(&asked, registered.iter().copied()).ok()?
+        }
     };
+    // What it may call in this run: an answer given without a tool is not
+    // reused once the tool is back.
+    let usable = registered.into_iter().filter(|name| given.allows(name));
+    let mut tools: Vec<String> = usable.map(str::to_owned).collect();
     tools.sort();
     tools.dedup();
     Some(TaskKey {
@@ -192,7 +202,7 @@ fn hash_of(workspace: &dyn Workspace, path: &Path) -> Option<String> {
 /// too: every file a `list` or `search` there could have seen, whatever
 /// its glob or `hidden` argument.
 fn files_under(workspace: &dyn Workspace, path: &Path) -> Option<BTreeSet<String>> {
-    let files = workspace.files(path, None, Files::Hidden).ok()?;
+    let files = workspace.files(path, None, Files::Hidden).ok()?.files;
     Some(
         files
             .iter()
@@ -393,9 +403,10 @@ fn record_first_turn(
     let Ok((outcome, &ForAgent(agent))) = turns.get(settled.entity) else {
         return;
     };
-    let Ok((watching, &SpawnedBy(parent))) = watched.get(agent) else {
+    let Ok((watching, parent)) = watched.get(agent) else {
         return;
     };
+    let parent = parent.parent();
     commands.entity(agent).remove::<Watching>();
     let TurnOutcome::Answered(message) = outcome else {
         return;

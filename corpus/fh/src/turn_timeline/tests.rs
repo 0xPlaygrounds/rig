@@ -2,10 +2,8 @@ use std::sync::mpsc::Receiver;
 
 use rig_basics::subagents::{SubagentsPlugin, TASK};
 use rig_core::catalog::{Catalog, Connector};
-use rig_core::effect::Answered;
 use rig_core::effect::EffectKind;
-use rig_core::error::ErrorReport;
-use rig_core::serve::{AfterServe, BeforeServe as Pass, Intercept};
+use rig_core::serve::{BeforeServe as Pass, Intercept};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::rig_ecs::effects::Handler;
@@ -37,15 +35,6 @@ impl Intercept for SlowStart {
         .await
         .ok();
         Pass::Proceed
-    }
-
-    async fn after(
-        &self,
-        _: EffectId,
-        _: &EffectKind,
-        _: &Result<Answered, ErrorReport>,
-    ) -> AfterServe {
-        AfterServe::Keep
     }
 }
 
@@ -105,7 +94,7 @@ fn agent_app(
         connection.handler = Handler(connection.handler.0.layered(SlowStart));
     }
     let choice = ModelChoice(connection.spec.reference());
-    let agent = app.world_mut().spawn((Agent, connection, choice)).id();
+    let agent = spawn_root(app.world_mut(), (connection, choice)).id();
     (app, wakes, agent)
 }
 

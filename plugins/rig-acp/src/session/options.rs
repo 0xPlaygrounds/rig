@@ -69,21 +69,22 @@ impl Options<'_, '_> {
         )
         .category(acp::SessionConfigOptionCategory::Model);
         let choices = current.reasoning.choices();
-        let setting = reasoning.and_then(|setting| setting.0);
-        let level = choices
+        let setting = current
+            .reasoning
+            .name_of(reasoning.and_then(|setting| setting.0));
+        let mut levels: Vec<_> = choices
             .iter()
-            .find(|choice| choice.reasoning == setting)
-            .map_or("default", |choice| choice.name);
-        let levels = choices
-            .iter()
-            .map(|choice| acp::SessionConfigSelectOption::new(choice.name, choice.label()));
-        let reasoning = acp::SessionConfigOption::select(
-            REASONING,
-            "Reasoning",
-            level,
-            levels.collect::<Vec<_>>(),
-        )
-        .category(acp::SessionConfigOptionCategory::ThoughtLevel);
+            .map(|choice| acp::SessionConfigSelectOption::new(choice.name, choice.label()))
+            .collect();
+        // A setting set by hand, such as `4096 tokens`, is shown as itself.
+        if !choices.iter().any(|choice| choice.name == setting) {
+            levels.push(acp::SessionConfigSelectOption::new(
+                setting.clone(),
+                setting.clone(),
+            ));
+        }
+        let reasoning = acp::SessionConfigOption::select(REASONING, "Reasoning", setting, levels)
+            .category(acp::SessionConfigOptionCategory::ThoughtLevel);
         vec![model, reasoning]
     }
 
@@ -119,6 +120,7 @@ impl Options<'_, '_> {
                 self.commands.trigger(SetModel {
                     entity: agent,
                     model: model.clone(),
+                    kind: ChoiceKind::ForThisRun,
                 });
                 Ok(Asked::Model(model))
             }
@@ -127,15 +129,16 @@ impl Options<'_, '_> {
                 let found = catalog
                     .resolve(&model.0)
                     .map_err(|why| invalid(why.to_string()))?;
-                let choice = found
+                let reasoning = found
                     .spec
                     .reasoning
-                    .named(&value)
+                    .parse(&value)
                     .map_err(|why| invalid(why.to_string()))?;
-                let effort = ReasoningSetting(choice.reasoning);
+                let effort = ReasoningSetting(reasoning);
                 self.commands.trigger(SetReasoning {
                     entity: agent,
                     effort,
+                    kind: ChoiceKind::ForThisRun,
                 });
                 Ok(Asked::Reasoning(effort))
             }
@@ -175,7 +178,7 @@ pub(super) fn changed(
             Changed<ModelRefused>,
         )>,
     >,
-    refusals: Query<&ModelRefused>,
+    (refusals, main): (Query<&ModelRefused>, Option<Res<CurrentAgent>>),
     mut notices: MessageReader<Notice>,
     options: Options,
     mut session: ResMut<Session>,
@@ -190,9 +193,10 @@ pub(super) fn changed(
         .filter(|notice| notice.level == NoticeLevel::Error && notice.agent == Some(agent))
         .last()
         .map(|notice| notice.text.clone());
-    // The options change with the main agent's model and level, and with
-    // what can be reached, such as after a sign-in.
-    if changing.is_none() && !moved.contains(agent) && !options.models.is_changed() {
+    // The options change with the main agent, its model and level, and
+    // with what can be reached, such as after a sign-in.
+    let switched = main.is_some_and(|main| main.is_changed());
+    if changing.is_none() && !moved.contains(agent) && !options.models.is_changed() && !switched {
         return;
     }
     let current = options.of(agent);
@@ -208,11 +212,15 @@ pub(super) fn changed(
             }
             _ => false,
         };
-        let answer = match (took, refusals.get(agent)) {
-            (_, Ok(ModelRefused(why))) => Err(crate::error(Error::invalid_params(), why.clone())),
-            (true, Err(_)) => Ok(acp::SetSessionConfigOptionResponse::new(current.clone())),
-            (false, Err(_)) => {
-                let why = said.unwrap_or_else(|| "rig did not change it".to_owned());
+        // A change not taken says its own refusal over an older one.
+        let answer = match (took, refusals.get(agent), said) {
+            (false, _, Some(why)) => Err(crate::error(Error::invalid_params(), why)),
+            (_, Ok(ModelRefused(why)), _) => {
+                Err(crate::error(Error::invalid_params(), why.clone()))
+            }
+            (true, Err(_), _) => Ok(acp::SetSessionConfigOptionResponse::new(current.clone())),
+            (false, Err(_), None) => {
+                let why = "rig did not change it".to_owned();
                 Err(crate::error(Error::invalid_params(), why))
             }
         };

@@ -1,13 +1,17 @@
-//! Live facts behind two Gemini decisions Rig makes without code:
+//! Live facts behind two Gemini decisions Rig makes without code.
 //!
-//! | # | Cell | Fact |
-//! |---|------|------|
-//! | 1 | `media_resolution/per_part_low` | The Developer API honours a part's own `mediaResolution`: the same image costs fewer image tokens at `MEDIA_RESOLUTION_LOW` than at the default. Rig sends no per-part setting on any wire; the vendored gRPC `Part` has no field for one. |
-//! | 2 | `stream_function_call_arguments/developer_api` | A request that sets `streamFunctionCallArguments` still gets each call's arguments whole from the Developer API, never as `partialArgs`. Vertex AI documents `partialArgs` for the flag; Rig's Vertex wire is unary, and the Vertex streaming form is not verified here. |
+//! `media_resolution/per_part_low`: the Developer API honours a part's own
+//! `mediaResolution`, so the same image costs fewer image tokens at
+//! `MEDIA_RESOLUTION_LOW` than at the default. Rig sends no per-part setting on
+//! any wire, and the vendored gRPC `Part` has no field for one, so the cell sends
+//! raw requests through the session's client.
 //!
-//! Cell 1 sends raw requests, through the session's client: Rig's images
-//! carry no per-part settings. Every check of cell 2 runs on the recorded
-//! exchanges before a recording is written.
+//! `stream_function_call_arguments/developer_api`: a request that sets
+//! `streamFunctionCallArguments` still gets each call's arguments whole from the
+//! Developer API, never as `partialArgs`. Vertex AI documents `partialArgs` for
+//! the flag, but Rig's Vertex wire is unary and the Vertex streaming form is not
+//! verified here. Every check of this cell runs on the recorded exchanges before
+//! a recording is written.
 
 use futures::StreamExt;
 use rig::completion::{CompletionRequest, Effort, ToolDefinition};
@@ -37,9 +41,8 @@ async fn per_part_media_resolution() {
         let client = rig_test_support::cassettes::local_reqwest();
         let http = client.inner().expect("the session's reqwest client");
         let url = format!(
-            "{}/v1beta/models/{GEMINI_3_FLASH_PREVIEW}:generateContent?key={}",
+            "{}/v1beta/models/{GEMINI_3_FLASH_PREVIEW}:generateContent",
             models.config.base_url.trim_end_matches('/'),
-            models.config.api_key.expose()
         );
         let mut tokens = Vec::new();
         for resolution in [None, Some("MEDIA_RESOLUTION_LOW")] {
@@ -54,6 +57,7 @@ async fn per_part_media_resolution() {
             let response = http
                 .post(&url)
                 .header("content-type", "application/json")
+                .header("x-goog-api-key", models.config.api_key.expose())
                 .body(body.to_string())
                 .send()
                 .await

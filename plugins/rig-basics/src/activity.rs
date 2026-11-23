@@ -1,7 +1,6 @@
 //! What the agents are doing, kept for views: every agent's [`Activity`]
-//! (its status and its open tool calls), with the default `tui` feature its
-//! status in the terminal view's status line, and the [`MessageFeed`] of
-//! recent deliveries. The status comes from all of the agent's work
+//! (its status and its open tool calls), and with the default `tui` feature
+//! its status in the terminal view's status line. The status comes from all of the agent's work
 //! (`AgentWork`), not only its turn: a question waiting for the user's
 //! answer, and a plugin's named effect for the agent, such as a review
 //! after the turn, show too. A view reads them instead of
@@ -11,33 +10,36 @@
 //! [`Activity`] is updated in `PostUpdate`, in [`ActivitySystems`], and
 //! changes only when what it says changes, so `Changed<Activity>` tells a
 //! view to redraw.
+//!
+//! While the shown agent works, its status says what it does and, once it
+//! has lasted a few seconds, for how long. The bars before it are the
+//! [`animation`]'s.
 
-use std::collections::VecDeque;
 use std::fmt;
 
 use rig_harness::prelude::*;
 
-/// The most deliveries the [`MessageFeed`] keeps.
-pub const FEED_LEN: usize = 64;
-/// The most characters a [`FedMessage`] keeps, from the start of the text.
-pub const FEED_CHARS: usize = 1000;
+pub mod animation;
 
-/// Keeps every agent's [`Activity`] and the [`MessageFeed`].
+/// Keeps every agent's [`Activity`].
 #[derive(Default)]
 pub struct ActivityPlugin;
 
 impl Plugin for ActivityPlugin {
     fn build(&self, app: &mut App) {
         app.register_required_components::<Agent, Activity>()
-            .init_resource::<MessageFeed>()
-            .add_systems(PostUpdate, update_activity.in_set(ActivitySystems))
-            .add_observer(feed_deliveries);
+            .init_resource::<rig_ecs::retry::RetryPolicy>()
+            .add_systems(PostUpdate, update_activity.in_set(ActivitySystems));
         #[cfg(feature = "tui")]
-        app.configure_sets(
-            PostUpdate,
-            ActivitySystems.before(rig_tui::StatusSystems::Show),
-        )
-        .add_systems(PostUpdate, show_status.in_set(rig_tui::StatusSystems::Show));
+        app.register_required_components::<Agent, StatusClock>()
+            .init_resource::<Time<Real>>()
+            .configure_sets(
+                PostUpdate,
+                ActivitySystems.before(rig_tui::StatusSystems::Show),
+            )
+            .add_systems(PostUpdate, show_status.in_set(rig_tui::StatusSystems::Show));
+        #[cfg(feature = "tui")]
+        rig_tui::AppStatusPartsExt::add_status_part(app, &STATUS, "What it is doing");
     }
 }
 
@@ -72,7 +74,7 @@ pub enum ActivityStatus {
     Idle,
     /// Waiting for its model.
     Thinking,
-    /// Its model's answer streams.
+    /// Its model's answer streams: text or a tool call.
     Writing,
     /// Its tools run.
     RunningTools,
@@ -124,65 +126,6 @@ pub struct ToolActivity {
 
 /// What [`ToolActivity::held_by`] calls a hold without a [`Name`].
 pub const UNNAMED_HOLD: &str = "unnamed hold";
-
-/// Recent deliveries to agents, oldest first: the user's messages (not
-/// their slash commands, nor what a plugin took over), messages between
-/// agents and plugins' messages, at most [`FEED_LEN`].
-/// A delivery is recorded when the agent accepts it, whether its model
-/// reads it now or after its turn.
-#[derive(Resource, Reflect, Default, Debug)]
-#[reflect(Resource)]
-pub struct MessageFeed {
-    entries: VecDeque<FedMessage>,
-}
-
-impl MessageFeed {
-    /// The deliveries, oldest first.
-    pub fn iter(&self) -> impl DoubleEndedIterator<Item = &FedMessage> + ExactSizeIterator {
-        self.entries.iter()
-    }
-}
-
-/// One delivery of the [`MessageFeed`].
-#[derive(Reflect, Clone, Debug)]
-pub struct FedMessage {
-    /// The agent it went to.
-    pub to: Entity,
-    /// The agent it came from, when an agent sent it.
-    pub from: Option<Entity>,
-    /// Who wrote it.
-    #[reflect(ignore)]
-    pub author: Author,
-    /// Its first [`FEED_CHARS`] characters.
-    pub text: String,
-}
-
-/// Feeds each message an agent accepted: what reached it, not what was
-/// taken over or ran as a command.
-fn feed_deliveries(
-    accepted: On<Add<Started>>,
-    messages: Query<(&Incoming, &ForAgent)>,
-    agents: Query<(Entity, &AgentId), With<Agent>>,
-    mut feed: ResMut<MessageFeed>,
-) {
-    let Ok((message, &ForAgent(to))) = messages.get(accepted.entity) else {
-        return;
-    };
-    let from = message.author.from.as_ref().and_then(|from| {
-        agents
-            .iter()
-            .find_map(|(entity, id)| (id.0 == *from).then_some(entity))
-    });
-    if feed.entries.len() >= FEED_LEN {
-        feed.entries.pop_front();
-    }
-    feed.entries.push_back(FedMessage {
-        to,
-        from,
-        author: message.author.clone(),
-        text: message.text().chars().take(FEED_CHARS).collect(),
-    });
-}
 
 /// A plugin's unsettled effect for an agent, which shows by its name.
 type Named = (
@@ -258,7 +201,7 @@ fn update_activity(
         } else if calls
             .iter()
             .filter_map(|call| partials.get(*call).ok())
-            .any(|partial| !partial.text.trim().is_empty())
+            .any(|partial| !partial.text.trim().is_empty() || !partial.calls.is_empty())
         {
             ActivityStatus::Writing
         } else {
@@ -296,26 +239,98 @@ fn update_activity(
 const STATUS: rig_tui::StatusItem =
     rig_tui::StatusItem::new("status", rig_tui::Side::Left, 50, u8::MAX);
 
-/// Each agent's status, in its status line: green when idle, yellow at
-/// work, red waiting to retry.
+/// When an agent's status last changed, on Bevy's real clock, and the
+/// whole seconds its status line shows since then, if any.
 #[cfg(feature = "tui")]
-fn show_status(mut agents: Query<(&Activity, &mut rig_tui::StatusItems), Changed<Activity>>) {
+#[derive(Component, Default)]
+struct StatusClock {
+    status: ActivityStatus,
+    since: Duration,
+    shown: Option<u64>,
+    step: Option<usize>,
+}
+
+/// The seconds a status lasts before its clock shows, so short steps do
+/// not flicker.
+#[cfg(feature = "tui")]
+const CLOCK_AFTER: u64 = 5;
+
+/// Each agent's status, in its status line: green when idle, yellow at
+/// work, after the [`animation`]'s bars when it runs, red waiting to retry. Work that has lasted
+/// [`CLOCK_AFTER`] seconds shows how long, such as `thinking… 1m12s`, so a
+/// silent model does not look frozen.
+#[cfg(feature = "tui")]
+fn show_status(
+    mut agents: Query<(Ref<Activity>, &mut StatusClock, &mut rig_tui::StatusItems)>,
+    time: Res<Time<Real>>,
+    policy: Res<rig_ecs::retry::RetryPolicy>,
+    pulse: Option<Res<animation::Pulse>>,
+) {
     use rig_tui::Tone;
-    for (activity, mut items) in &mut agents {
-        let shown = match &activity.status {
-            ActivityStatus::Idle => STATUS.says("idle", Tone::Green),
-            ActivityStatus::Asking(title) => STATUS.says(format!("asking: {title}"), Tone::Cyan),
-            ActivityStatus::Retrying { attempt, seconds } => STATUS.says(
-                format!(
-                    "retry {attempt}/{} in {seconds}s…",
-                    rig_ecs::turn::RETRY_POLICY.max_retries
-                ),
+    let now = time.elapsed();
+    for (activity, mut clock, mut items) in &mut agents {
+        if clock.status != activity.status {
+            clock.status = activity.status.clone();
+            clock.since = now;
+        }
+        let seconds = now.saturating_sub(clock.since).as_secs();
+        let busy = works(&activity.status);
+        let shown = (busy && seconds >= CLOCK_AFTER).then_some(seconds);
+        let step = pulse
+            .as_ref()
+            .and_then(|pulse| pulse.step())
+            .filter(|_| busy);
+        if !activity.is_changed() && shown == clock.shown && step == clock.step {
+            continue;
+        }
+        clock.shown = shown;
+        clock.step = step;
+        // No bars without the animation; still ones while it stands.
+        let wave = pulse
+            .as_ref()
+            .map(|_| format!("{} ", animation::wave(step)));
+        let wave = wave.unwrap_or_default();
+        let shown = match (&activity.status, shown) {
+            (ActivityStatus::Idle, _) => STATUS.says("idle", Tone::Green),
+            (ActivityStatus::Asking(title), _) => {
+                STATUS.says(format!("asking: {title}"), Tone::Cyan)
+            }
+            (ActivityStatus::Retrying { attempt, seconds }, _) => STATUS.says(
+                format!("retry {attempt}/{} in {seconds}s…", policy.max_retries),
                 Tone::Red,
             ),
-            status => STATUS.says(format!("{status}…"), Tone::Yellow),
+            (status, Some(seconds)) => {
+                STATUS.says(format!("{wave}{status}… {}", lasted(seconds)), Tone::Yellow)
+            }
+            (status, None) => STATUS.says(format!("{wave}{status}…"), Tone::Yellow),
         };
         items.show(shown);
     }
+}
+
+/// `seconds` as `12s`, `4m03s` or `1h02m`.
+#[cfg(feature = "tui")]
+fn lasted(seconds: u64) -> String {
+    let (hours, minutes) = (seconds / 3600, seconds / 60 % 60);
+    if hours > 0 {
+        format!("{hours}h{minutes:02}m")
+    } else if minutes > 0 {
+        format!("{minutes}m{:02}s", seconds % 60)
+    } else {
+        format!("{seconds}s")
+    }
+}
+
+/// Whether `status` is work the agent does itself, not a wait.
+#[cfg(feature = "tui")]
+pub(crate) fn works(status: &ActivityStatus) -> bool {
+    matches!(
+        status,
+        ActivityStatus::Thinking
+            | ActivityStatus::Writing
+            | ActivityStatus::RunningTools
+            | ActivityStatus::Busy(_)
+    )
 }
 
 #[cfg(test)]

@@ -1,9 +1,11 @@
 //! The agent's side of the `rig` launcher protocol
 //! ([`rig_harness_protocol`]): how the agent was started ([`Invoked`]),
 //! the launcher's path for rebuilds, the launcher's startup notice, the
-//! failed build it started after, and the ready file, in the launcher's
-//! run directory ([`LauncherRun`]), that tells it this build started. The
-//! agent exits once that launcher is gone, killed alone or not.
+//! failed build it started after, and what the agent says in the
+//! launcher's run directory ([`LauncherRun`]): that this build started,
+//! that its front took the screen, and how the run ended
+//! ([`rig_harness_protocol::end::AgentEnd`]). The agent exits once that
+//! launcher is gone, killed alone or not.
 //!
 //! The fronts plugins offer and the options they take
 //! ([`cli`]) are checked against how rig was started once
@@ -22,6 +24,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 
+use bevy_app::OnAppExitSystems;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_log::{error, warn};
@@ -32,9 +35,12 @@ use super::exit::{Exit, ExitReason, reason_from_exit};
 use super::session::leave_session;
 use crate::describe::{Describing, describing};
 use crate::secrets::Secrets;
+use crate::services::RigHome;
 use crate::settings::Settings;
 use rig_core::conversation::Author;
+use rig_ecs::StopTurnsOnExit;
 use rig_ecs::agent::Notice;
+use rig_ecs::stage::AgentLoop;
 use rig_ecs::tasks::Wake;
 
 use crate::main_agent::{MainAgentQuery, main_agent};
@@ -79,6 +85,52 @@ impl Invoked {
     }
 }
 
+/// Keeps the process groups the agent owns in `run`'s list, taking over
+/// those the agent before a reload left running: each only while one of
+/// its processes carries the list's mark, so an id the system gave another
+/// group while the launcher restarted, however long that took, is not.
+///
+/// # Errors
+///
+/// When the list cannot be read. It is then moved aside, never written
+/// into or over, for the launcher to end its groups as it exits, and the
+/// agent starts the list anew; or, when it cannot be moved either, left as
+/// it is while the agent lists its groups only in memory.
+fn own_groups(run: &RunDir) -> Result<(), GroupsUnread> {
+    let list = run.groups();
+    let adopted = match run.live_groups() {
+        Ok(adopted) => adopted,
+        Err(error) => {
+            let what = match run.set_groups_aside() {
+                Ok(aside) => {
+                    rig_tools::process::record_groups(&list, []);
+                    format!(
+                        "rig moved it to {} and ends the jobs it names as it exits, if it can \
+                         read it then",
+                        aside.display()
+                    )
+                }
+                Err(moved) => format!(
+                    "it cannot be moved aside either ({moved}), so rig leaves it as it is and \
+                     lists the jobs it starts nowhere: they and the jobs it names may outlive rig"
+                ),
+            };
+            return Err(GroupsUnread(format!(
+                "could not read the list of process groups {}: {error}; {what}",
+                list.display()
+            )));
+        }
+    };
+    let adopted = adopted.into_iter().filter_map(|id| u32::try_from(id).ok());
+    rig_tools::process::record_groups(list, adopted);
+    Ok(())
+}
+
+/// Why the list of the process groups the agent owns could not be read,
+/// said as a warning once it starts.
+#[derive(Resource)]
+struct GroupsUnread(String);
+
 /// The run directory of the launcher that started this agent, from
 /// [`env::RUN`]. [`LauncherPlugin`] inserts it unless the app inserted one
 /// before.
@@ -86,9 +138,10 @@ impl Invoked {
 pub struct LauncherRun(pub RunDir);
 
 /// Inserts [`Invoked`], [`LauncherRun`] and [`Secrets`], lists the
-/// process groups the agent starts for the launcher to kill should the
-/// agent die without stopping them, shows the launcher's startup notice,
-/// hands a failed build to the primary agent, and writes the ready file.
+/// process groups the agent owns for the launcher to kill once it exits
+/// (taking over those the agent before a reload left running), shows the launcher's startup notice,
+/// hands a failed build to the primary agent, says when the build started
+/// and how the run ended.
 pub struct LauncherPlugin;
 
 impl Plugin for LauncherPlugin {
@@ -99,7 +152,9 @@ impl Plugin for LauncherPlugin {
         if !app.world().contains_resource::<LauncherRun>()
             && let Some(run) = RunDir::from_env()
         {
-            rig_tools::process::record_groups(run.groups());
+            if let Err(unread) = own_groups(&run) {
+                app.insert_resource(unread);
+            }
             app.insert_resource(LauncherRun(run));
         }
         watch_launcher(app);
@@ -116,14 +171,34 @@ impl Plugin for LauncherPlugin {
                     .run_if(resource_exists::<SessionRestored>)
                     .run_if(resource_exists::<StartBuildFailure>),
             )
-            .add_systems(Last, signal_ready.before(reason_from_exit));
+            .add_systems(Last, signal_ready.before(reason_from_exit))
+            .add_systems(
+                Last,
+                write_end
+                    .after(reason_from_exit)
+                    .run_if(on_message::<AppExit>),
+            );
     }
 
-    /// Refuses a run the build cannot take: see [`cli`]. Else tells the
-    /// launcher when the run's front takes the terminal's screen
-    /// ([`RunDir::screen`]).
+    /// Refuses a run whose `RIG_HOME/settings.toml` does not read, before
+    /// any plugin's `finish` waits on anything, such as for what is piped
+    /// in: the tables plugins read as they were built.
+    fn finish(&self, app: &mut App) {
+        // Read even when no plugin read a table, so the file's tables are
+        // checked at startup all the same.
+        Settings::init(app.world_mut());
+        if let Some(refusal) = settings_refusal(app.world()) {
+            refuse(app, refusal);
+        }
+    }
+
+    /// Refuses a run the build cannot take (see [`cli`]), or in which a
+    /// plugin read its settings table in its own `finish`, once the run's
+    /// front was chosen ([`crate::settings::AppSettingsExt::add_setting`]).
+    /// Else tells the launcher when the run's front takes the terminal's
+    /// screen ([`RunDir::say_screen`]).
     fn cleanup(&self, app: &mut App) {
-        if let Some(refusal) = cli::refusal(app) {
+        if let Some(refusal) = cli::refusal(app).or_else(|| settings_refusal(app.world())) {
             refuse(app, refusal);
         }
         let world = app.world();
@@ -135,11 +210,22 @@ impl Plugin for LauncherPlugin {
                 .get_resource::<cli::Cli>()
                 .is_some_and(cli::Cli::terminal);
         if let (true, Some(run)) = (terminal, world.get_resource::<LauncherRun>())
-            && let Err(failure) = std::fs::write(run.0.screen(), b"")
+            && let Err(failure) = run.0.say_screen()
         {
             warn!("the launcher will not put the terminal back after the agent: {failure}");
         }
     }
+}
+
+/// What is wrong with the user's settings file, which refuses the run: a
+/// table that does not read is never run with its defaults instead. Each
+/// problem names the file, and a table's its table and key. A build
+/// describing itself is not refused.
+fn settings_refusal(world: &World) -> Option<String> {
+    if world.contains_resource::<Describing>() {
+        return None;
+    }
+    world.get_resource::<Settings>()?.refusal()
 }
 
 /// Exits the app, as a signal to it does, once the launcher in
@@ -231,49 +317,82 @@ fn exit_when_launcher_gone(
 }
 
 /// Marks a run refused ([`AppCliExt::refuse_run`](super::cli::AppCliExt::refuse_run))
-/// from `cleanup` until it exits at the end of its first frame: a front
+/// as it is built, until it exits at the end of its first frame: a front
 /// leaves the terminal alone meanwhile.
-#[derive(Resource, Debug)]
-pub struct Refused;
+///
+/// It holds why, for a front that says why a run ended itself, such as
+/// `--json`'s `exit` line.
+#[derive(Resource, Clone, Debug)]
+pub struct Refused(pub String);
 
 /// Refuses this run, once the app is built: says `why` on stderr now,
-/// before any front takes the terminal, and in the launcher's
-/// [`RunDir::refusal`], keeps the run out of its session's directory
-/// (`leave_session`), so the launcher names the run's own log, and exits
-/// with code 2 at the end of the first frame. Only the first refusal is
-/// said.
+/// before any front takes the terminal, keeps the run out of its session's
+/// directory (`leave_session`), so the launcher names the run's own log,
+/// holds the agent loop, so no work a restored session left starts, and
+/// exits as [`ExitReason::Refused`] at the end of the first frame. Only
+/// the first refusal is said.
 pub(crate) fn refuse(app: &mut App, why: String) {
     if app.world().contains_resource::<Refused>() {
         return;
     }
     leave_session(app.world_mut());
+    let said = say_refusal(&why);
+    // The first reason of a run stands: no other exit, such as the end of
+    // its input, ends it first with another code.
+    if !app.world().contains_resource::<ExitReason>() {
+        app.insert_resource(ExitReason::Refused(said));
+    }
+    if let Some(run) = app.world().get_resource::<LauncherRun>()
+        && let Err(failure) = run.0.unsay_screen()
+    {
+        warn!("the launcher may put the terminal back after the refused run: {failure}");
+    }
+    app.insert_resource(Refused(why))
+        .configure_sets(Update, AgentLoop.run_if(not(resource_exists::<Refused>)))
+        .add_systems(PostUpdate, exit_held.run_if(resource_exists::<Refused>))
+        .add_systems(
+            Last,
+            crate::run::keep_restored
+                .in_set(OnAppExitSystems)
+                .before(StopTurnsOnExit)
+                .run_if(on_message::<AppExit>)
+                .run_if(resource_exists::<Refused>),
+        );
+}
+
+/// Refuses this run once it runs, as for a `--tools` name no tool has
+/// once its start is over: says `why` on stderr and exits as
+/// [`ExitReason::Refused`], which the launcher says again once a front
+/// that took the screen gave it back. The session keeps what it has.
+pub(crate) fn refuse_running(world: &mut World, why: &str) {
+    let said = say_refusal(why);
+    world.trigger(Exit(ExitReason::Refused(said)));
+}
+
+/// Says why the run is refused on stderr, and returns it as the sentence
+/// of [`ExitReason::Refused`].
+fn say_refusal(why: &str) -> String {
     let stop = if why.ends_with(['.', '?', '!']) {
         ""
     } else {
         "."
     };
-    let said = format!("rig: {why}{stop}\n");
-    eprint!("{said}");
-    if let Some(run) = app.world().get_resource::<LauncherRun>() {
-        if let Err(failure) = std::fs::write(run.0.refusal(), said) {
-            error!("could not tell the launcher why the run is refused: {failure}");
-        }
-        // No front takes the screen.
-        std::fs::remove_file(run.0.screen()).ok();
-    }
-    app.insert_resource(Refused).add_systems(
-        Last,
-        exit_refused
-            .after(signal_ready)
-            .run_if(resource_exists::<Refused>),
-    );
+    let said = format!("{why}{stop}");
+    eprintln!("rig: {said}");
+    said
 }
 
-/// Exits a refused run once the launcher knows that the build started: it
-/// is not rolled back.
-fn exit_refused(mut commands: Commands) {
-    commands.remove_resource::<Refused>();
-    commands.trigger(Exit(ExitReason::Failed(2)));
+/// Exits a refused run as its exit effect would, without the agent loop,
+/// which stays held until the app is gone.
+fn exit_held(
+    reason: Option<Res<ExitReason>>,
+    mut exits: MessageWriter<AppExit>,
+    mut exited: Local<bool>,
+) {
+    if let Some(reason) = reason.filter(|_| !*exited) {
+        *exited = true;
+        exits.write(reason.exit());
+    }
 }
 
 /// The failed build the launcher started after, until the primary agent
@@ -282,15 +401,15 @@ fn exit_refused(mut commands: Commands) {
 struct StartBuildFailure(String);
 
 /// The message on a failed build of `what`, for the model: `summary` (the
-/// reason and the first errors) and where the whole output is. It does not
-/// point at the plugin list, the generated project or rig's source, which
-/// only the user changes.
-pub fn build_failure_message(what: &str, summary: &str) -> String {
+/// reason and the first errors) and where the whole output is, the build
+/// log of `home`. It does not point at the plugin list, the generated
+/// project or rig's source, which only the user changes.
+pub fn build_failure_message(home: &Home, what: &str, summary: &str) -> String {
     format!(
         "Building the agent ({what}) failed; the previous build keeps running.\n\n{}\n\n\
          Whole build output: {}",
         summary.trim(),
-        Home::from_env().build_log().display(),
+        home.build_log().display(),
     )
 }
 
@@ -305,9 +424,11 @@ pub fn inform_build_failure(commands: &mut Commands, agent: Entity, text: String
 }
 
 /// Shows the launcher's notice, such as a rollback, and what is wrong with
-/// the user's settings, at startup.
+/// the user's settings, its tables no plugin reads included, at startup.
 fn launcher_notice(
     settings: Option<Res<Settings>>,
+    refused: Option<Res<Refused>>,
+    unread: Option<Res<GroupsUnread>>,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
@@ -316,9 +437,22 @@ fn launcher_notice(
     {
         notices.write(Notice::info(None, notice));
     }
+    if let Some(unread) = unread {
+        notices.write(Notice::warn(None, unread.0.clone()));
+    }
+    if let Ok(warning) = std::env::var(env::WARNING) {
+        notices.write_batch(
+            rig_harness_protocol::warnings(&warning)
+                .into_iter()
+                .map(|warning| Notice::warn(None, warning)),
+        );
+    }
+    // A run refused for them said them already.
+    let settings = settings.filter(|_| refused.is_none());
     for problem in settings.iter().flat_map(|settings| settings.problems()) {
         notices.write(Notice::error(None, problem.clone()));
     }
+    notices.write_batch(settings.iter().flat_map(|settings| settings.unread()));
     if let Ok(failure) = std::env::var(env::BUILD_FAILURE)
         && !failure.trim().is_empty()
     {
@@ -329,17 +463,18 @@ fn launcher_notice(
 /// Puts the launcher's failed build in the primary agent's conversation,
 /// once the session is restored.
 fn deliver_build_failure(
-    failure: Res<StartBuildFailure>,
+    (failure, home): (Res<StartBuildFailure>, Option<Res<RigHome>>),
     agents: MainAgentQuery,
     mut commands: Commands,
 ) {
     let Some(agent) = main_agent(&agents) else {
         return;
     };
+    let home = home.map_or_else(Home::from_env, |home| home.0.clone());
     inform_build_failure(
         &mut commands,
         agent,
-        build_failure_message("before this start", &failure.0),
+        build_failure_message(&home, "before this start", &failure.0),
     );
     commands.remove_resource::<StartBuildFailure>();
 }
@@ -363,8 +498,26 @@ fn signal_ready(
     let Some(run) = run else {
         return;
     };
-    if let Err(failure) = std::fs::write(run.0.ready(), b"") {
+    if let Err(failure) = run.0.say_ready() {
         error!("could not write the ready file: {failure}");
+    }
+}
+
+/// Tells the launcher, if one started this agent, how the run ended
+/// ([`ExitReason::end`]), once, as the app exits.
+fn write_end(
+    mut written: Local<bool>,
+    reason: Option<Res<ExitReason>>,
+    run: Option<Res<LauncherRun>>,
+) {
+    if *written {
+        return;
+    }
+    *written = true;
+    if let (Some(reason), Some(run)) = (reason, run)
+        && let Err(failure) = reason.end().write(&run.0)
+    {
+        error!("could not tell the launcher how the run ended: {failure}");
     }
 }
 

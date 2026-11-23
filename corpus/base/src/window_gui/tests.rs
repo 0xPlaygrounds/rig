@@ -123,7 +123,7 @@ fn stop_turn(conversation: &mut Conversation) {
     let at = conversation.entries().next_back().map(|entry| entry.id);
     let calls = Vec::new();
     conversation.end_turn(TurnEnd::Stopped {
-        why: None,
+        by: Some(StopCause::User),
         at,
         calls,
     });

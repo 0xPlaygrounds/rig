@@ -1,20 +1,15 @@
-//! OC-04: issue and pull request references in prompts. A user's message
-//! that names `#142`, `!87` (or `PR#87`) or a tracker URL, outside code
-//! spans and fenced blocks, is held while each reference loads from the
-//! tracker in parallel (5 s each), then goes with a block per reference
-//! after its text: title, state, labels, author, body, the newest
-//! comments, and for a pull request its changed files and unresolved
-//! review comments. A reference that fails goes as one line, `could not
-//! load #142: <why>`.
+//! Issue and pull request references in prompts. A user's message that names `#142`, `!87` (or
+//! `PR#87`) or a tracker URL, outside code spans and fenced blocks, is held while each reference
+//! loads from the tracker in parallel (5 s each), then goes with a block per reference after its
+//! text: title, state, labels, author, body, the newest comments, and for a pull request its
+//! changed files and unresolved review comments. A reference that fails goes as one line, `could
+//! not load #142: <why>`.
 //!
-//! The tracker is the `origin` remote's (GitHub or GitLab), its API and
-//! token from the `[tracker]` table of `settings.toml`
-//! ([`TrackerSettings`]) or the usual environment variables. Loaded
-//! blocks are kept for the session ([`ReferenceCache`]); `/refresh #142`
-//! loads one again, and the `tracker_get` tool gives the model the same
-//! block for a reference it finds itself. Typing `#` in the terminal
-//! view's input offers the open issues, listed with their titles
-//! ([`OpenIssues`]).
+//! The tracker is the `origin` remote's (GitHub or GitLab), its API and token from the `[tracker]`
+//! table of `settings.toml` ([`TrackerSettings`]) or the usual environment variables. Loaded blocks
+//! are kept for the session ([`ReferenceCache`]); `/refresh #142` loads one again, and the
+//! `tracker_get` tool gives the model the same block for a reference it finds itself. Typing `#` in
+//! the terminal view's input offers the open issues, listed with their titles ([`OpenIssues`]).
 
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};

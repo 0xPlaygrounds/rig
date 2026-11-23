@@ -273,7 +273,7 @@ fn a_text_reasoning_reads_as_no_reasoning() {
 /// stream equal those of the recorded unary answer of the same prompt.
 #[tokio::test]
 async fn chat_extras_read_alike_from_a_recorded_stream() {
-    use crate::test_utils::provider_extensions::{recorded_stream, streamed_reply_of};
+    use crate::test_utils::provider_extensions::{recorded_reply, streamed_reply_of};
 
     let read = |reply: crate::completion::CompletionResponse| {
         reply
@@ -284,7 +284,7 @@ async fn chat_extras_read_alike_from_a_recorded_stream() {
     let streamed = read(
         streamed_reply_of(
             chat_wire("gpt-4.1-nano"),
-            recorded_stream(
+            recorded_reply(
                 "openai",
                 "raw_stream_capture_matrix/chat_stream_raw_round_trips_typed",
                 0,

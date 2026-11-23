@@ -1,8 +1,5 @@
 //! The `delete` tool.
 
-use std::path::PathBuf;
-use std::sync::Arc;
-
 use rig_core::completion::ToolAnnotations;
 use rig_core::tool::{
     FilesChanged, Scope, Tool, ToolContext, ToolExecutionError, Touches, args_schema,
@@ -12,32 +9,15 @@ use serde::Deserialize;
 
 use crate::blocking;
 use crate::fs::{Previous, io_error};
-use crate::workspace::{Local, Stat, Workspace};
+use crate::workspace::{Root, Stat};
 
 /// Deletes a file; a directory is refused. Publishes the file it deleted
-/// ([`FilesChanged`]): its [resolved](Workspace) path, and how many
+/// ([`FilesChanged`]): its [resolved](Root::resolve) path, and how many
 /// lines it had.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Delete {
-    /// Where the file is deleted.
-    pub workspace: Arc<dyn Workspace>,
-    /// The directory a relative path is deleted in; `None` is the
-    /// workspace's working directory.
-    pub base: Option<PathBuf>,
-    /// Whether a path that resolves outside `base` is refused, before
-    /// anything is deleted.
-    pub confine: bool,
-}
-
-impl Default for Delete {
-    /// Deletes this machine's files, from this process's working directory.
-    fn default() -> Self {
-        Self {
-            workspace: Arc::new(Local),
-            base: None,
-            confine: false,
-        }
-    }
+    /// Where the files are, and the directory a relative path is taken from.
+    pub root: Root,
 }
 
 /// Arguments of [`Delete`].
@@ -77,9 +57,7 @@ impl Tool for Delete {
     }
 
     fn footprint(&self, args: &DeleteArgs) -> Touches {
-        Touches::Writes(Scope::Paths(vec![
-            self.workspace.resolve(self.base.as_deref(), &args.path),
-        ]))
+        Touches::Writes(Scope::Paths(vec![self.root.resolve(&args.path)]))
     }
 
     async fn call(
@@ -87,10 +65,8 @@ impl Tool for Delete {
         context: &mut ToolContext,
         args: DeleteArgs,
     ) -> Result<String, ToolExecutionError> {
-        let resolved = self
-            .workspace
-            .place(self.base.as_deref(), self.confine, &args.path)?;
-        let workspace = self.workspace.clone();
+        let resolved = self.root.place(&args.path)?;
+        let workspace = self.root.workspace.clone();
         let change = blocking(move || {
             let path = resolved.to_string_lossy();
             match workspace

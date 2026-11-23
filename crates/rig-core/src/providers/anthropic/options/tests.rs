@@ -5,8 +5,8 @@ use crate::completion::{GenerationOptions, OnUnsupported, Verbosity};
 use crate::error::ProviderError;
 use crate::operation::Completion;
 use crate::providers::anthropic::completion::{
-    CLAUDE_FABLE_5, CLAUDE_HAIKU_4_5, CLAUDE_OPUS_4_6, CLAUDE_OPUS_4_8, CLAUDE_OPUS_5,
-    CLAUDE_OPUS_5_5, CLAUDE_SONNET_4_6, CLAUDE_SONNET_5, CLAUDE_SONNET_5_5,
+    CLAUDE_FABLE_5, CLAUDE_FABLE_5_2, CLAUDE_HAIKU_4_5, CLAUDE_OPUS_4_6, CLAUDE_OPUS_4_8,
+    CLAUDE_OPUS_5, CLAUDE_OPUS_5_5, CLAUDE_SONNET_4_6, CLAUDE_SONNET_5, CLAUDE_SONNET_5_5,
 };
 use crate::providers::anthropic::wire::AnthropicConfig;
 use crate::wire::{Body, Mode, Operation, Wire};
@@ -44,6 +44,18 @@ fn thinking_respects_the_callers_output_cap() {
             );
         }
     }
+}
+
+/// A request naming a model the dialect has no default for sends the wire's
+/// default `max_tokens`, so a thinking budget is checked against that cap.
+#[test]
+fn a_budget_is_checked_against_the_cap_the_body_sends() {
+    let mut wire = wire(CLAUDE_HAIKU_4_5);
+    wire.default_max_tokens = Some(2048);
+    let request = CompletionRequest::new("Answer the question")
+        .model("custom-model")
+        .options(GenerationOptions::default().reasoning(Reasoning::Budget { tokens: 4096 }));
+    assert_eq!(refused(sent(&wire, request, Mode::Unary)), "reasoning");
 }
 
 #[test]
@@ -158,8 +170,7 @@ fn the_catalog_holds_each_models_thinking_facts() {
     assert!(spec("custom-model").is_none());
 }
 
-/// Ported from #2616 (`typed_thinking_and_effort_serialize_to_the_documented_wire_values`):
-/// each class's thinking and effort, as the mapping table states them.
+/// Each class's thinking and effort, as the mapping table states them.
 #[test]
 fn reasoning_takes_each_classes_documented_shape() {
     let reasoning = |model: &str, reasoning: Reasoning| {
@@ -218,8 +229,31 @@ fn reasoning_takes_each_classes_documented_shape() {
     }
 }
 
-/// Ported from #1480 (`adaptive_parameters_validate_legacy_models_without_rejecting_newer_ones`):
-/// a model without adaptive thinking refuses an effort level, and the newer
+/// Claude Fable 5.2 thinks adaptively at every effort level, cannot turn
+/// thinking off, and takes no sampling parameters.
+#[test]
+fn fable_5_2_thinks_adaptively_and_takes_no_sampling() {
+    let body = sent(
+        &wire(CLAUDE_FABLE_5_2),
+        request(GenerationOptions::default().reasoning(Effort::Max)),
+        Mode::Unary,
+    )
+    .expect("Fable 5.2 takes max");
+    assert_eq!(body["thinking"]["type"], "adaptive");
+    assert_eq!(body["output_config"]["effort"], "max");
+    for (options, option) in [
+        (
+            GenerationOptions::default().reasoning(Reasoning::Off),
+            "reasoning",
+        ),
+        (GenerationOptions::default().top_p(0.5), "top_p"),
+    ] {
+        let result = sent(&wire(CLAUDE_FABLE_5_2), request(options), Mode::Unary);
+        assert_eq!(refused(result), option);
+    }
+}
+
+/// A model without adaptive thinking refuses an effort level, and the newer
 /// models, or one the table does not name, take every level they list.
 #[test]
 fn legacy_models_refuse_an_effort_newer_ones_take_it() {
@@ -374,7 +408,6 @@ fn the_remaining_options_take_their_documented_cells() {
     );
 }
 
-/// Ported from #2616 (`output_config_merges_effort_additional_params_and_the_schema_format_into_one_key`).
 #[test]
 fn output_config_merges_effort_additional_params_and_the_schema_format_into_one_key() {
     let wire = wire(CLAUDE_OPUS_5_5);
@@ -415,7 +448,6 @@ fn output_config_merges_effort_additional_params_and_the_schema_format_into_one_
     assert!(body.get("output_config").is_none(), "{body}");
 }
 
-/// Replaces #2616's `output_config_rejects_a_format_that_conflicts_with_the_output_schema`:
 /// `additional_params` is above the request's own fields, so a raw format
 /// merges over the schema's key by key, beside the mapped effort.
 #[test]
@@ -440,8 +472,7 @@ fn a_raw_output_format_is_above_the_schemas() {
     assert_eq!(body["output_config"]["effort"], "high");
 }
 
-/// Ported from #2616 (`thinking_merges_typed_defaults_with_additional_params`):
-/// raw thinking keys merge into the mapped thinking, and a raw `type`
+/// Raw thinking keys merge into the mapped thinking, and a raw `type`
 /// replaces the mapped one.
 #[test]
 fn thinking_merges_the_mapped_thinking_with_additional_params() {
@@ -476,7 +507,6 @@ fn thinking_merges_the_mapped_thinking_with_additional_params() {
     assert_eq!(body["thinking"], json!({"type": "disabled"}));
 }
 
-/// Ported from #1480 (`adaptive_parameters_merge_schema_effort_tools_and_passthrough`).
 #[test]
 fn adaptive_parameters_merge_schema_effort_tools_and_passthrough() {
     let body = sent(
@@ -503,7 +533,6 @@ fn adaptive_parameters_merge_schema_effort_tools_and_passthrough() {
     assert_eq!(body["metadata"]["user_id"], "test-only");
 }
 
-/// Ported from #1480 (`streaming_adaptive_effort_and_schema_share_blocking_conversion`).
 #[test]
 fn a_streamed_body_is_the_unary_one_with_stream_set() {
     let wire = wire(CLAUDE_OPUS_4_8);
@@ -522,8 +551,7 @@ fn a_streamed_body_is_the_unary_one_with_stream_set() {
     );
 }
 
-/// Replaces #2616's `gateways_pass_thinking_and_effort_through_unchecked`:
-/// a gateway refuses a reasoning option no vendor page or recording
+/// A gateway refuses a reasoning option no vendor page or recording
 /// confirms, and passes raw thinking and effort through unchecked.
 #[test]
 fn gateways_refuse_unverified_reasoning_and_pass_raw_keys_through() {

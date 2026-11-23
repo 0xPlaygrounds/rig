@@ -1,8 +1,6 @@
-//! Plugin corpus (held-out): H29: Any program as a model (spec `H29-command-provider.md`).
-//!
-//! Each `[[model]]` of `RIG_HOME/command-models.toml` is a catalog model
-//! served by a local program, so `--model`, `/model`, the remembered
-//! default, subagents and plugin calls take it like any other:
+//! Any program as a model. Each `[[model]]` of `RIG_HOME/command-models.toml` is a catalog model
+//! served by a local program, so `--model`, `/model`, the remembered default, subagents and plugin
+//! calls take it like any other:
 //!
 //! ```toml
 //! [[model]]
@@ -14,35 +12,22 @@
 //! persistent = false               # one process per request (default), or one kept running
 //! ```
 //!
-//! **Request**: one JSON line on the program's stdin:
+//! Each request is one JSON object on one line of the program's stdin, with `id`, `model`,
+//! `system`, `messages`, `tools` and `options`. A message has a `role` and `content` parts of
+//! `type` `text`, `reasoning`, `tool_call` (`id`, `name`, `arguments`) or `tool_result` (`id`,
+//! `name`, `content`, `is_error`); other content, such as images, is rig-core's own JSON for it. A
+//! tool is `name`, `description` and `parameters`, and `options` holds `temperature`, `max_tokens`,
+//! `tool_choice` and `additional_params`.
 //!
-//! ```json
-//! {"id": 7, "model": "cmd/echo", "system": "…",
-//!  "messages": [
-//!    {"role": "user", "content": [{"type": "text", "text": "…"},
-//!                                 {"type": "tool_result", "id": "…", "name": "read", "content": "…", "is_error": false}]},
-//!    {"role": "assistant", "content": [{"type": "text", "text": "…"}, {"type": "reasoning", "text": "…"},
-//!                                      {"type": "tool_call", "id": "…", "name": "read", "arguments": {}}]}],
-//!  "tools": [{"name": "read", "description": "…", "parameters": {}}],
-//!  "options": {"temperature": null, "max_tokens": null, "tool_choice": null, "additional_params": null}}
-//! ```
-//!
-//! Other content (images, documents) is rig-core's own JSON for it.
-//!
-//! **Reply**: JSON lines on stdout, each streamed to the front as it
-//! arrives: `{"text": "…"}`, `{"reasoning": "…"}`, `{"tool_call": {"id",
-//! "name", "arguments"}}`, `{"usage": {"input_tokens", "output_tokens", …}}`
-//! (rig-core's usage fields; the last one counts), `{"error": "…", "retry":
-//! false}` and `{"done": true}`. Empty lines are skipped. A line that is
-//! none of these fails the call with its line number and its start; an exit
-//! before `done` fails it with the end of stderr; exit code 75 or an error
-//! with `"retry": true` is a failure the kernel retries. The cost is 0. A
-//! tool call's `id` is not kept: rig names the call, and the next request
-//! carries rig's id with its result.
-//!
-//! **Interrupts**: a call's process is killed. A `persistent` program
-//! serves one request at a time and is sent `{"cancel": <id>}` instead,
-//! after which its lines up to its `done` or `error` are dropped.
+//! The reply is JSON lines on stdout, each streamed to the front as it arrives: `{"text": "…"}`,
+//! `{"reasoning": "…"}`, `{"tool_call": {"id", "name", "arguments"}}`, `{"usage": {"input_tokens",
+//! "output_tokens", …}}` (rig-core's usage fields; the last one counts), `{"error": "…", "retry":
+//! false}` and `{"done": true}`. Empty lines are skipped. A line that is none of these fails the
+//! call with its line number and its start; an exit before `done` fails it with the end of stderr;
+//! exit code 75 or an error with `"retry": true` is a failure the kernel retries. The cost is 0. A
+//! tool call's `id` is not kept: the next request carries rig's id with its result. An interrupt
+//! kills the call's process; a `persistent` program serves one request at a time and is sent
+//! `{"cancel": <id>}` instead, after which its lines up to its `done` or `error` are dropped.
 
 use std::collections::HashMap;
 use std::path::Path;

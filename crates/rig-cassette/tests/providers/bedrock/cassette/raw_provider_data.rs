@@ -21,7 +21,7 @@ const GUARDRAIL_VERSION: &str = "DRAFT";
 
 /// Recorded against a guardrail that blocks a specific phrase: Bedrock stops
 /// the turn with `guardrail_intervened` and explains itself in `trace`,
-/// which `raw` carries as Bedrock sent it (#2311), and the typed extras
+/// which `raw` carries as Bedrock sent it, and the typed extras
 /// read.
 #[tokio::test]
 async fn guardrail_trace_survives_into_raw() {
@@ -84,8 +84,8 @@ async fn guardrail_trace_survives_into_raw() {
     .await;
 }
 
-/// Blocking/streaming parity (rig#2265): the same AWS request id semantics on
-/// the streaming surface — the converse-stream operation output's id reaches
+/// Blocking/streaming parity: the same AWS request id semantics on
+/// the streaming surface. The converse-stream operation output's id reaches
 /// the normalized terminal record.
 ///
 /// Ignored until recorded: the AWS credentials available when this test was

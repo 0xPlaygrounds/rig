@@ -19,6 +19,8 @@ use crossterm::event::{
     DisableBracketedPaste, DisableFocusChange, EnableBracketedPaste, EnableFocusChange,
     KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
 };
+#[cfg(not(windows))]
+use crossterm::style::Print;
 use crossterm::terminal::{
     BeginSynchronizedUpdate, Clear, ClearType, EndSynchronizedUpdate, EnterAlternateScreen,
     LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
@@ -34,8 +36,8 @@ use super::keys::KeyBinding;
 use super::panel::{RequestRedraw, TerminalSize};
 use super::theme::Theme;
 use rig_ecs::tasks::Wake;
-use rig_harness::harness_protocol::secret_variables;
-use rig_harness::prelude::{Exit, ExitReason, Scratch};
+use rig_harness::harness_protocol::without_secrets;
+use rig_harness::prelude::{Exit, ExitReason, FailCode, Scratch};
 
 /// Runs a program with the terminal, such as `$EDITOR` on a draft: the
 /// view leaves the screen, stops reading keys and lets the program have
@@ -134,6 +136,17 @@ pub(crate) struct Tui {
 /// Where stray output goes when the session keeps no text log.
 const NOWHERE: &str = "/dev/null";
 
+/// Asks the terminal to report buttons, drags and the wheel, which would
+/// otherwise arrive as arrow keys, but not a mouse that only moves.
+#[cfg(not(windows))]
+const MOUSE_ON: Print<&str> = Print("\x1b[?1002h\x1b[?1006h");
+#[cfg(not(windows))]
+const MOUSE_OFF: Print<&str> = Print("\x1b[?1006l\x1b[?1002l");
+#[cfg(windows)]
+const MOUSE_ON: crossterm::event::EnableMouseCapture = crossterm::event::EnableMouseCapture;
+#[cfg(windows)]
+const MOUSE_OFF: crossterm::event::DisableMouseCapture = crossterm::event::DisableMouseCapture;
+
 /// What the terminal is always asked: keys sent as escape codes, so a
 /// modifier it would drop, such as Shift on Enter, comes through.
 const KEYS: KeyboardEnhancementFlags = KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES;
@@ -178,6 +191,7 @@ impl Tui {
         }
         execute!(backend, PopKeyboardEnhancementFlags).ok();
         // Every step is tried, so a failed one leaves no other undone.
+        execute!(backend, MOUSE_OFF).ok();
         let pastes = execute!(backend, DisableBracketedPaste, DisableFocusChange);
         let alternate = match keep_screen {
             true => Ok(()),
@@ -221,7 +235,7 @@ impl Tui {
 }
 
 /// The alternate screen cleared (after a reload it still shows the previous
-/// build's frame), pastes reported whole, focus changes reported, keys sent
+/// build's frame), pastes whole, focus changes and the mouse reported, keys sent
 /// as escape codes, no cursor, and a whole frame drawn next. The terminal is asked nothing: its answer
 /// would come on stdin, but stdout may be the session's log by now
 /// (`Terminal::clear` asks for the cursor position).
@@ -239,6 +253,7 @@ where
     )?;
     // A terminal without the keyboard protocol ignores these.
     execute!(backend, PushKeyboardEnhancementFlags(KEYS)).ok();
+    execute!(backend, MOUSE_ON).ok();
     if releases {
         execute!(backend, PushKeyboardEnhancementFlags(RELEASES)).ok();
     }
@@ -344,7 +359,7 @@ pub(crate) fn open_terminal(
 ) {
     // Asked before the terminal is read, which would take its answer.
     commands.insert_resource(Theme::of_terminal());
-    super::highlight::warm_up();
+    super::highlight::warm_up(std::thread::Builder::new());
     // Stray output goes to the text log, or nowhere without a place for it.
     let log = scratch.map(|scratch| scratch.log().unwrap_or_else(|| PathBuf::from(NOWHERE)));
     let opened =
@@ -359,7 +374,7 @@ pub(crate) fn open_terminal(
         }
         Err(failure) => {
             error!("could not open the terminal: {failure}");
-            commands.trigger(Exit(ExitReason::Failed(1)));
+            commands.trigger(Exit(ExitReason::Failed(FailCode::FAILURE)));
         }
     }
 }
@@ -471,9 +486,7 @@ pub(crate) fn run_in_terminal(world: &mut World) {
 /// Runs `command` until it exits, its output on `screen` when the view
 /// sends its own output elsewhere, without the session's secrets.
 fn run_with(command: &mut Command, screen: Option<&File>) -> Result<ExitStatus, String> {
-    for secret in secret_variables() {
-        command.env_remove(secret);
-    }
+    without_secrets(command);
     if let Some(screen) = screen {
         let output = screen.try_clone().map_err(|failure| failure.to_string())?;
         let errors = screen.try_clone().map_err(|failure| failure.to_string())?;
@@ -482,8 +495,7 @@ fn run_with(command: &mut Command, screen: Option<&File>) -> Result<ExitStatus, 
             .stderr(Stdio::from(errors));
     }
     let program = command.get_program().to_string_lossy().into_owned();
-    command
-        .status()
+    rig_tools::process::foreground(command)
         .map_err(|failure| format!("could not run {program}: {failure}"))
 }
 

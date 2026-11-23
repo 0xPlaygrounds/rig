@@ -83,6 +83,19 @@ fn returns_when_a_process_outside_the_group_holds_the_pipe() {
     assert!(output.ends_with("[exit code 0]"), "{output}");
 }
 
+/// A job left in the background that still holds the call's output is
+/// ended with the call, and the result says so and how to keep one running.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_background_job_holding_the_output_is_said_to_end_with_the_call() {
+    let output = shell("sleep 30 & echo started", None);
+    assert!(output.contains("started"), "{output}");
+    assert!(output.contains(super::JOBS_ENDED), "{output}");
+    assert!(output.ends_with("[exit code 0]"), "{output}");
+    let elsewhere = shell("sleep 2 >/dev/null 2>&1 & echo started", None);
+    assert!(!elsewhere.contains(super::JOBS_ENDED), "{elsewhere}");
+}
+
 /// Output cut by lines or by bytes is kept whole, and `read` reads it back
 /// by the path the cut output names.
 #[cfg(unix)]
@@ -119,6 +132,44 @@ fn cut_output_is_read_back_by_its_handle() {
     assert!(shell("seq 1 3", spill).starts_with("1\n2\n3\n"));
     assert_eq!(std::fs::read_dir(&dir).map(Iterator::count).ok(), Some(2));
     std::fs::remove_dir_all(dir).ok();
+}
+
+/// A cut output whose file could not be made says so, rather than naming
+/// no file without a word.
+#[cfg(unix)]
+#[test]
+fn a_spill_that_fails_says_so() {
+    let spill = Some(crate::Spill("/dev/null/rig-spill".into()));
+    let output = shell("seq 1 3000", spill);
+    let first = output.lines().next().unwrap_or_default();
+    assert!(
+        first.contains("; the whole output could not be kept, as making its file failed: "),
+        "{first}"
+    );
+}
+
+/// A timeout of 0 is refused rather than read as 1 second.
+#[test]
+fn a_timeout_of_zero_is_refused() {
+    let args = ShellArgs::new("echo hi").timeout_secs(0);
+    let refused = futures::executor::block_on(Shell::default().run(args)).err();
+    let said = refused.map(|error| error.to_string()).unwrap_or_default();
+    assert!(said.contains("timeout_secs must be at least 1"), "{said}");
+}
+
+/// Output past what the result keeps is not a reason to stop the command:
+/// it runs to its end, however much it prints.
+#[cfg(unix)]
+#[test]
+fn a_command_that_prints_much_runs_to_its_end() {
+    let dir = std::env::temp_dir().join(format!("rig-tools-much-{}", std::process::id()));
+    let spill = Some(crate::Spill(dir.clone()));
+    let output = shell(
+        "head -c 12000000 /dev/zero | tr '\\0' 'x' | fold -w 1000; echo end",
+        spill,
+    );
+    std::fs::remove_dir_all(dir).ok();
+    assert!(output.ends_with("end\n[exit code 0]"), "{:.200}", output);
 }
 
 /// Each piece of output reaches the shell's `Live` while the command still
@@ -199,7 +250,7 @@ fn the_command_starts_through_the_workspace_in_the_calls_directory() {
             root: &Path,
             glob: Option<&str>,
             listing: crate::workspace::Listing,
-        ) -> std::io::Result<Vec<PathBuf>> {
+        ) -> std::io::Result<crate::workspace::Listed> {
             Local.files(root, glob, listing)
         }
         fn spawn(
@@ -415,12 +466,60 @@ fn a_long_line_keeps_its_start_and_the_spill_keeps_it_whole() {
         ),
         "{output:.300}"
     );
+    // The error word past the cut says where it is, and how to show it.
+    let picked = format!(
+        "\n{} [… cut at byte 300 of 5012; `FAILED` is at bytes 5007-5012: in `shell`, `sed -n \
+         '3001p;3001q' ",
+        "x".repeat(300)
+    );
+    let shows = "| cut -b 301-5012 | LC_ALL=C fold -b -w 2000` shows bytes 301-5012]\n";
     assert!(
-        output.contains(&format!("\n{} […]\n", "x".repeat(300))),
+        output.contains(&picked) && output.contains(shows),
         "{output:.300}"
     );
     assert!(output.contains(&format!("\n{} […]\n", "é".repeat(2000))));
     std::fs::remove_dir_all(dir).ok();
+}
+
+/// T-work's long log: a test's failure at the end of a 3000-character line
+/// in the cut middle of a long output. The line kept says where its
+/// failure word is, and the command it gives shows the test's name.
+#[cfg(unix)]
+#[test]
+fn a_failure_past_the_cut_says_where_it_is_and_its_command_shows_it() {
+    let dir = std::env::temp_dir().join(format!("rig-tools-failure-{}", std::process::id()));
+    let command = "seq 1 1500; printf 'checking '; head -c 3000 /dev/zero | tr '\\0' x; \
+                   echo ' => test parse_header FAILED'; seq 1 1500";
+    let output = shell(command, Some(crate::Spill(dir.clone())));
+    let mark = "[… cut at byte 300 of 3037; `FAILED` is at bytes 3032-3037: in `shell`, `";
+    let shown = output
+        .split_once(mark)
+        .and_then(|(_, rest)| rest.split_once("` shows bytes 301-3037]"))
+        .map(|(command, _)| shell(command, None));
+    assert!(
+        shown
+            .as_ref()
+            .is_some_and(|shown| shown.contains("=> test parse_header FAILED")),
+        "{output:.1000}\n{shown:?}"
+    );
+    std::fs::remove_dir_all(dir).ok();
+}
+
+/// A line naming an error anywhere in it, such as git's `fatal:` or a
+/// log's `build error:`, is kept from the cut middle of an output.
+#[cfg(unix)]
+#[test]
+fn fatal_and_error_lines_are_kept_from_the_middle() {
+    let output = shell(
+        "seq 1 1500; echo '2026-10-31 build error: checksum mismatch'; seq 1 1500; \
+         echo 'fatal: unable to read object database'; seq 1 1500",
+        None,
+    );
+    assert!(
+        output.contains("\n2026-10-31 build error: checksum mismatch\n")
+            && output.contains("\nfatal: unable to read object database\n"),
+        "{output:.300}"
+    );
 }
 
 /// The cut note's offset and limit name the first lines missing, past an
@@ -541,24 +640,37 @@ fn a_cut_output_publishes_the_cut() {
     std::fs::remove_dir_all(dir).ok();
 }
 
-/// A key the command prints is redacted before it is kept, spilled or
-/// returned, and a private key block is left out through its end line.
+/// Each line goes through the filter before it is reported, kept, spilled
+/// or returned, and a line it empties is left out.
 #[cfg(unix)]
 #[test]
-fn printed_keys_are_neither_returned_nor_spilled() {
-    let dir = std::env::temp_dir().join(format!("rig-tools-keys-{}", std::process::id()));
-    let printed = "printf 'OPENAI_API_KEY=sk-test-probe-1234567890abcdef\\n\
-        -----BEGIN RSA PRIVATE KEY-----\\nMIIEsecretbody\\n-----END RSA PRIVATE KEY-----\\n\
-        after\\n'";
-    let output = shell(printed, None);
-    assert_eq!(
-        output,
-        "OPENAI_API_KEY=[REDACTED]\n[REDACTED]\nafter\n[exit code 0]"
-    );
-    let spilled = shell(
-        &format!("{printed}; seq 1 3000"),
-        Some(crate::Spill(dir.clone())),
-    );
+fn each_line_goes_through_the_filter_first() {
+    use std::sync::{Arc, Mutex};
+
+    let dir = std::env::temp_dir().join(format!("rig-tools-filter-{}", std::process::id()));
+    let seen = Arc::new(Mutex::new(String::new()));
+    let shell = Shell {
+        filter: Some(crate::LineFilter::new(|line| {
+            match line.contains("secret") {
+                true => String::new(),
+                false => line.to_uppercase(),
+            }
+        })),
+        live: Some(crate::Live::new({
+            let seen = seen.clone();
+            move |line| {
+                seen.lock()
+                    .map(|mut seen| seen.push_str(line))
+                    .unwrap_or_default()
+            }
+        })),
+        spill: Some(crate::Spill(dir.clone())),
+        ..Shell::default()
+    };
+    let printed = "printf 'one\\nsecret\\ntwo\\n'; seq 1 3000";
+    let output = futures::executor::block_on(shell.run(ShellArgs::new(printed)))
+        .map(|ran| ran.output)
+        .unwrap_or_default();
     let spill = std::fs::read_dir(&dir)
         .ok()
         .and_then(|mut files| files.next())
@@ -567,8 +679,10 @@ fn printed_keys_are_neither_returned_nor_spilled() {
         .unwrap_or_default();
     std::fs::remove_dir_all(dir).ok();
     assert!(
-        spill.starts_with("OPENAI_API_KEY=[REDACTED]\n[REDACTED]\nafter\n1\n"),
-        "{spill:.200}"
+        output.contains("ONE\nTWO\n1\n") && !output.contains("SECRET"),
+        "{output:.200}"
     );
-    assert!(!spilled.contains("secret"));
+    assert!(spill.starts_with("ONE\nTWO\n1\n"), "{spill:.200}");
+    let seen = seen.lock().map(|seen| seen.clone()).unwrap_or_default();
+    assert!(seen.starts_with("ONE\nTWO\n1\n"), "{seen:.200}");
 }

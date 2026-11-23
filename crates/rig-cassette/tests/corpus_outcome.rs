@@ -1,59 +1,17 @@
 //! Matrix D: continuation, cancellation and failure outcomes.
 //!
-//! The outcome axis, and the run beyond a single `prompt`. A record's
-//! outcome can be a success, a `Cancelled` report (the consumer dropped
-//! the stream), a failed tool result (the model sees it), or the
-//! provider's own error (the run fails at the record). A run can end in
-//! an answer, `MaxTurns`, `UnknownToolCall`, or the provider's error,
-//! and a run can be suspended after its first tool result, serialized and
-//! resumed on a fresh bus to the same answer.
+//! The outcome axis, and the run beyond a single `prompt`. A record's outcome can
+//! be a success, a `Cancelled` report (the consumer dropped the stream), a failed
+//! tool result (the model sees it), or the provider's own error (the run fails at
+//! the record). A run can end in an answer, `MaxTurns`, `UnknownToolCall`, or the
+//! provider's error, and a run can be suspended after its first tool result,
+//! serialized and resumed on a fresh bus to the same answer.
 //!
-//! # Dimensions
-//!
-//! | axis | values recorded |
-//! |---|---|
-//! | record outcome | success · `Cancelled` after a text delta (the corpus's) · `Cancelled` after a tool-call delta · a failed tool result · the provider's 401 |
-//! | transport | unary · streamed with events |
-//! | run ending | answer · `MaxTurns` with a tool pending · `UnknownToolCall` unhandled · the provider's error |
-//! | turn budget | runner `max_turns` (not in the spec) · builder `default_max_turns` (in the spec) |
-//! | continuation | one run · suspended after the first tool result, resumed |
-//! | resume wire | anthropic · gemini (id-less) · openai (dual ids) · anthropic under serial serving with two calls |
-//!
-//! Full cross-product: 5 × 2 × 4 × 2 × 2 × 4 = 640. Recorded: the 8 goldens
-//! below; replayed as resume rows: 4 existing goldens. Pruned: a cancel
-//! after a part's `End` (a text answer's only block ends with the stream, so
-//! there is nothing left to cancel; a two-call stream cancelled between
-//! calls is the tool-call-delta cell with more of the stream kept); a
-//! unary cancel by timeout (whether a timeout fires before a cassette
-//! answers is a race, so the record would not be deterministic); a handler
-//! that panics (a panic in a handler is a bug, not an outcome); the
-//! provider's error streamed with events dropped (an error has no events
-//! to drop).
-//!
-//! # Cells
-//!
-//! | golden | producer | shape | ending |
-//! |---|---|---|---|
-//! | `anthropic_outcome_cancel_after_tool_call_delta` | `corpus_outcome.rs` `cancel_after_tool_call_delta_…` | `[Completion]`, outcome `Cancelled`, events kept; a `write_note` call whose long body streams past the drop | the run never finishes |
-//! | `anthropic_outcome_tool_error` | `tool_error_…` | `[Completion, Tool (failed), Completion]` | an answer around the failure |
-//! | `anthropic_outcome_tool_error_streamed` | `tool_error_streamed_…` | the same, events kept | an answer |
-//! | `anthropic_outcome_model_error` | `model_error_…` | `[Completion]`, outcome the provider's 401 | `PromptError::Report(ProviderResponse)` |
-//! | `anthropic_outcome_model_error_streamed` | `model_error_streamed_…` | the same, streamed | the stream's one item is the error |
-//! | `anthropic_outcome_max_turns_exhausted` | `max_turns_exhausted_…` | `[Completion, Tool]` | `MaxTurns { max_turns: 1 }` |
-//! | `anthropic_outcome_default_max_turns` | `default_max_turns_…` | `[Completion, Tool, Completion]` | an answer; the header refuses the runner-budget golden's program |
-//! | `mock_outcome_invalid_call_unhandled` | `tests/core/golden_outcome.rs` `outcome_invalid_call_unhandled_…` | `[Completion]` | `UnknownToolCall` (mock-scripted: no live model calls an unadvertised tool) |
-//!
-//! Resume rows (no golden of their own: the hand driver takes the head,
-//! the engine resumes the tail, the log is the golden):
-//! `anthropic_tool_call_turn`, `gemini_tool_call_turns`,
-//! `openai_tool_call_turns`, `anthropic_concurrent_tools_serial`.
-//!
-//! # What the matrix found
-//!
-//! - The hand driver shaped a failed tool result by unwrapping it, so a
-//!   failed record could not be driven by hand; the driver now shapes the
-//!   result's model-visible output as the engine does (`ToolResult::
-//!   output`), failed or not.
+//! Resume rows have no golden of their own: the hand driver takes the head, the
+//! engine resumes the tail, and an existing golden is the log. A unary cancel by
+//! timeout is not recorded because whether a timeout fires before a cassette
+//! answers is a race. The unhandled invalid call is mock-scripted because no live
+//! model calls an unadvertised tool.
 
 use crate::corpus;
 use rig_cassette::agent::AgentReplayExt;

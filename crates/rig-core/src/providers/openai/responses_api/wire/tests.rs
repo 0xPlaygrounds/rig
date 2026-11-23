@@ -374,15 +374,15 @@ async fn an_error_envelope_on_a_success_fails_the_xai_call() {
 fn each_dialect_encodes_what_its_endpoint_reads() {
     use crate::completion::{Media, Place, ReplayTarget};
     use crate::message::{
-        Audio, AudioMediaType, Document, DocumentMediaType, DocumentSourceKind as Source, Image,
-        ImageMediaType, Video, VideoMediaType,
+        Audio, AudioMediaType, DocumentContent, DocumentMediaType, DocumentSourceKind as Source,
+        Image, ImageMediaType, Video, VideoMediaType,
     };
     let image = |data: Source, media_type: Option<ImageMediaType>| Image {
         data,
         media_type,
         ..Image::default()
     };
-    let document = |data: Source, media_type: Option<DocumentMediaType>| Document {
+    let document = |data: Source, media_type: Option<DocumentMediaType>| DocumentContent {
         data: data.into(),
         media_type,
         additional_params: None,
@@ -393,7 +393,7 @@ fn each_dialect_encodes_what_its_endpoint_reads() {
     let image_file = image(Source::file_id("file-image"), None);
     let pdf = document(Source::base64("JVBERi0="), Some(DocumentMediaType::PDF));
     let pdf_url = document(Source::url("https://example.com/a.pdf"), None);
-    let text = Document {
+    let text = DocumentContent {
         data: crate::message::DocumentData::Text("plain".into()),
         media_type: Some(DocumentMediaType::TXT),
         additional_params: None,
@@ -451,44 +451,75 @@ fn each_dialect_encodes_what_its_endpoint_reads() {
     }
 }
 
-/// An `error` event projects the envelope it carries and no verdict; a
-/// `response.failed` event projects its verdict and then its envelope.
-///
-/// Not a cassette test: a server error is a transient condition that cannot
-/// be recorded on demand, and the projection is a pure function of the frame.
+mod provider_options;
+
+/// The model the ChatGPT wire sends is the one
+/// [`requested_model`](crate::providers::chatgpt::requested_model) reads,
+/// however the request names it, so the account check sees what is sent.
 #[test]
-fn an_error_event_projects_only_the_envelope_it_carries() {
-    use crate::observe::{Action, AdapterContext, AdapterEvent, ObservationLog, Subject};
-    let projected = |payload: serde_json::Value| {
-        let log = std::sync::Arc::new(ObservationLog::default());
-        let context = AdapterContext::new(log.clone(), Subject::default(), "call");
-        let mut attempt = context
-            .attempt_for(&http::Request::new(()), "/responses", None)
-            .expect("an attempt starts");
-        attempt.project(|sink| project_payload(payload.to_string().as_bytes(), sink));
-        drop(attempt);
-        let trace = log.trace();
-        trace
-            .observations
-            .iter()
-            .filter_map(|o| match &o.action {
-                Action::Adapter { observation } => match &observation.event {
-                    AdapterEvent::Provider { .. } => Some("provider"),
-                    AdapterEvent::ErrorEnvelope { .. } => Some("error"),
-                    _ => None,
-                },
-                _ => None,
-            })
-            .collect::<Vec<_>>()
+fn the_chatgpt_body_sends_the_model_requested_model_reads() {
+    use serde_json::json;
+    let wire = OpenAIConfig::with_key(&CHATGPT, "test-token").responses("gpt-6.1-sol");
+    let options = |options: serde_json::Value| {
+        let mut request = prompt();
+        request.provider_options = serde_json::from_value(options).expect("the options read");
+        request
     };
-    let error = serde_json::json!({ "code": "server_error", "message": "boom" });
-    let event = serde_json::json!({ "type": "error", "error": error });
-    assert_eq!(projected(event), ["error"]);
-    let failed = serde_json::json!({
-        "type": "response.failed",
-        "response": { "id": "resp_1", "status": "failed", "error": error }
-    });
-    assert_eq!(projected(failed), ["provider", "error"]);
+    let terra = json!({ "model": "gpt-6.1-terra" });
+    let luna = json!({ "model": "gpt-6-luna" });
+    let requests = [
+        prompt(),
+        prompt().model("gpt-6.1-terra"),
+        prompt().additional_params(json!({ "model": "gpt-6.1-terra" })),
+        options(json!({ "chatgpt": { "openai.responses": terra } })),
+        options(json!({ "chatgpt": { "*": terra } })),
+        options(json!({ "chatgpt": { "*": luna, "openai.responses": terra } })),
+        options(json!({ "chatgpt": { "openai.chat": terra } })),
+        options(json!({ "openai": { "openai.responses": terra } })),
+        options(json!({ "chatgpt": { "openai.responses": luna } }))
+            .additional_params(json!({ "model": "gpt-6.1-terra" })),
+        options(json!({ "chatgpt": { "*": terra } })).model("gpt-6-luna"),
+        prompt().model(""),
+    ];
+    for request in requests {
+        let named = crate::providers::chatgpt::requested_model(&request)
+            .unwrap_or("gpt-6.1-sol")
+            .to_owned();
+        let body = prepared_body_of(&wire, request);
+        assert_eq!(body["model"], json!(named), "{body}");
+    }
 }
 
-mod provider_options;
+/// A wire's `store` goes on every request, with the reasoning ciphertext a
+/// stateless request replays by. A request's own `store`, in its provider
+/// options or `additional_params`, replaces it, and a wire without one
+/// sends none and serializes without one.
+#[test]
+fn a_wire_store_is_sent_unless_the_request_sets_its_own() {
+    use serde_json::json;
+    let wire = openai().with_store(false);
+    let body = encoded_body_of(&wire, prompt(), Mode::Unary);
+    assert_eq!(body["store"], json!(false), "{body}");
+    assert_eq!(
+        body["include"],
+        json!(["reasoning.encrypted_content"]),
+        "{body}"
+    );
+
+    let own_options = prompt()
+        .provider_option(crate::providers::openai::extension::OpenAiOptions::default().store(true));
+    let own_params = prompt().additional_params(json!({"store": true}));
+    for request in [own_options, own_params] {
+        let body = encoded_body_of(&wire, request, Mode::Unary);
+        assert_eq!(body["store"], json!(true), "{body}");
+        assert!(body.get("include").is_none(), "{body}");
+    }
+
+    let body = encoded_body_of(&openai(), prompt(), Mode::Unary);
+    assert!(body.get("store").is_none(), "{body}");
+
+    let saved = serde_json::to_value(openai()).expect("the wire serializes");
+    assert!(saved.get("store").is_none(), "{saved}");
+    let read: Responses = serde_json::from_value(saved).expect("the wire reads");
+    assert_eq!(read.store, None);
+}

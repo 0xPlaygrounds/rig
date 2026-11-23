@@ -7,7 +7,7 @@
 use std::{
     collections::BTreeSet,
     sync::{
-        Arc, Mutex, MutexGuard,
+        Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
@@ -320,22 +320,9 @@ const PARALLEL_PROMPT: &str = "Compute 3 + 4 and 10 - 2. You MUST call the add t
 const PING_OUTPUT: &str = "pong-crimson-7423";
 const MOTTO_OUTPUT: &str = "steady hands\ncalm waters";
 
-fn lock_recover<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-}
-
 fn tool_result_values(message: &Message) -> Vec<serde_json::Value> {
-    let Message::User { content } = message else {
-        return Vec::new();
-    };
-    content
-        .iter()
-        .filter_map(|item| match item {
-            UserContent::ToolResult(result) => Some(result),
-            _ => None,
-        })
+    message
+        .results()
         .flat_map(|result| result.content.iter())
         .filter_map(|content| match content {
             rig_core::message::ToolResultContent::Text(text) => {
@@ -367,14 +354,10 @@ fn validate_tool_correlation(
                     _ => None,
                 }));
             }
-            Message::User { content } => {
-                results.extend(content.iter().filter_map(|item| match item {
-                    UserContent::ToolResult(result) => Some((
-                        turn,
-                        &result.call,
-                        result.call.provider().map(|provider| provider.as_str()),
-                    )),
-                    _ => None,
+            Message::User { .. } => {
+                results.extend(message.results().map(|result| {
+                    let provider = result.call.provider().map(|provider| provider.as_str());
+                    (turn, &result.call, provider)
                 }));
             }
             Message::System { .. } => {}
@@ -547,7 +530,7 @@ impl AgentHook for ObserveArguments {
         if let Some(args) = event.tool_args() {
             let value = serde_json::from_str(args)
                 .unwrap_or_else(|_| serde_json::Value::String(args.to_string()));
-            lock_recover(&self.0).push(value);
+            crate::lock(&self.0).push(value);
         }
         DispatchAction::proceed()
     }
@@ -764,7 +747,7 @@ impl Tool for CaptureComplexTool {
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
         self.calls.fetch_add(1, Ordering::SeqCst);
-        *lock_recover(&self.captured) = Some(args.clone());
+        *crate::lock(&self.captured) = Some(args.clone());
         Ok(args)
     }
 }
@@ -1202,7 +1185,7 @@ where
         .default_max_turns(3)
         .build();
     let response = agent.prompt(prompt).max_turns(3).await?;
-    let observed = lock_recover(&captured).clone();
+    let observed = crate::lock(&captured).clone();
     if calls.load(Ordering::SeqCst) != 1 || observed.as_ref() != Some(&expected) {
         return Err(ScenarioError::contract(
             SCENARIO,
@@ -1412,7 +1395,7 @@ where
             let Some(response) = event.completion() else {
                 return OutcomeAction::proceed();
             };
-            *lock_recover(&self.0) = Some(ModelTurn::new(
+            *crate::lock(&self.0) = Some(ModelTurn::new(
                 response.head(),
                 response.choice.clone(),
                 response.usage,
@@ -1435,7 +1418,7 @@ where
             format!("capture hook did not stop after the model response: {stopped:?}"),
         ));
     }
-    let response = lock_recover(&captured).take().ok_or_else(|| {
+    let response = crate::lock(&captured).take().ok_or_else(|| {
         ScenarioError::contract(SCENARIO, "capture hook observed no model response")
     })?;
     let emitted = response
@@ -1632,7 +1615,7 @@ where
         .add_hook(ReplaceResult("portable-redacted"))
         .add_hook(WrapResult)
         .await?;
-    let observations = lock_recover(&observed_probe.0).clone();
+    let observations = crate::lock(&observed_probe.0).clone();
     validate_rewritten_arguments(
         SCENARIO,
         &observations,
@@ -1863,6 +1846,8 @@ where
                 final_response = Some(response);
             }
             MultiTurnStreamItem::StreamAssistantItem(_)
+            | MultiTurnStreamItem::ToolExecutionStarted { .. }
+            | MultiTurnStreamItem::ToolResultItem { .. }
             | MultiTurnStreamItem::ToolExecutionCommitted { .. }
             | MultiTurnStreamItem::ModelTurnRetried { .. } => {}
         }

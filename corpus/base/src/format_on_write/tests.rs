@@ -70,7 +70,48 @@ fn a_write_is_formatted_and_linted_before_the_next_read() {
     assert_eq!(formatted, "HELLO WORLD WIDE");
 }
 
+/// The text a formatter left counts as seen, so the model's next `write`
+/// of the file it wrote goes through without a new read.
 #[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(FormatOnWritePlugin);
+fn a_write_after_a_formatted_write_goes_through() {
+    let dir = scratch_home("format-on-write-again").root().to_owned();
+    std::fs::create_dir_all(&dir).ok();
+    let file = "a.txt";
+    let (mut app, wakes) = app_on(&MemoryStore::default());
+    app.insert_resource(Settings::from_toml(SETTINGS))
+        .add_plugins((
+            AgentPlugin,
+            SessionLogPlugin,
+            WriteTool,
+            FormatOnWritePlugin,
+        ))
+        .init_resource::<ToolOutputs>()
+        .add_observer(log_tool_outputs);
+    app.finish();
+    app.update();
+    let model = MockCompletionModel::from_stream_turns([
+        calls("w1", "write", json!({ "path": file, "content": "hello" })),
+        calls("w2", "write", json!({ "path": file, "content": "bye" })),
+        reply("Done."),
+    ]);
+    let world = app.world_mut();
+    let agent = first_agent(world).unwrap_or(Entity::PLACEHOLDER);
+    if let Some(connection) = connect(&model) {
+        world
+            .entity_mut(agent)
+            .insert((connection, WorkDir(dir.clone())));
+    }
+    world.trigger(Deliver::new(
+        agent,
+        "Write a.txt twice.",
+        DeliveryMode::Steer,
+    ));
+    run_until(&mut app, &wakes, |world| {
+        world.resource::<ToolOutputs>().0.contains_key("w2")
+    });
+    let again = app.world().resource::<ToolOutputs>().0.get("w2").cloned();
+    let formatted = std::fs::read_to_string(dir.join(file)).unwrap_or_default();
+    assert_eq!(formatted, "BYE", "{again:?}");
 }
+
+rig_defaults_test_support::stages_ordered_test!(FormatOnWritePlugin);

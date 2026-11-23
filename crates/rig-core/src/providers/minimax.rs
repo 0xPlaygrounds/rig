@@ -64,19 +64,13 @@ pub(crate) fn reads_images(model: &str) -> bool {
     !model.to_ascii_lowercase().starts_with("minimax-m2")
 }
 
-#[cfg(feature = "audio")]
 pub mod audio_generation;
 pub mod extension;
-#[cfg(feature = "image")]
 pub mod image_generation;
-#[cfg(feature = "audio")]
 pub mod voice_clone;
 
-#[cfg(feature = "audio")]
 pub use audio_generation::*;
-#[cfg(feature = "image")]
 pub use image_generation::*;
-#[cfg(feature = "audio")]
 pub use voice_clone::voice_cloning;
 
 /// The provider key: the dialect name, a reply's `Origin::provider` and
@@ -94,13 +88,11 @@ crate::client::macros::anthropic_vendor!(
 /// Decode a MiniMax media reply once its `base_resp` status reports success.
 /// MiniMax can answer a failure with HTTP 200, so a nonzero `status_code` is
 /// the body verbatim as [`ProviderError::ProviderResponse`].
-#[cfg(any(feature = "image", feature = "audio"))]
 pub(crate) fn decode_reply<T: serde::de::DeserializeOwned>(
     body: &[u8],
 ) -> Result<T, crate::error::ProviderError> {
     #[derive(serde::Deserialize)]
     struct Status {
-        #[serde(default)]
         base_resp: Option<BaseResp>,
     }
     #[derive(serde::Deserialize)]
@@ -121,5 +113,5 @@ pub(crate) fn decode_reply<T: serde::de::DeserializeOwned>(
     Ok(serde_json::from_slice(body)?)
 }
 
-#[cfg(all(test, any(feature = "image", feature = "audio")))]
+#[cfg(test)]
 mod tests;

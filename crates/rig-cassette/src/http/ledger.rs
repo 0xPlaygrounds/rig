@@ -203,8 +203,9 @@ impl ReplyLedger {
     /// Write what the frames `chunk` completes created.
     pub(crate) fn push(&mut self, chunk: &[u8]) {
         let documents = match &mut self.frames {
-            Some(Frames::Events(framer)) => event_documents(framer.push(chunk)),
-            Some(Frames::Lines(framer)) => line_documents(framer.push(chunk)),
+            // A frame too large for the reader fails the reply itself.
+            Some(Frames::Events(framer)) => event_documents(framer.push(chunk).flatten()),
+            Some(Frames::Lines(framer)) => line_documents(framer.push(chunk).flatten()),
             None => return,
         };
         self.write(&documents);

@@ -3,7 +3,7 @@ use super::super::response::PromptError;
 use super::super::{AgentRun, AgentRunStep, PendingToolCall, ToolAnswer};
 use super::*;
 use rig_core::completion::{CompletionResponse, Usage};
-use rig_core::message::ToolFunction;
+use rig_core::message::{CallId, ToolFunction};
 use rig_core::streaming::StreamRecord;
 use serde_json::json;
 
@@ -279,6 +279,26 @@ fn an_ignored_call_stays_out_of_the_turn_after_a_checkpoint() {
     assert!(turn.choice.is_empty(), "{:?}", turn.choice);
 }
 
+/// An ignored call leaves out only itself when a peer shares its id.
+#[test]
+fn an_ignored_call_leaves_a_peer_with_its_id_in_the_turn() {
+    let multiply = tool_call("dup", "multiply");
+    let add = tool_call("dup", "add");
+    let stream = items([call(0, &multiply), call(1, &add)]);
+    let mut asm = assembler();
+    surface_invalid(&mut asm, &stream[..3]);
+    assert!(
+        asm.resolve_pending_invalid(&StreamedResolution::Ignored)
+            .is_none()
+    );
+    ingest_all(&mut asm, &stream[3..]);
+    let turn = asm.finish(&response(vec![
+        AssistantContent::ToolCall(multiply),
+        AssistantContent::ToolCall(add.clone()),
+    ]));
+    assert_eq!(turn.choice, vec![AssistantContent::ToolCall(add)]);
+}
+
 /// Nothing is ingested while an invalid call awaits its resolution.
 #[test]
 fn ingest_refuses_items_while_an_invalid_call_awaits_resolution() {
@@ -367,7 +387,8 @@ fn streamed_run_completes_a_tool_roundtrip() {
         panic!("expected Done");
     };
     assert_eq!(response.output(), "done");
-    assert_eq!(response.usage, usage);
+    assert_eq!(response.usage, usage + Usage::default());
+    assert!(!response.usage.tokens_complete());
     assert_eq!(response.completion_calls.len(), 2);
     assert_eq!(response.completion_calls[0].usage, usage);
     assert_eq!(response.completion_calls[1].usage, Usage::default());
@@ -419,7 +440,7 @@ fn streamed_turn_rejects_unknown_tool_calls_fail_fast() {
         head: AssistantMessage::default(),
         choice: vec![AssistantContent::ToolCall(tool_call("tc_1", "unknown"))],
         policy: add_policy(),
-        finish_reason: None,
+        cut_off: Vec::new(),
     };
     let err = run
         .streamed_turn(turn)

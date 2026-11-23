@@ -1,25 +1,15 @@
-//! Read provider-specific reply fields from a hook.
+//! Reads provider-specific reply fields from a hook.
 //!
-//! An agent erases its model behind `ModelHandle`, and the normalized
-//! `CompletionResponse` carries only what every provider has in common.
-//! What one provider adds, such as OpenAI's `system_fingerprint` and
-//! `service_tier`, is a typed reply extra: `extras::<OpenAiExt>()` reads it
-//! from the provider's own reply, and returns `None` for another provider's.
-//!
-//! That reply arrives whole as `CompletionResponse::raw`, on the response an
-//! `on_outcome` hook sees for a completion effect (fired on both the blocking
-//! and the streamed surface), on the medium-neutral `ModelTurnFinished` event,
-//! and on each `CompletionCall` in the run's record. `raw` is the provider's
-//! reply document on both surfaces: the body itself when blocking, and the
-//! same document rebuilt from the stream's chunks when streaming. It stays
-//! the escape hatch for a field no typed extra covers.
-//!
-//! The hook below runs unchanged on both surfaces.
+//! `extras::<OpenAiExt>()` reads typed extras such as OpenAI's
+//! `system_fingerprint` and `service_tier` from the provider's reply, and returns
+//! `None` for another provider's. The whole reply is also on
+//! `CompletionResponse::raw`, which an `on_outcome` hook sees for a completion on
+//! both the blocking and the streamed surface, rebuilt from the chunks when
+//! streaming. The hook below runs unchanged on both.
 //!
 //! ```not_rust
 //! OPENAI_API_KEY=... cargo run -p rig-agent --example raw_response_hook
 //! ```
-//!
 
 use anyhow::Result;
 use futures::StreamExt;

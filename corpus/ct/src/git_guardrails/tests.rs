@@ -3,13 +3,13 @@ use std::process::Command;
 use std::sync::mpsc::Receiver;
 
 use rig_basics::approval::ALLOW;
-use rig_basics::coding_tools::ShellTool;
+use rig_basics::coding_tools::{ShellTool, WriteTool};
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::ask::AskPlugin;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness_test_support::{
     AnswerAsks, Answers, Ended, ToolOutputs, app_in, calls, connect, first_agent, log_ended,
-    log_tool_outputs, reply, run_until, scratch_home,
+    log_tool_outputs, reply, run_until, scratch_dir, scratch_home,
 };
 use serde_json::json;
 
@@ -30,10 +30,7 @@ fn git(dir: &Path, args: &[&str]) -> String {
 /// force push would change the remote), a `feature` branch, a `sub/`
 /// directory and the user's untracked `draft.md`.
 fn repo(name: &str) -> (PathBuf, PathBuf) {
-    let root = std::env::current_exe()
-        .unwrap_or_default()
-        .with_file_name(name);
-    std::fs::remove_dir_all(&root).ok();
+    let root = scratch_dir(name);
     assert!(std::fs::create_dir_all(root.join("work/sub")).is_ok());
     let root = std::fs::canonicalize(&root).unwrap_or(root);
     let (remote, work) = (root.join("remote.git"), root.join("work"));
@@ -64,7 +61,7 @@ fn repo(name: &str) -> (PathBuf, PathBuf) {
     (remote, work)
 }
 
-/// An app on the project `work` with the real `shell` tool, checkpoints,
+/// An app on the project `work` with the real `shell` and `write` tools,
 /// questions and the guard, its agent answered by `model`; `answers`
 /// adds someone who answers questions.
 fn start(
@@ -86,6 +83,7 @@ fn start(
             SessionLogPlugin,
             AskPlugin,
             ShellTool,
+            WriteTool,
             GitGuardPlugin,
         ))
         .init_resource::<Ended>()
@@ -140,9 +138,14 @@ fn unsafe_git_is_refused_and_safe_git_runs() {
         shell("alias", "true; (git -C sub pf origin HEAD:main)"),
         shell("no-verify", "git commit --no-verify -m x"),
         shell("amend-pushed", "git commit --amend -m y"),
+        calls(
+            "notes",
+            "write",
+            json!({ "path": "notes.txt", "content": "n\n" }),
+        ),
         shell(
             "own",
-            "echo n > notes.txt; echo a > agent.txt && git add agent.txt && git commit -q -m mine",
+            "echo a > agent.txt && git add agent.txt && git commit -q -m mine",
         ),
         shell("amend-own", "git commit --amend -q -m mine-amended"),
         shell("reset", "git status --short | cat && git reset --hard"),
@@ -216,7 +219,4 @@ fn an_ask_rule_runs_once_the_user_allows() {
     assert_eq!(git(&work, &["log", "-1", "--format=%s"]), "z");
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(GitGuardPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(GitGuardPlugin);

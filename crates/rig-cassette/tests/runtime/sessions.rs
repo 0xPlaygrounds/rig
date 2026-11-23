@@ -30,5 +30,9 @@ mod support {
 
 // The session file names helpers only its own target uses.
 #[allow(unused_imports)]
+#[allow(
+    clippy::duplicate_mod,
+    reason = "the same sessions, run on the runtime's support instead of the provider's"
+)]
 #[path = "../providers/groq/agent_tool_sessions.rs"]
 mod agent_tool_sessions;

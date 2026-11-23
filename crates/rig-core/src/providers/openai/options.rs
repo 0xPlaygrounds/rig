@@ -6,7 +6,7 @@
 
 use serde_json::json;
 
-use crate::catalog::{ModelFacts, ModelSpec, ReasoningSupport, Sampling};
+use crate::catalog::{ChatTools, ModelFacts, ModelSpec, ReasoningSupport, Sampling};
 use crate::completion::options::{BodyRefusal, FinalBody, Mapping, OptionFields, OptionMap};
 use crate::completion::{
     CacheRetention, CompletionRequest, Effort, Reasoning, ReplayTarget, ServiceTier, Verbosity,
@@ -37,9 +37,9 @@ pub(crate) fn reasons(facts: &ModelFacts, model: &str) -> Option<bool> {
     }
 }
 
-/// Whether `model` reasons by its id alone: `Some(true)` for GPT-5 and
-/// later and the o-series, `Some(false)` for an earlier numbered GPT,
-/// `None` for an id that names neither.
+/// Whether `model` reasons by its id alone: `Some(true)` for a single-digit
+/// GPT major of 5 or more and the o-series, `Some(false)` for any other
+/// numbered GPT, `None` for an id that names neither.
 fn named_reasons(model: &str) -> Option<bool> {
     match named_reasoning(model) {
         true => Some(true),
@@ -110,8 +110,8 @@ fn named_can_disable(model: &str) -> bool {
 
 /// Whether a model the catalog does not list can turn reasoning off on
 /// Responses, by its id: not the o-series, a `-pro` model, GPT-5 itself
-/// (`gpt-5` and its `gpt-5-*` variants), GPT-6 Astra or GPT-6.1 Sol, whether
-/// or not its id names a reasoning model.
+/// (`gpt-5` and its `gpt-5-*` variants), GPT-6 Astra, GPT-6.1 Sol or
+/// GPT-6.2, whether or not its id names a reasoning model.
 fn named_responses_can_disable(model: &str) -> bool {
     let name = model.rsplit('/').next().unwrap_or(model);
     let o_series = named_reasons(model) == Some(true) && gpt_version(model).is_none();
@@ -120,7 +120,9 @@ fn named_responses_can_disable(model: &str) -> bool {
         || pro
         || gpt_version(model) == Some((5, 0))
         || name.starts_with(super::completion::GPT_6_ASTRA)
-        || name.starts_with(super::completion::GPT_6_1_SOL))
+        || name.starts_with(super::completion::GPT_6_1_SOL)
+        || name.starts_with(super::completion::GPT_6_2_ASTRA)
+        || name.starts_with(super::completion::GPT_6_2_SOL))
 }
 
 /// `top_p` on Responses for a model whose catalog entry gives no sampling
@@ -177,7 +179,7 @@ fn openai_top_p(
 fn openai_stop(facts: &ModelFacts, model: &str, stop: &[String]) -> Mapping {
     match reasons(facts, model) {
         Some(true) => Mapping::unsupported("an OpenAI reasoning model takes no `stop`"),
-        _ => stop_list(stop, Some(4), "stop"),
+        _ => stop_list(stop, Some(4)),
     }
 }
 
@@ -212,7 +214,8 @@ fn off_refusal(facts: &ModelFacts, spec: Option<&ModelSpec>, model: &str) -> Opt
 }
 
 /// Whether `model`'s prompt cache takes `prompt_cache_options` (GPT-5.6 and
-/// later, which keep one 30 minute retention): its catalog entry's, or for
+/// later, which keep prompts for 30 minutes, or 12 hours on Responses): its
+/// catalog entry's, or for
 /// a model the catalog does not list, its GPT generation's.
 pub(crate) fn caches_by_options(facts: &ModelFacts, model: &str) -> bool {
     match openai_spec(facts, model) {
@@ -224,10 +227,10 @@ pub(crate) fn caches_by_options(facts: &ModelFacts, model: &str) -> bool {
 /// OpenAI's prompt cache retention for `model`, from the retentions its
 /// catalog entry honours. Where it takes `prompt_cache_retention`, `Short`
 /// is `in_memory` and `Long` is `24h`; a listed model with no retention
-/// data takes `Short` only. Where it takes `prompt_cache_options`, one 30
-/// minute retention is all there is: `Short` sends nothing, `Long` is
-/// `long` (Responses sends its 30 minute `ttl`; Chat refuses), and `None`
-/// stops caching through explicit mode with no breakpoints. A model the
+/// data takes `Short` only. Where it takes `prompt_cache_options`, `Short`
+/// sends nothing (the default 30 minute `ttl`), `Long` is `long` (Responses
+/// sends the 12 hour `ttl`; Chat refuses), and `None` stops caching through
+/// explicit mode with no breakpoints. A model the
 /// catalog does not list is read by its GPT generation: `Long` on GPT-4.1
 /// and GPT-5 to 5.5, `24h` only on GPT-5.5, and `prompt_cache_options` from
 /// GPT-5.6 on.
@@ -257,7 +260,7 @@ pub(crate) fn openai_cache(
         }
         CacheRetention::None => Mapping::unsupported("prompt caching is always on before GPT-5.6"),
         CacheRetention::Short if options => {
-            Mapping::Omit("30 minutes is the only retention from GPT-5.6 on")
+            Mapping::Omit("30 minutes is the default retention from GPT-5.6 on")
         }
         CacheRetention::Short if !honours(CacheRetention::Short) => {
             Mapping::unsupported("this model keeps its prompt cache for 24 hours only")
@@ -287,11 +290,12 @@ pub(crate) enum Endpoint {
 /// final body, which also holds what `additional_params` and the provider
 /// options set, with the effort the body asks for: while the model reasons
 /// it takes no `temperature`, `top_p` or `top_logprobs` (nor, on Chat
-/// Completions, `logprobs`). One rule is the route's own: a
-/// model marked `chat_tools_need_reasoning_off` whose reasoning cannot be
-/// turned off takes no tools on Chat Completions at all. (One that can turn
-/// it off takes them at effort `none`; the API's own error names that fix,
-/// and a recorded session pins it.)
+/// Completions, `logprobs`). One rule is the route's own: a model whose
+/// `chat_tools` is [`ChatTools::Never`], or [`ChatTools::ReasoningOff`]
+/// while its reasoning cannot be turned off, takes no tools on Chat
+/// Completions at all. (One that can turn it off takes them at effort
+/// `none`; the API's own error names that fix, and a recorded session pins
+/// it.)
 ///
 /// # Errors
 ///
@@ -351,11 +355,12 @@ fn body_refusals(facts: &ModelFacts, body: &FinalBody, endpoint: Endpoint) -> Ve
         .get("tools")
         .and_then(serde_json::Value::as_array)
         .is_some_and(|tools| !tools.is_empty());
-    if endpoint == Endpoint::ChatCompletions
-        && carries_tools
-        && spec.compat.chat_tools_need_reasoning_off
-        && spec.reasoning.can_disable() == Some(false)
-    {
+    let tools_refused = match spec.compat.chat_tools {
+        Some(ChatTools::Never) => true,
+        Some(ChatTools::ReasoningOff) => spec.reasoning.can_disable() == Some(false),
+        Some(ChatTools::Any) | None => false,
+    };
+    if endpoint == Endpoint::ChatCompletions && carries_tools && tools_refused {
         refusals.push(BodyRefusal {
             field: "tools",
             reason: "the model cannot call tools through Chat Completions; use the Responses API"
@@ -441,19 +446,35 @@ fn catalog_level(
     })
 }
 
-/// A `stop` list sent under `key`, refused past `limit` sequences.
-fn stop_list(stop: &[String], limit: Option<usize>, key: &str) -> Mapping {
+/// A `stop` list, refused past `limit` sequences.
+fn stop_list(stop: &[String], limit: Option<usize>) -> Mapping {
     match limit {
         Some(limit) if stop.len() > limit => {
             Mapping::unsupported(format!("at most {limit} stop sequences are taken"))
         }
-        _ => Mapping::Send(json!({ key: stop })),
+        _ => send("stop", stop),
     }
 }
 
 /// `value` sent under `key`.
 fn send(key: &str, value: impl Into<serde_json::Value>) -> Mapping {
     Mapping::Send(json!({ key: value.into() }))
+}
+
+/// `parallel_tool_calls` sent as set.
+fn send_parallel(parallel: bool) -> Mapping {
+    send("parallel_tool_calls", parallel)
+}
+
+/// The `service_tier` OpenAI names each tier by.
+fn openai_tier(tier: &ServiceTier) -> Mapping {
+    let tier = match tier {
+        ServiceTier::Auto => "auto",
+        ServiceTier::Default => "default",
+        ServiceTier::Flex => "flex",
+        ServiceTier::Priority => "priority",
+    };
+    send("service_tier", tier)
 }
 
 /// `reasoning_effort` set to the level's word.
@@ -474,71 +495,51 @@ fn automatic_cache(cache: &CacheRetention) -> Mapping {
 }
 
 /// How the Chat Completions wire answers `fields` for `request`, by
-/// dialect (section 6.2 of `TYPED_OPTIONS.md`).
+/// dialect (section 2.2 of `TYPED_OPTIONS.md`).
 pub(crate) fn chat_options(
     chat: &Chat,
     request: &CompletionRequest,
     fields: OptionFields<'_>,
 ) -> OptionMap {
-    use super::wire::{
-        AZURE, COHERE, DEEPSEEK, DOUBLEWORD, GROQ, HUGGINGFACE, HYPERBOLIC, LLAMACPP, MINIMAX,
-        MIRA, MISTRAL, MOONSHOT, OLLAMA, OPENAI, OPENROUTER, PERPLEXITY, TOGETHER, VENICE,
-        XIAOMIMIMO, ZAI,
+    use crate::providers::{
+        azure, cohere, copilot, deepseek, doubleword, groq, huggingface, hyperbolic, llamacpp,
+        minimax, mira, mistral, moonshot, ollama, openai, openrouter, perplexity, together, venice,
+        xai, xiaomimimo, zai,
     };
     let model = request.model.as_deref().unwrap_or(&chat.model);
     let facts = &chat.facts;
-    let name = chat.provider.dialect.name;
-    let is = |dialect: &super::wire::Dialect| name == dialect.name;
-    if is(&OPENAI) {
-        openai_chat(facts, model, fields, None)
-    } else if is(&AZURE) {
-        openai_chat(
+    match chat.provider.dialect.name {
+        openai::PROVIDER_NAME => openai_chat(facts, model, fields, None),
+        azure::PROVIDER_NAME => openai_chat(
             facts,
             model,
             fields,
             Some(chat.provider.api_version.as_deref()),
-        )
-    } else if is(&OPENROUTER) {
-        openrouter(facts, model, fields)
-    } else if is(&DEEPSEEK) {
-        deepseek(fields)
-    } else if is(&MISTRAL) {
-        mistral(facts, model, fields)
-    } else if is(&GROQ) {
-        groq(facts, model, fields)
-    } else if name == crate::providers::xai::DIALECT.name {
-        xai(facts, model, fields)
-    } else if is(&TOGETHER) {
-        together(fields)
-    } else if is(&VENICE) {
-        venice(facts, model, fields)
-    } else if is(&MOONSHOT) {
-        moonshot(model, fields)
-    } else if is(&ZAI) {
-        zai(model, fields)
-    } else if is(&LLAMACPP) {
-        llamacpp(fields)
-    } else if is(&OLLAMA) {
-        ollama(fields)
-    } else if is(&COHERE) {
-        cohere(facts, model, fields)
-    } else if is(&PERPLEXITY) {
-        perplexity(model, fields)
-    } else if is(&MINIMAX) {
-        minimax(model, fields)
-    } else if is(&XIAOMIMIMO) {
-        xiaomimimo(fields)
-    } else if is(&MIRA) {
-        refuse_all(fields, "Mira rejects every pass-through parameter")
-    } else if is(&HUGGINGFACE) || is(&HYPERBOLIC) || is(&DOUBLEWORD) {
-        refuse_all(fields, "unverified for this provider")
-    } else if name == crate::providers::copilot::wire::DIALECT.name {
-        refuse_all(fields, "unverified for copilot")
-    } else {
-        refuse_all(
+        ),
+        openrouter::PROVIDER_NAME => openrouter(facts, model, fields),
+        deepseek::PROVIDER_NAME => deepseek(fields),
+        mistral::PROVIDER_NAME => mistral(facts, model, fields),
+        groq::PROVIDER_NAME => groq(facts, model, fields),
+        xai::PROVIDER_NAME => xai(facts, model, fields),
+        together::PROVIDER_NAME => together(fields),
+        venice::PROVIDER_NAME => venice(facts, model, fields),
+        moonshot::PROVIDER_NAME => moonshot(model, fields),
+        zai::PROVIDER_NAME => zai(model, fields),
+        llamacpp::PROVIDER_NAME => llamacpp(fields),
+        ollama::PROVIDER_NAME => ollama(fields),
+        cohere::PROVIDER_NAME => cohere(facts, model, fields),
+        perplexity::PROVIDER_NAME => perplexity(model, fields),
+        minimax::PROVIDER_NAME => minimax(model, fields),
+        xiaomimimo::PROVIDER_NAME => xiaomimimo(fields),
+        mira::PROVIDER_NAME => refuse_all(fields, "Mira rejects every pass-through parameter"),
+        huggingface::PROVIDER_NAME | hyperbolic::PROVIDER_NAME | doubleword::PROVIDER_NAME => {
+            refuse_all(fields, "unverified for this provider")
+        }
+        copilot::PROVIDER_NAME => refuse_all(fields, "unverified for copilot"),
+        _ => refuse_all(
             fields,
             "no option mapping is known for this gateway; send it through `additional_params`",
-        )
+        ),
     }
 }
 
@@ -570,12 +571,7 @@ fn openai_chat(
                 Reasoning::Budget { .. } => {
                     Mapping::unsupported("Chat Completions takes an effort level, not a budget")
                 }
-                Reasoning::Off if reasons(facts, model) == Some(false) => {
-                    Mapping::Omit("the model does not reason")
-                }
-                _ if reasons(facts, model) == Some(false) => {
-                    Mapping::unsupported("the model does not reason")
-                }
+                _ if reasons(facts, model) == Some(false) => Mapping::does_not_reason(reasoning),
                 Reasoning::Off => off_refusal(facts, spec, model)
                     .unwrap_or_else(|| send("reasoning_effort", "none")),
                 Reasoning::Effort(Effort::Max) if azure.is_some() => {
@@ -597,12 +593,9 @@ fn openai_chat(
                 Mapping::unsupported("Chat Completions has no longer retention from GPT-5.6 on"),
             )
         }),
-        service_tier: Mapping::of(fields.service_tier, |tier| match (tier, azure) {
-            (_, Some(_)) => Mapping::unsupported("unverified for azure.openai"),
-            (ServiceTier::Auto, _) => send("service_tier", "auto"),
-            (ServiceTier::Default, _) => send("service_tier", "default"),
-            (ServiceTier::Flex, _) => send("service_tier", "flex"),
-            (ServiceTier::Priority, _) => send("service_tier", "priority"),
+        service_tier: Mapping::of(fields.service_tier, |tier| match azure {
+            Some(_) => Mapping::unsupported("unverified for azure.openai"),
+            None => openai_tier(tier),
         }),
         verbosity: Mapping::of(fields.verbosity, |verbosity| {
             if dated {
@@ -612,9 +605,7 @@ fn openai_chat(
                 send("verbosity", verbosity.as_str())
             })
         }),
-        parallel_tool_calls: Mapping::of(fields.parallel_tool_calls, |parallel| {
-            send("parallel_tool_calls", parallel)
-        }),
+        parallel_tool_calls: Mapping::of(fields.parallel_tool_calls, send_parallel),
         top_p: Mapping::of(fields.top_p, |top_p| {
             openai_top_p(facts, model, top_p, fields.reasoning)
         }),
@@ -680,12 +671,10 @@ pub(crate) fn openrouter_reasoning(
 }
 
 /// OpenRouter's `service_tier`, which has no `auto` value.
-pub(crate) fn openrouter_tier(tier: &ServiceTier) -> Mapping {
+fn openrouter_tier(tier: &ServiceTier) -> Mapping {
     match tier {
         ServiceTier::Auto => Mapping::Omit("requests use the standard tier unless one is named"),
-        ServiceTier::Default => send("service_tier", "default"),
-        ServiceTier::Flex => send("service_tier", "flex"),
-        ServiceTier::Priority => send("service_tier", "priority"),
+        tier => openai_tier(tier),
     }
 }
 
@@ -699,12 +688,10 @@ fn openrouter(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> Opti
         verbosity: Mapping::of(fields.verbosity, |verbosity| {
             send("verbosity", verbosity.as_str())
         }),
-        parallel_tool_calls: Mapping::of(fields.parallel_tool_calls, |parallel| {
-            send("parallel_tool_calls", parallel)
-        }),
+        parallel_tool_calls: Mapping::of(fields.parallel_tool_calls, send_parallel),
         top_p: Mapping::of(fields.top_p, |top_p| send("top_p", top_p)),
         seed: Mapping::of(fields.seed, |seed| send("seed", seed)),
-        stop: Mapping::of_stop(fields.stop, |stop| stop_list(stop, Some(4), "stop")),
+        stop: Mapping::of_stop(fields.stop, |stop| stop_list(stop, Some(4))),
         cache_key: Mapping::unrouted(fields.cache_key),
     }
 }
@@ -741,7 +728,7 @@ fn deepseek(fields: OptionFields<'_>) -> OptionMap {
         }),
         top_p: Mapping::of(fields.top_p, |top_p| send("top_p", top_p)),
         seed: Mapping::of(fields.seed, |_| Mapping::unsupported(UNDOCUMENTED)),
-        stop: Mapping::of_stop(fields.stop, |stop| stop_list(stop, Some(16), "stop")),
+        stop: Mapping::of_stop(fields.stop, |stop| stop_list(stop, Some(16))),
         cache_key: Mapping::unrouted(fields.cache_key),
     }
 }
@@ -768,12 +755,10 @@ fn mistral(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> OptionM
         verbosity: Mapping::of(fields.verbosity, |_| {
             Mapping::unsupported("Mistral has no verbosity setting")
         }),
-        parallel_tool_calls: Mapping::of(fields.parallel_tool_calls, |parallel| {
-            send("parallel_tool_calls", parallel)
-        }),
+        parallel_tool_calls: Mapping::of(fields.parallel_tool_calls, send_parallel),
         top_p: Mapping::of(fields.top_p, |top_p| send("top_p", top_p)),
         seed: Mapping::of(fields.seed, |seed| send("random_seed", seed)),
-        stop: Mapping::of_stop(fields.stop, |stop| stop_list(stop, None, "stop")),
+        stop: Mapping::of_stop(fields.stop, |stop| stop_list(stop, None)),
         cache_key: prompt_cache_key(fields.cache_key),
     }
 }
@@ -821,12 +806,10 @@ fn groq(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> OptionMap 
         verbosity: Mapping::of(fields.verbosity, |_| {
             Mapping::unsupported("Groq has no verbosity setting")
         }),
-        parallel_tool_calls: Mapping::of(fields.parallel_tool_calls, |parallel| {
-            send("parallel_tool_calls", parallel)
-        }),
+        parallel_tool_calls: Mapping::of(fields.parallel_tool_calls, send_parallel),
         top_p: Mapping::of(fields.top_p, |top_p| send("top_p", top_p)),
         seed: Mapping::of(fields.seed, |seed| send("seed", seed)),
-        stop: Mapping::of_stop(fields.stop, |stop| stop_list(stop, Some(4), "stop")),
+        stop: Mapping::of_stop(fields.stop, |stop| stop_list(stop, Some(4))),
         cache_key: Mapping::unrouted(fields.cache_key),
     }
 }
@@ -898,14 +881,12 @@ fn xai(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> OptionMap {
         verbosity: Mapping::of(fields.verbosity, |_| {
             Mapping::unsupported("xAI has no verbosity setting")
         }),
-        parallel_tool_calls: Mapping::of(fields.parallel_tool_calls, |parallel| {
-            send("parallel_tool_calls", parallel)
-        }),
+        parallel_tool_calls: Mapping::of(fields.parallel_tool_calls, send_parallel),
         top_p: Mapping::of(fields.top_p, |top_p| send("top_p", top_p)),
         seed: Mapping::of(fields.seed, |_| Mapping::unsupported("unverified for xai")),
         stop: Mapping::of_stop(fields.stop, |stop| match grok_reasons(facts, model) {
             true => Mapping::unsupported("a reasoning Grok model takes no stop sequences"),
-            false => stop_list(stop, None, "stop"),
+            false => stop_list(stop, None),
         }),
         cache_key: prompt_cache_key(fields.cache_key),
     }
@@ -941,7 +922,7 @@ fn together(fields: OptionFields<'_>) -> OptionMap {
         }),
         top_p: Mapping::of(fields.top_p, |top_p| send("top_p", top_p)),
         seed: Mapping::of(fields.seed, |seed| send("seed", seed)),
-        stop: Mapping::of_stop(fields.stop, |stop| stop_list(stop, None, "stop")),
+        stop: Mapping::of_stop(fields.stop, |stop| stop_list(stop, None)),
         cache_key: Mapping::unrouted(fields.cache_key),
     }
 }
@@ -970,12 +951,10 @@ fn venice(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> OptionMa
         verbosity: Mapping::of(fields.verbosity, |_| {
             Mapping::unsupported("Venice has no verbosity setting")
         }),
-        parallel_tool_calls: Mapping::of(fields.parallel_tool_calls, |parallel| {
-            send("parallel_tool_calls", parallel)
-        }),
+        parallel_tool_calls: Mapping::of(fields.parallel_tool_calls, send_parallel),
         top_p: Mapping::of(fields.top_p, |top_p| send("top_p", top_p)),
         seed: Mapping::of(fields.seed, |seed| send("seed", seed)),
-        stop: Mapping::of_stop(fields.stop, |stop| stop_list(stop, Some(4), "stop")),
+        stop: Mapping::of_stop(fields.stop, |stop| stop_list(stop, Some(4))),
         cache_key: prompt_cache_key(fields.cache_key),
     }
 }
@@ -1026,7 +1005,7 @@ fn moonshot(model: &str, fields: OptionFields<'_>) -> OptionMap {
             if stop.iter().any(|sequence| sequence.len() > 32) {
                 Mapping::unsupported("Moonshot takes stop sequences of at most 32 bytes")
             } else {
-                stop_list(stop, Some(5), "stop")
+                stop_list(stop, Some(5))
             }
         }),
         cache_key: prompt_cache_key(fields.cache_key),
@@ -1067,7 +1046,7 @@ fn zai(model: &str, fields: OptionFields<'_>) -> OptionMap {
             }
         }),
         seed: Mapping::of(fields.seed, |_| Mapping::unsupported(UNSUPPORTED)),
-        stop: Mapping::of_stop(fields.stop, |stop| stop_list(stop, Some(4), "stop")),
+        stop: Mapping::of_stop(fields.stop, |stop| stop_list(stop, Some(4))),
         cache_key: Mapping::unrouted(fields.cache_key),
     }
 }
@@ -1092,12 +1071,10 @@ fn llamacpp(fields: OptionFields<'_>) -> OptionMap {
         verbosity: Mapping::of(fields.verbosity, |_| {
             Mapping::unsupported("llama.cpp has no verbosity setting")
         }),
-        parallel_tool_calls: Mapping::of(fields.parallel_tool_calls, |parallel| {
-            send("parallel_tool_calls", parallel)
-        }),
+        parallel_tool_calls: Mapping::of(fields.parallel_tool_calls, send_parallel),
         top_p: Mapping::of(fields.top_p, |top_p| send("top_p", top_p)),
         seed: Mapping::of(fields.seed, |seed| send("seed", seed)),
-        stop: Mapping::of_stop(fields.stop, |stop| stop_list(stop, None, "stop")),
+        stop: Mapping::of_stop(fields.stop, |stop| stop_list(stop, None)),
         cache_key: Mapping::unrouted(fields.cache_key),
     }
 }
@@ -1123,7 +1100,7 @@ fn ollama(fields: OptionFields<'_>) -> OptionMap {
         }),
         top_p: Mapping::of(fields.top_p, |top_p| send("top_p", top_p)),
         seed: Mapping::of(fields.seed, |seed| send("seed", seed)),
-        stop: Mapping::of_stop(fields.stop, |stop| stop_list(stop, None, "stop")),
+        stop: Mapping::of_stop(fields.stop, |stop| stop_list(stop, None)),
         cache_key: Mapping::unrouted(fields.cache_key),
     }
 }
@@ -1156,7 +1133,7 @@ fn cohere(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> OptionMa
         }),
         top_p: Mapping::of(fields.top_p, |top_p| send("top_p", top_p)),
         seed: Mapping::of(fields.seed, |seed| send("seed", seed)),
-        stop: Mapping::of_stop(fields.stop, |stop| stop_list(stop, None, "stop")),
+        stop: Mapping::of_stop(fields.stop, |stop| stop_list(stop, None)),
         cache_key: Mapping::unrouted(fields.cache_key),
     }
 }
@@ -1185,7 +1162,7 @@ fn perplexity(model: &str, fields: OptionFields<'_>) -> OptionMap {
         seed: Mapping::of(fields.seed, |_| {
             Mapping::unsupported("unverified for perplexity")
         }),
-        stop: Mapping::of_stop(fields.stop, |stop| stop_list(stop, None, "stop")),
+        stop: Mapping::of_stop(fields.stop, |stop| stop_list(stop, None)),
         cache_key: Mapping::unrouted(fields.cache_key),
     }
 }
@@ -1231,7 +1208,7 @@ fn minimax(model: &str, fields: OptionFields<'_>) -> OptionMap {
         seed: Mapping::of(fields.seed, |_| {
             Mapping::unsupported("unverified for minimax")
         }),
-        stop: Mapping::of_stop(fields.stop, |stop| stop_list(stop, None, "stop")),
+        stop: Mapping::of_stop(fields.stop, |stop| stop_list(stop, None)),
         cache_key: Mapping::unrouted(fields.cache_key),
     }
 }
@@ -1260,7 +1237,7 @@ fn xiaomimimo(fields: OptionFields<'_>) -> OptionMap {
         seed: Mapping::of(fields.seed, |_| {
             Mapping::unsupported("MiMo has no `seed` parameter")
         }),
-        stop: Mapping::of_stop(fields.stop, |stop| stop_list(stop, Some(4), "stop")),
+        stop: Mapping::of_stop(fields.stop, |stop| stop_list(stop, Some(4))),
         cache_key: Mapping::unrouted(fields.cache_key),
     }
 }
@@ -1271,7 +1248,7 @@ fn text_verbosity(verbosity: &Verbosity) -> Mapping {
 }
 
 /// How the Responses wire answers `fields` for `request`, by dialect
-/// (section 6.3 of `TYPED_OPTIONS.md`). Responses has no `seed` and no
+/// (section 2.3 of `TYPED_OPTIONS.md`). Responses has no `seed` and no
 /// `stop`.
 pub(crate) fn responses_options(
     responses: &super::responses_api::wire::Responses,
@@ -1309,6 +1286,18 @@ fn reasoning_object(effort: &str) -> Mapping {
     send("reasoning", json!({"effort": effort}))
 }
 
+fn no_seed(seed: Option<u64>) -> Mapping {
+    Mapping::of(seed, |_| {
+        Mapping::unsupported("Responses has no seed parameter")
+    })
+}
+
+fn no_stop(stop: &[String]) -> Mapping {
+    Mapping::of_stop(stop, |_| {
+        Mapping::unsupported("Responses has no stop parameter")
+    })
+}
+
 fn openai_responses(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> OptionMap {
     let spec = openai_spec(facts, model);
     OptionMap {
@@ -1316,12 +1305,7 @@ fn openai_responses(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -
             Reasoning::Budget { .. } => {
                 Mapping::unsupported("Responses takes an effort level, not a budget")
             }
-            Reasoning::Off if reasons(facts, model) == Some(false) => {
-                Mapping::Omit("the model does not reason")
-            }
-            _ if reasons(facts, model) == Some(false) => {
-                Mapping::unsupported("the model does not reason")
-            }
+            _ if reasons(facts, model) == Some(false) => Mapping::does_not_reason(reasoning),
             Reasoning::Off if spec.is_none() && !named_responses_can_disable(model) => {
                 Mapping::unsupported("this model cannot turn reasoning off")
             }
@@ -1337,80 +1321,51 @@ fn openai_responses(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -
                 facts,
                 model,
                 cache,
-                send("prompt_cache_options", json!({"ttl": "30m"})),
+                send("prompt_cache_options", json!({"ttl": "12h"})),
             )
         }),
-        service_tier: Mapping::of(fields.service_tier, |tier| match tier {
-            ServiceTier::Auto => send("service_tier", "auto"),
-            ServiceTier::Default => send("service_tier", "default"),
-            ServiceTier::Flex => send("service_tier", "flex"),
-            ServiceTier::Priority => send("service_tier", "priority"),
-        }),
+        service_tier: Mapping::of(fields.service_tier, openai_tier),
         verbosity: Mapping::of(fields.verbosity, |verbosity| {
             openai_verbosity(facts, model, verbosity, text_verbosity)
         }),
-        parallel_tool_calls: Mapping::of(fields.parallel_tool_calls, |parallel| {
-            send("parallel_tool_calls", parallel)
-        }),
+        parallel_tool_calls: Mapping::of(fields.parallel_tool_calls, send_parallel),
         top_p: Mapping::of(fields.top_p, |top_p| {
             openai_top_p(facts, model, top_p, fields.reasoning)
         }),
-        seed: Mapping::of(fields.seed, |_| {
-            Mapping::unsupported("Responses has no seed parameter")
-        }),
-        stop: Mapping::of_stop(fields.stop, |_| {
-            Mapping::unsupported("Responses has no stop parameter")
-        }),
+        seed: no_seed(fields.seed),
+        stop: no_stop(fields.stop),
         cache_key: prompt_cache_key(fields.cache_key),
     }
 }
 
+/// xAI's Responses route: Chat's cells, with reasoning as an object and no
+/// `verbosity`, `seed` or `stop`.
 fn xai_responses(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> OptionMap {
     const UNSUPPORTED: &str = "xAI's Responses API does not support it";
-    OptionMap {
-        reasoning: Mapping::of(fields.reasoning, |reasoning| {
-            xai_reasoning(facts, model, reasoning, reasoning_object)
-        }),
-        cache: Mapping::of(fields.cache, automatic_cache),
-        service_tier: Mapping::of(fields.service_tier, xai_tier),
-        verbosity: Mapping::of(fields.verbosity, |_| Mapping::unsupported(UNSUPPORTED)),
-        parallel_tool_calls: Mapping::of(fields.parallel_tool_calls, |parallel| {
-            send("parallel_tool_calls", parallel)
-        }),
-        top_p: Mapping::of(fields.top_p, |top_p| send("top_p", top_p)),
-        seed: Mapping::of(fields.seed, |_| Mapping::unsupported(UNSUPPORTED)),
-        stop: Mapping::of_stop(fields.stop, |_| Mapping::unsupported(UNSUPPORTED)),
-        cache_key: prompt_cache_key(fields.cache_key),
-    }
+    let mut options = xai(facts, model, fields);
+    options.reasoning = Mapping::of(fields.reasoning, |reasoning| {
+        xai_reasoning(facts, model, reasoning, reasoning_object)
+    });
+    options.verbosity = Mapping::of(fields.verbosity, |_| Mapping::unsupported(UNSUPPORTED));
+    options.seed = Mapping::of(fields.seed, |_| Mapping::unsupported(UNSUPPORTED));
+    options.stop = Mapping::of_stop(fields.stop, |_| Mapping::unsupported(UNSUPPORTED));
+    options
 }
 
+/// OpenRouter's Responses route: Chat's cells, with an explicit-cache
+/// opt-out for OpenAI models, `text.verbosity` and no `seed` or `stop`.
 fn openrouter_responses(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> OptionMap {
-    OptionMap {
-        reasoning: Mapping::of(fields.reasoning, |reasoning| {
-            openrouter_reasoning(facts, model, reasoning)
-        }),
-        cache: Mapping::of(fields.cache, |cache| match cache {
-            CacheRetention::None
-                if model.starts_with("openai/") && caches_by_options(facts, model) =>
-            {
-                send("prompt_cache_options", json!({"mode": "explicit"}))
-            }
-            cache => openrouter_cache(model, cache),
-        }),
-        service_tier: Mapping::of(fields.service_tier, openrouter_tier),
-        verbosity: Mapping::of(fields.verbosity, text_verbosity),
-        parallel_tool_calls: Mapping::of(fields.parallel_tool_calls, |parallel| {
-            send("parallel_tool_calls", parallel)
-        }),
-        top_p: Mapping::of(fields.top_p, |top_p| send("top_p", top_p)),
-        seed: Mapping::of(fields.seed, |_| {
-            Mapping::unsupported("Responses has no seed parameter")
-        }),
-        stop: Mapping::of_stop(fields.stop, |_| {
-            Mapping::unsupported("Responses has no stop parameter")
-        }),
-        cache_key: Mapping::unrouted(fields.cache_key),
-    }
+    let mut options = openrouter(facts, model, fields);
+    options.cache = Mapping::of(fields.cache, |cache| match cache {
+        CacheRetention::None if model.starts_with("openai/") && caches_by_options(facts, model) => {
+            send("prompt_cache_options", json!({"mode": "explicit"}))
+        }
+        cache => openrouter_cache(model, cache),
+    });
+    options.verbosity = Mapping::of(fields.verbosity, text_verbosity);
+    options.seed = no_seed(fields.seed);
+    options.stop = no_stop(fields.stop);
+    options
 }
 
 /// Groq's Responses route (beta): Chat's cells, with reasoning as an
@@ -1420,12 +1375,8 @@ fn groq_responses(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> 
     options.reasoning = Mapping::of(fields.reasoning, |reasoning| {
         groq_reasoning(facts, model, reasoning, reasoning_object)
     });
-    options.seed = Mapping::of(fields.seed, |_| {
-        Mapping::unsupported("Responses has no seed parameter")
-    });
-    options.stop = Mapping::of_stop(fields.stop, |_| {
-        Mapping::unsupported("Responses has no stop parameter")
-    });
+    options.seed = no_seed(fields.seed);
+    options.stop = no_stop(fields.stop);
     options
 }
 
@@ -1466,12 +1417,8 @@ fn minimax_responses(model: &str, fields: OptionFields<'_>) -> OptionMap {
         top_p: Mapping::of(fields.top_p, |_| {
             Mapping::unsupported("MiniMax's Responses API ignores `top_p`")
         }),
-        seed: Mapping::of(fields.seed, |_| {
-            Mapping::unsupported("Responses has no seed parameter")
-        }),
-        stop: Mapping::of_stop(fields.stop, |_| {
-            Mapping::unsupported("Responses has no stop parameter")
-        }),
+        seed: no_seed(fields.seed),
+        stop: no_stop(fields.stop),
         cache_key: prompt_cache_key(fields.cache_key),
     }
 }
@@ -1500,12 +1447,8 @@ fn moonshot_responses(model: &str, fields: OptionFields<'_>) -> OptionMap {
             Mapping::unsupported(UNSUPPORTED)
         }),
         top_p: Mapping::of(fields.top_p, |_| Mapping::unsupported(UNSUPPORTED)),
-        seed: Mapping::of(fields.seed, |_| {
-            Mapping::unsupported("Responses has no seed parameter")
-        }),
-        stop: Mapping::of_stop(fields.stop, |_| {
-            Mapping::unsupported("Responses has no stop parameter")
-        }),
+        seed: no_seed(fields.seed),
+        stop: no_stop(fields.stop),
         cache_key: prompt_cache_key(fields.cache_key),
     }
 }
@@ -1566,9 +1509,7 @@ fn codex(fields: OptionFields<'_>) -> OptionMap {
             ServiceTier::Auto | ServiceTier::Default => Mapping::unsupported(UNSUPPORTED),
         }),
         verbosity: Mapping::of(fields.verbosity, text_verbosity),
-        parallel_tool_calls: Mapping::of(fields.parallel_tool_calls, |parallel| {
-            send("parallel_tool_calls", parallel)
-        }),
+        parallel_tool_calls: Mapping::of(fields.parallel_tool_calls, send_parallel),
         top_p: Mapping::of(fields.top_p, |_| Mapping::unsupported(UNSUPPORTED)),
         seed: Mapping::of(fields.seed, |_| Mapping::unsupported(UNSUPPORTED)),
         stop: Mapping::of_stop(fields.stop, |_| Mapping::unsupported(UNSUPPORTED)),
@@ -1599,16 +1540,10 @@ fn copilot_responses(fields: OptionFields<'_>) -> OptionMap {
         }),
         service_tier: Mapping::of(fields.service_tier, |_| Mapping::unsupported(UNVERIFIED)),
         verbosity: Mapping::of(fields.verbosity, |_| Mapping::unsupported(UNVERIFIED)),
-        parallel_tool_calls: Mapping::of(fields.parallel_tool_calls, |parallel| {
-            send("parallel_tool_calls", parallel)
-        }),
+        parallel_tool_calls: Mapping::of(fields.parallel_tool_calls, send_parallel),
         top_p: Mapping::of(fields.top_p, |top_p| send("top_p", top_p)),
-        seed: Mapping::of(fields.seed, |_| {
-            Mapping::unsupported("Responses has no seed parameter")
-        }),
-        stop: Mapping::of_stop(fields.stop, |_| {
-            Mapping::unsupported("Responses has no stop parameter")
-        }),
+        seed: no_seed(fields.seed),
+        stop: no_stop(fields.stop),
         cache_key: Mapping::unrouted(fields.cache_key),
     }
 }

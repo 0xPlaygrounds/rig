@@ -1,15 +1,9 @@
-//! Response identity (rig#2265) for Mistral.
+//! Response identity for Mistral.
 //!
 //! Mistral labels its transport request id `mistral-correlation-id` and sends
-//! it on every response. Rig read no request-id header for Mistral at all, so
-//! `provider_request_id` was always `None`; the `MISTRAL` dialect now names it.
-//!
-//! The cell that used to live here asserted exactly that as the *contract*
-//! ("Mistral sends no request-id header"). It could not have caught the gap:
-//! the header was not on the cassette harness's response-header allowlist, so
-//! the recorded fixture had no id in it to find, and the assertion held
-//! against evidence the recording had removed. These cells assert the opposite,
-//! against fixtures that now carry the header.
+//! it on every response, and the `MISTRAL` dialect names it. The header must be
+//! on the cassette harness's response-header allowlist, or the recorded fixture
+//! would carry no id for these cells to find.
 
 use anyhow::Result;
 use futures::StreamExt;

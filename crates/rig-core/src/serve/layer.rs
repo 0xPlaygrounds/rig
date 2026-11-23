@@ -39,9 +39,13 @@ pub enum BeforeServe {
 }
 
 impl BeforeServe {
-    /// A denial by policy: `ErrorKind::Denied`, never retryable.
+    /// A denial by policy: an `ErrorKind::Denied` refusal, never retryable.
     pub fn deny(reason: impl Into<String>) -> Self {
-        Self::Deny(ErrorReport::new(ErrorKind::Denied, reason).with_retryable(false))
+        Self::Deny(
+            ErrorReport::new(ErrorKind::Denied, reason)
+                .refused()
+                .with_retryable(false),
+        )
     }
 }
 
@@ -70,22 +74,27 @@ pub trait Intercept: WasmCompatSend + WasmCompatSync + 'static {
     /// The layer's name, as the log records it.
     fn name(&self) -> String;
 
-    /// Before the handler: the dispatch as it will be served, or not.
+    /// Before the handler: the dispatch as it will be served, or not. By
+    /// default it proceeds.
     fn before(
         &self,
-        id: EffectId,
-        kind: &EffectKind,
-    ) -> impl Future<Output = BeforeServe> + WasmCompatSend;
+        _id: EffectId,
+        _kind: &EffectKind,
+    ) -> impl Future<Output = BeforeServe> + WasmCompatSend {
+        async { BeforeServe::Proceed }
+    }
 
     /// After the handler: the answer as the consumer will receive it. For a
     /// streaming dispatch `outcome` is the fold of the events (the
-    /// completion the record stores).
+    /// completion the record stores). By default the answer is kept.
     fn after(
         &self,
-        id: EffectId,
-        kind: &EffectKind,
-        outcome: &Result<Answered, ErrorReport>,
-    ) -> impl Future<Output = AfterServe> + WasmCompatSend;
+        _id: EffectId,
+        _kind: &EffectKind,
+        _outcome: &Result<Answered, ErrorReport>,
+    ) -> impl Future<Output = AfterServe> + WasmCompatSend {
+        async { AfterServe::Keep }
+    }
 }
 
 /// A handler wrapped in a policy: a [`Serve`] like any other, registered
@@ -137,12 +146,11 @@ impl<I: Intercept> Serve for Layer<I> {
 
     async fn serve(&self, kind: EffectKind, mut dispatch: Dispatch) -> Reply {
         let id = dispatch.id();
-        let name = self.intercept.name();
         let kind = match self.intercept.before(id, &kind).await {
             BeforeServe::Proceed => kind,
             BeforeServe::Patch(patched) => {
                 if patched.family() != kind.family() {
-                    dispatch.discard(&name);
+                    dispatch.discard();
                     return Reply::Outcome(Err(self.internal(format!(
                         "patched a {} effect into a {} effect; a layer never changes the family",
                         kind.family(),
@@ -157,7 +165,7 @@ impl<I: Intercept> Serve for Layer<I> {
                 ) = (&kind, &patched)
                     && original != replacement
                 {
-                    dispatch.discard(&name);
+                    dispatch.discard();
                     return Reply::Outcome(Err(self.internal(format!(
                         "patched tool target `{original}` into `{replacement}`; a layer never changes the bound tool"
                     ))));
@@ -166,14 +174,13 @@ impl<I: Intercept> Serve for Layer<I> {
                 patched
             }
             BeforeServe::Deny(report) => {
-                dispatch.discard(&name);
+                dispatch.discard();
                 return Reply::Outcome(Err(report));
             }
         };
         if !dispatch.is_stream() {
             let folded = Arc::new(Mutex::new(None));
             let inner = dispatch.inner(Some(folded.clone()));
-            let attribution = dispatch.attribution();
             let outcome = self
                 .inner
                 .handle(kind.clone(), inner)
@@ -182,15 +189,11 @@ impl<I: Intercept> Serve for Layer<I> {
                 .await;
             return Reply::Outcome(match self.intercept.after(id, &kind, &outcome).await {
                 AfterServe::Keep => outcome,
-                AfterServe::Replace(replacement) => {
-                    attribution.replaced(&name);
-                    replacement
-                }
+                AfterServe::Replace(replacement) => replacement,
             });
         }
         let folded = Arc::new(Mutex::new(None));
         let inner = dispatch.inner(Some(folded.clone()));
-        let attribution = dispatch.attribution();
         let stream = self
             .inner
             .handle(kind.clone(), inner)
@@ -199,8 +202,8 @@ impl<I: Intercept> Serve for Layer<I> {
             .fuse();
         let intercept = self.intercept.clone();
         Reply::Stream(Box::pin(futures::stream::unfold(
-            (stream, intercept, kind, folded, false, attribution),
-            move |(mut stream, intercept, kind, folded, mut decided, attribution)| async move {
+            (stream, intercept, kind, folded, false),
+            move |(mut stream, intercept, kind, folded, mut decided)| async move {
                 let item = stream.next().await;
                 if decided && item.is_none() {
                     return None;
@@ -208,43 +211,30 @@ impl<I: Intercept> Serve for Layer<I> {
                 let outcome = if decided {
                     None
                 } else {
-                    folded
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner)
-                        .take()
+                    crate::lock(&folded).take()
                 };
                 let item = if let Some(outcome) = outcome {
                     decided = true;
                     match intercept.after(id, &kind, &outcome).await {
                         AfterServe::Keep => item.unwrap_or_else(|| Err(stream_truncated())),
-                        AfterServe::Replace(Err(report)) => {
-                            attribution.replaced(&intercept.name());
-                            Err(report)
-                        }
+                        AfterServe::Replace(Err(report)) => Err(report),
                         AfterServe::Replace(Ok(Answered::Completion(response))) => {
-                            attribution.replaced(&intercept.name());
                             Ok(Relayed::Done(response))
                         }
-                        AfterServe::Replace(Ok(other)) => {
-                            attribution.replaced(&intercept.name());
-                            Err(ErrorReport::new(
-                                ErrorKind::Internal,
-                                format!(
-                                    "layer `{}`: replaced a streamed completion with a {} outcome",
-                                    intercept.name(),
-                                    other.family()
-                                ),
-                            )
-                            .with_retryable(false))
-                        }
+                        AfterServe::Replace(Ok(other)) => Err(ErrorReport::new(
+                            ErrorKind::Internal,
+                            format!(
+                                "layer `{}`: replaced a streamed completion with a {} outcome",
+                                intercept.name(),
+                                other.family()
+                            ),
+                        )
+                        .with_retryable(false)),
                     }
                 } else {
                     item?
                 };
-                Some((
-                    item,
-                    (stream, intercept, kind, folded, decided, attribution),
-                ))
+                Some((item, (stream, intercept, kind, folded, decided)))
             },
         )))
     }

@@ -8,29 +8,27 @@ connected again, waiting 1 s, then twice as long each time, up to a minute.
 
 ## Turning it on
 
-The plugin list a new `RIG_HOME` gets has it, turned off. Turn it on with:
+It is off by default. Turn it on with:
 
 ```sh
 rig plugin enable rig_mcp_client::McpPlugin
 ```
 
-or in `/plugins`. A `RIG_HOME` made before this plugin shipped has no entry
-for it: `rig plugin add rig_mcp_client::McpPlugin` adds one, on. The next
-start, or `/reload`, builds it in. With it on and
-no `mcp.json`, it reads the two missing `mcp.json` files and its approvals at
-start, and does nothing else.
+or in `/plugins`; the next start or `/reload` builds the agent with it. With it on and
+no `mcp.json`, it reads the two missing `mcp.json` files at start, and does
+nothing else.
 
 ## Servers: `mcp.json`
 
 Servers are named in the `mcpServers` format other agents use, in two files:
 
 - `$RIG_HOME/mcp.json` (default `~/.rig/mcp.json`): yours, in every project.
-- `<project>/.rig/mcp.json`: the project's, unless the project is on another
-  host (`--remote`), whose `.rig` is not on this machine, or its `.rig` is
-  `RIG_HOME` itself, as in your home directory, or its path is not UTF-8
-  (approvals could not tell it from another such path). Its servers start only once you
-  approve them (below). Approved, one replaces a server of yours of the same
-  name.
+- `<project>/.rig/mcp.json`: the project's, from rig's project root (the
+  nearest directory holding `.git` or `.rig`), unless the project is on another
+  host, whose `.rig` is not on this machine, or its `.rig` is
+  `RIG_HOME` itself, or it is your home directory. Its servers start as
+  yours do, with no question, and one replaces a server of yours of the
+  same name.
 
 ```json
 {
@@ -50,8 +48,8 @@ Servers are named in the `mcpServers` format other agents use, in two files:
 
 | Field | Meaning |
 | --- | --- |
-| `command`, `args` | A stdio server: the program rig starts, speaking MCP on its stdin and stdout, in a process group of its own that is killed when the server is stopped, removed or replaced, or rig exits (on Linux and macOS). Its stderr is dropped. |
-| `env` | Variables added to its environment. The server gets rig's environment without rig's secrets (API keys); name a key here to give it one. |
+| `command`, `args` | A stdio server: the program rig starts, speaking MCP on its stdin and stdout, in a process group of its own that is killed when the server is stopped, removed or replaced, or rig exits (on Linux and macOS). Its stderr is dropped. A message of more than 64 MiB ends the connection, which says so. |
+| `env` | Variables added to its environment. The server gets rig's environment except its `RIG_SECRET_*` and agent-only variables, so provider API keys from the shell reach it. |
 | `cwd` | Its working directory, relative to the project. |
 | `url`, `headers` | A streamable HTTP server, and headers sent with each request. |
 | `type` | Optional: `"stdio"`, or `"http"` (also `"streamable-http"`, `"streamableHttp"`). Without it, `url` means HTTP and `command` stdio. |
@@ -60,7 +58,7 @@ Servers are named in the `mcpServers` format other agents use, in two files:
 `${VAR}` in `command`, `args`, `env`, `cwd`, `url` and `headers` is the
 environment variable `VAR`, and `${VAR:-default}` is `default` when `VAR` is
 unset or empty. A server that uses an unset `${VAR}` with no default does not
-start, and says which field.
+start, and says which field. Nor does one that names a `${RIG_SECRET_*}`, in any letter case.
 
 A server's name is letters, digits, `_` and `-`, starting with a letter or
 `_` (as Gemini requires of tool names), without `__` and not ending in `_`, so
@@ -76,32 +74,65 @@ other transport. OAuth sign-in for remote servers is not supported; a server
 that takes a token in a header works. The files are JSON: one with comments
 is refused.
 
-## Project servers need your approval
+Rig offers MCP protocol version `2025-11-25`, the newest released one, and
+speaks an older one when a server asks for it.
 
-A cloned repository's `.rig/mcp.json` never starts a program or contacts a
-server before you approve it. At start, rig lists the project's servers you
-have not answered about, each whole as it is written (its `env`, `cwd` and
-`headers` too, no `${VAR}` expanded), and starts none of them:
+[INTEROP.md](INTEROP.md) lists the servers rig was run against, with their
+versions and the date.
+
+## Asking before a project's server starts
+
+Rig trusts a project's `.rig/mcp.json` as it trusts the rest of the
+project. To be asked first, turn on the approval plugin, off by default:
+
+```sh
+rig plugin enable rig_mcp_client::approval::McpApprovalPlugin
+```
+
+With it on, a server of the project's file does not start until you approve
+it. At start, rig names each one you have not answered about, whole as it is
+written (its `env`, `cwd` and `headers` too, no `${VAR}` expanded):
 
 ```
-/home/me/repo/.rig/mcp.json names MCP servers you have not approved, so they did not start:
-  files: {"command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","."]}
-/mcp approve <name> starts one and remembers it; /mcp deny <name> stops asking.
+The project's MCP server `files` is not approved, so it did not start: {"command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","."]}
+/mcp approve files starts it and remembers it; /mcp deny files stops asking.
 ```
 
 `/mcp approve <name>` approves the server as the file writes it now and
-starts it; `/mcp deny <name>` stops it and keeps it stopped. A project server
-that has the name of one of yours is listed too, and yours comes first until you
-approve the project's. The answers are
-yours, kept in `$RIG_HOME/projects/<project>/mcp/approvals.json`, never in
-the repository, and are about this project's path only. When the repository
-changes a server (another command, argument, variable or URL), it is not
-approved any more and is listed again.
+starts it; `/mcp deny <name>` stops it and keeps it stopped. A server of
+the project still replaces yours of the same name while it waits. The
+answers are yours, kept in `$RIG_HOME/projects/<project>/mcp/approvals.json`,
+never in the repository, and are about this project's path only. When the
+repository changes a server (another command, argument, variable or URL),
+it is asked about again at the next start. A server you add with `/mcp add
+--project` is asked about too. Your own servers and a client's are never
+held. A headless run asks nothing: approve one from a script with
+`rig -p '/mcp approve files'`.
 
-A headless run follows the same rule and asks nothing: `rig -p` never starts
-an unapproved server. Approve one from a script with
-`rig -p '/mcp approve files'`, or name the server in your own
-`$RIG_HOME/mcp.json` instead.
+## Policy plugins
+
+A plugin keeps a server from running by inserting `McpHold(reason)` on its
+entity, which `/mcp` shows; removing it starts the server, and a hold
+inserted on a running server stops it. An observer of the server's spawn
+holds it before it starts. This is all `McpApprovalPlugin` uses:
+
+```rust
+use rig_harness::prelude::*;
+use rig_mcp_client::{McpHold, McpServer};
+
+fn plugin(app: &mut App) {
+    app.add_observer(
+        |added: On<Add<McpServer>>, servers: Query<&McpServer>, mut commands: Commands| {
+            if servers.get(added.entity).is_ok_and(|server| server.name == "github") {
+                commands.entity(added.entity).insert(McpHold("not today".into()));
+            }
+        },
+    );
+}
+```
+
+A plugin's command `/mcp-<verb>` is also `/mcp <verb>`, as `/mcp approve` is
+the approval plugin's `/mcp-approve`.
 
 ## Servers a client names
 
@@ -132,7 +163,7 @@ fn plugin(app: &mut App) {
 
 `McpCorePlugin` connects such servers and offers `/mcp`, and reads no
 `mcp.json`: the user's servers join only when `McpPlugin`, which adds it,
-is on. A client's server is never saved, needs no approval, takes its values
+is on. A client's server is never saved, takes its values
 as they are (no `${VAR}`), and shows in `/mcp` as `files (client)`. It takes
 its name for the session: a server of either file of that name does not
 start, even when the client's fails, and a notice and `/mcp` say so
@@ -146,17 +177,17 @@ such as `rig acp`'s own, starts no server of the files.
 
 - `/mcp`: each server, its file (`user` or `project`) or `client`, and its state:
   connected with how many tools, connecting, retrying with the last error,
-  not approved, denied, disabled, or invalid with why.
+  held with the plugin's reason, disabled, or invalid with why.
 - `/mcp add [--user|--project] <name> <command> [args…]` and
   `/mcp add [--user|--project] <name> <http(s)://url>`: saves the server in
-  your `mcp.json` (`--user`, the default), or with `--project` in the project's (approved, since you added
-  it), and starts it. The words are split at spaces, with no quoting: for an
+  your `mcp.json` (`--user`, the default), or with `--project` in the
+  project's, and starts it. The words are split at spaces, with no quoting: for an
   argument with a space in it, or `env`, `cwd` and `headers`, edit the file.
 - `/mcp remove [--user|--project] <name>`: takes the server out of that file,
   else out of the file `/mcp` shows for it. The other file's server of that
-  name, if there is one, takes its place: it starts if it may, and the reply
-  says when it waits for `/mcp approve`.
-- `/mcp approve <name>`, `/mcp deny <name>`: above.
+  name, if there is one, takes its place.
+- `/mcp approve <name>`, `/mcp deny <name>`: with `McpApprovalPlugin` on,
+  above.
 
 A change saves at once and lasts across restarts. It changes only the bytes
 of the server it adds or removes: the other keys, their order, the indent,
@@ -171,7 +202,7 @@ processes change a file in turn.
 
 ## Settings
 
-The `[mcp]` table of `$RIG_HOME/settings.toml`; a project cannot set it.
+The `[mcp]` table of `$RIG_HOME/settings.toml`.
 
 ```toml
 [mcp]
@@ -179,7 +210,7 @@ The `[mcp]` table of `$RIG_HOME/settings.toml`; a project cannot set it.
 first_retry_secs = 1
 # Seconds an attempt waits for a server to start, answer and list its tools.
 connect_timeout_secs = 30
-# Servers of $RIG_HOME/mcp.json trusted to say which of their tools only read.
+# Servers, of any file or client, trusted to say which of their tools only read.
 trust_read_only = ["files"]
 ```
 
@@ -187,22 +218,25 @@ A tool whose `readOnlyHint` says it only reads, of a server in
 `trust_read_only`, only reads for rig: its calls run beside others, and again
 after a restart in a turn a plugin carries on (a restart stops any other
 unfinished turn). Another server's word is a hint: such a call still runs
-beside the reply's other readers, but a restart never runs it again. A
-project's server is never trusted this way.
+beside the reply's other readers, but a restart never runs it again.
 
-## Headless runs
+## Waiting for the servers
 
 `rig -p` and `rig --json` wait, before the prompt and before any turn, for
 each server to connect or fail, each at most `connect_timeout_secs`. A
 `/command` prompt waits too, as one may start a turn (a skill's does), so
-`rig -p '/mcp approve files'` may wait for a server that does not answer. The
-terminal view does not wait: a turn it resumes at once may call a server's
-tool before the server is in, and the call is refused as an unknown tool. So
-`--tools` can name an MCP tool:
+`rig -p '/mcp add files …'` may wait for a server that does not answer.
+With `--tools`, every front waits the same way, the terminal view included,
+so `--tools` can name an MCP tool anywhere:
 
 ```sh
 rig -p --tools files__read_text_file 'Summarize README.md'
+rig --tools files__read_text_file,read
 ```
+
+Without `--tools` the terminal view does not wait: a turn it resumes at once
+may call a server's tool before the server is in, and the call is refused as
+an unknown tool.
 
 When a server fails, the run says why on stderr and refuses the name, with
 exit code 2:

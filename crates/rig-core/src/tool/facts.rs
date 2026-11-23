@@ -134,7 +134,9 @@ impl LinesShown {
     }
 }
 
-/// The files a tool call changed, in the order it changed them.
+/// The files a tool call changed, in the order it changed them. The file
+/// tools publish it for what they write. A tool that does not publish it,
+/// such as `shell`, says nothing about the files it changed.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct FilesChanged(pub Vec<FileChange>);
@@ -154,7 +156,7 @@ impl FilesChanged {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileChange {
     /// The file: an absolute path when the tool knows the directory it ran
-    /// in, as rig-tools' file tools do, else as the call named it.
+    /// in, else as the call named it.
     pub path: String,
     /// What happened to it.
     pub kind: ChangeKind,
@@ -228,25 +230,10 @@ impl FileState {
 }
 
 impl FileChange {
-    /// `path` was created with `lines` lines.
-    pub fn created(path: impl Into<String>, lines: usize) -> Self {
+    fn new(path: impl Into<String>, kind: ChangeKind, added: usize, removed: usize) -> Self {
         Self {
             path: path.into(),
-            kind: ChangeKind::Created,
-            added: lines,
-            removed: 0,
-            hunks: Vec::new(),
-            before_text: None,
-            before: None,
-            after: None,
-        }
-    }
-
-    /// `path` was changed: `added` lines added and `removed` removed.
-    pub fn modified(path: impl Into<String>, added: usize, removed: usize) -> Self {
-        Self {
-            path: path.into(),
-            kind: ChangeKind::Modified,
+            kind,
             added,
             removed,
             hunks: Vec::new(),
@@ -256,18 +243,19 @@ impl FileChange {
         }
     }
 
+    /// `path` was created with `lines` lines.
+    pub fn created(path: impl Into<String>, lines: usize) -> Self {
+        Self::new(path, ChangeKind::Created, lines, 0)
+    }
+
+    /// `path` was changed: `added` lines added and `removed` removed.
+    pub fn modified(path: impl Into<String>, added: usize, removed: usize) -> Self {
+        Self::new(path, ChangeKind::Modified, added, removed)
+    }
+
     /// `path`, which had `lines` lines, was deleted.
     pub fn deleted(path: impl Into<String>, lines: usize) -> Self {
-        Self {
-            path: path.into(),
-            kind: ChangeKind::Deleted,
-            added: 0,
-            removed: lines,
-            hunks: Vec::new(),
-            before_text: None,
-            before: None,
-            after: None,
-        }
+        Self::new(path, ChangeKind::Deleted, 0, lines)
     }
 
     /// This change, made by `hunks`.
@@ -593,8 +581,8 @@ pub enum ExitStatus {
     Signaled,
     /// It ran past its time limit and was killed.
     TimedOut,
-    /// The tool killed it for another reason, such as printing too much or
-    /// the call being cancelled.
+    /// The tool killed it for another reason, such as the call being
+    /// cancelled.
     Killed,
 }
 

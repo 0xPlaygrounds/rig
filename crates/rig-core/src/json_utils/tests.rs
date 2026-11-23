@@ -41,98 +41,9 @@ fn remove_preserving_order_distinguishes_missing_and_null_values() {
 }
 
 #[test]
-fn test_merge_inplace() {
-    let mut a = serde_json::json!({"key1": "value1"});
-    let b = serde_json::json!({"key2": "value2"});
-    merge_inplace(&mut a, b);
-    let expected = serde_json::json!({"key1": "value1", "key2": "value2"});
-    assert_eq!(a, expected);
-}
-
-#[test]
 fn text_that_states_no_object_has_none() {
     for text in ["not json", "[1, 2", "\"str", "12"] {
         assert_eq!(parse_partial_object(text), None, "{text}");
-    }
-}
-
-mod string_or_vec_shapes {
-    use serde::Deserialize;
-    use std::convert::Infallible;
-    use std::str::FromStr;
-
-    /// A content block that can arrive in every shape the helper accepts.
-    ///
-    /// The suite deliberately does not use `Vec<String>`: a bare object
-    /// cannot deserialize into a `String`, so a string element type makes
-    /// the `visit_map` arm structurally untestable — and that is the arm
-    /// whose loss would be a silent wire break, since several providers
-    /// spell single-block content as a bare object.
-    #[derive(Debug, Deserialize, PartialEq)]
-    struct Block {
-        text: String,
-    }
-
-    impl FromStr for Block {
-        type Err = Infallible;
-
-        fn from_str(value: &str) -> Result<Self, Self::Err> {
-            Ok(Block {
-                text: value.to_owned(),
-            })
-        }
-    }
-
-    #[derive(Debug, Deserialize, PartialEq)]
-    struct Holder {
-        #[serde(deserialize_with = "super::super::string_or_vec")]
-        content: Vec<Block>,
-    }
-
-    fn decode(json: serde_json::Value) -> Vec<Block> {
-        serde_json::from_value::<Holder>(json)
-            .expect("shape should decode")
-            .content
-    }
-
-    fn block(text: &str) -> Block {
-        Block {
-            text: text.to_owned(),
-        }
-    }
-
-    #[test]
-    fn a_bare_object_is_one_element() {
-        // `visit_map`. Carried over from the removed container's
-        // `string_or_one_or_many`, which had this arm where the helper it
-        // merged into did not.
-        assert_eq!(
-            decode(serde_json::json!({"content": {"text": "hi"}})),
-            vec![block("hi")]
-        );
-    }
-
-    #[test]
-    fn a_bare_string_becomes_one_element_via_from_str() {
-        assert_eq!(
-            decode(serde_json::json!({"content": "hi"})),
-            vec![block("hi")]
-        );
-    }
-
-    #[test]
-    fn an_empty_sequence_is_an_empty_list() {
-        // The non-empty container this helper replaced rejected `[]`
-        // outright. It is now a value.
-        assert!(decode(serde_json::json!({"content": []})).is_empty());
-    }
-
-    #[test]
-    fn null_is_an_empty_list() {
-        // Load-bearing: OpenAI sends `"content": null` for a message that
-        // carries only tool calls, so dropping this arm would turn a normal
-        // response into a decode error.
-        assert!(decode(serde_json::json!({"content": null})).is_empty());
     }
 }
 
@@ -249,4 +160,48 @@ mod partial_arguments {
             }
         }
     }
+}
+
+#[test]
+fn json_len_counts_the_serialized_bytes_and_is_zero_on_failure() {
+    let value = serde_json::json!({"text": "héllo", "list": [1, 2.5, null]});
+    assert_eq!(json_len(&value), value.to_string().len());
+
+    let unserializable: std::collections::BTreeMap<(u8, u8), u8> = [((1, 2), 3)].into();
+    assert_eq!(json_len(&unserializable), 0);
+}
+
+/// A binary format's deserializer: not human-readable and not
+/// self-describing, so it reads only the type its caller names.
+struct Binary(f64);
+
+impl<'de> Deserializer<'de> for Binary {
+    type Error = serde::de::value::Error;
+
+    fn deserialize_any<V: serde::de::Visitor<'de>>(self, _: V) -> Result<V::Value, Self::Error> {
+        Err(serde::de::Error::custom("not self-describing"))
+    }
+
+    fn deserialize_f64<V: serde::de::Visitor<'de>>(
+        self,
+        visitor: V,
+    ) -> Result<V::Value, Self::Error> {
+        visitor.visit_f64(self.0)
+    }
+
+    fn is_human_readable(&self) -> bool {
+        false
+    }
+
+    serde::forward_to_deserialize_any! {
+        bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 char str string bytes
+        byte_buf option unit unit_struct newtype_struct seq tuple tuple_struct
+        map struct enum identifier ignored_any
+    }
+}
+
+#[test]
+fn floats_reads_a_binary_format_directly() {
+    let read: Result<f64, _> = floats(Binary(0.5));
+    assert_eq!(read.ok(), Some(0.5));
 }

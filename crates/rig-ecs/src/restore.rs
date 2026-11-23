@@ -39,21 +39,19 @@
 //! ```
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::io;
 
 use bevy_ecs::prelude::*;
 use bevy_ecs::reflect::{AppTypeRegistry, ReflectComponent};
-use bevy_log::warn;
+use bevy_log::{info, warn};
 use bevy_reflect::prelude::ReflectDefault;
 use bevy_reflect::serde::TypedReflectDeserializer;
 use bevy_reflect::{Reflect, ReflectFromReflect, TypeRegistration, TypeRegistry};
-use rig_core::completion::Message;
-use rig_core::conversation::{Aside, AsideId, Author};
+use rig_core::conversation::pairing::placed;
+use rig_core::conversation::{Aside, AsideId, Author, CallRef, Entry, StopCause};
 use rig_core::effect::Decider;
-use rig_core::message::{CallId, UserContent};
-use rig_core::tool::ToolResult;
+use rig_core::message::{CallId, ToolCall};
+use rig_core::tool::{ToolResult, ToolResultContext};
 use rig_memory::Session;
-use serde::de::DeserializeSeed;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use web_time::SystemTime;
@@ -67,57 +65,98 @@ use super::session_log::{
     Opened, ReflectSaved, SessionLog, SessionRestored, SessionStore, open_session,
 };
 use super::stage::{Admitted, Decision, Effect, ForAgent, Holds, Outcome, Settled, Started};
-use super::tools::{Footprint, ToolRequest};
+use super::tools::{Footprint, InReply, ToolRequest};
 use super::turn::{Stopper, TurnCall, not_finished};
-
-/// Why a turn a crash left unfinished stopped, as its record and its
-/// calls' results say it (rig-core's
-/// [`not_finished`](rig_core::tool::feedback::not_finished)).
-pub const RESTARTED: &str = "the session restarted";
 
 /// The kind of the aside that marks a call that may change something from
 /// its start, and any call once it settled, until its reply's results are
 /// in.
 const CALL_MARK: &str = "rig.call";
 
-/// A `rig.call` aside's value.
+/// A `rig.call` aside's value. `at` is the call's place in its reply; a
+/// mark saved without one is paired with a call by [`answered_by`].
+///
+/// [`answered_by`]: rig_core::conversation::pairing::answered_by
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
 enum CallMark {
     /// The call started.
-    Started { call: CallId },
-    /// The call settled with `result` while its reply still ran.
-    Settled { call: CallId, result: ToolResult },
+    Started {
+        call: CallId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        at: Option<CallRef>,
+    },
+    /// The call settled with `result`, having published `facts` (as a
+    /// conversation keeps them), while its reply still ran.
+    Settled {
+        call: CallId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        at: Option<CallRef>,
+        result: ToolResult,
+        #[serde(default, skip_serializing_if = "ToolResultContext::is_empty")]
+        facts: ToolResultContext,
+    },
 }
+
+/// On a restored call that had settled: what it published, as its mark
+/// kept it, for its results' entry.
+#[derive(Component, Clone, Debug)]
+pub(crate) struct KeptFacts(pub(crate) ToolResultContext);
 
 impl CallMark {
     fn call(&self) -> &CallId {
         match self {
-            Self::Started { call } | Self::Settled { call, .. } => call,
+            Self::Started { call, .. } | Self::Settled { call, .. } => call,
+        }
+    }
+
+    fn at(&self) -> Option<CallRef> {
+        match self {
+            Self::Started { at, .. } | Self::Settled { at, .. } => *at,
         }
     }
 }
 
 /// The `rig.call` marks of `conversation`.
 fn marks(conversation: &rig_core::conversation::Conversation) -> Vec<(AsideId, CallMark)> {
-    let marks = conversation
+    conversation
         .asides()
-        .filter(|(_, aside)| aside.kind == CALL_MARK);
-    marks
-        .filter_map(|(id, aside)| Some((id, CallMark::deserialize(&aside.value).ok()?)))
+        .filter_map(|(id, aside)| Some((id, aside.read(CALL_MARK)?)))
         .collect()
 }
 
-/// Marks the call `call` started on `conversation`, after its last entry,
-/// in place of a mark it had, such as one a restart let run again.
-pub(crate) fn mark_started(conversation: &mut rig_core::conversation::Conversation, call: &CallId) {
+/// The mark of each of `calls`, the calls a reply still owes with their
+/// places, among `marks`, in call order: the mark saved at its place for
+/// its id, else, among the rest, the one [`placed`] pairs with it.
+fn marked<'m>(
+    calls: &[(CallRef, ToolCall)],
+    marks: &'m [(AsideId, CallMark)],
+) -> Vec<Option<&'m (AsideId, CallMark)>> {
+    let calls: Vec<_> = calls.iter().map(|(at, call)| (*at, &call.id)).collect();
+    let marks: Vec<_> = marks
+        .iter()
+        .map(|mark| (mark.1.call(), mark.1.at(), mark))
+        .collect();
+    placed(&calls, &marks)
+}
+
+/// Marks the call `call`, at its place `at`, started on `conversation`,
+/// after its last entry, in place of a mark it had, such as one a restart
+/// let run again.
+pub(crate) fn mark_started(
+    conversation: &mut rig_core::conversation::Conversation,
+    (call, at): (&CallId, CallRef),
+) {
     let after = conversation.entries().next_back().map(|entry| entry.id);
-    let mark = CallMark::Started { call: call.clone() };
+    let mark = CallMark::Started {
+        call: call.clone(),
+        at: Some(at),
+    };
     let value = serde_json::to_value(mark).unwrap_or_default();
     let aside = Aside::new(CALL_MARK, Author::rig(), value).after(after);
     let had = marks(conversation)
         .into_iter()
-        .find(|(_, mark)| mark.call() == call);
+        .find(|(_, mark)| mark.at() == Some(at));
     if let Some((id, _)) = had {
         conversation.replace_aside(id, aside);
     } else {
@@ -125,25 +164,31 @@ pub(crate) fn mark_started(conversation: &mut rig_core::conversation::Conversati
     }
 }
 
-/// Marks the call `call` settled with `result` on `conversation`: in place
-/// of its started mark, else after its last entry; a call marked settled
-/// already is left as it is.
+/// Marks the call `call`, at its place `at`, settled with `result` and the
+/// facts it published (`facts`, asked only for a new mark) on
+/// `conversation`: in place of its started mark, else after its last
+/// entry; a call marked settled already is left as it is.
 pub(crate) fn mark_settled(
     conversation: &mut rig_core::conversation::Conversation,
-    call: &CallId,
+    (call, at): (&CallId, CallRef),
     result: &ToolResult,
+    facts: impl FnOnce() -> ToolResultContext,
 ) {
     let had = marks(conversation)
         .into_iter()
-        .find(|(_, mark)| mark.call() == call);
+        .find(|(_, mark)| mark.at() == Some(at));
+    if matches!(had, Some((_, CallMark::Settled { .. }))) {
+        return;
+    }
     let mark = CallMark::Settled {
         call: call.clone(),
+        at: Some(at),
         result: result.clone(),
+        facts: facts(),
     };
     let value = serde_json::to_value(mark).unwrap_or_default();
     match had {
-        Some((_, CallMark::Settled { .. })) => {}
-        Some((id, CallMark::Started { .. })) => {
+        Some((id, _)) => {
             if let Some(aside) = conversation.aside(id).cloned() {
                 conversation.replace_aside(id, Aside { value, ..aside });
             }
@@ -155,25 +200,20 @@ pub(crate) fn mark_settled(
     }
 }
 
-/// Pushes `results`, a message of tool results, to `conversation`, and
-/// removes the marks of the calls they answer.
+/// Pushes `results`, an entry of tool results with what their calls
+/// published, to `conversation`, and removes the marks of the calls no
+/// longer owed a result.
 pub(crate) fn commit_results(
     conversation: &mut rig_core::conversation::Conversation,
-    results: Message,
+    results: impl Into<Entry>,
 ) {
-    let answered: Vec<CallId> = match &results {
-        Message::User { content } => content
-            .iter()
-            .filter_map(|item| match item {
-                UserContent::ToolResult(result) => Some(result.call.clone()),
-                _ => None,
-            })
-            .collect(),
-        _ => Vec::new(),
-    };
-    conversation.push(results);
-    for (id, mark) in marks(conversation) {
-        if answered.contains(mark.call()) {
+    conversation.push(results.into());
+    let pending = conversation.pending_calls();
+    let marks = marks(conversation);
+    let owed = marked(&pending, &marks);
+    let owed: Vec<AsideId> = owed.into_iter().flatten().map(|(id, _)| *id).collect();
+    for (id, _) in marks {
+        if !owed.contains(&id) {
             conversation.remove_aside(id);
         }
     }
@@ -232,11 +272,11 @@ pub struct CarryOn;
 /// [`GateSystems::After`](super::stage::GateSystems::After), so no one is
 /// asked to approve its calls: one a plugin lets [`CarryOn`] goes on as an
 /// ordinary turn, both taken off it; any other is stopped as the user's
-/// stop does, for [`RESTARTED`], but for its agent alone, so a turn a
-/// plugin carries on below it is left to that plugin. Nothing of a stopped
-/// turn runs and no model is called; each call keeps the result the
-/// session kept, if it settled, and is otherwise answered as not run or cut
-/// short.
+/// stop does, for [`StopCause::Restarted`], but for its agent alone, so a
+/// turn a plugin carries on below it is left to that plugin. Nothing of a
+/// stopped turn runs and no model is called; each call keeps the result
+/// the session kept, if it settled, and is otherwise answered as not run
+/// or cut short.
 pub(crate) fn stop_restored(
     turns: Query<(Entity, &TurnOf, &Calls, Has<CarryOn>), (With<Restored>, Without<TurnOutcome>)>,
     admitted: Query<(), (With<Restored>, Added<Admitted>)>,
@@ -255,7 +295,7 @@ pub(crate) fn stop_restored(
             false => stopping.push(agent),
         }
     }
-    stopper.stop_each(stopping, RESTARTED);
+    stopper.stop_each(stopping, &StopCause::Restarted);
 }
 
 /// Answers each restored call still [`Interrupted`], undecided and unheld,
@@ -278,7 +318,9 @@ pub(crate) fn answer_interrupted(
         }
         let result = match interrupted {
             Interrupted::Settled(result) => result.clone(),
-            Interrupted::Started => not_finished(RESTARTED, true, footprint),
+            Interrupted::Started => {
+                not_finished(&StopCause::Restarted.to_string(), true, footprint)
+            }
         };
         decision.decide(Decider::plugin("rig-ecs"), result);
     }
@@ -306,8 +348,9 @@ pub struct Restored;
 /// one [`open_session`] read, or, when only a [`SessionStore`] was
 /// inserted, the one this opens; a session it refuses is not restored nor
 /// logged to, with a notice. A saved value that does not load is skipped
-/// with a notice, and its next save replaces it; what reading repaired is
-/// shown as a notice too.
+/// with a notice, and its next save replaces it; one of a type no plugin of
+/// this build saves stays in the session for a build that does, which only
+/// the log says. What reading repaired is shown as a notice too.
 pub(crate) fn restore_session(world: &mut World) {
     let session = match world.remove_resource::<Opened>() {
         Some(Opened(session)) => session,
@@ -336,6 +379,7 @@ pub(crate) fn restore_session(world: &mut World) {
         agents,
         saved: state,
         repairs,
+        ..
     } = session;
     let mut notices: Vec<Notice> = repairs
         .iter()
@@ -344,22 +388,26 @@ pub(crate) fn restore_session(world: &mut World) {
     let registry = world.get_resource::<AppTypeRegistry>().cloned();
     let registry = registry.unwrap_or_default();
     let registry = registry.read();
-    let reader = SavedReader::new(world);
-    let skipped = |what: &str, key: &str, failure: String| {
-        let skipped =
-            format!("Skipped saved {what} `{key}`: {failure}; its next save replaces it.");
-        Notice::error(None, skipped)
+    let keys = world.get_resource::<SavedKeys>().cloned();
+    let keys = keys.unwrap_or_default();
+    let skipped = |what: &str, key: &str, unread: Unread| match unread {
+        Unread::Unsaved => {
+            info!("kept saved {what} `{key}` unread: no plugin saves it in this build");
+            None
+        }
+        Unread::Failed(failure) => Some(Notice::error(
+            None,
+            format!("Skipped saved {what} `{key}`: {failure}; its next save replaces it."),
+        )),
     };
     for (key, value) in &state {
-        let restored = reader
-            .read(&registry, key, value)
-            .and_then(|(component, value)| {
-                let mut resource = resource_entity(world, component)?;
-                component.insert(&mut resource, value.as_partial_reflect(), &registry);
-                Ok(())
-            });
-        if let Err(failure) = restored {
-            notices.push(skipped("resource", key, failure));
+        let restored = read_saved(&keys, &registry, key, value).and_then(|(component, value)| {
+            let mut resource = resource_entity(world, component).map_err(Unread::Failed)?;
+            component.insert(&mut resource, value.as_partial_reflect(), &registry);
+            Ok(())
+        });
+        if let Err(unread) = restored {
+            notices.extend(skipped("resource", key, unread));
         }
     }
     let mut entities = HashMap::new();
@@ -369,12 +417,12 @@ pub(crate) fn restore_session(world: &mut World) {
         let id = AgentId(agent.id);
         let mut read = Vec::new();
         for (key, value) in &agent.saved {
-            match reader.read(&registry, key, value) {
+            match read_saved(&keys, &registry, key, value) {
                 Ok(value) => read.push(value),
-                Err(failure) => notices.push(skipped("component", key, failure)),
+                Err(unread) => notices.extend(skipped("component", key, unread)),
             }
         }
-        let mut spawned = world.spawn((Name::new("agent"), Agent, id.clone(), conversation));
+        let mut spawned = world.spawn((Agent::new(), id.clone(), conversation));
         for (component, value) in read {
             component.insert(&mut spawned, value.as_partial_reflect(), &registry);
         }
@@ -386,7 +434,7 @@ pub(crate) fn restore_session(world: &mut World) {
         if let Some(&parent) = parent.as_ref().and_then(|parent| entities.get(parent))
             && let Ok(mut child) = world.get_entity_mut(*child)
         {
-            child.insert(SpawnedBy(parent));
+            child.insert(SpawnedBy::new(parent));
         }
     }
     let mut parents = world.query::<&SpawnedBy>();
@@ -472,79 +520,24 @@ impl SavedKeys {
     pub fn listed(&self) -> &BTreeSet<String> {
         &self.listed
     }
-
-    /// Each stable key, with the path of the type saved under it, in key
-    /// order.
-    pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
-        (self.paths.iter()).map(|(key, path)| (key.as_str(), path.as_str()))
-    }
 }
 
-/// The one reader of saved values, for a restore: each value is read under
-/// its key (a stable key, or a type path) and reflected as its type.
-pub(crate) struct SavedReader {
-    keys: SavedKeys,
-}
-
-impl SavedReader {
-    /// A reader with the saved keys of `world`.
-    pub(crate) fn new(world: &World) -> Self {
-        Self {
-            keys: world
-                .get_resource::<SavedKeys>()
-                .cloned()
-                .unwrap_or_default(),
-        }
-    }
-
-    /// The saved value `saved` of `key`, with the reflection that inserts
-    /// it.
-    ///
-    /// # Errors
-    ///
-    /// Why it is not read: it no longer fits its type, or no plugin saves
-    /// its type.
-    pub(crate) fn read<'r>(
-        &self,
-        registry: &'r TypeRegistry,
-        key: &str,
-        saved: &Value,
-    ) -> Result<(&'r ReflectComponent, Box<dyn Reflect>), String> {
-        let (registration, component) = saved_type(self.path(key), registry)?;
-        Ok((component, reflected(registration, saved, registry)?))
-    }
-
-    /// The type path of the values saved under `key`.
-    pub(crate) fn path<'k>(&'k self, key: &'k str) -> &'k str {
-        self.keys.path(key).unwrap_or(key)
-    }
-}
-
-/// Checks the saved value `value` of `key` as a restore of `world` reads
-/// it, such as one a migration wrote: under its key's type, when a plugin
-/// saves that type. A value no plugin of `world` saves passes, as a
-/// restore leaves it in the session as it is.
+/// The saved value `saved` of `key` (a stable key of `keys`, or a type
+/// path), reflected as its type, with the reflection that inserts it.
 ///
 /// # Errors
 ///
-/// [`io::ErrorKind::InvalidData`] when a plugin saves the type and
-/// `value` no longer fits it.
-pub fn check_saved(world: &World, key: &str, value: &Value) -> io::Result<()> {
-    let Some(registry) = world.get_resource::<AppTypeRegistry>() else {
-        return Ok(());
-    };
-    let registry = registry.read();
-    let reader = SavedReader::new(world);
-    let Ok((registration, _)) = saved_type(reader.path(key), &registry) else {
-        return Ok(());
-    };
-    match reflected(registration, value, &registry) {
-        Ok(_) => Ok(()),
-        Err(why) => Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("the saved value `{key}`: {why}"),
-        )),
-    }
+/// Why it is not read ([`Unread`]).
+fn read_saved<'r>(
+    keys: &SavedKeys,
+    registry: &'r TypeRegistry,
+    key: &str,
+    saved: &Value,
+) -> Result<(&'r ReflectComponent, Box<dyn Reflect>), Unread> {
+    let path = keys.path(key).unwrap_or(key);
+    let (registration, component) = saved_type(path, registry)?;
+    let value = reflected(registration, saved, registry).map_err(Unread::Failed)?;
+    Ok((component, value))
 }
 
 /// `value` reflected as the type of `registration`.
@@ -553,13 +546,24 @@ fn reflected(
     value: &Value,
     registry: &TypeRegistry,
 ) -> Result<Box<dyn Reflect>, String> {
-    let reflected = TypedReflectDeserializer::new(registration, registry)
-        .deserialize(value)
-        .map_err(|failure| format!("its saved value no longer fits: {failure}"))?;
+    let reflected = rig_core::json_utils::from_value_seed(
+        TypedReflectDeserializer::new(registration, registry),
+        value,
+    )
+    .map_err(|failure| format!("its saved value no longer fits: {failure}"))?;
     registration
         .data::<ReflectFromReflect>()
         .and_then(|from| from.from_reflect(&*reflected))
         .ok_or_else(|| "its saved value no longer fits".to_owned())
+}
+
+/// Why a saved value is not restored.
+#[derive(Debug)]
+pub(crate) enum Unread {
+    /// No plugin of this build saves its type, such as one turned off.
+    Unsaved,
+    /// It does not load as its type, with why.
+    Failed(String),
 }
 
 /// The registration of the saved component of the type path
@@ -567,13 +571,14 @@ fn reflected(
 pub(crate) fn saved_type<'r>(
     path: &str,
     registry: &'r TypeRegistry,
-) -> Result<(&'r TypeRegistration, &'r ReflectComponent), String> {
+) -> Result<(&'r TypeRegistration, &'r ReflectComponent), Unread> {
     let registration = registry
         .get_with_type_path(path)
         .filter(|registration| registration.data::<ReflectSaved>().is_some())
-        .ok_or("no plugin saves it in this build")?;
+        .ok_or(Unread::Unsaved)?;
     let component = registration.data::<ReflectComponent>();
-    let component = component.ok_or("it is not a reflected component")?;
+    let component =
+        component.ok_or_else(|| Unread::Failed("it is not a reflected component".to_owned()))?;
     Ok((registration, component))
 }
 
@@ -625,12 +630,11 @@ fn carry_on_restored(
     };
     let pending = conversation.pending_calls();
     let idle = pending.is_empty() && !conversation.awaits_model();
-    let mut marked = HashMap::new();
-    for (id, mark) in marks(&conversation) {
-        if pending.iter().any(|call| &call.id == mark.call()) {
-            marked.insert(mark.call().clone(), mark);
-        } else {
-            conversation.remove_aside(id);
+    let marks = marks(&conversation);
+    let owed = marked(&pending, &marks);
+    for (id, _) in &marks {
+        if !owed.iter().flatten().any(|(owed, _)| owed == id) {
+            conversation.remove_aside(*id);
         }
     }
     if !pending.is_empty() {
@@ -640,20 +644,27 @@ fn carry_on_restored(
             ..Turn::default()
         };
         let turn = commands.spawn((TurnOf(agent), state, Restored)).id();
-        for call in pending {
-            let interrupted = marked.remove(&call.id).map(|mark| match mark {
-                CallMark::Started { .. } => Interrupted::Started,
-                CallMark::Settled { result, .. } => Interrupted::Settled(result),
+        for ((at, call), mark) in pending.into_iter().zip(owed) {
+            let interrupted = mark.map(|(_, mark)| match mark {
+                CallMark::Started { .. } => (Interrupted::Started, None),
+                CallMark::Settled { result, facts, .. } => (
+                    Interrupted::Settled(result.clone()),
+                    Some(KeptFacts(facts.clone())),
+                ),
             });
             let mut restored = commands.spawn((
                 ToolRequest { call },
+                InReply::new(at),
                 Effect::with_parent_id(Some(reply)),
                 CallOf(turn),
                 ForAgent(agent),
                 Restored,
             ));
-            if let Some(interrupted) = interrupted {
+            if let Some((interrupted, facts)) = interrupted {
                 restored.insert(interrupted);
+                if let Some(facts) = facts {
+                    restored.insert(facts);
+                }
             }
         }
     } else if conversation.awaits_model() {

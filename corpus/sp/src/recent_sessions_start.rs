@@ -1,22 +1,16 @@
-//! SP-15: a start screen of the project's recent sessions.
-//!
-//! A new session started at the terminal with no prompt (no `--print`, no
-//! command, `AppStart` `New`, an empty conversation and a front that
-//! answers) reads the saved sessions' listings off the main thread
-//! ([`SessionEntry::read`]: no log is folded). When some ran in this
-//! project, a [`Picker`] lists the 8 newest: name or first prompt, age,
-//! turns and last model, a session whose store or listing does not read as
-//! `unreadable`, and one a launcher runs now as `open elsewhere`. Turns
-//! come from [`SessionShape`], a value this plugin lists with each session
-//! it runs (`saved_as(..).listed()`).
+//! A start screen of the project's recent sessions. A new session started at the terminal with
+//! no prompt (no `--print`, no command, `AppStart` `New`, an empty conversation and a front
+//! that answers) reads the saved sessions' listings off the main thread
+//! ([`SessionEntry::read`]: no log is folded). When some ran in this project, a [`Picker`]
+//! lists the 8 newest: name or first prompt, age, turns and last model, a session whose store
+//! or listing does not read as `unreadable`, and one a launcher runs now as `open elsewhere`.
+//! Turns come from [`SessionShape`], a value this plugin lists with each session it runs.
 //!
 //! The terminal view's keys: Up and Down move, Enter resumes (`rig_basics::sessions`'
-//! [`SwitchSession`]), `n` or
-//! Esc closes it for the new session, `/` filters by name or first prompt
-//! over every session in scope, and `a` toggles every project's sessions.
-//! Enter on an unreadable session says why and stays; on one open
-//! elsewhere it offers a read-only view of its conversation.
-//! Nothing is written until the user picks: the new session stays unsaved.
+//! [`SwitchSession`]), `n` or Esc closes it for the new session, `/` filters by name or first
+//! prompt over every session in scope, and `a` toggles every project's sessions. Enter on an
+//! unreadable session says why and stays; on one open elsewhere it offers a read-only view of
+//! its conversation. Nothing is written until the user picks: the new session stays unsaved.
 //! `start_screen = false` in `[recent_sessions]` turns it off.
 
 use std::cmp::Reverse;
@@ -66,7 +60,12 @@ impl Plugin for RecentSessionsPlugin {
             .add_systems(
                 Update,
                 (
-                    track_shape.run_if(on_message::<ConversationChanged>),
+                    track_shape
+                        .run_if(
+                            on_message::<ConversationChanged>
+                                .or_eager(resource_exists_and_changed::<CurrentAgent>),
+                        )
+                        .after(CurrentAgentSystems),
                     read_only_closed.run_if(resource_changed::<KeyFocus>),
                 ),
             )
@@ -562,17 +561,15 @@ fn read_only_closed(
 }
 
 /// Keeps [`SessionShape`] as the main agent's conversation has it, from
-/// its first turn on: nothing is saved before.
+/// its first turn on, and as the agent the user switched to has it:
+/// nothing is saved before.
 fn track_shape(
-    agents: Query<(&AgentId, &Conversation, Has<SpawnedBy>), With<Agent>>,
+    (main, conversations): (MainAgentQuery, Query<&Conversation>),
     shape: Option<ResMut<SessionShape>>,
     mut commands: Commands,
 ) {
-    let main = agents.iter().min_by(|a, b| {
-        rig_harness::rig_memory::main_order(a.2, &a.0.0)
-            .cmp(&rig_harness::rig_memory::main_order(b.2, &b.0.0))
-    });
-    let Some((_, conversation, _)) = main else {
+    let main = main_agent(&main).and_then(|agent| conversations.get(agent).ok());
+    let Some(conversation) = main else {
         return;
     };
     let now = SessionShape {

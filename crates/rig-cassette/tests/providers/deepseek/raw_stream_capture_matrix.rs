@@ -1,34 +1,19 @@
 //! Raw provider response capture on DeepSeek's streaming chat-completions
 //! path.
 //!
-//! **The feature.** Every stream's terminal
-//! [`rig::completion::CompletionResponse::raw`] carries the `chat.completion`
-//! document the stream's chunks rebuild, the shape a unary DeepSeek reply
-//! has. Capture is always on: there is no flag to request it, nothing about
-//! it reaches the wire, and a `Value::Null` only ever means a terminal built
-//! by hand with no provider reply behind it.
+//! Every stream's terminal [`rig::completion::CompletionResponse::raw`]
+//! carries the `chat.completion` document the stream's chunks rebuild, the
+//! shape a unary DeepSeek reply has. Capture is always on, and a `Value::Null`
+//! only means a terminal built by hand. The document's `usage` is the
+//! provider's usage object, so DeepSeek's `prompt_cache_miss_tokens`, which
+//! has no normalized slot, is the terminal-only field the cells pin.
 //!
-//! The document's `usage` is the provider's usage object, so it keeps whatever
-//! the dialect sent beside the OpenAI-compatible counters. DeepSeek's
-//! `prompt_cache_hit_tokens` / `prompt_cache_miss_tokens` split survives into
-//! `raw`. Only half of it is normalized: the hit count reaches
-//! `Usage::cached_input_tokens`, and the miss count has no slot at all. That
-//! makes the miss count the natural terminal-only field to pin here.
-//!
-//! | # | Cell | Dimension | expected | Status |
-//! |---|------|-----------|----------|--------|
-//! | 3 | `stream_reasoning_raw_round_trips_terminal_type` | reasoning turn | a thinking-mode stream's terminal `raw` is the rebuilt document and reproduces the recorded terminal frame; the stream's reasoning deltas reassemble the fixture's `delta.reasoning_content` frames, which the document states as the message's `reasoning_content` | recorded |
-//!
-//! Every cell is recorded. The premise every cell re-derives from its own
-//! fixture is [`chat::recorded_sole_usage_frame`]: the recorded SSE stream
-//! carries usage on exactly one frame, and that frame is the stream's last
-//! data frame — so the rebuilt document's usage is knowable from the bytes
-//! and a recording whose stream stopped reporting usage, or started
-//! reporting it somewhere other than the close, fails loudly instead of
-//! covering nothing. Cell 3 additionally re-derives that the recorded frames
-//! carry `delta.reasoning_content` (and that the recorded request asked for
-//! thinking), so a recording that stopped reasoning fails instead of
-//! covering nothing.
+//! Every cell re-derives [`chat::recorded_sole_usage_frame`] from its fixture:
+//! the recorded stream carries usage on exactly one frame, its last data
+//! frame, so the rebuilt document's usage is knowable from the bytes. The
+//! reasoning cell also re-derives that the frames carry
+//! `delta.reasoning_content`, which the document states as the message's
+//! `reasoning_content`.
 
 use rig::message::AssistantContent;
 use rig::streaming::Item;

@@ -1,20 +1,55 @@
-//! The protocol between the `rig` launcher (the `rig` crate's binary) and the
+//! The protocol between the `rig` launcher (the `rig-cli` crate) and the
 //! rig-harness agent it builds and runs: the `RIG_HOME` layout, session ids,
-//! the environment the launcher passes to the agent, and the exit code with
-//! which the agent asks for a restart. The launcher and `rig-harness` both use
-//! this crate, so the two sides cannot drift apart. It uses only std, and
-//! it changes with rig-harness.
+//! the environment the launcher passes to the agent ([`launch`]), how the
+//! agent ended ([`end`]), and the settings both read ([`config`]). The
+//! launcher and `rig-harness` both use this crate, so the two sides cannot
+//! drift apart. It uses std and `toml_edit`, and it changes with
+//! rig-harness.
 
-use std::ffi::OsString;
+pub mod config;
+pub mod end;
+#[cfg(any(test, feature = "test-utils"))]
+pub mod fake_agent;
+pub mod fs;
+pub mod launch;
+
+use std::ffi::{OsStr, OsString};
 use std::fmt;
+#[cfg(unix)]
+use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-/// The exit code with which the agent asks its launcher to restart it on
-/// the staged build.
+/// The exit code of an agent that asks its launcher to restart it or run
+/// another session, which its [`end::AgentEnd`] record says.
 pub const RELOAD_EXIT_CODE: u8 = 75;
+
+/// The exit code of a run refused before it did any work, such as for a
+/// command line or a `--tools` name it does not take.
+pub const REFUSED_EXIT_CODE: u8 = 2;
+
+/// The exit code of a run a signal ended, as a shell reports Ctrl+C.
+pub const SIGNAL_EXIT_CODE: u8 = 130;
+
+/// How long the launcher gives its agent to end once a signal told it to,
+/// before it kills it: the agent's own clean exit takes at most a few
+/// seconds, and an ACP router's at most about eleven, while its sessions
+/// answer and end.
+pub const STOP_WAIT: Duration = Duration::from_secs(15);
+
+/// How long the launcher's own closing output may take after a signal: a
+/// terminal or pipe whose reader stopped would otherwise hold it.
+pub const CLOSE_WAIT: Duration = Duration::from_secs(1);
+
+/// How long a launcher takes at most to end once told to (`SIGTERM`):
+/// [`STOP_WAIT`] for its agent, [`RunDir::STOP_GRACE`] for the process
+/// groups its agent left, and [`CLOSE_WAIT`] for its closing output. What
+/// stops a `rig` it started while it goes on running gives it this long
+/// before it kills it, so the `rig` stops its own children in turn.
+pub const STOP_WINDOW: Duration =
+    Duration::from_secs(STOP_WAIT.as_secs() + RunDir::STOP_GRACE.as_secs() + CLOSE_WAIT.as_secs());
 
 /// The version of rig: of the workspace, the launcher and the harness they
 /// build together. It stamps generated projects, so a new launcher
@@ -23,8 +58,9 @@ pub const RELOAD_EXIT_CODE: u8 = 75;
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// The one Bevy version of the agent and of every plugin: a Bevy plugin
-/// only works with the exact Bevy version of its app.
-pub const BEVY_VERSION: &str = "0.20.0";
+/// only works with the exact Bevy version of its app. The tooling check
+/// holds the workspace's Bevy requirements to it.
+pub const BEVY_VERSION: &str = "0.20.1";
 
 /// The environment variables of the protocol.
 pub mod env {
@@ -39,8 +75,20 @@ pub mod env {
     /// `"$RIG_LAUNCHER" plugin check --build`; an agent counts as started by
     /// a launcher only with [`SESSION`] set too.
     pub const LAUNCHER: &str = "RIG_LAUNCHER";
+    /// What `rig --version` prints after `rig`, which the launcher passes
+    /// on: [`VERSION`](super::VERSION), with the commit when the launcher
+    /// was built in a rig checkout. Read it with
+    /// [`long_version`](super::long_version).
+    pub const VERSION: &str = "RIG_VERSION";
     /// A line the agent shows at startup, such as a rollback.
     pub const NOTICE: &str = "RIG_NOTICE";
+    /// What the agent warns of at startup, which a run nobody sits at
+    /// shows too: what the launcher changed of what was asked, such as a
+    /// resumed session's directory that is gone, and the files of a rig
+    /// 0.46 home it no longer reads, as a TOML array of strings. Written
+    /// by [`Launch`](super::launch::Launch), read by
+    /// [`warnings`](super::warnings).
+    pub const WARNING: &str = "RIG_WARNING";
     /// Why the build before this start failed, so an older build runs:
     /// the reason and the first compiler errors. The whole output is in
     /// [`Home::build_log`](super::Home::build_log). The agent puts it in
@@ -52,11 +100,24 @@ pub mod env {
     /// Why the launcher started the agent: a
     /// [`StartReason`](super::StartReason), as text.
     pub const START: &str = "RIG_START";
+    /// The [`Stamp`](super::Stamp) of the launcher's own file when it
+    /// started, as [`Stamp::text`](super::Stamp::text) writes it: the
+    /// agent tells from it whether the launcher was replaced since.
+    pub const LAUNCHER_STAMP: &str = "RIG_LAUNCHER_STAMP";
     /// What the launcher tells the agent it runs, and only that agent: a
     /// command the agent runs, such as a nested agent while working on
     /// rig-harness itself, must not act as this agent. Without [`SESSION`]
     /// a nested agent ignores the [`LAUNCHER`] it inherits.
-    pub const AGENT_ONLY: &[&str] = &[SESSION, NOTICE, BUILD_FAILURE, RUN, START];
+    pub const AGENT_ONLY: &[&str] = &[
+        SESSION,
+        VERSION,
+        NOTICE,
+        WARNING,
+        BUILD_FAILURE,
+        RUN,
+        START,
+        LAUNCHER_STAMP,
+    ];
     /// On every process the agent starts for its tools: the path of the
     /// launcher's [`RunDir::groups`](super::RunDir::groups), which the
     /// launcher finds on a listed group's leader before it kills the
@@ -66,6 +127,11 @@ pub mod env {
     /// writes what its plugins add there ([`AgentDescription`](super::AgentDescription))
     /// and exits without running a frame.
     pub const DESCRIBE: &str = "RIG_DESCRIBE";
+    /// Set with [`DESCRIBE`] by `rig plugin check --build` to the user's
+    /// settings file: the describing build reads its settings from there,
+    /// not from its scratch home, and fails, as a start would refuse, when
+    /// a table does not read.
+    pub const DESCRIBE_SETTINGS: &str = "RIG_DESCRIBE_SETTINGS";
     /// The start of a secret's variable, such as `RIG_SECRET_CRYPT`
     /// ([`secret_variable`](super::secret_variable)): the launcher sets it
     /// on the agent's process alone, and every process rig starts drops it
@@ -73,6 +139,14 @@ pub mod env {
     pub const SECRET_PREFIX: &str = "RIG_SECRET_";
     /// A rig checkout the agent is built from instead of crates.io.
     pub const SOURCE: &str = "RIG_SOURCE";
+    /// Set by a launcher on the launcher it starts in its place, and only
+    /// on it: the session its agent switched away from to the one the new
+    /// launcher resumes.
+    pub const SWITCHED_FROM: &str = "RIG_SWITCHED_FROM";
+    /// Set to `1` by a launcher on the launcher it starts in its place
+    /// once its run warned of a 0.46 home, which the new launcher then
+    /// does not warn of again.
+    pub const WARNED: &str = "RIG_WARNED";
 }
 
 /// The launcher that started this agent, if one did: it sets both
@@ -81,6 +155,94 @@ pub mod env {
 pub fn launcher() -> Option<OsString> {
     std::env::var_os(env::SESSION).filter(|session| !session.is_empty())?;
     std::env::var_os(env::LAUNCHER).filter(|launcher| !launcher.is_empty())
+}
+
+/// The version of rig to show, such as `0.46.0 (b1321662b)`: what the
+/// launcher that started this agent says ([`env::VERSION`]), else
+/// [`VERSION`].
+pub fn long_version() -> String {
+    std::env::var(env::VERSION)
+        .ok()
+        .filter(|version| !version.is_empty())
+        .unwrap_or_else(|| VERSION.to_owned())
+}
+
+/// Which file a path names, to tell when it was replaced, such as the
+/// launcher's own by `rig update`: a file renamed
+/// over it, as `cargo install` does, has another inode and modification
+/// time. A missing file has none.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Stamp(Option<(SystemTime, u64)>);
+
+impl Stamp {
+    /// Whether the file is another than at `now`. A file gone, or never
+    /// read, was not replaced: only a new file at the path is a new launcher.
+    pub fn replaced(&self, now: &Stamp) -> bool {
+        matches!((&self.0, &now.0), (Some(then), Some(now)) if then != now)
+    }
+
+    /// The stamp as text, `<seconds>.<nanoseconds>:<identity>` of its
+    /// modification time since the Unix epoch; empty for none.
+    pub fn text(&self) -> String {
+        self.0
+            .and_then(|(modified, identity)| {
+                let since = modified.duration_since(UNIX_EPOCH).ok()?;
+                Some(format!(
+                    "{}.{}:{identity}",
+                    since.as_secs(),
+                    since.subsec_nanos()
+                ))
+            })
+            .unwrap_or_default()
+    }
+
+    /// The stamp [`Self::text`] wrote; none for text it did not write.
+    pub fn parse(text: &str) -> Self {
+        let read = || {
+            let (time, identity) = text.split_once(':')?;
+            let (seconds, nanos) = time.split_once('.')?;
+            let since = Duration::new(seconds.parse().ok()?, nanos.parse().ok()?);
+            Some((UNIX_EPOCH.checked_add(since)?, identity.parse().ok()?))
+        };
+        Self(read())
+    }
+
+    /// The stamp of the file at `path` now; none when it is missing.
+    ///
+    /// # Errors
+    ///
+    /// When the file cannot be looked at, or the system keeps no
+    /// modification time.
+    pub fn of(path: &Path) -> std::io::Result<Self> {
+        let Some(metadata) = fs::optional(fs::metadata(path))? else {
+            return Ok(Self(None));
+        };
+        #[cfg(unix)]
+        let identity = std::os::unix::fs::MetadataExt::ino(&metadata);
+        #[cfg(not(unix))]
+        let identity = metadata.len();
+        let modified = metadata.modified().map_err(fs::named("look at", path))?;
+        Ok(Self(Some((modified, identity))))
+    }
+}
+
+/// The warnings [`Launch`](launch::Launch) wrote in `text`, in order; none for
+/// blank text. Other text that is not an array of strings is one warning,
+/// as it is.
+pub fn warnings(text: &str) -> Vec<String> {
+    if text.trim().is_empty() {
+        return Vec::new();
+    }
+    let parsed = text.parse::<toml_edit::Value>().ok();
+    let array = parsed.as_ref().and_then(toml_edit::Value::as_array);
+    array
+        .and_then(|array| {
+            array
+                .iter()
+                .map(|warning| warning.as_str().map(str::to_owned))
+                .collect()
+        })
+        .unwrap_or_else(|| vec![text.to_owned()])
 }
 
 /// The variable that carries the secret `name`: [`env::SECRET_PREFIX`]
@@ -98,11 +260,23 @@ pub fn secret_variable(name: &str) -> String {
 pub fn secret_variables() -> Vec<OsString> {
     std::env::vars_os()
         .map(|(name, _)| name)
-        .filter(|name| {
-            name.to_str()
-                .is_some_and(|name| name.starts_with(env::SECRET_PREFIX))
-        })
+        .filter(|name| is_secret_variable(name))
         .collect()
+}
+
+/// Whether the variable `name` starts with [`env::SECRET_PREFIX`]. On Unix
+/// the bytes are compared, so a name that is not UTF-8 still counts.
+fn is_secret_variable(name: &OsStr) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        name.as_bytes().starts_with(env::SECRET_PREFIX.as_bytes())
+    }
+    #[cfg(not(unix))]
+    {
+        name.to_str()
+            .is_some_and(|name| name.starts_with(env::SECRET_PREFIX))
+    }
 }
 
 /// At most `count` lines of a build's output from the first one that
@@ -253,28 +427,18 @@ impl Home {
         &self.root
     }
 
-    /// `plugins.toml`, the plugin list.
-    pub fn plugins_toml(&self) -> PathBuf {
-        self.root.join("plugins.toml")
-    }
-
     /// `plugins/`, where `rig plugin new` makes plugin crates, outside any
-    /// workspace: `plugins/<name>` is listed in `plugins.toml` as
+    /// workspace: `plugins/<name>` is listed in `settings.toml` as
     /// `path = "plugins/<name>"`.
     pub fn plugins(&self) -> PathBuf {
         self.root.join("plugins")
     }
 
-    /// `settings.toml`, the user's settings for plugins: one table per
-    /// plugin, which the agent hands to the plugin that reads it.
+    /// `settings.toml`, the one file the user edits: which plugins run
+    /// (`[plugins]`, [`config`]) and one table per plugin, which the agent
+    /// hands to the plugin that reads it.
     pub fn settings(&self) -> PathBuf {
         self.root.join("settings.toml")
-    }
-
-    /// `defaults.json`, the model and reasoning setting a new session
-    /// starts with: the last ones chosen.
-    pub fn defaults(&self) -> PathBuf {
-        self.root.join("defaults.json")
     }
 
     /// `auth/`, where `/login` keeps each subscription credential, as
@@ -340,18 +504,10 @@ impl Home {
         self.bin().join(format!("staged-{session}"))
     }
 
-    /// The build the launcher of `session` runs until it is ready.
-    pub fn trial_for(&self, session: &SessionId) -> PathBuf {
-        self.bin().join(format!("trial-{session}"))
-    }
-
     /// The session whose launcher owns a file of [`Home::bin`] named
-    /// `name`: a `staged-<session>` or `trial-<session>`.
+    /// `name`: a `staged-<session>`.
     pub fn owner_of(name: &str) -> Option<SessionId> {
-        name.strip_prefix("trial-")
-            .or_else(|| name.strip_prefix("staged-"))?
-            .parse()
-            .ok()
+        name.strip_prefix("staged-")?.parse().ok()
     }
 
     /// `data/`, where plugins keep files across sessions and projects.
@@ -385,6 +541,21 @@ impl Home {
         SessionDir(self.sessions().join(session.as_str()))
     }
 
+    /// On unix, creates `sessions/`, `projects/`, `data/` and `run/` and
+    /// makes them this user's alone, as they hold what the user said.
+    /// Best effort: a directory whose owner or filesystem refuses keeps its
+    /// mode, as does a file at one of these paths or a link to the home.
+    /// Elsewhere it does nothing.
+    pub fn keep_private(&self) {
+        #[cfg(unix)]
+        for dir in [self.sessions(), self.projects(), self.data(), self.runs()] {
+            fs::create_dir_all(&dir).ok();
+            if dir.is_dir() && fs::canonicalize(&dir).ok() != fs::canonicalize(&self.root).ok() {
+                fs::set_permissions(&dir, PermissionsExt::from_mode(0o700)).ok();
+            }
+        }
+    }
+
     /// A new session, its directory created: a [`SessionId::generate`]d
     /// id, or, when a session of this home has that one, the first free
     /// one after it, such as `1700000000-42-1`.
@@ -393,13 +564,18 @@ impl Home {
     ///
     /// When the directory cannot be created.
     pub fn new_session(&self) -> std::io::Result<(SessionId, SessionDir)> {
-        std::fs::create_dir_all(self.sessions())?;
+        fs::create_dir_all(self.sessions())?;
+        self.keep_private();
         let base = SessionId::generate();
         let mut id = base.clone();
         let mut taken = 0u64;
         loop {
             let dir = self.session(&id);
-            match std::fs::create_dir(dir.path()) {
+            #[cfg(unix)]
+            let created = fs::create_dir(std::fs::DirBuilder::new().mode(0o700), dir.path());
+            #[cfg(not(unix))]
+            let created = fs::create_dir(&std::fs::DirBuilder::new(), dir.path());
+            match created {
                 Ok(()) => return Ok((id, dir)),
                 Err(failure) if failure.kind() == std::io::ErrorKind::AlreadyExists => {
                     taken += 1;
@@ -414,7 +590,7 @@ impl Home {
     /// order, with its directory: what every listing and [`Self::find`]
     /// read.
     pub fn saved_sessions(&self) -> Vec<(SessionId, SessionDir)> {
-        let entries = std::fs::read_dir(self.sessions()).into_iter().flatten();
+        let entries = fs::read_dir(self.sessions()).into_iter().flatten();
         let ids = entries.filter_map(|entry| entry.ok()?.file_name().to_str()?.parse().ok());
         ids.map(|id| {
             let dir = self.session(&id);
@@ -431,7 +607,8 @@ impl Home {
     /// # Errors
     ///
     /// When no saved session has that id or name, or several have that
-    /// name: the error lists their ids.
+    /// name: the error lists their ids. When a saved session's name cannot
+    /// be read, naming its file and saying to resume by id.
     pub fn find(&self, name_or_id: &str) -> Result<SessionId, String> {
         let wanted = name_or_id.trim();
         if let Ok(id) = wanted.parse::<SessionId>()
@@ -439,12 +616,18 @@ impl Home {
         {
             return Ok(id);
         }
-        let mut named: Vec<SessionId> = self
-            .saved_sessions()
-            .into_iter()
-            .filter(|(_, dir)| dir.name().as_deref() == Some(wanted))
-            .map(|(id, _)| id)
-            .collect();
+        let mut named = Vec::new();
+        for (id, dir) in self.saved_sessions() {
+            // The name that cannot be read may be `wanted`, so no match is sure.
+            let name = dir.name().map_err(|failure| {
+                format!(
+                    "{failure}; that session may be named `{wanted}` too, so resume it by its id"
+                )
+            })?;
+            if name.as_deref() == Some(wanted) {
+                named.push(id);
+            }
+        }
         named.sort_by(|a, b| a.as_str().cmp(b.as_str()));
         match named.as_slice() {
             [id] => Ok(id.clone()),
@@ -462,11 +645,22 @@ impl Home {
     }
 }
 
+/// The file of [`RunDir::say_ready`].
+pub(crate) const READY_FILE: &str = "ready";
+
+/// The file of [`RunDir::say_screen`].
+pub(crate) const SCREEN_FILE: &str = "screen";
+
 /// A launcher's own directory, outside every session, which lives while
-/// the launcher runs: the file that tells it the agent started, and the
-/// log of a sessionless run that failed, which outlives the launcher.
+/// the launcher runs: what its agent says to it (that it started, that it
+/// took the screen, how it ended: [`end::AgentEnd`]), and the log of a
+/// sessionless run that failed, which outlives the launcher.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RunDir(PathBuf);
+
+/// The start of the name of a list of process groups set aside in a run
+/// directory ([`RunDir::set_groups_aside`]); a number follows.
+const GROUPS_ASIDE: &str = "groups.unread-";
 
 impl RunDir {
     /// The directory the launcher named in [`env::RUN`], or `None` when
@@ -487,10 +681,60 @@ impl RunDir {
         &self.0
     }
 
-    /// Written by the agent once its build started, or exited on purpose
-    /// before that; the launcher then keeps the build.
-    pub fn ready(&self) -> PathBuf {
-        self.0.join("ready")
+    /// Says the agent's build started, or exited on purpose before that:
+    /// the launcher then keeps the build.
+    ///
+    /// # Errors
+    ///
+    /// When the file cannot be written.
+    pub fn say_ready(&self) -> std::io::Result<()> {
+        fs::write(self.0.join(READY_FILE), b"")
+    }
+
+    /// Whether the agent said its build started ([`Self::say_ready`]).
+    pub fn heard_ready(&self) -> bool {
+        self.0.join(READY_FILE).exists()
+    }
+
+    /// Says the agent's front took the terminal's screen, as the terminal
+    /// view does: only then does the launcher put the terminal back after
+    /// the agent. Doing so after a front that writes lines, such as
+    /// `--json` typed at a terminal, would overwrite them.
+    ///
+    /// # Errors
+    ///
+    /// When the file cannot be written.
+    pub fn say_screen(&self) -> std::io::Result<()> {
+        fs::write(self.0.join(SCREEN_FILE), b"")
+    }
+
+    /// Takes back [`Self::say_screen`], for a run refused before any front
+    /// took the screen.
+    ///
+    /// # Errors
+    ///
+    /// When the file exists but cannot be removed.
+    pub fn unsay_screen(&self) -> std::io::Result<()> {
+        fs::optional(fs::remove_file(self.0.join(SCREEN_FILE))).map(drop)
+    }
+
+    /// Whether the agent said its front took the screen
+    /// ([`Self::say_screen`]).
+    pub fn took_screen(&self) -> bool {
+        self.0.join(SCREEN_FILE).exists()
+    }
+
+    /// Removes what the last agent said, its end record included, before
+    /// the launcher starts the next one.
+    ///
+    /// # Errors
+    ///
+    /// When a file exists but cannot be removed.
+    pub fn clear_messages(&self) -> std::io::Result<()> {
+        for file in [READY_FILE, SCREEN_FILE, end::FILE] {
+            fs::optional(fs::remove_file(self.0.join(file)))?;
+        }
+        Ok(())
     }
 
     /// The text log of a sessionless run that failed, moved here from its
@@ -499,73 +743,155 @@ impl RunDir {
         self.0.join("agent.log")
     }
 
-    /// Why the agent refused its run, as it said it on stderr: the
-    /// launcher says it again once it took the terminal back from a
-    /// full-screen view that a restart kept.
-    pub fn refusal(&self) -> PathBuf {
-        self.0.join("refusal")
-    }
-
-    /// Written by the agent once its front takes the terminal's screen,
-    /// as the terminal view does: only then does the launcher put the
-    /// terminal back after the agent. Doing so after a front that writes
-    /// lines, such as `--json` typed at a terminal, would overwrite them.
-    pub fn screen(&self) -> PathBuf {
-        self.0.join("screen")
-    }
-
     /// Held by the launcher while it lives.
     pub fn lock(&self) -> PathBuf {
         self.0.join("lock")
     }
 
-    /// The process groups the agent started and has not reaped yet, one
-    /// id per line: the launcher kills those left once the agent exits
-    /// for anything but a reload, such as after `SIGKILL`, each only while
-    /// its leader carries [`env::PROCESS_LEDGER`] naming this file.
+    /// The process groups the agent owns, one id per line: each from its
+    /// start until it is empty or the agent killed it. The launcher kills
+    /// those left once the agent exits for anything but a reload, such as
+    /// after `SIGKILL`; after a reload the next agent takes them over
+    /// ([`Self::live_groups`]).
     pub fn groups(&self) -> PathBuf {
         self.0.join("groups")
     }
 
-    /// Kills the process groups the agent listed in [`Self::groups`] and
-    /// left running, as it does when killed by `SIGKILL`; a clean exit
-    /// lists none. A group is killed only while one of its processes, its
-    /// leader or one the leader left behind as it exited, carries
-    /// [`env::PROCESS_LEDGER`] naming the list, so an id the system gave
-    /// another process since is left alone. `kill(1)` sends the signal,
-    /// so this keeps to std.
+    /// The lists of [`Self::groups`] agents could not read and moved
+    /// aside ([`Self::set_groups_aside`]). Their groups are not taken over
+    /// by the next agent; the launcher ends them ([`Self::kill_left_groups`]).
+    fn groups_aside(&self) -> Vec<PathBuf> {
+        let entries = fs::read_dir(&self.0).into_iter().flatten().flatten();
+        entries
+            .map(|entry| entry.path())
+            .filter(|path| {
+                let name = path.file_name().and_then(|name| name.to_str());
+                name.is_some_and(|name| name.starts_with(GROUPS_ASIDE))
+            })
+            .collect()
+    }
+
+    /// Moves [`Self::groups`], which could not be read, aside under a name
+    /// of its own in the run directory, so an agent can start the list anew
+    /// without writing into or over it. A rename, which needs only the
+    /// directory's permissions. Returns where it went.
     ///
     /// # Errors
     ///
-    /// When the list cannot be read or removed.
-    pub fn kill_left_groups(&self) -> std::io::Result<()> {
-        let ledger = self.groups();
-        let listed = match std::fs::read_to_string(&ledger) {
-            Ok(listed) => listed,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-            Err(error) => return Err(error),
+    /// When it cannot be renamed.
+    pub fn set_groups_aside(&self) -> std::io::Result<PathBuf> {
+        let free = (1..=u32::MAX)
+            .map(|n| self.0.join(format!("{GROUPS_ASIDE}{n}")))
+            .find(|path| !path.exists())
+            .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::AlreadyExists))?;
+        fs::rename(self.groups(), &free)?;
+        Ok(free)
+    }
+
+    /// The groups listed in `list`, [`Self::groups`] or one set aside, that
+    /// still have a process carrying [`env::PROCESS_LEDGER`] naming
+    /// [`Self::groups`], its leader or one the leader left behind as it
+    /// exited: so an id the system gave another process since is not among
+    /// them. None when there is no list. A line that is not an id, even
+    /// one that is not text, names no group.
+    fn live_in(&self, list: &Path) -> std::io::Result<Vec<i32>> {
+        let Some(listed) = fs::optional(fs::read(list))? else {
+            return Ok(Vec::new());
         };
-        // A group id of 0 or 1 would name the caller's own group or every
-        // process.
-        let groups: Vec<String> = listed
+        let ledger = self.groups();
+        Ok(String::from_utf8_lossy(&listed)
             .lines()
             .filter_map(|id| id.trim().parse::<i32>().ok())
-            .filter(|&id| id > 1 && members(id).into_iter().any(|pid| marked(pid, &ledger)))
-            .map(|id| format!("-{id}"))
-            .collect();
-        if !groups.is_empty() {
-            child("kill")
-                .args(["-s", "KILL", "--"])
-                .args(&groups)
-                .stderr(std::process::Stdio::null())
-                .status()
-                .ok();
-        }
-        match std::fs::remove_file(&ledger) {
-            Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error),
-            _ => Ok(()),
-        }
+            // A group id of 0 or 1 would name the caller's own group or
+            // every process.
+            .filter(|&id| id > 1)
+            .filter(|&id| members(id).into_iter().any(|pid| marked(pid, &ledger)))
+            .collect())
     }
+
+    /// The groups listed in [`Self::groups`] that still have a process
+    /// carrying [`env::PROCESS_LEDGER`] naming the list, which the next
+    /// agent takes over. A line that is not an id, even one that is not
+    /// text, names no group.
+    ///
+    /// # Errors
+    ///
+    /// When the list cannot be read.
+    pub fn live_groups(&self) -> std::io::Result<Vec<i32>> {
+        self.live_in(&self.groups())
+    }
+
+    /// Ends the process groups the agent listed in [`Self::groups`] and
+    /// left running ([`Self::live_groups`]), as after `SIGKILL` or when it
+    /// exits with a job still running in the background, with those of the
+    /// lists set aside ([`Self::set_groups_aside`]), and removes the lists: asks them to stop (`SIGTERM`), so an agent among them, such as
+    /// a session of `rig acp`, ends its own; waits at most
+    /// [`STOP_GRACE`](Self::STOP_GRACE) for them to empty; then kills what
+    /// is left (`SIGKILL`). `kill(1)` sends the signals, so this keeps to
+    /// std.
+    ///
+    /// # Errors
+    ///
+    /// When a list cannot be read or removed. The groups of the others are
+    /// ended all the same, and a list that cannot be read is kept.
+    pub fn kill_left_groups(&self) -> std::io::Result<()> {
+        let signal = |name: &str, groups: &[i32]| {
+            if !groups.is_empty() {
+                child("kill")
+                    .args(["-s", name, "--"])
+                    .args(groups.iter().map(|id| format!("-{id}")))
+                    .stderr(std::process::Stdio::null())
+                    .status()
+                    .ok();
+            }
+        };
+        let mut left = Vec::new();
+        let mut read = Vec::new();
+        let mut failed = None;
+        for list in std::iter::once(self.groups()).chain(self.groups_aside()) {
+            match self.live_in(&list) {
+                Ok(live) => {
+                    left.extend(live);
+                    read.push(list);
+                }
+                Err(error) => {
+                    failed.get_or_insert(error);
+                }
+            }
+        }
+        left.sort_unstable();
+        left.dedup();
+        signal("TERM", &left);
+        // From here on a group is ended once it is empty: one that holds
+        // processes is never given to another, marked or not.
+        let deadline = std::time::Instant::now() + Self::STOP_GRACE;
+        while !left.is_empty() && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            left.retain(|&id| exists(id));
+        }
+        signal("KILL", &left);
+        for list in read {
+            if let Err(error) = fs::optional(fs::remove_file(list)) {
+                failed.get_or_insert(error);
+            }
+        }
+        failed.map_or(Ok(()), Err)
+    }
+
+    /// How long [`Self::kill_left_groups`] waits for the groups it asked to
+    /// stop: longer than an agent among them takes to end its own (it gives
+    /// them 2 s).
+    pub const STOP_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
+}
+
+/// Whether the process group `group` has a process: `kill -0` to it
+/// succeeds.
+fn exists(group: i32) -> bool {
+    child("kill")
+        .args(["-0", "--", &format!("-{group}")])
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success())
 }
 
 /// The processes of the group `group`, its leader first: Linux reads each
@@ -575,10 +901,10 @@ fn members(group: i32) -> Vec<i32> {
     let mut members = vec![group];
     let of_group = |pid: i32, pgid: i32| (pgid == group && pid != group).then_some(pid);
     if cfg!(target_os = "linux") {
-        let entries = std::fs::read_dir("/proc").into_iter().flatten().flatten();
+        let entries = fs::read_dir("/proc").into_iter().flatten().flatten();
         members.extend(entries.filter_map(|entry| {
             let pid = entry.file_name().to_str()?.parse().ok()?;
-            let stat = std::fs::read_to_string(entry.path().join("stat")).ok()?;
+            let stat = fs::read_to_string(entry.path().join("stat")).ok()?;
             // After the command's closing parenthesis: state, parent, group.
             let (_, fields) = stat.rsplit_once(')')?;
             of_group(pid, fields.split_whitespace().nth(2)?.parse().ok()?)
@@ -601,7 +927,7 @@ fn members(group: i32) -> Vec<i32> {
 fn marked(id: i32, ledger: &Path) -> bool {
     let mark = format!("{}={}", env::PROCESS_LEDGER, ledger.display());
     if cfg!(target_os = "linux") {
-        let environ = std::fs::read(format!("/proc/{id}/environ"));
+        let environ = fs::read(format!("/proc/{id}/environ"));
         environ.is_ok_and(|environ| {
             environ
                 .split(|&byte| byte == 0)
@@ -629,6 +955,13 @@ fn marked(id: i32, ledger: &Path) -> bool {
 /// `program`, without the plugins' secrets in its environment.
 fn child(program: &str) -> std::process::Command {
     let mut command = std::process::Command::new(program);
+    without_secrets(&mut command);
+    command
+}
+
+/// Removes every [`secret_variables`] name from `command`'s environment,
+/// so a child process the user did not give a secret to never sees one.
+pub fn without_secrets(command: &mut std::process::Command) -> &mut std::process::Command {
     for secret in secret_variables() {
         command.env_remove(secret);
     }
@@ -641,7 +974,7 @@ fn child(program: &str) -> std::process::Command {
 /// named here: the markers of a session an agent started in
 /// ([`Self::started`]), saved ([`Self::is_saved`]) and being deleted
 /// ([`Self::is_deleting`]), the text log, the lock of the launcher running
-/// it, its working directory, its name and the session to switch to.
+/// it, its working directory and its name.
 #[derive(Clone, Debug)]
 pub struct SessionDir(PathBuf);
 
@@ -663,10 +996,33 @@ impl SessionDir {
     }
 
     /// Whether the session holds a conversation, so it can be resumed:
-    /// the session has the marker [`Self::mark_saved`] writes and
-    /// is not being deleted.
+    /// the session has the marker [`Self::mark_saved`] writes (and
+    /// [`Self::unmark_saved`] takes away) and is not being deleted.
     pub fn is_saved(&self) -> bool {
         self.saved().exists() && !self.is_deleting()
+    }
+
+    /// Whether the agent logs in the directory hold anything: a non-empty
+    /// `logs/<name>.jsonl`, where the default store keeps them. The
+    /// harness and the launcher never discard such a session as unsaved,
+    /// so a [`Self::mark_saved`] that failed loses no conversation. A
+    /// store kept elsewhere leaves nothing there. Only a missing `logs`
+    /// counts as holding nothing: a read that fails counts as a log, so a
+    /// deleter keeps the session.
+    pub fn holds_logs(&self) -> bool {
+        let entries = match fs::optional(fs::read_dir(self.0.join("logs"))) {
+            Ok(Some(entries)) => entries,
+            Ok(None) => return false,
+            Err(_) => return true,
+        };
+        entries.into_iter().any(|entry| {
+            let Ok(entry) = entry else { return true };
+            let log = entry.path().extension().is_some_and(|ext| ext == "jsonl");
+            log && match entry.metadata() {
+                Ok(meta) => meta.is_file() && meta.len() > 0,
+                Err(_) => true,
+            }
+        })
     }
 
     /// Whether the session is being deleted: it has the marker
@@ -684,7 +1040,7 @@ impl SessionDir {
     ///
     /// When the marker cannot be written.
     pub fn mark_deleting(&self) -> std::io::Result<()> {
-        std::fs::write(self.deleting(), b"")
+        fs::write(self.deleting(), b"")
     }
 
     /// The plain, empty marker of a session being deleted.
@@ -699,7 +1055,18 @@ impl SessionDir {
     ///
     /// When the marker cannot be written.
     pub fn mark_saved(&self) -> std::io::Result<()> {
-        std::fs::write(self.saved(), b"")
+        fs::write(self.saved(), b"")
+    }
+
+    /// Takes away the marker [`Self::mark_saved`] writes, as the harness
+    /// does once no agent's conversation has a user or assistant message;
+    /// a session without it stays as it is.
+    ///
+    /// # Errors
+    ///
+    /// When the marker is there and cannot be removed.
+    pub fn unmark_saved(&self) -> std::io::Result<()> {
+        fs::optional(fs::remove_file(self.saved())).map(drop)
     }
 
     /// The plain, empty marker of a saved session.
@@ -736,7 +1103,7 @@ impl SessionDir {
     /// When the directory or the lock file cannot be made, or locking
     /// fails otherwise.
     pub fn hold(&self) -> std::io::Result<Option<std::fs::File>> {
-        std::fs::create_dir_all(&self.0)?;
+        fs::create_dir_all(&self.0)?;
         let file = lock_file(&self.launcher_lock(), true)?;
         match file.try_lock() {
             Ok(()) => Ok(Some(file)),
@@ -763,16 +1130,20 @@ impl SessionDir {
     /// file `name` beside [`Self::directory`], so the launcher finds the
     /// session by it ([`Home::find`]) without opening its store. Like the
     /// directory, it is readable on disk when the store seals what it
-    /// keeps.
-    pub fn name(&self) -> Option<String> {
-        let text = std::fs::read_to_string(self.name_file()).ok()?;
+    /// keeps. None when the file is missing or blank.
+    ///
+    /// # Errors
+    ///
+    /// When the file is there and cannot be read.
+    pub fn name(&self) -> std::io::Result<Option<String>> {
+        let text = fs::optional(fs::read_to_string(self.name_file()))?.unwrap_or_default();
         let name = text.trim();
-        (!name.is_empty()).then(|| name.to_owned())
+        Ok((!name.is_empty()).then(|| name.to_owned()))
     }
 
     /// Names the session, or removes its name with `None` or a blank name.
-    /// The name is written beside the file and renamed over it, so a
-    /// reader sees the old name or the new one, never a part.
+    /// The name replaces the file whole by [`fs::replace`], so a reader
+    /// sees the old name or the new one, never a part.
     ///
     /// # Errors
     ///
@@ -780,30 +1151,21 @@ impl SessionDir {
     pub fn set_name(&self, name: Option<&str>) -> std::io::Result<()> {
         let file = self.name_file();
         match name.map(str::trim).filter(|name| !name.is_empty()) {
-            Some(name) => {
-                let part = self.0.join("name.part");
-                std::fs::write(&part, name)?;
-                std::fs::rename(part, file)
-            }
-            None => match std::fs::remove_file(file) {
-                Err(failure) if failure.kind() == std::io::ErrorKind::NotFound => Ok(()),
-                removed => removed,
-            },
+            Some(name) => fs::replace(&file, name.as_bytes()),
+            None => fs::optional(fs::remove_file(&file)).map(drop),
         }
     }
 
     /// Writes `directory` as the one the session runs in
-    /// ([`Self::directory`]), beside the file and renamed over it, so a
-    /// reader sees the old one or the new one, never a part.
+    /// ([`Self::directory`]) by [`fs::replace`], so a reader sees the old
+    /// one or the new one, never a part.
     ///
     /// # Errors
     ///
     /// When the file cannot be written.
     pub fn set_working_directory(&self, directory: &Path) -> std::io::Result<()> {
-        std::fs::create_dir_all(&self.0)?;
-        let part = self.0.join("directory.part");
-        std::fs::write(&part, directory.to_string_lossy().as_bytes())?;
-        std::fs::rename(part, self.directory())
+        fs::create_dir_all(&self.0)?;
+        fs::replace(&self.directory(), directory.to_string_lossy().as_bytes())
     }
 
     /// The plain-text file of [`Self::name`].
@@ -811,19 +1173,27 @@ impl SessionDir {
         self.0.join("name")
     }
 
-    /// Written by the agent before it exits with [`RELOAD_EXIT_CODE`] to
-    /// run another session: the [`SessionId`] to resume, or nothing for a
-    /// new session. The launcher reads and removes it.
-    pub fn switch(&self) -> PathBuf {
-        self.0.join("switch")
+    /// The directory [`Self::directory`] names, whether or not it still
+    /// exists; none when the file is missing.
+    ///
+    /// # Errors
+    ///
+    /// When the file is there and cannot be read.
+    pub fn saved_directory(&self) -> std::io::Result<Option<PathBuf>> {
+        let text = fs::optional(fs::read_to_string(self.directory()))?;
+        Ok(text.map(|text| PathBuf::from(text.trim_end_matches('\n'))))
     }
 
     /// The session's working directory, when [`Self::directory`] names one
     /// that still exists.
-    pub fn working_directory(&self) -> Option<PathBuf> {
-        let text = std::fs::read_to_string(self.directory()).ok()?;
-        let directory = PathBuf::from(text.trim_end_matches('\n'));
-        directory.is_dir().then_some(directory)
+    ///
+    /// # Errors
+    ///
+    /// When the file is there and cannot be read.
+    pub fn working_directory(&self) -> std::io::Result<Option<PathBuf>> {
+        Ok(self
+            .saved_directory()?
+            .filter(|directory| directory.is_dir()))
     }
 }
 
@@ -865,6 +1235,18 @@ pub const INVOCATION_USAGE: &str =
                          --<option>=<value>.
 ";
 
+/// The words of a command line as text.
+///
+/// # Errors
+///
+/// The first word that is not UTF-8.
+pub fn text_words(words: &[OsString]) -> Result<Vec<&str>, &OsStr> {
+    words
+        .iter()
+        .map(|word| word.to_str().ok_or(word.as_os_str()))
+        .collect()
+}
+
 impl Invocation {
     /// Reads the agent's arguments in their canonical form, without the
     /// program name: a plugin option's value comes after `=`. Without
@@ -879,8 +1261,10 @@ impl Invocation {
 
     /// The agent's own arguments, from the process's.
     pub fn from_env() -> Result<Self, String> {
-        let args: Vec<String> = std::env::args().skip(1).collect();
-        Self::parse(&args)
+        let args: Vec<OsString> = std::env::args_os().skip(1).collect();
+        let words = text_words(&args)
+            .map_err(|word| format!("`{}` is not UTF-8", word.to_string_lossy()))?;
+        Self::parse(&words)
     }
 
     /// Whether nobody sits at a terminal view, and the run ends by itself.
@@ -998,11 +1382,8 @@ fn plugin_flag(flag: &str) -> Result<(String, Option<String>), String> {
 ///
 /// When the file cannot be opened (or is missing and not `create`).
 pub fn lock_file(path: &Path, create: bool) -> std::io::Result<std::fs::File> {
-    std::fs::File::options()
-        .create(create)
-        .write(true)
-        .truncate(false)
-        .open(path)
+    let mut options = std::fs::File::options();
+    fs::open(options.create(create).write(true).truncate(false), path)
 }
 
 /// Whether no live process holds the lock file at `path`: it is missing, or
@@ -1023,35 +1404,47 @@ pub fn is_name(name: &str) -> bool {
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
+/// How `rig update` starts each line that says what it does, such as the
+/// command it runs; `/update` shows each.
+pub const UPDATE_SAYS: &str = "rig update: ";
+
+/// How `rig build` starts its closing error, after `error: `, when it knows
+/// the cause; `/reload` and `/update` show that line over cargo's errors.
+pub const BUILD_SAYS: &str = "rig build: ";
+
 /// The launcher's own first words, which no plugin's command may take.
-pub const RESERVED_COMMANDS: &[&str] = &["build", "plugin", "help", "help-agents"];
+pub const RESERVED_COMMANDS: &[&str] = &["build", "update", "plugin", "help", "help-agents"];
 
-/// The plugins whose absence takes away the way back from inside the
-/// agent, by type path, with what goes: `rig plugin disable`, `rig plugin
-/// list` and `/plugins` warn on them. `rig plugin enable` from a shell
-/// always brings one back.
-pub const ESSENTIAL_PLUGINS: &[(&str, &str)] = &[
-    (
-        "rig_tui::TuiPlugin",
-        "the terminal view, leaving only -p and piped prompts",
-    ),
-    (
-        "rig_basics::reload::plugins::PluginsPlugin",
-        "/plugins itself",
-    ),
-    (
-        "rig_basics::reload::ReloadPlugin",
-        "/reload, so a change applies only when rig starts again",
-    ),
-];
+/// The command line that runs the launcher's own `command`, given in
+/// place of an agent's command, with `arguments` after it: `rig`, the command
+/// and the words it takes, as POSIX shell words. `plugin` takes every
+/// word, `help` one, the others none; options before it are dropped.
+fn launcher_command_line(command: &str, arguments: &[String]) -> String {
+    let takes = match command {
+        "plugin" => arguments.len(),
+        "help" => 1,
+        _ => 0,
+    };
+    ["rig", command]
+        .into_iter()
+        .chain(arguments.iter().take(takes).map(String::as_str))
+        .map(shell_word)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
 
-/// What goes when the plugin `type_path` is left out, if it is one of the
-/// [`ESSENTIAL_PLUGINS`].
-pub fn essential(type_path: &str) -> Option<&'static str> {
-    ESSENTIAL_PLUGINS
-        .iter()
-        .find(|(essential, _)| *essential == type_path)
-        .map(|(_, what)| *what)
+/// `word` as one POSIX shell word, for a command line rig shows to be
+/// typed: as it is when plain, else single-quoted.
+pub fn shell_word(word: &str) -> String {
+    let plain = !word.is_empty()
+        && word
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "-_./=:@+".contains(c));
+    if plain {
+        word.to_owned()
+    } else {
+        format!("'{}'", word.replace('\'', r"'\''"))
+    }
 }
 
 /// The first line of a [`AgentDescription`] report.
@@ -1090,7 +1483,6 @@ pub struct AgentDescription {
 /// A plugin's command, `rig <name> <usage>`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DescribedCommand {
-    /// Its name.
     pub name: String,
     /// What its arguments are, such as `<tool> [path]`; may be empty.
     pub usage: String,
@@ -1106,7 +1498,6 @@ pub struct DescribedCommand {
 /// A plugin's option, `--name` or `--name VALUE`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DescribedFlag {
-    /// Its name.
     pub name: String,
     /// What its value is, such as `ADDR`, when it takes one.
     pub value: Option<String>,
@@ -1118,10 +1509,15 @@ pub struct DescribedFlag {
 /// [`secret_variable`] of its name.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DescribedSecret {
-    /// Its name.
     pub name: String,
     /// What to ask for.
     pub help: String,
+}
+
+/// Whether a report field is a `-` after any number of `\`: the empty
+/// field's mark, or one escaped by a `\` more.
+fn is_dash(field: &str) -> bool {
+    field.trim_start_matches('\\') == "-"
 }
 
 impl AgentDescription {
@@ -1135,7 +1531,11 @@ impl AgentDescription {
         if lines.next() != Some(DESCRIBED_HEADER) {
             return described;
         }
-        let given = |field: &str| (field != "-").then(|| field.to_owned());
+        let given = |field: &str| match field {
+            "-" => None,
+            field if is_dash(field) => field.get(1..).map(str::to_owned),
+            field => Some(field.to_owned()),
+        };
         for line in lines {
             match line.split('\t').collect::<Vec<_>>().as_slice() {
                 ["command", name, usage, run, session, help, ..] => {
@@ -1165,11 +1565,13 @@ impl AgentDescription {
     }
 
     /// The report as text, which [`Self::parse`] reads back. Tabs and line
-    /// breaks in a field become spaces.
+    /// breaks in a field become spaces. An empty usage or value name is
+    /// written `-`, so a `-` of its own gets a `\` before it.
     pub fn write(&self) -> String {
         let clean = |field: &str| field.replace(['\t', '\n', '\r'], " ");
         let or_dash = |field: &str| match field {
             "" => "-".to_owned(),
+            field if is_dash(field) => format!("\\{field}"),
             field => clean(field),
         };
         let mut lines = vec![DESCRIBED_HEADER.to_owned()];
@@ -1244,7 +1646,10 @@ impl AgentDescription {
         .0;
         if let Some(command) = &invocation.command {
             if RESERVED_COMMANDS.contains(&command.as_str()) {
-                return Err(format!("`{command}` is the launcher's; put it first"));
+                let line = launcher_command_line(command, &invocation.arguments);
+                return Err(format!(
+                    "`{command}` is the launcher's own command; run it as `{line}`"
+                ));
             }
             if self.command(command).is_none() {
                 return Err(format!(

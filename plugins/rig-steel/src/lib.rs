@@ -1,47 +1,43 @@
-//! Code mode for rig-ecs agents on [Steel](https://github.com/mattwparas/steel),
+//! Code mode for rig-harness agents on [Steel](https://github.com/mattwparas/steel),
 //! an embeddable Scheme. [`SteelPlugin`] adds the `run_steel` tool: the
-//! model writes one Scheme program that spawns agents, sends them requests,
-//! waits for their replies, calls the model's own tools, and loops and
+//! model writes one Scheme program that calls its own tools, and loops and
 //! branches over the results; the value of the program's last expression is
-//! the tool's output.
+//! the tool's output. With a plugin that gives agents subagents on, which
+//! inserts [`Subagents`], the program also spawns agents, sends them
+//! requests and waits for their replies; without one those functions refuse
+//! and the tool's description leaves them out.
 //!
-//! The program reaches the host only through four functions, each one call
-//! of the [`Harness`] handle: `spawn-agent`, `send`, `reply` and
-//! `call-tool`. Steel cannot await a host future from inside the VM, so the
-//! program runs on a thread of its own and each host function blocks that
-//! thread on its [`Harness`] future with [`bevy_tasks::block_on`]. The
-//! agents it messages run concurrently in the app meanwhile, so sending to
-//! several agents before waiting on any of them fans out. Neither the app's
-//! loop nor a task pool thread ever waits on a program: a pool thread
-//! blocked on a child agent would deadlock with that child's own tool calls,
-//! which run on the same pool.
+//! The program reaches the host only through its host functions, each one
+//! call of the [`Harness`] handle: `call-tool`, and `spawn-agent`, `send`
+//! and `reply`. It runs on a thread of its own, so the agents it messages
+//! run concurrently and sending to several before waiting on any fans out;
+//! the app's loop and its task pool never wait on a program, since a pool
+//! thread blocked on a child agent would deadlock with that child's tool
+//! calls. Its tool calls are tool call effects
+//! ([`ToolRequest`](rig_ecs::tools::ToolRequest)) like the model's own:
+//! gated, started and recorded, and children of its `run_steel` call, which
+//! end with it.
 //!
 //! The sandbox is Steel's own sandboxed engine with every host module
 //! (process, git, network, foreign functions) replaced by an empty one, and
 //! programs that name a module loader, `eval`, procedural macros, native
 //! threads, blocking sleeps or the engine's private `#%` and `%` functions
-//! are refused before they run. Printed output is captured and capped, the
-//! program's own execution time (its waits on host functions not counted) is
-//! limited, host calls are counted, and Esc cancels it like any tool call.
-//! Steel has no memory limit.
-//!
-//! The plugin is written only against rig-ecs's public primitives: an
-//! open tool ([`AppToolsExt::add_open_tool`]) whose call is answered by a
-//! [`Running`] task, and its own [`Harness`] handle, whose tool calls are
-//! tool call effects ([`ToolRequest`](rig_ecs::tools::ToolRequest)) like
-//! the model's own: gated, started and recorded, and children (`ChildOf`)
-//! of its `run_steel` call, which end with it. It is not in the default
-//! `plugins.toml`; add it with
+//! are refused before they run. Printed output is captured and cut at
+//! `[steel] max_output_bytes`; the program's own execution time (its waits
+//! on host functions not counted) and its host calls are limited by
+//! `[steel] max_seconds` and `max_calls`, 60 s and 1000 by default, and Esc
+//! cancels it like any tool call. Steel has no memory limit. The plugin is
+//! off by default; turn it on in `settings.toml` with
 //!
 //! ```toml
-//! [[plugin]]
-//! crate = "rig-steel"
-//! plugin = "rig_steel::SteelPlugin"
+//! [plugins]
+//! enable = ["rig_steel::SteelPlugin"]
 //! ```
 
 mod harness;
 mod program;
 
+use std::num::NonZeroU64;
 use std::pin::pin;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -54,13 +50,15 @@ use futures::future::{self, Either, FutureExt};
 use futures_timer::Delay;
 use rig_core::tool::{Scope, ToolExecutionError, ToolResult, Touches};
 use rig_ecs::agent::AgentId;
+use rig_ecs::spawn::Subagents;
 use rig_ecs::tasks::{Running, Wake};
-use rig_ecs::tools::{AppToolsExt, ToolCalled, ToolOptions};
+use rig_ecs::tools::{AppToolsExt, ToolCalled, ToolDef, ToolOptions};
+use rig_harness::settings::AppSettingsExt;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use steel::steel_vm::ThreadStateController;
 
-pub use harness::{AgentSpec, Harness};
+pub use harness::Harness;
 use program::{Ended, Host};
 
 /// The tool that runs a program.
@@ -70,65 +68,136 @@ pub const RUN_STEEL: &str = "run_steel";
 /// on the heap; the compiler and macro expander recurse natively.
 const STACK_BYTES: usize = 16 * 1024 * 1024;
 
-/// Execution time a program may take, not counting its waits on host
-/// functions.
-const MAX_RUNTIME: Duration = Duration::from_secs(60);
-
-/// How often the watchdog compares a program's execution time with
-/// [`MAX_RUNTIME`].
+/// How often the watchdog compares a program's execution time with its
+/// [`Limits::max_seconds`].
 const WATCH_EVERY: Duration = Duration::from_millis(250);
 
-/// The most bytes of the result text, and of printed output, kept.
-const MAX_OUTPUT_BYTES: usize = 64 * 1024;
+/// `[steel]` in `settings.toml`: the bounds a program runs within. Only rig
+/// can time or count a program inside its own process, so these are
+/// settings, with defaults that stop a program nobody watches; Esc stops one
+/// sooner.
+#[derive(Resource, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub(crate) struct Limits {
+    /// Seconds of execution, not counting waits on agents and tools; 0 does
+    /// not read.
+    pub(crate) max_seconds: NonZeroU64,
+    /// Host function calls.
+    pub(crate) max_calls: u32,
+    /// Bytes kept of what it printed, and of its result: what it prints is
+    /// held in memory until it ends, so this has a default, 64 KiB.
+    pub(crate) max_output_bytes: usize,
+}
 
-const DESCRIPTION: &str = "Run a Steel program (Scheme) that orchestrates agents and tools, and \
-    return the value of its last expression (a string as it is, anything else as JSON) with \
-    what it printed. Use it when the work needs several agents or many tool calls tied \
-    together by logic: a relay between agents, a fan-out with all replies gathered, a loop \
-    until a check passes; for one subagent or one tool call, call it directly. A program waits \
-    for its agents' replies, so its result holds their real answers. Never invent, simulate or \
-    paraphrase as fact another agent's reply; if the requested interaction is not supported, \
-    say so before offering an alternative.\n\n\
+impl Limits {
+    /// Whether a program that made `made` host calls may make another.
+    pub(crate) fn call(&self, made: u32) -> Result<(), String> {
+        match made >= self.max_calls {
+            true => Err(format!(
+                "too many host function calls: {} at most (`[steel] max_calls`)",
+                self.max_calls
+            )),
+            false => Ok(()),
+        }
+    }
+}
+
+impl Default for Limits {
+    fn default() -> Self {
+        Self {
+            max_seconds: NonZeroU64::new(60).unwrap_or(NonZeroU64::MIN),
+            max_calls: 1000,
+            max_output_bytes: 64 * 1024,
+        }
+    }
+}
+
+/// What the model reads of `run_steel` before the host functions.
+const INTRO: &str = "Run a Steel program (Scheme) and return the value of its last expression \
+    (a string as it is, anything else as JSON) with what it printed. It suits tool calls tied \
+    together by logic: a loop until a check passes, a branch on what a tool returned, many \
+    calls gathered into one result; one tool call is simpler called directly.\n\n\
     The program is Steel, an R7RS-style Scheme: define, let, lambda, if, cond, when, let loop, \
     named lets, map, for-each, filter, foldl, lists, vectors, hash maps (hash, hash-ref), \
     strings (string-append, string-join, string-length), number->string, display and \
     displayln (captured). There is no file system, network, process, module loading or eval. \
     These host functions are defined; each one waits for its answer:\n\n\
-    (spawn-agent name [options]) -> string\n    \
+    (call-tool name [args]) -> string\n    \
+    Calls one of your own tools with args, a hash such as (hash 'path \"src/lib.rs\"), and \
+    returns its text output; raises an error when the tool fails.\n";
+
+/// The rest of the description without Subagents.
+const TOOLS_ONLY: &str = "\nThe agent functions spawn-agent, send and reply come with the \
+    Subagents plugin, which is off. Never invent, simulate or paraphrase as fact another \
+    agent's reply; if the requested interaction is not supported, say so.\n\n\
+    Read three files and gather their first lines:\n\
+    (define paths (list \"crates/a/src/lib.rs\" \"crates/b/src/lib.rs\" \"crates/c/src/lib.rs\"))\n\
+    (string-join (map (lambda (path) (call-tool \"read\" (hash 'path path 'limit 1))) paths) \"\\n\")";
+
+/// The rest of the description with Subagents.
+const WITH_AGENTS: &str = "(spawn-agent name [options]) -> string\n    \
     Starts an idle agent spawned by you and returns its id. options is a hash with any of \
-    'model (\"vendor/model\"), 'system-prompt (string) and 'tools (list of tool names); unset \
-    settings are yours.\n\
+    'model (\"vendor/model\"), 'system-prompt (string) and 'tools (list of tool names, each one \
+    of yours); unset settings are yours, but for its effort on another 'model, which is \
+    that model's default.\n\
     (send agent text) -> string\n    \
     Sends text to an agent this program spawned, as a request, and returns the request's id \
     at once. The agent starts on it, or queues it when busy, and keeps its conversation \
     between requests. Agents work at the same time: send to several, then reply each.\n\
     (reply request) -> string\n    \
     Waits for the agent's answer to the request and returns its text; raises an error when \
-    its turn failed or was stopped. Each request is replied once.\n\
-    (call-tool name [args]) -> string\n    \
-    Calls one of your own tools with args, a hash such as (hash 'path \"src/lib.rs\"), and \
-    returns its text output; raises an error when the tool fails.\n\n\
-    Fan out over three agents at once and keep the shortest answer:\n\
-    (define agents (map (lambda (i) (spawn-agent (string-append \"solver-\" (number->string i)))) (range 0 3)))\n\
-    (define requests (map (lambda (agent) (send agent \"How does src/lib.rs load plugins? Three sentences.\")) agents))\n\
-    (define answers (map reply requests))\n\
-    (foldl (lambda (answer best) (if (< (string-length answer) (string-length best)) answer best))\n       \
-           (car answers) (cdr answers))";
+    its turn failed or was stopped. Each request is replied once.\n\n\
+    A program waits for its agents' replies, so its result holds their real answers; one \
+    subagent is simpler started directly with the task tool. Never \
+    invent, simulate or paraphrase as fact another agent's reply; if the requested \
+    interaction is not supported, say so before offering an alternative.\n\n\
+    Review three directories at once and gather the findings:\n\
+    (define dirs (list \"crates/a\" \"crates/b\" \"crates/c\"))\n\
+    (define requests (map (lambda (dir) (send (spawn-agent \"reviewer\") (string-append \"Review the error handling in \" dir \". List each finding as file:line and one sentence.\"))) dirs))\n\
+    (string-join (map reply requests) \"\\n\\n\")";
 
-/// Adds the `run_steel` tool.
+/// What the model reads of `run_steel`: the agent functions only when
+/// `agents`, Subagents being on.
+fn description(agents: bool) -> String {
+    if agents {
+        format!("{INTRO}{WITH_AGENTS}")
+    } else {
+        format!("{INTRO}{TOOLS_ONLY}")
+    }
+}
+
+/// Adds the `run_steel` tool. Its programs call the model's tools, and,
+/// when a plugin gives agents subagents ([`Subagents`]), spawn and message
+/// agents too.
 #[derive(Default)]
 pub struct SteelPlugin;
 
 impl Plugin for SteelPlugin {
     fn build(&self, app: &mut App) {
+        app.add_setting::<Limits>("steel");
         app.add_plugins(harness::HarnessPlugin).add_open_tool(
             RUN_STEEL,
-            DESCRIPTION,
+            &description(false),
             ToolOptions {
                 footprint: Some(Touches::Writes(Scope::Anything)),
             },
             on_run_steel,
         );
+    }
+
+    /// Offers the agent functions once every plugin is built, so Subagents
+    /// counts whichever order the two are added in.
+    fn finish(&self, app: &mut App) {
+        let world = app.world_mut();
+        if !world.contains_resource::<Subagents>() {
+            return;
+        }
+        let mut tools = world.query::<&mut ToolDef>();
+        for mut tool in tools.iter_mut(world) {
+            if tool.0.name == RUN_STEEL {
+                Arc::make_mut(&mut tool.0).description = description(true);
+            }
+        }
     }
 }
 
@@ -147,14 +216,17 @@ struct SteelArgs {
 fn on_run_steel(
     called: On<ToolCalled<SteelArgs>>,
     harness: Res<Harness>,
+    limits: Res<Limits>,
+    subagents: Option<Res<Subagents>>,
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
     let program = run_program(
         called.tool_call.id.to_string(),
         harness.within(called.call),
-        called.agent_id.clone(),
+        (called.agent_id.clone(), subagents.is_some()),
         called.args.code.clone(),
+        *limits,
     );
     commands.entity(called.call).insert(Running::answering(
         AsyncComputeTaskPool::get_or_init(TaskPool::default),
@@ -163,18 +235,31 @@ fn on_run_steel(
     ));
 }
 
-/// Runs `code` on a thread of its own and waits for its end, stopping it
-/// when it runs past [`MAX_RUNTIME`]. Dropping this future, as cancelling
-/// the call does, interrupts the VM and ends the host function it waits
-/// in, so the thread stops soon after.
-async fn run_program(call: String, harness: Harness, me: AgentId, code: String) -> ToolResult {
+/// Runs `code` for the agent `me` on a thread of its own, with the agent
+/// functions when `agents`, and waits for its end, stopping it when it runs
+/// past its [`Limits::max_seconds`]. Dropping this future, as
+/// cancelling the call does, interrupts the VM and ends the host function
+/// it waits in, so the thread stops soon after.
+async fn run_program(
+    call: String,
+    harness: Harness,
+    (me, agents): (AgentId, bool),
+    code: String,
+    limits: Limits,
+) -> ToolResult {
     let control = Arc::new(Control::default());
     let (cancel, cancelled) = oneshot::channel::<()>();
     let _stopper = Stopper {
         control: control.clone(),
         _cancel: cancel,
     };
-    let host = Host::new(harness, me, call, control.clone(), cancelled.shared());
+    let host = Host::new(
+        harness,
+        (me, call, agents),
+        control.clone(),
+        cancelled.shared(),
+        limits,
+    );
     let (done, mut finished) = oneshot::channel::<Ended>();
     let started = std::thread::Builder::new()
         .name(RUN_STEEL.to_owned())
@@ -187,12 +272,12 @@ async fn run_program(call: String, harness: Harness, me: AgentId, code: String) 
     }
     loop {
         match future::select(&mut finished, pin!(Delay::new(WATCH_EVERY))).await {
-            Either::Left((Ok(ended), _)) => return result(ended, control.stopped()),
+            Either::Left((Ok(ended), _)) => return result(ended, control.stopped(), &limits),
             Either::Left((Err(_), _)) => {
                 return failure("The interpreter stopped without a result.".to_owned());
             }
             Either::Right(_) => {
-                if control.spent() > MAX_RUNTIME {
+                if control.spent() > Duration::from_secs(limits.max_seconds.get()) {
                     control.stop(Stop::TimeLimit);
                 }
             }
@@ -205,7 +290,7 @@ async fn run_program(call: String, harness: Harness, me: AgentId, code: String) 
 pub(crate) enum Stop {
     /// Its call was cancelled.
     Cancelled,
-    /// It ran past [`MAX_RUNTIME`].
+    /// It ran past its [`Limits::max_seconds`].
     TimeLimit,
 }
 
@@ -291,8 +376,10 @@ impl Drop for Stopper {
     }
 }
 
-/// The call's result for a program that ended.
-fn result(ended: Ended, stopped: Option<Stop>) -> ToolResult {
+/// The call's result for a program that ended: what it printed, then its
+/// value or why it failed, each kept within `limits` on its own, so what
+/// it printed never cuts off how it ended.
+fn result(ended: Ended, stopped: Option<Stop>, limits: &Limits) -> ToolResult {
     let mut text = String::new();
     if !ended.printed.is_empty() {
         text.push_str("Printed:\n");
@@ -304,18 +391,19 @@ fn result(ended: Ended, stopped: Option<Stop>) -> ToolResult {
         (Ok(value), _) => text.push_str(&value),
         (Err(_), Some(Stop::TimeLimit)) => {
             text.push_str(&format!(
-                "The program was stopped: it ran for more than {} s, not counting its waits on agents and tools.",
-                MAX_RUNTIME.as_secs()
+                "The program was stopped: it ran for more than {} s, not counting its waits on \
+                 agents and tools (`[steel] max_seconds`).",
+                limits.max_seconds
             ));
-            return failure(capped(text));
+            return failure(text);
         }
         (Err(why), _) => {
             text.push_str("The program failed:\n");
-            text.push_str(&why);
-            return failure(capped(text));
+            text.push_str(&capped(why, limits.max_output_bytes));
+            return failure(text);
         }
     }
-    ToolResult::success(capped(text).into())
+    ToolResult::success(text.into())
 }
 
 /// The result of a call that failed, saying `why`.
@@ -323,14 +411,16 @@ fn failure(why: String) -> ToolResult {
     ToolResult::failed(ToolExecutionError::other(why))
 }
 
-/// `text` cut to [`MAX_OUTPUT_BYTES`] on a character boundary, with a note
-/// when it was cut.
-pub(crate) fn capped(mut text: String) -> String {
-    if text.len() <= MAX_OUTPUT_BYTES {
+/// `text` cut to `most` bytes on a character boundary, with a note naming
+/// the setting when it was cut.
+pub(crate) fn capped(mut text: String, most: usize) -> String {
+    if text.len() <= most {
         return text;
     }
-    text.truncate(text.floor_char_boundary(MAX_OUTPUT_BYTES));
-    text.push_str(&format!("\n[output cut at {MAX_OUTPUT_BYTES} bytes]"));
+    text.truncate(text.floor_char_boundary(most));
+    text.push_str(&format!(
+        "\n[output cut at {most} bytes (`[steel] max_output_bytes`)]"
+    ));
     text
 }
 

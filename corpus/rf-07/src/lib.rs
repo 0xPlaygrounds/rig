@@ -1,15 +1,11 @@
-//! `rerun`: record an agent run with a checkpoint after every turn, replay
-//! it offline from any checkpoint, or fork it into a new recording that
-//! continues against another model.
+//! `rerun`: record an agent run with a checkpoint after every turn, replay it offline from any
+//! checkpoint, or fork it into a new recording that continues against another model.
 //!
-//! A run directory holds plain JSON files:
-//!
-//! - `log.json`: the stamped [`EffectLog`], stream items kept;
-//! - `run.json`: the [`RunMeta`] (prompt, run spec, outcome, stream transcript);
-//! - `checkpoint-<k>.json`: a [`Checkpoint`] holding the [`AgentRun`] right
-//!   after model turn `k` was taken in, its tool calls still pending;
-//! - `manifest.json`: a hash of every other file, so an edited or truncated
-//!   file is refused.
+//! A run directory holds plain JSON files. `log.json` is the stamped [`EffectLog`], stream items
+//! kept. `run.json` is the [`RunMeta`] (prompt, run spec, outcome, stream transcript). Each
+//! `checkpoint-<k>.json` is a [`Checkpoint`] holding the [`AgentRun`] right after model turn `k`
+//! was taken in, its tool calls still pending. `manifest.json` holds a hash of every other file, so
+//! an edited or truncated file is refused.
 
 use std::{
     collections::BTreeMap,
@@ -390,7 +386,12 @@ fn checkpoints(
     let mut out = Vec::new();
     loop {
         match run.next_step().map_err(rig)? {
-            AgentRunStep::CallModel { history, turn, .. } => {
+            AgentRunStep::CallModel {
+                prompt,
+                history,
+                turn,
+                ..
+            } => {
                 let Some((at, record)) = records.next() else {
                     return Ok(out);
                 };
@@ -404,13 +405,14 @@ fn checkpoints(
                 let prepared = prepare_request(
                     &spec,
                     &capabilities,
+                    prompt,
                     &history,
                     request.tools.clone(),
                     run.output_tool_name(),
                     None,
                 )
                 .map_err(rig)?;
-                run.advertise_tools(turn, prepared.tools.clone());
+                run.advertise_tools(turn, prepared.request.tools);
                 run.model_response(ModelTurn::from_policy(response, prepared.policy))
                     .map_err(rig)?;
                 out.push((turn, log.checkpoint(at + 1, run.clone()).0));

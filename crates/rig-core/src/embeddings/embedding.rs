@@ -109,6 +109,7 @@ pub struct Embedding {
     /// non-text embeddings. Used for debugging and equality.
     pub document: String,
     /// The embedding vector
+    #[serde(deserialize_with = "crate::json_utils::floats")]
     pub vec: Vec<f64>,
 }
 
@@ -119,9 +120,6 @@ impl PartialEq for Embedding {
 }
 
 impl Eq for Embedding {}
-
-#[cfg(test)]
-mod provider_response_tests;
 
 /// The media type of an encoded image, sniffed from its magic bytes.
 ///

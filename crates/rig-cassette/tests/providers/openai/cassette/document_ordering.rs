@@ -1,8 +1,6 @@
 //! Focused OpenAI cassette coverage for request document ordering.
 use rig::completion::{AssistantContent, Document, Message};
 use rig::providers::openai;
-use serde::Deserialize;
-use serde_json::Value;
 
 use crate::support::assert_contains_any_case_insensitive;
 use rig::completion::CompletionRequest;
@@ -10,16 +8,6 @@ use rig::completion::CompletionRequest;
 const SYSTEM_INSTRUCTION: &str = "Answer with the exact token from the document only.";
 const DOCUMENT_ANSWER: &str = "violet-needle";
 const PROMPT: &str = "According to the document, what is the ordering token?";
-
-#[derive(Deserialize)]
-struct RecordedInteraction {
-    when: RecordedRequest,
-}
-
-#[derive(Deserialize)]
-struct RecordedRequest {
-    body: Option<String>,
-}
 
 fn ordering_document() -> Document {
     Document {
@@ -73,29 +61,8 @@ async fn responses_keeps_documents_after_system_before_history() {
     );
 }
 
-fn recorded_request_body(scenario: &str) -> Value {
-    let cassette_path = crate::cassettes::cassette_path("openai", scenario);
-    let contents = std::fs::read_to_string(&cassette_path).unwrap_or_else(|error| {
-        panic!(
-            "provider cassette {} should be readable after recording: {error}",
-            cassette_path.display()
-        )
-    });
-
-    serde_yaml::Deserializer::from_str(&contents)
-        .find_map(|document| {
-            let interaction = RecordedInteraction::deserialize(document)
-                .expect("cassette interaction should deserialize");
-            interaction
-                .when
-                .body
-                .and_then(|body| serde_json::from_str::<Value>(&body).ok())
-        })
-        .unwrap_or_else(|| panic!("expected cassette {scenario} to contain a JSON request body"))
-}
-
 fn assert_responses_request_order(scenario: &str) {
-    let body = recorded_request_body(scenario);
+    let body = crate::cassettes::recorded_json_request("openai", scenario);
     let input = body["input"]
         .as_array()
         .expect("OpenAI Responses request should contain input[]");

@@ -1,27 +1,20 @@
 //! Live facts behind Rig's handling of Claude thinking bound to the request's
-//! tools and system prompt (#2703).
+//! tools and system prompt.
 //!
 //! Claude Opus 5.5 binds a signed thinking block to the tools and system
 //! prompt it was made under. In adaptive thinking Rig replays such a turn
 //! verbatim and asks Anthropic, under the
-//! `thinking-binding-controls-2026-08-01` beta, to drop a block whose
-//! binding no longer matches (`block_binding.prefix_mismatch_behavior:
-//! "drop_block"`). Thinking that takes no binding (Sonnet 5.5's
-//! `between_tools`) gets no `drop_block`, so Rig replays a turn made under
-//! other tools as another model's. These cells pin what that rests on:
+//! `thinking-binding-controls-2026-08-01` beta, to drop a block whose binding
+//! no longer matches (`block_binding.prefix_mismatch_behavior: "drop_block"`).
+//! Thinking that takes no binding (Sonnet 5.5's `between_tools`) gets no
+//! `drop_block`, so Rig replays a turn made under other tools as another
+//! model's. The cells pin that Anthropic accepts these requests, and refuses
+//! the same requests with the binding or the conversion taken out.
 //!
-//! | # | Cell | Fact |
-//! |---|------|------|
-//! | 1 | `changed_tools_with_drop_block` | After the tools change, the first reply's content goes back exactly as received, with `drop_block` and the beta, and Anthropic accepts it |
-//! | 2 | `changed_tools_without_drop_block` | Rig's same request with the binding taken out is refused with a 400 that names the tools list, the beta and `drop_block` |
-//! | 3 | `changed_system_with_drop_block` | The same as 1 when only the system prompt changes |
-//! | 4 | `changed_system_without_drop_block` | The same as 2 when only the system prompt changes: the refusal names the system prompt |
-//! | 5 | `between_tools_after_tool_change` | Under `between_tools`, which takes no binding, Rig's request (the turn as text) is accepted, and the same request with the signed thinking verbatim is refused |
-//!
-//! The counterfactual requests (2, 4 and 5) are Rig's own encoded requests,
-//! changed only where the fact needs, and sent raw through the session's
-//! client. Every check runs on the recorded exchanges before a recording is
-//! written, so a re-record that loses a fact never replaces its fixture.
+//! The counterfactual requests are Rig's own encoded requests, changed only
+//! where the fact needs, and sent raw through the session's client. Every
+//! check runs on the recorded exchanges before a recording is written, so a
+//! re-record that loses a fact never replaces its fixture.
 
 use std::path::Path;
 

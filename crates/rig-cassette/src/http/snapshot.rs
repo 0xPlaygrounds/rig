@@ -27,6 +27,7 @@
 )]
 
 use std::collections::BTreeSet;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use rig_core::json_utils::remove_preserving_order;
@@ -301,12 +302,17 @@ impl RequestSnapshots {
     }
 }
 
-/// Write `contents` to a temporary file beside `path`, then rename it over
-/// `path`, so a concurrent reader never sees a partial snapshot.
+/// Write `contents` to a temporary file beside `path`, sync it, then rename
+/// it over `path`, so a concurrent reader never sees a partial snapshot and
+/// a crash right after leaves the old file or the new one.
 fn write_atomically(path: &Path, contents: &[u8]) -> std::io::Result<()> {
     let temp_path = temporary_cassette_path(path);
-    let result =
-        std::fs::write(&temp_path, contents).and_then(|()| std::fs::rename(&temp_path, path));
+    let result = std::fs::File::create(&temp_path)
+        .and_then(|mut file| {
+            file.write_all(contents)?;
+            file.sync_all()
+        })
+        .and_then(|()| std::fs::rename(&temp_path, path));
     if result.is_err() {
         let _ = std::fs::remove_file(&temp_path);
     }

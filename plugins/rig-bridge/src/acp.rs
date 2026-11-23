@@ -1,0 +1,762 @@
+//! A harness that speaks the Agent Client Protocol on its stdin and stdout,
+//! as a model: one process and one ACP session for a whole conversation.
+//! The client offers the agent no file system and no terminal, names Rig's
+//! MCP server as the session's only one, and refuses every permission the
+//! agent asks for that is not for a tool of that server. What differs
+//! between agents is an [`Agent`].
+
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::sync::Arc;
+
+use rig_harness::rig_core::completion::{Effort, FinishReason, Usage};
+use serde_json::{Value, json};
+use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::sync::mpsc;
+
+use crate::harness::{
+    ContextSnapshot, Event, HANDSHAKE_TIMEOUT, Harness, Launch, Part, Prompt, Running, Stderr,
+    parse_effort, spawn,
+};
+use crate::rpc::{Transport, method_not_found, positive_u32};
+
+#[cfg(test)]
+mod tests;
+
+/// The MCP server name Rig's tools are under.
+pub(crate) const SERVER: &str = "rig";
+
+/// The JSON-RPC code an agent refuses a session with before a sign-in.
+const AUTH_REQUIRED: i64 = -32000;
+
+/// What one ACP agent needs that the protocol does not say.
+pub(crate) trait Agent: Send + Sync + 'static {
+    /// The agent's name, for messages.
+    fn name(&self) -> &'static str;
+
+    /// Adds the arguments, environment and files that start the program as
+    /// an ACP agent with nothing of its own turned on.
+    fn prepare(&self, command: &mut Command, opening: &Opening) -> Result<(), String>;
+
+    /// The `_meta` of `session/new`, where an agent takes a system prompt.
+    /// `None` when it takes none there: the first prompt then opens with it.
+    fn session_meta(&self, initialized: &Value, system: &str) -> Option<Value>;
+
+    /// The requests that choose the model and effort once the session is
+    /// open, as method and parameters. `opened` is the `session/new` result.
+    fn choose(
+        &self,
+        session: &str,
+        opened: &Value,
+        opening: &Opening,
+    ) -> Vec<(&'static str, Value)>;
+
+    /// The `authenticate` method that signs in with the login the program
+    /// already has, if it has one to offer.
+    fn sign_in(&self, initialized: &Value) -> Option<String>;
+
+    /// What the model is told about the agent, after Rig's system prompt.
+    fn note(&self, project: Option<&Path>) -> String;
+
+    /// Whether the agent offers its model a tool added while it runs.
+    fn relists(&self) -> bool {
+        true
+    }
+
+    /// Wire value for ACP `session/set_config_option` (`reasoning_effort`)
+    /// when this agent supports live in-session effort updates.
+    fn effort_value(&self, _effort: Effort) -> Option<&'static str> {
+        None
+    }
+
+    /// What a person runs to sign in.
+    fn login_hint(&self) -> &'static str;
+
+    /// Whether the tool call a permission request describes is a call of
+    /// one of Rig's tools, given any `title` previously announced for the
+    /// same `toolCallId` in a `tool_call` update.
+    fn is_rig_tool(&self, tool_call: &Value, recorded_title: Option<&str>) -> bool;
+
+    /// Whether an `agent_message_chunk` text fragment should be forwarded to
+    /// Rig. Agents that emit CLI status banners as message chunks return
+    /// `false` for those lines.
+    fn keep_text(&self, text: &str) -> bool {
+        let _ = text;
+        true
+    }
+
+    /// Whether `session/new` names Rig's MCP server. An agent that is told
+    /// of it another way, in [`prepare`](Self::prepare), says no.
+    fn serves_in_session(&self) -> bool {
+        true
+    }
+
+    /// Checks, once the session is open, that the agent runs as
+    /// [`prepare`](Self::prepare) set it up.
+    fn opened(&self, opening: &Opening) -> Result<(), String> {
+        let _ = opening;
+        Ok(())
+    }
+
+    /// Whether a prompt result's input counter leaves out the tokens read
+    /// from and written to the cache.
+    fn input_leaves_out_cache(&self) -> bool {
+        false
+    }
+
+    /// Whether `session/prompt`'s `result.usage` is cumulative across the
+    /// whole session instead of reset for each prompt turn.
+    fn cumulative_usage(&self) -> bool {
+        false
+    }
+
+    /// The `_meta` of `initialize`, for an agent that reads one.
+    fn initialize_meta(&self) -> Option<Value> {
+        None
+    }
+
+    /// The `_meta` of the `session/prompt` the client calls `prompt`, for
+    /// an agent that names its prompts.
+    fn prompt_meta(&self, prompt: &str) -> Option<Value> {
+        let _ = prompt;
+        None
+    }
+
+    /// The result of the prompt the client calls `prompt`, when the
+    /// notification `method` with `params` is the agent's own word that it
+    /// ended: some agents say so and leave the request unanswered.
+    fn ended(&self, method: &str, params: &Value, prompt: &str) -> Option<Value> {
+        let _ = (method, params, prompt);
+        None
+    }
+
+    /// The token counters of one inference, when the notification `method`
+    /// with `params` is the agent's own report of them. An agent that
+    /// reports none is counted by its prompt results, a turn at a time.
+    fn counted(&self, method: &str, params: &Value) -> Option<Usage> {
+        let _ = (method, params);
+        None
+    }
+}
+
+/// An [`Agent`] as a harness.
+pub(crate) struct Acp<A>(pub Arc<A>);
+
+impl<A: Agent> Harness for Acp<A> {
+    fn note(&self, project: Option<&Path>) -> String {
+        self.0.note(project)
+    }
+
+    fn relists(&self) -> bool {
+        self.0.relists()
+    }
+
+    fn changes_effort(&self) -> bool {
+        self.0.effort_value(Effort::High).is_some()
+    }
+
+    fn start(&self, launch: Launch<'_>) -> Result<Running, String> {
+        let Launch {
+            mut command,
+            dir,
+            system,
+            model,
+            effort,
+            mcp,
+            tools,
+        } = launch;
+        let opening = Opening {
+            dir: dir.to_path_buf(),
+            system: system.to_owned(),
+            model: model.to_owned(),
+            effort,
+            mcp_url: mcp.url().to_owned(),
+            mcp_token: mcp.token().to_owned(),
+            tools: tools
+                .iter()
+                .map(|tool| tool.name.as_str().to_owned())
+                .collect(),
+        };
+        command.current_dir(dir);
+        self.0.prepare(&mut command, &opening)?;
+        let (process, pipes) = spawn(command)?;
+        let (prompts, prompted) = mpsc::unbounded_channel();
+        let (events, reported) = mpsc::unbounded_channel();
+        let stderr = Stderr::follow(pipes.stderr);
+        let agent = self.0.clone();
+        tokio::spawn(async move {
+            let name = agent.name();
+            let mut peer = Peer::new(pipes.stdout, pipes.stdin, events.clone(), agent);
+            if let Err(why) = converse(&mut peer, opening, prompted).await {
+                let why = stderr.explain(&format!("{name}: {why}")).await;
+                let _ = events.send(Event::Done(Err(why)));
+            }
+        });
+        Ok(Running {
+            prompts,
+            events: reported,
+            _alive: Box::new(process),
+        })
+    }
+}
+
+/// What a session opens with.
+pub(crate) struct Opening {
+    /// The session's private directory, the agent's working directory.
+    pub dir: PathBuf,
+    /// The system prompt.
+    pub system: String,
+    /// The model's id.
+    pub model: String,
+    /// The effort asked for.
+    pub effort: Option<Effort>,
+    /// Where Rig's MCP server is.
+    pub mcp_url: String,
+    /// The bearer token that names the session to it.
+    pub mcp_token: String,
+    /// The names of Rig's tools.
+    pub tools: Vec<String>,
+}
+
+/// Why a request failed.
+#[derive(Debug)]
+enum Failed {
+    /// The agent is gone.
+    Closed,
+    /// The agent answered with an error.
+    Refused { code: i64, message: String },
+}
+
+impl std::fmt::Display for Failed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Closed => f.write_str("the program exited"),
+            Self::Refused { code, message } => write!(f, "{message} ({code})"),
+        }
+    }
+}
+
+/// The client's end of the connection.
+pub(crate) struct Peer<R, W> {
+    transport: Transport<R, W>,
+    events: mpsc::UnboundedSender<Event>,
+    agent: Arc<dyn Agent>,
+    /// The client's name for the prompt being answered.
+    prompt: Option<String>,
+    /// Whether the agent reported an inference's counters since the last
+    /// prompt was answered.
+    counted: bool,
+    /// `toolCallId` -> `title` seen in `tool_call` updates, for agents that
+    /// strip the MCP server prefix in `session/request_permission`.
+    call_titles: HashMap<String, String>,
+}
+
+impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Peer<R, W> {
+    pub(crate) fn new(
+        reader: R,
+        writer: W,
+        events: mpsc::UnboundedSender<Event>,
+        agent: Arc<dyn Agent>,
+    ) -> Self {
+        Self {
+            transport: Transport::new(reader, writer),
+            events,
+            agent,
+            prompt: None,
+            counted: false,
+            call_titles: HashMap::new(),
+        }
+    }
+
+    async fn read(&mut self) -> Result<Value, Failed> {
+        self.transport
+            .next_object()
+            .await
+            .map_err(|()| Failed::Closed)
+    }
+
+    /// Sends a request and waits for its answer, handling what the agent
+    /// sends meanwhile.
+    async fn request(&mut self, method: &str, params: Value) -> Result<Value, Failed> {
+        let id = self
+            .transport
+            .send_request(method, params, true)
+            .await
+            .map_err(|()| Failed::Closed)?;
+        loop {
+            let message = self.read().await?;
+            let answers = message.get("method").is_none()
+                && message.get("id").and_then(Value::as_u64) == Some(id);
+            if !answers {
+                let ended = self.prompt.as_deref().and_then(|prompt| {
+                    let method = message.get("method")?.as_str()?;
+                    let params = message.get("params").unwrap_or(&Value::Null);
+                    self.agent.ended(method, params, prompt)
+                });
+                if let Some(result) = ended {
+                    return Ok(result);
+                }
+                self.incoming(&message).await?;
+                continue;
+            }
+            return match message.get("error") {
+                Some(error) => Err(Failed::Refused {
+                    code: error
+                        .get("code")
+                        .and_then(Value::as_i64)
+                        .unwrap_or_default(),
+                    message: error
+                        .get("message")
+                        .and_then(Value::as_str)
+                        .unwrap_or("the request failed")
+                        .to_owned(),
+                }),
+                None => Ok(message.get("result").cloned().unwrap_or(Value::Null)),
+            };
+        }
+    }
+
+    /// Handles a message that answers nothing: an update is reported, a
+    /// permission is decided, any other request is refused.
+    async fn incoming(&mut self, message: &Value) -> Result<(), Failed> {
+        let Some(method) = message.get("method").and_then(Value::as_str) else {
+            return Ok(());
+        };
+        let params = message.get("params").unwrap_or(&Value::Null);
+        let Some(id) = message.get("id").filter(|id| !id.is_null()) else {
+            if method == "session/update" {
+                self.update(params.get("update").unwrap_or(&Value::Null));
+            } else if let Some(usage) = self.agent.counted(method, params) {
+                self.counted = true;
+                let _ = self.events.send(Event::Usage(usage));
+            }
+            return Ok(());
+        };
+        let answer = match method {
+            "session/request_permission" => {
+                let tool_call = params.get("toolCall").unwrap_or(&Value::Null);
+                let recorded = tool_call
+                    .get("toolCallId")
+                    .and_then(Value::as_str)
+                    .and_then(|id| self.call_titles.get(id))
+                    .map(String::as_str);
+                let ours = self.agent.is_rig_tool(tool_call, recorded);
+                json!({ "result": { "outcome": decide(ours, params.get("options")) } })
+            }
+            _ => method_not_found(method),
+        };
+        self.transport
+            .reply(id, answer, true)
+            .await
+            .map_err(|()| Failed::Closed)
+    }
+
+    /// Reports the text of a `session/update`.
+    fn update(&mut self, update: &Value) {
+        let kind = update.get("sessionUpdate").and_then(Value::as_str);
+        if kind == Some("tool_call") {
+            if let (Some(id), Some(title)) = (
+                update.get("toolCallId").and_then(Value::as_str),
+                update.get("title").and_then(Value::as_str),
+            ) {
+                self.call_titles.insert(id.to_owned(), title.to_owned());
+            }
+            return;
+        }
+        if kind == Some("usage_update") {
+            let used = self
+                .prompt
+                .is_some()
+                .then(|| {
+                    update
+                        .get("used")
+                        .and_then(Value::as_u64)
+                        .filter(|used| *used > 0)
+                })
+                .flatten();
+            let window = positive_u32(update.get("size"));
+            if used.is_some() || window.is_some() {
+                let _ = self
+                    .events
+                    .send(Event::Context(ContextSnapshot { used, window }));
+            }
+            return;
+        }
+        let text = || {
+            update
+                .get("content")
+                .and_then(|content| content.get("text"))
+                .and_then(Value::as_str)
+                .filter(|text| !text.is_empty())
+                .map(str::to_owned)
+        };
+        let event = match kind {
+            Some("agent_message_chunk") => text()
+                .filter(|text| self.agent.keep_text(text))
+                .map(Event::Text),
+            Some("agent_thought_chunk") => text().map(Event::Reasoning),
+            _ => None,
+        };
+        if let Some(event) = event {
+            let _ = self.events.send(event);
+        }
+    }
+}
+
+/// The outcome of a permission request: the first option that allows the
+/// call once for one of Rig's tools, and a refusal for anything else.
+fn decide(ours: bool, options: Option<&Value>) -> Value {
+    let kind =
+        |option: &Value, kind: &str| option.get("kind").and_then(Value::as_str) == Some(kind);
+    let options = options
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    let wanted: &[&str] = if ours {
+        &["allow_once", "allow_always"]
+    } else {
+        &["reject_once", "reject_always"]
+    };
+    let chosen = wanted
+        .iter()
+        .find_map(|wanted| options.iter().find(|option| kind(option, wanted)))
+        .and_then(|option| option.get("optionId"));
+    match chosen {
+        Some(option) => json!({ "outcome": "selected", "optionId": option }),
+        None => json!({ "outcome": "cancelled" }),
+    }
+}
+
+/// Builds an ACP `session/set_config_option` request for `reasoning_effort`.
+pub(crate) fn set_effort_request(session: &str, value: &str) -> (&'static str, Value) {
+    (
+        "session/set_config_option",
+        json!({
+            "sessionId": session,
+            "configId": "reasoning_effort",
+            "value": value,
+        }),
+    )
+}
+
+/// Whether a session supports runtime `reasoning_effort` updates, and what
+/// default effort to restore when a prompt asks for `None` (provider default).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EffortConfig {
+    /// `session/new` returned a `configOptions` list without `reasoning_effort`.
+    Unsupported,
+    /// Runtime updates are allowed; the `Option<Effort>` is the model's default.
+    Supported(Option<Effort>),
+}
+
+/// Opens the session, then answers each prompt until the prompts end.
+pub(crate) async fn converse<R, W>(
+    peer: &mut Peer<R, W>,
+    opening: Opening,
+    mut prompts: mpsc::UnboundedReceiver<Prompt>,
+) -> Result<(), String>
+where
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
+{
+    let agent = peer.agent.clone();
+    let mut current_effort = opening.effort;
+    let mut prev_usage = Usage::new();
+    let (session, mut system, effort_config) =
+        tokio::time::timeout(HANDSHAKE_TIMEOUT, handshake(peer, &opening))
+            .await
+            .map_err(|_| "it did not finish starting in time".to_owned())??;
+
+    loop {
+        // Between prompts the agent may still send requests and updates.
+        let prompt = loop {
+            tokio::select! {
+                prompt = prompts.recv() => break prompt,
+                message = peer.read() => {
+                    let message = message.map_err(|why| why.to_string())?;
+                    peer.incoming(&message).await.map_err(|why| why.to_string())?;
+                }
+            }
+        };
+        let Some(prompt) = prompt else {
+            return Ok(());
+        };
+        if prompt.effort != current_effort
+            && let EffortConfig::Supported(default_effort) = effort_config
+            && let Some(value) = prompt
+                .effort
+                .or(default_effort)
+                .and_then(|effort| agent.effort_value(effort))
+        {
+            let (method, params) = set_effort_request(&session, value);
+            match peer.request(method, params).await {
+                Ok(_) => current_effort = prompt.effort,
+                Err(Failed::Closed) => return Err(Failed::Closed.to_string()),
+                Err(refused) => {
+                    let _ = peer.events.send(Event::Done(Err(refused.to_string())));
+                    continue;
+                }
+            }
+        }
+        let mut blocks: Vec<Value> = Vec::new();
+        if let Some(system) = system.take().filter(|system| !system.is_empty()) {
+            blocks.push(json!({
+                "type": "text",
+                "text": format!("<instructions>\n{system}\n</instructions>\n"),
+            }));
+        }
+        blocks.extend(prompt.parts.iter().map(|part| match part {
+            Part::Text(text) => json!({ "type": "text", "text": text }),
+            Part::Image { media_type, data } => {
+                json!({ "type": "image", "mimeType": media_type, "data": data })
+            }
+        }));
+        let named = uuid::Uuid::new_v4().to_string();
+        let mut asked = json!({ "sessionId": session, "prompt": blocks });
+        if let (Some(meta), Some(asked)) = (agent.prompt_meta(&named), asked.as_object_mut()) {
+            asked.insert("_meta".to_owned(), meta);
+        }
+        peer.prompt = Some(named);
+        peer.call_titles.clear();
+        let answered = peer.request("session/prompt", asked).await;
+        peer.prompt = None;
+        let was_counted = std::mem::take(&mut peer.counted);
+        let done = match answered {
+            Ok(result) => {
+                // The turn's totals, unless each inference was counted.
+                let cache_apart = agent.input_leaves_out_cache();
+                if let Some(reported) = usage(&result, cache_apart).filter(|_| !was_counted) {
+                    let turn_usage = if agent.cumulative_usage() {
+                        let delta = usage_delta(&prev_usage, reported);
+                        prev_usage = reported;
+                        delta
+                    } else {
+                        reported
+                    };
+                    if turn_usage.is_reported() {
+                        let _ = peer.events.send(Event::Usage(turn_usage));
+                    }
+                }
+                match result.get("stopReason").and_then(Value::as_str) {
+                    Some("max_tokens") => Ok(FinishReason::Length),
+                    Some("refusal") => Err("the model refused to answer".to_owned()),
+                    Some("cancelled") => Err("the turn was cancelled".to_owned()),
+                    _ => Ok(FinishReason::Stop),
+                }
+            }
+            Err(Failed::Closed) => return Err(Failed::Closed.to_string()),
+            Err(refused) => Err(refused.to_string()),
+        };
+        let _ = peer.events.send(Event::Done(done));
+    }
+}
+
+/// Runs the ACP startup handshake (`initialize`, `session/new`, optional auth,
+/// and model/effort selection).
+async fn handshake<R, W>(
+    peer: &mut Peer<R, W>,
+    opening: &Opening,
+) -> Result<(String, Option<String>, EffortConfig), String>
+where
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
+{
+    let failed = |what: &str| {
+        let what = what.to_owned();
+        move |why: Failed| format!("{what}: {why}")
+    };
+    let agent = peer.agent.clone();
+    let mut hello = json!({
+        "protocolVersion": 1,
+        "clientCapabilities": {
+            "fs": { "readTextFile": false, "writeTextFile": false },
+            "terminal": false,
+        },
+        "clientInfo": { "name": "rig", "title": "Rig", "version": env!("CARGO_PKG_VERSION") },
+    });
+    if let (Some(meta), Some(hello)) = (agent.initialize_meta(), hello.as_object_mut()) {
+        hello.insert("_meta".to_owned(), meta);
+    }
+    let initialized = peer
+        .request("initialize", hello)
+        .await
+        .map_err(failed("it did not start"))?;
+    let meta = agent.session_meta(&initialized, &opening.system);
+    let system = meta.is_none().then(|| opening.system.clone());
+    let servers = if agent.serves_in_session() {
+        json!([{
+            "type": "http",
+            "name": SERVER,
+            "url": opening.mcp_url,
+            "headers": [{ "name": "Authorization", "value": format!("Bearer {}", opening.mcp_token) }],
+        }])
+    } else {
+        json!([])
+    };
+    let mut new = json!({ "cwd": opening.dir.to_string_lossy(), "mcpServers": servers });
+    if let (Some(meta), Some(new)) = (meta, new.as_object_mut()) {
+        new.insert("_meta".to_owned(), meta);
+    }
+    let opened = match peer.request("session/new", new.clone()).await {
+        Err(Failed::Refused {
+            code: AUTH_REQUIRED,
+            ..
+        }) => {
+            let not_signed_in = || format!("it is not signed in: run `{}`", agent.login_hint());
+            let method = agent.sign_in(&initialized).ok_or_else(not_signed_in)?;
+            peer.request("authenticate", json!({ "methodId": method }))
+                .await
+                .map_err(|_| not_signed_in())?;
+            peer.request("session/new", new).await
+        }
+        opened => opened,
+    }
+    .map_err(failed("it opened no session"))?;
+    let session = opened
+        .get("sessionId")
+        .and_then(Value::as_str)
+        .ok_or("it opened a session without an id")?
+        .to_owned();
+    agent.opened(opening)?;
+    if let Some(window) = model_context_window(&opened, &opening.model) {
+        let _ = peer.events.send(Event::Context(ContextSnapshot {
+            used: None,
+            window: Some(window),
+        }));
+    }
+    for (method, params) in agent.choose(&session, &opened, opening) {
+        peer.request(method, params)
+            .await
+            .map_err(failed(&format!("it refused the model `{}`", opening.model)))?;
+    }
+    let effort_config = session_effort_config(&opened, &opening.model);
+    Ok((session, system, effort_config))
+}
+
+/// Looks up one `configOptions` entry by `id` in a `session/new` response.
+pub(crate) fn config_option<'a>(opened: &'a Value, id: &str) -> Option<&'a Value> {
+    opened
+        .get("configOptions")
+        .and_then(Value::as_array)?
+        .iter()
+        .find(|opt| opt.get("id").and_then(Value::as_str) == Some(id))
+}
+
+/// Inspects `session/new` metadata for whether the session supports runtime
+/// `reasoning_effort` configuration and what its unmodified default effort is.
+fn session_effort_config(opened: &Value, model: &str) -> EffortConfig {
+    let model_default = opened
+        .pointer("/models/availableModels")
+        .and_then(Value::as_array)
+        .and_then(|models| {
+            models
+                .iter()
+                .find(|entry| entry.get("modelId").and_then(Value::as_str) == Some(model))
+        })
+        .and_then(|entry| entry.pointer("/_meta/reasoningEfforts"))
+        .and_then(Value::as_array)
+        .and_then(|efforts| {
+            efforts.iter().find_map(|item| {
+                (item.get("default").and_then(Value::as_bool) == Some(true))
+                    .then(|| item.get("value").and_then(Value::as_str))
+                    .flatten()
+                    .and_then(parse_effort)
+            })
+        });
+    if opened
+        .get("configOptions")
+        .and_then(Value::as_array)
+        .is_none()
+    {
+        return EffortConfig::Supported(model_default);
+    }
+    let Some(option) = config_option(opened, "reasoning_effort") else {
+        return EffortConfig::Unsupported;
+    };
+    let current = option
+        .get("currentValue")
+        .and_then(Value::as_str)
+        .and_then(parse_effort);
+    EffortConfig::Supported(model_default.or(current))
+}
+
+/// Extracts a model's declared context window from `session/new` metadata
+/// (`models.availableModels[*]._meta.totalContextTokens`), when present.
+fn model_context_window(opened: &Value, model: &str) -> Option<u32> {
+    positive_u32(
+        opened
+            .pointer("/models/availableModels")
+            .and_then(Value::as_array)?
+            .iter()
+            .find(|entry| entry.get("modelId").and_then(Value::as_str) == Some(model))?
+            .pointer("/_meta/totalContextTokens"),
+    )
+}
+
+/// The token counters of a `session/prompt` result: the turn's totals.
+fn usage(result: &Value, cache_apart: bool) -> Option<Usage> {
+    let counted = result
+        .get("usage")
+        .or_else(|| result.get("_meta").and_then(|meta| meta.get("usage")))?;
+    let count = |names: &[&str]| {
+        names
+            .iter()
+            .find_map(|name| counted.get(name).and_then(Value::as_u64))
+    };
+    let mut usage = Usage::new();
+    usage.input_tokens = count(&["inputTokens", "input_tokens"]);
+    usage.output_tokens = count(&["outputTokens", "output_tokens"]);
+    usage.cached_input_tokens = count(&[
+        "cachedReadTokens",
+        "cacheReadTokens",
+        "cache_read_input_tokens",
+    ]);
+    usage.cache_creation_input_tokens = count(&[
+        "cachedWriteTokens",
+        "cacheCreationTokens",
+        "cache_creation_input_tokens",
+    ]);
+    usage.reasoning_tokens = count(&["thoughtTokens", "reasoningTokens", "reasoning_tokens"]);
+    if cache_apart {
+        let cached =
+            usage.cached_input_tokens.unwrap_or(0) + usage.cache_creation_input_tokens.unwrap_or(0);
+        usage.input_tokens = usage.input_tokens.map(|fresh| fresh + cached);
+    }
+    usage.total_tokens = usage
+        .input_tokens
+        .zip(usage.output_tokens)
+        .map(|(input, output)| input + output)
+        .or_else(|| count(&["totalTokens", "total_tokens"]));
+    usage.is_reported().then_some(usage)
+}
+
+/// Subtracts the prior session-cumulative [`Usage`] from `current` to obtain
+/// this turn's delta. If the primary counters decreased (for example after a
+/// backend reset or a CLI change to per-turn reporting), returns `current`
+/// unchanged instead of clamping to zero.
+fn usage_delta(prev: &Usage, current: Usage) -> Usage {
+    let decreased =
+        |cur: Option<u64>, old: Option<u64>| matches!((cur, old), (Some(c), Some(o)) if c < o);
+    if decreased(current.input_tokens, prev.input_tokens)
+        || decreased(current.output_tokens, prev.output_tokens)
+    {
+        return current;
+    }
+    let sub = |cur: Option<u64>, old: Option<u64>| cur.map(|c| c.saturating_sub(old.unwrap_or(0)));
+    let mut delta = Usage::new();
+    delta.input_tokens = sub(current.input_tokens, prev.input_tokens);
+    delta.output_tokens = sub(current.output_tokens, prev.output_tokens);
+    delta.cached_input_tokens = sub(current.cached_input_tokens, prev.cached_input_tokens);
+    delta.cache_creation_input_tokens = sub(
+        current.cache_creation_input_tokens,
+        prev.cache_creation_input_tokens,
+    );
+    delta.reasoning_tokens = sub(current.reasoning_tokens, prev.reasoning_tokens);
+    delta.total_tokens = delta
+        .input_tokens
+        .zip(delta.output_tokens)
+        .map(|(input, output)| input + output)
+        .or_else(|| sub(current.total_tokens, prev.total_tokens));
+    delta
+}

@@ -128,6 +128,11 @@ fn rules_reach_the_agent_by_prompt_by_touch_and_on_request() {
     collect::<Notice>(&mut app);
     app.finish();
     app.update();
+    // `/compact` summarizes all but the newest message of a short conversation.
+    app.world_mut()
+        .resource_mut::<rig_basics::compaction::CompactionDefault>()
+        .0
+        .keep_recent_tokens = 1;
     let agent = first_agent(app.world_mut());
     assert!(agent.is_some(), "an agent");
     let Some(agent) = agent else {
@@ -137,6 +142,7 @@ fn rules_reach_the_agent_by_prompt_by_touch_and_on_request() {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     run_until(&mut app, &wakes, |world| section(world).contains("style"));
 
@@ -203,7 +209,4 @@ fn rules_reach_the_agent_by_prompt_by_touch_and_on_request() {
     std::fs::remove_dir_all(home.root()).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(GlobRulesPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(GlobRulesPlugin);

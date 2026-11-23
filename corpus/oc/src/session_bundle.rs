@@ -1,26 +1,18 @@
-//! OC-12: a portable session bundle.
+//! A portable session bundle. `/bundle [path] [--allow-secrets]` writes the running session to one
+//! gzip-compressed tar file (`<session-name>.rigbundle` in the project by default): every log and
+//! file of the session's store (all agents and subagents, its blobs, and every plugin's saved
+//! values and session files), the project-relative paths and current contents of the files the
+//! session's tools changed, and a [`Manifest`]. The user is asked first about secrets that
+//! rig-core's `redact` finds (redact, keep or cancel). With nobody to ask, the bundle is refused
+//! unless `--allow-secrets`.
 //!
-//! `/bundle [path] [--allow-secrets]` writes the running session to one
-//! gzip-compressed tar file (`<session-name>.rigbundle` in the project by
-//! default): every log and file of the session's store (all agents and
-//! subagents, its blobs, and every plugin's saved values and session
-//! files, exactly as a restore reads them), the project-relative paths and
-//! current contents of the files the session's tools changed, and a
-//! [`Manifest`]. Secrets that rig-core's `redact` finds (key shapes and
-//! assignments such as `AWS_SECRET_ACCESS_KEY=…`), through a rig-memory
-//! rewrite of a copy of the store, are asked about first (redact, keep or
-//! cancel); with nobody to ask the bundle is refused unless
-//! `--allow-secrets`.
-//!
-//! `rig bundle open <file> [--project <dir>] [--replace] [--apply|--keep|--apply-file <path>…]`
-//! and `/unbundle <file> …` import a bundle as a new saved session of the
-//! project: the bundled store is copied and rewritten in place through a
-//! [`Rewrite`] that remaps every path under the original project root to
-//! the new one and drops a model this build cannot reach (its agent takes
-//! the default model); the bundled files are written as chosen when they
-//! differ on disk or the project is at another commit; plugins named in
-//! the manifest that are not installed are listed (their saved values and
-//! files stay in the session for a later build).
+//! `rig bundle open <file> [--project <dir>] [--replace] [--apply|--keep|--apply-file <path>…]` and
+//! `/unbundle <file> …` import a bundle as a new saved session of the project. The bundled store is
+//! copied and rewritten through a [`Rewrite`] that remaps every path under the original project
+//! root to the new one and drops a model this build cannot reach (its agent takes the default
+//! model). The bundled files are written as chosen when they differ on disk or the project is at
+//! another commit. Plugins named in the manifest that are not installed are listed, and their saved
+//! values and files stay in the session for a later build.
 
 #[cfg(test)]
 mod tests;
@@ -322,6 +314,10 @@ impl<F: Fn(&mut String) -> bool + Send + Sync> Rewrite for Import<F> {
         self.remap.aside(at, aside)
     }
 
+    fn facts(&self, at: &Place<'_>, facts: &mut rig_core::conversation::ResultFacts) -> bool {
+        self.remap.facts(at, facts)
+    }
+
     fn value(&self, at: &Place<'_>, key: &str, value: &mut Value) -> bool {
         let unusable = value
             .as_str()
@@ -591,7 +587,7 @@ fn write_session(dir: &SessionDir, plan: &Plan, here: &Here<'_>) -> Result<Vec<S
     fs::write(dir.directory(), plan.target.to_string_lossy().as_bytes()).map_err(|f| fail(&f))?;
     dir.mark_saved().map_err(|f| fail(&f))?;
     let mut meta = SessionMeta::read(&*store).unwrap_or_default();
-    if meta.title.is_empty() && dir.name().is_none() {
+    if meta.title.is_empty() && dir.name().map_err(|f| fail(&f))?.is_none() {
         dir.set_name(Some(&manifest.name)).map_err(|f| fail(&f))?;
     }
     meta.labels.insert(
@@ -997,14 +993,14 @@ fn open_command_line(
     let reason = match result {
         Err(why) => {
             eprintln!("rig bundle: {why}");
-            ExitReason::Failed(2)
+            ExitReason::Failed(FailCode::or_failure(2))
         }
         Ok((plan, None)) if plan.needs_choice() => {
             eprintln!(
                 "{}\nRun again with --apply (Apply bundled files), --keep (Keep local files) or --apply-file <path> for each file to write.",
                 plan.summary()
             );
-            ExitReason::Failed(2)
+            ExitReason::Failed(FailCode::or_failure(2))
         }
         Ok((plan, choice)) => match importer.import(&plan, &choice.unwrap_or(FileChoice::Apply)) {
             Ok(done) => {
@@ -1016,7 +1012,7 @@ fn open_command_line(
             }
             Err(why) => {
                 eprintln!("rig bundle: {why}");
-                ExitReason::Failed(1)
+                ExitReason::Failed(FailCode::FAILURE)
             }
         },
     };

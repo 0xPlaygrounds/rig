@@ -8,7 +8,7 @@ use rig::providers::openai;
 use rig::run::OutputMode;
 use rig_cassette::agent::AgentReplayExt;
 
-use super::super::support::with_openai_corpus_output_cassette;
+use super::super::support::with_openai_cassette;
 use crate::goldens::{event_schema, families};
 use crate::support::{BASIC_PREAMBLE, STRUCTURED_OUTPUT_PROMPT};
 
@@ -34,7 +34,7 @@ fn tool_names(log: &rig::cassette::effect_log::EffectLog) -> Vec<String> {
 
 #[tokio::test]
 async fn tool_unary_effect_log_is_the_golden_fixture() {
-    with_openai_corpus_output_cassette("corpus_output/tool_unary", |client| async move {
+    with_openai_cassette("corpus_output/tool_unary", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = rig::AgentBuilder::new(client.openai.completion(openai::GPT_4O))
             .name("golden")
@@ -59,7 +59,7 @@ async fn tool_unary_effect_log_is_the_golden_fixture() {
 
 #[tokio::test]
 async fn prompted_unary_effect_log_is_the_golden_fixture() {
-    with_openai_corpus_output_cassette("corpus_output/prompted_unary", |client| async move {
+    with_openai_cassette("corpus_output/prompted_unary", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = rig::AgentBuilder::new(client.openai.completion(openai::GPT_4O))
             .name("golden")

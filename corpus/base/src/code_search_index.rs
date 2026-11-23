@@ -1,17 +1,12 @@
-//! Plugin corpus: 25. Semantic code search (RAG) (spec `25-code-search-index.md`).
-//!
-//! [`CodeSearchPlugin`] keeps an index of the project's files (those git
-//! tracks or would track) in `<project>/.rig/index/`: each file is cut into
-//! chunks at top-level items and paragraphs, and each chunk is embedded by
-//! the [`Embedder`] resource. The index is built in the background, a batch
-//! of files per task, with its progress in the status line; the
-//! `code_search` tool answers from what is built so far. A file any tool
-//! call says it changed (rig-core's `FilesChanged`) is indexed again at
-//! once, and a search first indexes again the files whose time or size
-//! changed. `/index rebuild` and `/index status` manage it. With
-//! `context_chunks` set in the `[code_search]` settings, the best chunks for
-//! the user's newest message go with that turn's requests, not into the
-//! conversation.
+//! Semantic code search. [`CodeSearchPlugin`] keeps an index of the project's files (those git
+//! tracks or would track) in `<project>/.rig/index/`: each file is cut into chunks at top-level
+//! items and paragraphs, and each chunk is embedded by the [`Embedder`] resource. The index is
+//! built in the background, a batch of files per task, with its progress in the status line;
+//! the `code_search` tool answers from what is built so far. A file any tool call says it
+//! changed (rig-core's `FilesChanged`) is indexed again at once, and a search first indexes
+//! again the files whose time or size changed. `/index rebuild` and `/index status` manage it.
+//! With `context_chunks` set in the `[code_search]` settings, the best chunks for the user's
+//! newest message go with that turn's requests, not into the conversation.
 
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};

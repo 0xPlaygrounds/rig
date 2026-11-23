@@ -1,25 +1,34 @@
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_ecs::reflect::AppTypeRegistry;
+use bevy_reflect::prelude::*;
 use rig_core::completion::Message;
 use rig_memory::{MemoryStore, Store};
 
-use super::{AgentForked, ForkAgent};
+use super::{AgentForked, ForkAgent, ForkError, ForkResult, ForkedFrom};
 use crate::AgentPlugin;
-use crate::agent::{Agent, AgentId, CacheKey, Conversation, Notice, SystemPrompt, ToolAccess};
-use crate::session_log::tests::push_message;
-use crate::session_log::{SessionLogPlugin, SessionStore};
+use crate::agent::{
+    Agent, AgentId, CacheKey, ContextStale, Conversation, LastUsage, SystemPrompt, ToolAccess,
+};
+use crate::session_log::tests::{edit, push_message};
+use crate::session_log::{Never, ReflectSaved, Reset, SessionLogPlugin, SessionStore};
+use crate::spawn::spawn_root;
+use rig_core::conversation::Author;
 
 /// The forks made, in order.
 #[derive(Resource, Default)]
 struct Forks(Vec<AgentForked>);
 
 /// An app on `store`, keeping the forks made, after its first frame
-/// restored the session.
+/// restored the session. Every agent, every fork again and every
+/// [`Meter`] require a [`Duty`].
 fn app(store: &MemoryStore) -> App {
     let mut app = App::new();
     app.set_error_handler(bevy_ecs::error::warn)
         .add_plugins((AgentPlugin, SessionLogPlugin))
+        .register_required_components::<Agent, Duty>()
+        .register_required_components::<ForkedFrom, Duty>()
+        .register_required_components::<Meter, Duty>()
         .insert_resource(SessionStore::new(store.clone()))
         .init_resource::<Forks>()
         .add_observer(|forked: On<AgentForked>, mut forks: ResMut<Forks>| {
@@ -43,19 +52,16 @@ fn agent(app: &mut App, id: &AgentId) -> Option<Entity> {
 fn a_fork_keeps_the_conversation_the_saved_components_and_the_cache_and_is_restored() {
     let store = MemoryStore::default();
     let mut app = app(&store);
-    let source = app.world_mut().spawn(Agent).id();
+    let source = spawn_root(app.world_mut(), ()).id();
     for message in [Message::user("one?"), Message::assistant("one.")] {
         push_message(app.world_mut(), source, message);
     }
     app.world_mut().entity_mut(source).insert((
         SystemPrompt("be brief".to_owned()),
-        ToolAccess::Only(vec!["read".to_owned()]),
+        ToolAccess::only(["read"]),
     ));
     app.update();
-    app.world_mut().trigger(ForkAgent {
-        agent: source,
-        through: None,
-    });
+    app.world_mut().spawn(ForkAgent::new(source, None));
     app.update();
     let forks = &app.world().resource::<Forks>().0;
     let fork = forks.first().map(|forked| (forked.from, forked.fork));
@@ -108,28 +114,230 @@ fn a_fork_keeps_the_conversation_the_saved_components_and_the_cache_and_is_resto
     assert_eq!(prompt.as_deref(), Some("be brief"));
 }
 
-/// Without a type registry to copy the saved components with, a fork is a
-/// notice, and no log is copied for it.
+/// A fork of a fork says which agent made each message it copied, after
+/// a restart too, and none for its own.
 #[test]
-fn a_fork_without_a_type_registry_is_a_notice_and_copies_no_log() {
+fn a_fork_of_a_fork_says_which_agent_made_each_message_it_copied() {
     let store = MemoryStore::default();
     let mut app = app(&store);
-    let source = app.world_mut().spawn(Agent).id();
+    let source = spawn_root(app.world_mut(), ()).id();
+    let fork = |app: &mut App, agent: Entity| {
+        app.world_mut().spawn(ForkAgent::new(agent, None));
+        app.update();
+        app.world().resource::<Forks>().0.last().map(|f| f.fork)
+    };
+    let say = |app: &mut App, agent: Entity, said: [&str; 2]| {
+        let [asked, answer] = said;
+        for message in [Message::user(asked), Message::assistant(answer)] {
+            push_message(app.world_mut(), agent, message);
+        }
+        app.update();
+    };
+    say(&mut app, source, ["one?", "one."]);
+    let middle = fork(&mut app, source);
+    assert!(middle.is_some(), "the first fork is made");
+    let Some(middle) = middle else {
+        return;
+    };
+    say(&mut app, middle, ["two?", "two."]);
+    let last = fork(&mut app, middle);
+    assert!(last.is_some(), "the second fork is made");
+    let Some(last) = last else {
+        return;
+    };
+    say(&mut app, last, ["three?", "three."]);
+    let world = app.world();
+    let ids = [source, middle, last].map(|agent| world.get::<AgentId>(agent).cloned());
+    let [Some(source_id), Some(middle_id), Some(last_id)] = ids else {
+        return;
+    };
+    let made = |app: &mut App| {
+        let last = agent(app, &last_id)?;
+        let world = app.world();
+        let (conversation, from) = (
+            world.get::<Conversation>(last)?,
+            world.get::<ForkedFrom>(last)?,
+        );
+        let made = conversation
+            .entries()
+            .map(|entry| from.made_by(entry.id).map(str::to_owned));
+        Some(made.collect::<Vec<_>>())
+    };
+    let (source_id, middle_id) = (Some(source_id.0), Some(middle_id.0));
+    let expected = [
+        source_id.clone(),
+        source_id,
+        middle_id.clone(),
+        middle_id,
+        None,
+        None,
+    ];
+    assert_eq!(made(&mut app).as_deref(), Some(expected.as_slice()));
+    drop(app);
+
+    let mut again = self::app(&store);
+    assert_eq!(made(&mut again).as_deref(), Some(expected.as_slice()));
+}
+
+/// Without a type registry to copy the saved components with, a fork is
+/// refused on its request, which goes, and no log is copied for it.
+#[test]
+fn a_fork_without_a_type_registry_is_refused_on_its_request_and_copies_no_log() {
+    let store = MemoryStore::default();
+    let mut app = app(&store);
+    let source = spawn_root(app.world_mut(), ()).id();
     for message in [Message::user("one?"), Message::assistant("one.")] {
         push_message(app.world_mut(), source, message);
     }
     app.update();
     let logs = Store::logs(&store).map(|logs| logs.len()).ok();
     app.world_mut().remove_resource::<AppTypeRegistry>();
-    app.world_mut().trigger(ForkAgent {
-        agent: source,
-        through: None,
-    });
+    app.init_resource::<Refused>();
+    let refused =
+        |made: On<Add<ForkResult>>, results: Query<&ForkResult>, mut refused: ResMut<Refused>| {
+            let result = results.get(made.entity).map(|result| &result.0);
+            refused.0 = matches!(result, Ok(Err(ForkError::NoRegistry)));
+        };
+    let request = app
+        .world_mut()
+        .spawn(ForkAgent::new(source, None))
+        .observe(refused)
+        .id();
     app.update();
     assert!(app.world().resource::<Forks>().0.is_empty());
-    let notices = app.world().resource::<Messages<Notice>>();
-    let refused = (notices.get_cursor().read(notices))
-        .any(|notice| notice.text.starts_with("Could not fork the agent"));
-    assert!(refused);
+    assert!(app.world().resource::<Refused>().0);
+    assert!(app.world().get_entity(request).is_err());
     assert_eq!(Store::logs(&store).map(|logs| logs.len()).ok(), logs);
+}
+
+/// Whether a fork was refused for want of a type registry.
+#[derive(Resource, Default)]
+struct Refused(bool);
+
+/// A plugin's setting, which a fork copies.
+#[derive(Component, Reflect, Clone, Debug, Default, PartialEq)]
+#[reflect(Component, Saved, Default)]
+struct Setting(u32);
+
+/// A plugin's meter, which a fork starts at zero.
+#[derive(Component, Reflect, Clone, Debug, Default, PartialEq)]
+#[reflect(Component, Saved(Reset), Default)]
+struct Meter(u32);
+
+/// A plugin's duty, which a fork never has.
+#[derive(Component, Reflect, Clone, Debug, Default, PartialEq)]
+#[reflect(Component, Saved(Never), Default)]
+struct Duty(u32);
+
+/// A fork copies a saved component, starts a `Reset` one at its default
+/// and does not get a `Never` one, even one every agent requires, and so
+/// it is restored, where the required `Never` one is back at its default.
+#[test]
+fn a_fork_copies_resets_or_leaves_out_each_saved_component_as_its_type_says() {
+    let store = MemoryStore::default();
+    let mut app = app(&store);
+    let source = spawn_root(app.world_mut(), ()).id();
+    push_message(app.world_mut(), source, Message::user("one?"));
+    push_message(app.world_mut(), source, Message::assistant("one."));
+    app.world_mut()
+        .entity_mut(source)
+        .insert((Setting(1), Meter(2), Duty(3)));
+    app.update();
+    app.world_mut().spawn(ForkAgent::new(source, None));
+    app.update();
+    let fork = app.world().resource::<Forks>().0.first().map(|f| f.fork);
+    assert!(fork.is_some(), "a fork is made");
+    let Some(fork) = fork else { return };
+    let read = |world: &World, entity: Entity| {
+        (
+            world.get::<Setting>(entity).cloned(),
+            world.get::<Meter>(entity).cloned(),
+            world.get::<Duty>(entity).cloned(),
+            world
+                .get::<ForkedFrom>(entity)
+                .map(|from| from.agents().map(str::to_owned).collect::<Vec<_>>()),
+        )
+    };
+    let source_id = app.world().get::<AgentId>(source).cloned();
+    let fork_id = app.world().get::<AgentId>(fork).cloned();
+    let (Some(source_id), Some(fork_id)) = (source_id, fork_id) else {
+        return;
+    };
+    let from = Some(vec![source_id.0.clone()]);
+    let forked = (Some(Setting(1)), Some(Meter(0)), None, from);
+    assert_eq!(read(app.world(), fork), forked);
+    assert_eq!(
+        read(app.world(), source),
+        (Some(Setting(1)), Some(Meter(2)), Some(Duty(3)), None)
+    );
+    drop(app);
+
+    let mut again = self::app(&store);
+    let fork = agent(&mut again, &fork_id);
+    assert!(fork.is_some(), "the fork is restored");
+    let Some(fork) = fork else { return };
+    // Restored, it has the duty every agent requires, not the source's.
+    let restored = (forked.0, forked.1, Some(Duty(0)), forked.3);
+    assert_eq!(read(again.world(), fork), restored);
+}
+
+/// A fork has its source's context figure only when it holds the source's
+/// conversation as it is: one cut before a compaction, with as many
+/// messages as the source has now, is stale.
+#[test]
+fn a_fork_keeps_the_context_figure_only_of_the_conversation_it_measured() {
+    let store = MemoryStore::default();
+    let mut app = app(&store);
+    let source = spawn_root(app.world_mut(), ()).id();
+    let texts = ["one?", "one.", "two?", "two.", "three?", "three."];
+    for (at, text) in texts.into_iter().enumerate() {
+        let message = if at % 2 == 0 {
+            Message::user(text)
+        } else {
+            Message::assistant(text)
+        };
+        push_message(app.world_mut(), source, message);
+    }
+    app.update();
+    let before = app
+        .world()
+        .get::<Conversation>(source)
+        .and_then(|conversation| conversation.id(3));
+    // A compaction, then a turn: four messages again, others.
+    edit(app.world_mut(), source, |conversation| {
+        conversation.splice(
+            ..5,
+            [Message::user("A summary.").into()],
+            Author::plugin("c"),
+        );
+    });
+    for message in [Message::user("four?"), Message::assistant("four.")] {
+        push_message(app.world_mut(), source, message);
+    }
+    let measured = LastUsage(Some(rig_memory::Anchor {
+        usage: rig_core::completion::Usage::new().input_tokens(40),
+        through: rig_core::conversation::MessageId::default(),
+    }));
+    app.world_mut().entity_mut(source).insert(measured);
+    app.update();
+    for through in [before, None] {
+        app.world_mut().spawn(ForkAgent::new(source, through));
+        app.update();
+    }
+    let forks: Vec<Entity> = app
+        .world()
+        .resource::<Forks>()
+        .0
+        .iter()
+        .map(|f| f.fork)
+        .collect();
+    assert_eq!(forks.len(), 2);
+    let world = app.world();
+    let figure = |fork: &Entity| {
+        let count = world.get::<Conversation>(*fork).map(|c| c.messages().len());
+        let context = world.get::<LastUsage>(*fork).and_then(LastUsage::context);
+        (count, context, world.get::<ContextStale>(*fork).is_some())
+    };
+    let seen: Vec<_> = forks.iter().map(figure).collect();
+    assert_eq!(seen, [(Some(4), None, true), (Some(4), Some(40), false)]);
 }

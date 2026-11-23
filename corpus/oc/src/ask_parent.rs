@@ -180,7 +180,7 @@ fn refused(why: impl Into<String>) -> Outcome {
 }
 
 /// A subagent spawned with a list of tools may ask its parent too, when
-/// its parent may.
+/// its parent keeps it.
 fn with_ask_parent(
     mut requests: Query<(&mut SpawnSubagent, &ForAgent), Added<Admitted>>,
     parents: Query<&ToolAccess>,
@@ -188,7 +188,7 @@ fn with_ask_parent(
     for (mut request, &ForAgent(parent)) in &mut requests {
         let may = parents
             .get(parent)
-            .is_ok_and(|access| access.allows(ASK_PARENT));
+            .is_ok_and(|access| access.keeps(ASK_PARENT));
         if let Some(tools) = request.tools.as_mut().filter(|_| may)
             && !tools.iter().any(|tool| tool == ASK_PARENT)
         {
@@ -242,13 +242,14 @@ fn ask(
         let question = args
             .map(|args| args.question.trim().to_owned())
             .unwrap_or_default();
-        let Ok((id, Some(&SpawnedBy(parent)), title)) = agents.get(child) else {
+        let Ok((id, Some(parent), title)) = agents.get(child) else {
             decision.decide(
                 Decider::plugin(DECIDER),
                 refused("No agent started you, so there is nobody to ask."),
             );
             continue;
         };
+        let parent = parent.parent();
         if question.is_empty() {
             decision.decide(
                 Decider::plugin(DECIDER),

@@ -29,7 +29,6 @@ use std::time::SystemTime;
 
 use bevy_log::warn;
 use rig_basics::approval::{Approved, NeedsApproval};
-use rig_basics::print::KeepRunning;
 use rig_basics::subagents::{SpawnSubagent, SubagentsPlugin};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::FilesChanged;
@@ -78,9 +77,7 @@ impl Plugin for InboxFolderPlugin {
         if !app.is_plugin_added::<rig_harness::clock::ClockPlugin>() {
             app.add_plugins(rig_harness::clock::ClockPlugin);
         }
-        if !app.is_plugin_added::<SubagentsPlugin>() {
-            app.add_plugins(SubagentsPlugin);
-        }
+        rig_harness::load::<SubagentsPlugin>(app, "rig-basics", "");
         app.add_setting::<InboxSettings>(INBOX).add_flag(
             Flag::new(INBOX, "Answer each Markdown file dropped in a folder").value("DIR"),
         );
@@ -114,6 +111,8 @@ pub struct Inbox {
     dir: Option<PathBuf>,
     /// The entity with the watch.
     watch: Option<Entity>,
+    /// Whether the watch listed the folder once.
+    listed: bool,
     /// The items in flight when the last run stopped, by file name.
     interrupted: BTreeMap<String, InFlight>,
     /// Each file settling, by name, and the entity whose wake reads it.
@@ -215,19 +214,42 @@ fn arm(
     inbox.dir = Some(dir);
 }
 
-/// Starts or puts off the settling of each request the watch reports.
+/// Starts or puts off the settling of each request the watch reports. A
+/// watch that ended, or could not list yet, keeps no run going, and the
+/// user is told.
 fn take_changes(
     mut changes: MessageReader<FileChanges>,
     mut inbox: ResMut<Inbox>,
     mut files: Query<&mut Settling>,
     workspace: Res<ProjectWorkspace>,
+    mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
     for change in changes.read() {
         if Some(change.watch) != inbox.watch {
             continue;
         }
-        for path in &change.paths {
+        match &change.event {
+            WatchEvent::Unavailable(why) => {
+                if !inbox.listed {
+                    commands.entity(change.watch).try_remove::<KeepRunning>();
+                }
+                notices.write(Notice::warn(None, format!("The inbox folder: {why}.")));
+            }
+            WatchEvent::Closed => {
+                commands.entity(change.watch).try_remove::<KeepRunning>();
+                notices.write(Notice::error(
+                    None,
+                    "The inbox folder is no longer watched.",
+                ));
+            }
+            WatchEvent::Snapshot(_) => {
+                inbox.listed = true;
+                commands.entity(change.watch).try_insert(KeepRunning);
+            }
+            WatchEvent::Changed(_) => {}
+        }
+        for path in change.event.paths() {
             let Some(file) = request_name(path) else {
                 continue;
             };
@@ -559,8 +581,10 @@ fn finish(
     let answer = match outcome {
         TurnOutcome::Answered(message) => Ok(answer(turn, message.final_answer())),
         TurnOutcome::Failed(why) => Err(format!("The turn failed: {why}")),
-        TurnOutcome::Stopped(None) => Err("The turn was stopped.".to_owned()),
-        TurnOutcome::Stopped(Some(why)) => Err(format!("The turn was stopped: {why}")),
+        TurnOutcome::Stopped(stop) => match stop.cause() {
+            StopCause::User => Err("The turn was stopped.".to_owned()),
+            cause => Err(format!("The turn was stopped: {cause}")),
+        },
     };
     let answer = answer.as_deref().map_err(String::as_str);
     done_with(&mut inbox, &*workspace.0, &turn.item, answer);

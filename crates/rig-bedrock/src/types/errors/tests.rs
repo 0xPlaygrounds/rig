@@ -83,6 +83,27 @@ fn failures_without_a_reply_are_transport_errors_or_rig_prose() {
     assert!(!unbuilt.is_retryable());
 }
 
+/// A dispatch failure is retried unless the SDK blames the request for it.
+#[test]
+fn a_dispatch_failure_is_retried_unless_the_request_caused_it() {
+    use aws_sdk_bedrockruntime::error::ConnectorError;
+    for (connector, retryable) in [
+        (
+            ConnectorError::io(std::io::Error::other("reset").into()),
+            true,
+        ),
+        (
+            ConnectorError::user(std::io::Error::other("bad URI").into()),
+            false,
+        ),
+    ] {
+        let error = sdk_error(SdkError::<ConverseError, HttpResponse>::dispatch_failure(
+            connector,
+        ));
+        assert_eq!(error.is_retryable(), retryable, "{error:?}");
+    }
+}
+
 /// A message-less stream exception is a diagnostic naming its type, not a
 /// reply.
 #[test]

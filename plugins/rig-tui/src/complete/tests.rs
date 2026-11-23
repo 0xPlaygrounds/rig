@@ -1,7 +1,7 @@
 use rig_harness::prelude::*;
 
 use super::super::view::TuiView;
-use crate::tests::{press, scratch, type_text, typed as typed_text, view_app};
+use crate::tests::{press, scratch, type_text, typed as typed_text, view_app, view_app_with};
 use crate::{CompletionKind, CompletionSource, InputContext};
 
 /// Whether a completion list is open.
@@ -82,6 +82,35 @@ fn at_completes_the_paths_of_the_project_root() {
     std::fs::remove_dir_all(&root).ok();
 }
 
+/// `@` lists the paths of the shown agent's work directory, where its
+/// references resolve, not the project root's.
+#[test]
+fn at_completes_the_paths_of_the_shown_agents_work_dir() {
+    let root = scratch("complete-workdir-root");
+    let dir = scratch("complete-workdir-dir");
+    std::fs::write(root.join("only_in_root.rs"), "").ok();
+    std::fs::write(dir.join("only_in_dir.rs"), "").ok();
+    let (mut app, agent) = view_app();
+    app.insert_resource(ProjectRoot(root.clone()));
+    app.world_mut()
+        .entity_mut(agent)
+        .insert(WorkDir(dir.clone()));
+    type_text(&mut app, "@only_in");
+    let started = std::time::Instant::now();
+    while !open(&app) && started.elapsed() < std::time::Duration::from_secs(10) {
+        app.update();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    let completion = app.world().resource::<TuiView>().completion.as_ref();
+    let items: Vec<&str> = (completion.into_iter())
+        .flat_map(|open| &open.items)
+        .map(|item| item.text.as_str())
+        .collect();
+    assert_eq!(items, ["only_in_dir.rs"]);
+    std::fs::remove_dir_all(&root).ok();
+    std::fs::remove_dir_all(&dir).ok();
+}
+
 #[test]
 fn a_file_made_while_at_is_typed_is_listed_without_waiting() {
     use super::FileIndex;
@@ -90,9 +119,10 @@ fn a_file_made_while_at_is_typed_is_listed_without_waiting() {
     let root = scratch("complete-watch");
     std::fs::create_dir_all(root.join("src")).ok();
     std::fs::write(root.join("src").join("a.rs"), "").ok();
-    let (mut app, _) = view_app();
-    app.add_plugins(rig_harness::watch::WatchPlugin)
-        .insert_resource(ProjectRoot(root.clone()));
+    let (mut app, _) = view_app_with(|app| {
+        app.add_plugins(rig_harness::watch::WatchPlugin);
+    });
+    app.insert_resource(ProjectRoot(root.clone()));
     let items = |app: &App| {
         let completion = app.world().resource::<TuiView>().completion.as_ref();
         let items = completion.into_iter().flat_map(|open| &open.items);
@@ -119,4 +149,268 @@ fn a_file_made_while_at_is_typed_is_listed_without_waiting() {
     run_until(&mut app, &|app| !items(app).is_empty());
     assert_eq!(items(&app), ["src/b_new.rs"]);
     std::fs::remove_dir_all(&root).ok();
+}
+
+/// A listing of the project that fails for a while keeps the paths `@`
+/// lists: they are what the watch last saw, and a listing that works again
+/// with nothing changed tells nothing to walk again for.
+#[cfg(unix)]
+#[test]
+fn at_keeps_its_paths_through_a_failed_listing() {
+    use super::FileIndex;
+    use std::os::unix::fs::PermissionsExt as _;
+    use std::time::{Duration, Instant};
+
+    let root = scratch("complete-outage");
+    std::fs::write(root.join("a.rs"), "").ok();
+    let (mut app, _) = view_app_with(|app| {
+        app.add_plugins(rig_harness::watch::WatchPlugin);
+    });
+    app.insert_resource(ProjectRoot(root.clone()));
+    let run_for = |app: &mut App, wait: Duration| {
+        let started = Instant::now();
+        while started.elapsed() < wait {
+            app.update();
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    };
+    let listed = |app: &App| {
+        let index = app.world().resource::<FileIndex>();
+        index.paths.iter().any(|path| path == "a.rs")
+    };
+    type_text(&mut app, "@a");
+    let started = Instant::now();
+    while !listed(&app) && started.elapsed() < Duration::from_secs(10) {
+        app.update();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    run_for(&mut app, Duration::from_millis(300));
+    let mode = |mode| std::fs::set_permissions(&root, std::fs::Permissions::from_mode(mode));
+    mode(0o000).ok();
+    // Whoever may read it anyway (root) sees no failure.
+    let locked = std::fs::read_dir(&root).is_err();
+    run_for(&mut app, Duration::from_millis(1500));
+    mode(0o755).ok();
+    run_for(&mut app, Duration::from_millis(1500));
+    let kept = listed(&app);
+    std::fs::remove_dir_all(&root).ok();
+    assert!(kept || !locked);
+}
+
+/// A walk of the project that fails, started by a change told just before
+/// the project could not be read, keeps the paths `@` lists.
+#[cfg(unix)]
+#[test]
+fn at_keeps_its_paths_through_a_failed_walk() {
+    use super::FileIndex;
+    use rig_harness::watch::{FileChanges, WatchEvent};
+    use std::os::unix::fs::PermissionsExt as _;
+    use std::time::{Duration, Instant};
+
+    let root = scratch("complete-failed-walk");
+    std::fs::write(root.join("a.rs"), "").ok();
+    let (mut app, _) = view_app_with(|app| {
+        app.add_plugins(rig_harness::watch::WatchPlugin);
+    });
+    app.insert_resource(ProjectRoot(root.clone()));
+    let listed = |app: &App| {
+        let index = app.world().resource::<FileIndex>();
+        index.paths.iter().any(|path| path == "a.rs")
+    };
+    type_text(&mut app, "@a");
+    let started = Instant::now();
+    while !listed(&app) && started.elapsed() < Duration::from_secs(10) {
+        app.update();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let mode = |mode| std::fs::set_permissions(&root, std::fs::Permissions::from_mode(mode));
+    mode(0o000).ok();
+    // Whoever may read it anyway (root) sees no failure.
+    let locked = std::fs::read_dir(&root).is_err();
+    let watch = app.world().resource::<FileIndex>().watch;
+    if let Some(watch) = watch {
+        let event = WatchEvent::Changed(vec![root.join("a.rs")]);
+        app.world_mut().write_message(FileChanges { watch, event });
+    }
+    let started = Instant::now();
+    while started.elapsed() < Duration::from_millis(500) {
+        app.update();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let kept = listed(&app);
+    mode(0o755).ok();
+    std::fs::remove_dir_all(&root).ok();
+    assert!(kept || !locked);
+}
+
+/// A picked path that a space would cut is put in quoted, so it attaches
+/// that file, not one named by its first word; a directory stays open for
+/// the path below it, and Enter closes an open quote before it sends.
+#[test]
+fn a_picked_path_with_a_space_is_quoted() {
+    use crate::KeyInput;
+    use crate::tests::push;
+    use crossterm::event::Event;
+
+    let root = scratch("complete-space");
+    std::fs::create_dir_all(root.join("my dir")).ok();
+    std::fs::write(root.join("attach notes.txt"), "").ok();
+    std::fs::write(root.join("attach"), "").ok();
+    std::fs::write(root.join("my dir").join("inner file.txt"), "").ok();
+    std::fs::create_dir_all(root.join("~")).ok();
+    std::fs::write(root.join("~").join("tilde note.txt"), "").ok();
+    if cfg!(unix) {
+        std::fs::write(root.join("back\\slash.txt"), "").ok();
+        std::fs::write(root.join("loop:notes.txt"), "").ok();
+    }
+    let (mut app, _) = view_app();
+    app.insert_resource(ProjectRoot(root.clone()));
+    let walked = |app: &mut App| {
+        let started = std::time::Instant::now();
+        while !open(app) && started.elapsed() < std::time::Duration::from_secs(10) {
+            app.update();
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    };
+    type_text(&mut app, "@att");
+    walked(&mut app);
+    press(&mut app, "down");
+    press(&mut app, "tab");
+    assert_eq!(typed_text(&app), "@\"attach notes.txt\" ");
+    press(&mut app, "ctrl+c");
+    type_text(&mut app, "@my");
+    walked(&mut app);
+    press(&mut app, "tab");
+    assert_eq!(typed_text(&app), "@\"my dir/");
+    type_text(&mut app, "inn");
+    walked(&mut app);
+    press(&mut app, "tab");
+    assert_eq!(typed_text(&app), "@\"my dir/inner file.txt\" ");
+    // A directory named `~` here is not the home directory.
+    press(&mut app, "ctrl+c");
+    type_text(&mut app, "@tilde");
+    walked(&mut app);
+    press(&mut app, "tab");
+    assert_eq!(typed_text(&app), "@\"./~/tilde note.txt\" ");
+    // On Unix a `\` is part of a name, not a directory's end.
+    if cfg!(unix) {
+        press(&mut app, "ctrl+c");
+        type_text(&mut app, "@back");
+        walked(&mut app);
+        press(&mut app, "tab");
+        assert_eq!(typed_text(&app), "@back\\slash.txt ");
+        // A local name that reads as `HOST:PATH` stays local.
+        press(&mut app, "ctrl+c");
+        type_text(&mut app, "@loop:");
+        walked(&mut app);
+        press(&mut app, "tab");
+        assert_eq!(typed_text(&app), "@./loop:notes.txt ");
+    }
+    press(&mut app, "ctrl+c");
+    push(
+        &mut app,
+        KeyInput::Event(Event::Paste("@\"my dir/inner file.txt".to_owned())),
+    );
+    app.update();
+    walked(&mut app);
+    press(&mut app, "enter");
+    assert_eq!(typed_text(&app), "@\"my dir/inner file.txt\" ");
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// A dropped image whose path has a space becomes a quoted reference: a
+/// quoted drop is taken as it is, an escaped one unescaped, even when a
+/// file is named with the backslash too.
+#[test]
+fn a_dropped_image_with_a_space_is_typed_quoted() {
+    use crate::KeyInput;
+    use crate::tests::push;
+    use crossterm::event::Event;
+
+    let root = scratch("drop-space");
+    let image = root.join("shot (1).png");
+    std::fs::write(&image, b"\x89PNG\r\n\x1a\n").ok();
+    let shown = image.display().to_string();
+    let mut drops = vec![(format!("'{shown}'"), shown.clone())];
+    if cfg!(unix) {
+        let named = root.join("shot\\ (1).png").display().to_string();
+        std::fs::write(&named, b"\x89PNG\r\n\x1a\n").ok();
+        let root = root.display().to_string().replace(' ', "\\ ");
+        let escaped = format!("{root}/shot\\ \\(1\\).png");
+        drops.push((escaped, shown.clone()));
+        drops.push((format!("'{named}'"), named));
+    }
+    let (mut app, _) = view_app();
+    for (pasted, path) in drops {
+        press(&mut app, "ctrl+c");
+        type_text(&mut app, "see");
+        push(&mut app, KeyInput::Event(Event::Paste(pasted)));
+        app.update();
+        assert_eq!(typed_text(&app), format!("see @\"{path}\" "));
+    }
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// A dropped `file://` URL is percent-decoded, with or without the host
+/// `localhost`, and a drop of several image files, as terminals paste
+/// them, types one reference for each.
+#[cfg(unix)]
+#[test]
+fn dropped_image_urls_and_several_images_are_typed_as_references() {
+    use crate::KeyInput;
+    use crate::tests::push;
+    use crossterm::event::Event;
+
+    let root = scratch("drop-several");
+    let (spaced, plain) = (root.join("my shot.png"), root.join("a.jpg"));
+    std::fs::write(&spaced, b"\x89PNG\r\n\x1a\n").ok();
+    std::fs::write(&plain, b"\xff\xd8\xff").ok();
+    let (spaced, plain) = (spaced.display(), plain.display());
+    let escaped = spaced.to_string().replace(' ', "\\ ");
+    let both = format!("@\"{spaced}\" @{plain} ");
+    let drops = [
+        (
+            format!("file://{root}/my%20shot.png", root = root.display()),
+            format!("@\"{spaced}\" "),
+        ),
+        (format!("file://localhost{plain}"), format!("@{plain} ")),
+        (format!("'{spaced}' '{plain}'"), both.clone()),
+        (format!("{escaped} {plain} "), both.clone()),
+        (format!("{spaced}\n{plain}\n"), both.clone()),
+        (
+            format!("file://{}/my%20shot.png file://{plain}", root.display()),
+            both,
+        ),
+    ];
+    let (mut app, _) = view_app();
+    for (pasted, typed) in drops {
+        press(&mut app, "ctrl+c");
+        push(&mut app, KeyInput::Event(Event::Paste(pasted.clone())));
+        app.update();
+        assert_eq!(typed_text(&app), typed, "{pasted:?}");
+    }
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// A refused command put back in the input opens no list, so Esc goes to
+/// the turn; the list opens again once the text changes.
+#[test]
+fn a_refused_command_put_back_opens_no_list_until_the_text_changes() {
+    let (mut app, _) = view_app();
+    app.add_command(
+        "new",
+        "Start a new session",
+        |In(args): In<CommandArgs>, mut notices: MessageWriter<Notice>| {
+            notices.write(Notice::error(args.agent, "A turn is running."));
+        },
+    );
+    type_text(&mut app, "/new");
+    assert!(open(&app));
+    press(&mut app, "enter");
+    assert_eq!(typed_text(&app), "/new");
+    assert!(!open(&app));
+    type_text(&mut app, "x");
+    press(&mut app, "backspace");
+    assert_eq!(typed_text(&app), "/new");
+    assert!(open(&app));
 }

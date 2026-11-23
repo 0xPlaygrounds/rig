@@ -1,6 +1,4 @@
-use crate::common::{
-    WORD_DEFINITIONS, axis_embedding, mock_embeddings, openai_client, skip_if_docker_unavailable,
-};
+use crate::common::{WORD_DEFINITIONS, axis_embedding, mock_embeddings, openai_client};
 use futures::{StreamExt, TryStreamExt};
 use mongodb::{
     Collection, SearchIndexModel,
@@ -40,6 +38,8 @@ const MONGODB_PORT: u16 = 27017;
 const MONGODB_IMAGE: &str = "mongodb/mongodb-atlas-local";
 const MONGODB_TAG: &str = "8.0.5";
 const COLLECTION_NAME: &str = "words";
+/// The collection the insert scenario writes, apart from the searched one.
+const INSERT_COLLECTION_NAME: &str = "inserted";
 const DATABASE_NAME: &str = "rig";
 const USERNAME: &str = "riguser";
 const PASSWORD: &str = "rigpassword";
@@ -68,12 +68,18 @@ async fn start_atlas() -> ContainerAsync<GenericImage> {
         .expect("Failed to start MongoDB Atlas container")
 }
 
+/// Starting Atlas is most of the cost, so one container serves both
+/// scenarios, each on its own collection.
 #[tokio::test]
-async fn vector_search_test() {
-    if skip_if_docker_unavailable("vector_search_test") {
-        return;
-    }
+async fn atlas_searches_and_inserts_documents() {
+    let container = start_atlas().await;
+    let port = container.get_host_port_ipv4(MONGODB_PORT).await.unwrap();
+    let host = container.get_host().await.unwrap().to_string();
+    vector_search(&host, port).await;
+    insert_documents(&host, port).await;
+}
 
+async fn vector_search(host: &str, port: u16) {
     // Setup mock openai API
     let server = httpmock::MockServer::start();
 
@@ -93,12 +99,7 @@ async fn vector_search_test() {
     // Select the embedding model and generate our embeddings
     let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
 
-    let container = start_atlas().await;
-
-    let port = container.get_host_port_ipv4(MONGODB_PORT).await.unwrap();
-    let host = container.get_host().await.unwrap().to_string();
-
-    let collection = bootstrap_collection(&host, port).await;
+    let collection = bootstrap_collection(host, port, COLLECTION_NAME).await;
 
     let embeddings = create_embeddings(model.clone()).await;
 
@@ -118,7 +119,7 @@ async fn vector_search_test() {
 
     // A fresh client runs its operations only after the index appended its
     // handshake metadata, so its pooled connections carry it.
-    let client = connect(&host, port, "handshake-check").await;
+    let client = connect(host, port, "handshake-check").await;
     let fresh = client.database(DATABASE_NAME).collection(COLLECTION_NAME);
     MongoDbVectorIndex::<bson::Document>::new(
         fresh,
@@ -200,12 +201,7 @@ async fn vector_search_test() {
     );
 }
 
-#[tokio::test]
-async fn insert_documents_test() {
-    if skip_if_docker_unavailable("insert_documents_test") {
-        return;
-    }
-
+async fn insert_documents(host: &str, port: u16) {
     // Setup mock openai API
     let server = httpmock::MockServer::start();
 
@@ -222,11 +218,7 @@ async fn insert_documents_test() {
 
     let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
 
-    let container = start_atlas().await;
-
-    let port = container.get_host_port_ipv4(MONGODB_PORT).await.unwrap();
-    let host = container.get_host().await.unwrap().to_string();
-    let collection = bootstrap_collection(&host, port).await;
+    let collection = bootstrap_collection(host, port, INSERT_COLLECTION_NAME).await;
 
     // Create test documents in the format expected by InsertDocuments trait
     let test_words = vec![
@@ -254,12 +246,12 @@ async fn insert_documents_test() {
     // Create MongoDbVectorIndex (we don't need the vector search functionality, just access to insert_documents)
     let temp_collection = collection.clone_with_type::<Word>();
 
-    // We expect this to fail because we don't have a proper vector index, but that's OK
-    // We just need the MongoDbVectorIndex struct to call insert_documents
+    // The index needs a queryable search index, which the bootstrap made;
+    // under a name it does not have, the checks below never ran.
     match MongoDbVectorIndex::new(
         temp_collection.clone(),
         model.clone(),
-        "test_index_that_doesnt_exist", // This will fail, but we handle it
+        VECTOR_SEARCH_INDEX_NAME,
         SearchParams::new(),
     )
     .await
@@ -304,7 +296,7 @@ async fn insert_documents_test() {
             }
         }
         Err(e) => {
-            println!("vector index creation failed (expected): {e}");
+            panic!("vector index creation failed: {e}");
         }
     }
 }
@@ -369,7 +361,7 @@ async fn connect(host: &str, port: u16, app_name: &str) -> mongodb::Client {
     mongodb::Client::with_options(options).expect("MongoDB client options should be valid")
 }
 
-async fn bootstrap_collection(host: &str, port: u16) -> Collection<bson::Document> {
+async fn bootstrap_collection(host: &str, port: u16, name: &str) -> Collection<bson::Document> {
     let mongodb_client = connect(host, port, "bootstrap").await;
 
     // The last mongod is a one-member replica set that elects itself
@@ -389,14 +381,13 @@ async fn bootstrap_collection(host: &str, port: u16) -> Collection<bson::Documen
 
     mongodb_client
         .database(DATABASE_NAME)
-        .create_collection(COLLECTION_NAME)
+        .create_collection(name)
         .await
         .expect("Collection should be created");
 
     // Get the created collection
-    let collection: Collection<bson::Document> = mongodb_client
-        .database(DATABASE_NAME)
-        .collection(COLLECTION_NAME);
+    let collection: Collection<bson::Document> =
+        mongodb_client.database(DATABASE_NAME).collection(name);
 
     // Create the search index
     create_search_index(&collection).await;

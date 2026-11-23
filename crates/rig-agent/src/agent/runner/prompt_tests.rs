@@ -1,5 +1,5 @@
 use crate::agent::ResponseIdentity;
-use crate::agent::typed::{TypedPromptResponse, deserialize_structured_output};
+use crate::agent::typed::TypedPromptResponse;
 use crate::run::response::{CompletionCall, PromptResponse};
 use crate::{
     agent::{
@@ -25,16 +25,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-/// rig#2322 — the **blocking** surface enforces the same truncation
-/// contract as the streamed one.
-///
-/// The premise of the whole fix is that the two surfaces disagreeing is
-/// what let truncation surface as a blank answer, yet every other guard
-/// test drives the streamed surface. Until `MockTurn::with_finish_reason`
-/// existed the blocking mock could not report a reason at all, so
-/// `runner.rs`'s `.with_finish_reason(resp.finish_reason())` — and its
-/// propagation through `model_response` → `record_completion_call` → this
-/// guard — was never exercised. Deleting that one line failed nothing.
+/// The blocking surface enforces the same truncation contract as the
+/// streamed one, so the response's finish reason must reach the guard.
 #[tokio::test]
 async fn blocking_prompt_rejects_an_empty_truncated_turn() {
     let agent = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::from_contents(
@@ -55,8 +47,7 @@ async fn blocking_prompt_rejects_an_empty_truncated_turn() {
     );
 }
 
-/// rig#2322 — blocking counterpart of the reasoning-only case: the shape
-/// that motivated the predicate fix must be caught on both surfaces.
+/// The blocking surface also rejects a reasoning-only truncated turn.
 #[tokio::test]
 async fn blocking_prompt_rejects_a_reasoning_only_truncated_turn() {
     let agent = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::from_content(
@@ -88,30 +79,6 @@ struct DeserializeOnly {
 #[derive(Debug, Deserialize, JsonSchema, PartialEq)]
 struct TypedAnswer {
     value: String,
-}
-
-#[test]
-fn deserialize_structured_output_tolerates_fences_and_prose() {
-    // Clean JSON (native / output-tool path).
-    assert_eq!(
-        deserialize_structured_output::<TypedAnswer>(r#"{"value":"x"}"#).unwrap(),
-        TypedAnswer { value: "x".into() }
-    );
-    // Markdown-fenced JSON (weak Prompted-mode models).
-    assert_eq!(
-        deserialize_structured_output::<TypedAnswer>("```json\n{\"value\":\"y\"}\n```").unwrap(),
-        TypedAnswer { value: "y".into() }
-    );
-    // Prose around the JSON object.
-    assert_eq!(
-        deserialize_structured_output::<TypedAnswer>(
-            "Here you go: {\"value\":\"z\"} — hope that helps!"
-        )
-        .unwrap(),
-        TypedAnswer { value: "z".into() }
-    );
-    // No JSON at all still errors.
-    assert!(deserialize_structured_output::<TypedAnswer>("no json here").is_err());
 }
 
 #[derive(Clone)]
@@ -174,13 +141,15 @@ fn usage(input_tokens: u64, output_tokens: u64) -> Usage {
 
 #[test]
 fn typed_prompt_response_serializes_with_serialize_only_output() {
-    let response = TypedPromptResponse::new(
-        SerializeOnly { value: "ok" },
-        Usage::new()
+    let response = TypedPromptResponse {
+        output: SerializeOnly { value: "ok" },
+        usage: Usage::new()
             .input_tokens(1)
             .output_tokens(2)
             .total_tokens(3),
-    );
+        completion_calls: Vec::new(),
+        messages: Vec::new(),
+    };
 
     let json = serde_json::to_string(&response).expect("serialize typed prompt response");
     assert!(json.contains("\"value\":\"ok\""));
@@ -203,10 +172,13 @@ fn typed_prompt_response_deserializes_with_deserialize_only_output() {
 #[test]
 fn prompt_response_serializes_completion_calls_with_missing_usage() {
     let reported_usage = usage(3, 4);
-    let response = PromptResponse::new("ok", reported_usage).with_completion_calls(vec![
-        CompletionCall::new(0, Usage::default(), json!({"id": "resp_0"})),
-        CompletionCall::new(1, reported_usage, json!({"id": "resp_1"})),
-    ]);
+    let response = PromptResponse {
+        completion_calls: vec![
+            CompletionCall::new(0, Usage::default(), json!({"id": "resp_0"})),
+            CompletionCall::new(1, reported_usage, json!({"id": "resp_1"})),
+        ],
+        ..PromptResponse::new("ok", reported_usage)
+    };
 
     let value = serde_json::to_value(&response).expect("serialize prompt response");
 
@@ -377,8 +349,10 @@ fn prompt_response_serialize_and_deserialize_agree_on_wire_shape() {
     // is gone, so serialize and deserialize agree by construction. Pin
     // the shape: `content` present, `completion_calls` omitted only when
     // empty, and the value round-trips.
-    let response = PromptResponse::new("hi", usage(1, 2))
-        .with_completion_calls(vec![CompletionCall::new(0, usage(1, 2), json!({}))]);
+    let response = PromptResponse {
+        completion_calls: vec![CompletionCall::new(0, usage(1, 2), json!({}))],
+        ..PromptResponse::new("hi", usage(1, 2))
+    };
 
     let from_response = serde_json::to_value(&response).expect("serialize response");
     assert!(from_response.get("content").is_some());
@@ -411,11 +385,13 @@ async fn typed_prompt_response_preserves_completion_calls() {
         .total_tokens(10);
     let turn = MockTurn::text(r#"{"value":"ok"}"#).with_usage(call_usage);
     let raw = turn.raw().expect("a scripted turn has a document");
-    let model = MockCompletionModel::from_turns([turn]);
+    // The failed attempt finished no call, so it leaves no mark on the usage.
+    let model = MockCompletionModel::from_turns([MockTurn::error("down"), turn]);
     let agent = AgentBuilder::new(model).build();
 
     let response = agent
         .prompt_typed::<TypedAnswer>("return typed json")
+        .retries(1)
         .await
         .expect("typed prompt should succeed");
 
@@ -440,17 +416,25 @@ async fn typed_prompt_response_preserves_completion_calls() {
 
 #[tokio::test]
 async fn typed_prompt_deserialization_error_keeps_the_model_output() {
-    let model = MockCompletionModel::from_turns([MockTurn::text("the answer is ok")]);
+    // The run's schema check ignores `format`, so an address that is not
+    // one passes it; refusing it is the typed read's job.
+    #[derive(Debug, Deserialize, JsonSchema)]
+    struct Address {
+        #[allow(dead_code)]
+        value: std::net::IpAddr,
+    }
+    let output = r#"{"value": "not an address"}"#;
+    let model = MockCompletionModel::from_turns([MockTurn::text(output)]);
     let agent = AgentBuilder::new(model).build();
 
     let error = agent
-        .prompt_typed::<TypedAnswer>("return typed json")
+        .prompt_typed::<Address>("return typed json")
         .await
-        .expect_err("prose is not a TypedAnswer");
+        .expect_err("the text is not an address");
 
     match error {
-        StructuredOutputError::Deserialization { output, .. } => {
-            assert_eq!(output, "the answer is ok");
+        StructuredOutputError::Deserialization { output: got, .. } => {
+            assert_eq!(got, output);
         }
         other => panic!("expected a deserialization error, got {other:?}"),
     }
@@ -815,7 +799,7 @@ async fn prompt_request_stops_cleanly_on_empty_terminal_turn() {
     validate_follow_up_tool_history(&requests[1]);
 }
 
-/// The identity fields are skipped when `None` (rig#2265), so a record
+/// The identity fields are skipped when `None`, so a record
 /// written without them loads with every identity field `None`.
 #[test]
 fn completion_call_without_identity_fields_deserializes() {
@@ -827,17 +811,19 @@ fn completion_call_without_identity_fields_deserializes() {
     )
     .expect("a CompletionCall without identity fields should load");
     assert_eq!(call.call_index, 3);
-    assert_eq!(call.identity(), ResponseIdentity::default());
+    assert_eq!(call.identity, ResponseIdentity::default());
 }
 
 /// And a populated record round-trips the identity losslessly.
 #[test]
 fn completion_call_identity_round_trips() {
-    let call = CompletionCall::new(0, crate::completion::Usage::default(), json!({}))
-        .with_identity(ResponseIdentity {
+    let call = CompletionCall {
+        identity: ResponseIdentity {
             response_id: Some("resp_1".into()),
             provider_request_id: Some("req_1".into()),
-        });
+        },
+        ..CompletionCall::new(0, crate::completion::Usage::default(), json!({}))
+    };
     let json = serde_json::to_string(&call).expect("serialize");
     let restored: CompletionCall = serde_json::from_str(&json).expect("deserialize");
     assert_eq!(restored, call);
@@ -937,7 +923,7 @@ async fn a_run_accepts_unknown_finish_reasons_on_its_own() {
 /// the prepared request accepts the reason and the run answers.
 #[tokio::test]
 async fn a_sans_io_run_from_the_agent_spec_accepts_unknown_finish_reasons() {
-    use crate::run::{AgentRun, AgentRunStep, ModelTurn, prepare_request};
+    use crate::run::{AgentRun, AgentRunStep, ModelTurn, PreparedRequest, prepare_request};
 
     let model = MockCompletionModel::from_turns([unknown_finish(MockTurn::text("answer"))]);
     let agent = AgentBuilder::new(model.clone())
@@ -951,11 +937,18 @@ async fn a_sans_io_run_from_the_agent_spec_accepts_unknown_finish_reasons() {
             AgentRunStep::CallModel {
                 prompt, history, ..
             } => {
-                let prepared =
-                    prepare_request(&spec, &Default::default(), &history, Vec::new(), None, None)
-                        .expect("prepared");
-                let policy = prepared.policy.clone();
-                let request = prepared.apply(CompletionRequest::new(prompt));
+                let PreparedRequest {
+                    request, policy, ..
+                } = prepare_request(
+                    &spec,
+                    &Default::default(),
+                    prompt,
+                    &history,
+                    Vec::new(),
+                    None,
+                    None,
+                )
+                .expect("prepared");
                 assert!(request.accept_unknown_finish_reasons);
                 let response = model.call(request).await.expect("the reply folds");
                 run.model_response(ModelTurn::new(

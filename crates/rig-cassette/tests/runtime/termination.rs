@@ -1,4 +1,4 @@
-//! The turn-termination matrix (`turn_termination_matrix`, rig#2184) once
+//! The turn-termination matrix (`turn_termination_matrix`) once
 //! per reply shape that matters to it. A hook's `ModelTurnFinished` must
 //! carry the normalized reason the provider stopped and the cap that
 //! attempt ran under. What differs per provider is only
@@ -14,7 +14,7 @@
 use rig::completion::FinishReason;
 use rig_test_support::bank::{self, Entry};
 
-use crate::decode::{decode, with_model};
+use crate::runtime::decode::{decode, with_model};
 use crate::support::{
     Adder, EscalateCapOnTruncation, ObservedTermination, TurnTerminationProbe,
     collect_stream_final_response,

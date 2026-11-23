@@ -64,3 +64,29 @@ mod tests;
 /// The rmcp SDK this crate is built against, so callers and rig agree on one version.
 #[cfg(not(target_family = "wasm"))]
 pub use rmcp;
+
+/// A client config naming the client `name` at `version`, with default
+/// capabilities, that offers the newest MCP protocol version with an
+/// `initialize` handshake.
+///
+/// rmcp's default config offers its newest known version, which can be an
+/// unreleased draft; some servers accept that offer and then refuse the
+/// session. A server that asks for an older version still gets it.
+///
+/// ```
+/// let config = rig_rmcp::client_config("my-app", "1.0");
+/// assert!(config.protocol_version.has_initialize());
+/// ```
+#[cfg(not(target_family = "wasm"))]
+pub fn client_config(
+    name: impl Into<String>,
+    version: impl Into<String>,
+) -> rmcp::model::ClientConfig {
+    use rmcp::model::{ClientCapabilities, ClientConfig, Implementation, ProtocolVersion};
+
+    ClientConfig::new(
+        ClientCapabilities::default(),
+        Implementation::new(name, version),
+    )
+    .with_protocol_version(ProtocolVersion::LATEST_WITH_INITIALIZE)
+}

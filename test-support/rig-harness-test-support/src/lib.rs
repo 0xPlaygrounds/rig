@@ -15,12 +15,17 @@ use std::time::{Duration, Instant};
 use bevy_time::TimeUpdateStrategy;
 use rig_core::catalog::{Catalog, Connector, ModelSpec, Transport};
 use rig_core::effect::EffectId;
+use rig_core::http_client::{
+    self, Bytes, DynHttpClient, HttpClientExt, LazyBody, Method, MultipartForm, Request, Response,
+    StreamingResponse, Uri,
+};
 use rig_core::message::{Message as ChatMessage, ToolFunction, ToolName};
 use rig_core::operation::Completion;
 use rig_core::providers::registry::{ConnectError, ProviderId};
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ModelAdapter;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
+use rig_core::wasm_compat::WasmCompatSend;
 use rig_ecs::effects::Handler;
 use rig_ecs::prelude::*;
 use rig_ecs::session_log::SessionStore;
@@ -60,12 +65,26 @@ fn app() -> (App, Receiver<()>) {
     (app, wakes)
 }
 
-/// A `RIG_HOME` of the test's own named `name`, beside its binary, emptied.
+/// The path `name` beside the test's binary, with nothing there.
+fn removed(name: &str) -> PathBuf {
+    let path = std::env::current_exe()
+        .unwrap_or_default()
+        .with_file_name(name);
+    fs::remove_dir_all(&path).ok();
+    path
+}
+
+/// A directory of the test's own named `name`, beside its binary, emptied.
+pub fn scratch_dir(name: &str) -> PathBuf {
+    let dir = removed(name);
+    fs::create_dir_all(&dir).ok();
+    dir
+}
+
+/// A `RIG_HOME` of the test's own named `name`, beside its binary, not yet
+/// made.
 pub fn scratch_home(name: &str) -> Home {
-    let exe = std::env::current_exe().unwrap_or_default();
-    let root: PathBuf = exe.with_file_name(name);
-    fs::remove_dir_all(&root).ok();
-    Home::at(root)
+    Home::at(removed(name))
 }
 
 /// An app with a task pool on the session `id` of `home`, kept in its
@@ -119,6 +138,18 @@ pub fn log_ended(settled: On<Add<Settled>>, turns: Query<&TurnOutcome>, mut log:
     log.0.extend(turns.get(settled.entity).cloned());
 }
 
+/// Holds every model call of a turn, as an approval nobody gave, so the
+/// turn keeps running: `app.add_systems(AgentPass,
+/// hold_turn_calls.in_set(Stage::Gate))`.
+pub fn hold_turn_calls(
+    calls: Query<Entity, (ReadyToStart, With<TurnCall>)>,
+    mut commands: Commands,
+) {
+    for call in &calls {
+        commands.spawn(HoldOf(call));
+    }
+}
+
 /// `model` as the catalog's DeepSeek model.
 pub fn connect(model: &MockCompletionModel) -> Option<Connection> {
     let spec = Catalog::builtin()
@@ -132,13 +163,18 @@ pub fn connect(model: &MockCompletionModel) -> Option<Connection> {
     })
 }
 
-/// The catalog with each of `served` as the model its reference names,
+/// A catalog of exactly `served`, each the model its reference names,
 /// `vendor/name`, which calls tools, answered by its scripted model. A
-/// vendor the catalog does not know is declared.
+/// vendor rig does not know is declared. No other model is listed, so a run
+/// that names none picks a scripted one whatever keys the environment holds,
+/// and every HTTP request through the connector is refused ([`Offline`]),
+/// so a model a test adds itself reaches no network either. A test that
+/// fakes HTTP wraps the connector's client again with its own.
 pub fn scripted_models<'a>(
     served: impl IntoIterator<Item = (&'a str, &'a MockCompletionModel)>,
 ) -> Models {
-    let mut connector = Connector::new(Catalog::builtin().clone());
+    let mut connector = Connector::new(Catalog::default());
+    connector.wrap_http(|_| DynHttpClient::new(Offline));
     let mut vendors: HashMap<&str, (ProviderId, Vec<(String, MockCompletionModel)>)> =
         HashMap::new();
     for (reference, model) in served {
@@ -168,6 +204,52 @@ pub fn scripted_models<'a>(
         });
     }
     Models(connector)
+}
+
+/// The HTTP client of [`scripted_models`]: it refuses every request,
+/// naming its method, host, port and path, as a client that could not be
+/// built does.
+#[derive(Clone, Copy, Debug)]
+pub struct Offline;
+
+impl Offline {
+    /// The refusal of a request to `uri` with `method`. The query is left
+    /// out, as some providers put the key there.
+    fn refuse<T>(method: &Method, uri: &Uri) -> http_client::Result<T> {
+        let host = uri.host().unwrap_or_default();
+        let port = uri
+            .port_u16()
+            .map(|port| format!(":{port}"))
+            .unwrap_or_default();
+        let path = uri.path();
+        let why = format!("a scripted test app sends no HTTP: {method} {host}{port}{path}");
+        Err(http_client::Error::permanent(why))
+    }
+}
+
+impl HttpClientExt for Offline {
+    fn send(
+        &self,
+        req: Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
+    {
+        std::future::ready(Self::refuse(req.method(), req.uri()))
+    }
+
+    fn send_multipart(
+        &self,
+        req: Request<MultipartForm>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
+    {
+        std::future::ready(Self::refuse(req.method(), req.uri()))
+    }
+
+    fn send_streaming(
+        &self,
+        req: Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend {
+        std::future::ready(Self::refuse(req.method(), req.uri()))
+    }
 }
 
 /// Every message `M` the app wrote, in order, kept by [`collect`].
@@ -214,14 +296,29 @@ pub fn answer_open(world: &mut World, title: &str, answer: &Answer) -> bool {
 }
 
 /// Runs one frame of `app` `by` later on Bevy's clock, which timers and
-/// delayed commands run on; frames after it take no time.
+/// delayed commands run on; frames after it take no time. Fixed time moves
+/// `by` in one step too, as a jump of an hour is otherwise 230,400 runs of
+/// the fixed schedule.
 pub fn advance(app: &mut App, by: Duration) {
-    let mut time = app.world_mut().resource_mut::<Time<Virtual>>();
+    let world = app.world_mut();
+    let mut time = world.resource_mut::<Time<Virtual>>();
     let max = time.max_delta().max(by);
     time.set_max_delta(max);
+    let fixed = world
+        .get_resource::<Time<Fixed>>()
+        .map(Time::<Fixed>::timestep)
+        .filter(|step| by > *step);
+    set_fixed_timestep(world, fixed.map(|_| by));
     app.insert_resource(TimeUpdateStrategy::ManualDuration(by));
     app.update();
+    set_fixed_timestep(app.world_mut(), fixed);
     app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));
+}
+
+fn set_fixed_timestep(world: &mut World, step: Option<Duration>) {
+    if let (Some(step), Some(mut fixed)) = (step, world.get_resource_mut::<Time<Fixed>>()) {
+        fixed.set_timestep(step);
+    }
 }
 
 /// Moves every [`WakeAt`] `by` earlier, as if that much wall-clock time
@@ -267,10 +364,51 @@ pub fn run_until(app: &mut App, wakes: &Receiver<()>, done: impl Fn(&World) -> b
     );
 }
 
+/// Triggers `message` and runs frames until one more turn ended
+/// ([`Ended`]).
+///
+/// # Panics
+///
+/// When the app keeps no [`Ended`], or no turn ends in time ([`run_until`]).
+#[track_caller]
+pub fn deliver(app: &mut App, wakes: &Receiver<()>, message: Deliver) {
+    let ended = app.world().resource::<Ended>().0.len();
+    app.world_mut().trigger(message);
+    run_until(app, wakes, |world| {
+        world.resource::<Ended>().0.len() > ended
+    });
+}
+
+/// Sends `agent` `text` to steer its turn, or start one, and runs frames
+/// until one more turn ended, as [`deliver`] does.
+#[track_caller]
+pub fn say(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str) {
+    deliver(app, wakes, Deliver::new(agent, text, DeliveryMode::Steer));
+}
+
 /// A model reply of `text`, then the end of the stream.
 pub fn reply(text: &str) -> Vec<MockStreamEvent> {
     vec![
         MockStreamEvent::text(text),
+        MockStreamEvent::final_response_with_default_usage(),
+    ]
+}
+
+/// A model reply that reads the file `path` in call `{id}-read`, then
+/// writes `content` to it in call `id`, as a model replaces a file: `write`
+/// replaces only a file read as it is now.
+pub fn rewrites(id: &str, path: &str, content: &str) -> Vec<MockStreamEvent> {
+    vec![
+        MockStreamEvent::tool_call(
+            format!("{id}-read"),
+            "read",
+            serde_json::json!({ "path": path }),
+        ),
+        MockStreamEvent::tool_call(
+            id,
+            "write",
+            serde_json::json!({ "path": path, "content": content }),
+        ),
         MockStreamEvent::final_response_with_default_usage(),
     ]
 }
@@ -360,10 +498,14 @@ fn answer_asks(
 /// The terminal view on `app`, as in a run at the terminal but with no
 /// terminal: its input, key bindings, completion, pickers and questions,
 /// and the transcript it lays out, driven by the keys [`press`] puts in.
-/// Adds the [`TuiPlugin`](rig_tui::TuiPlugin) when the app has none.
+/// Adds the [`TuiPlugins`](rig_tui::TuiPlugins) the app does not have.
+#[cfg(feature = "tui")]
 pub fn tui_view(app: &mut App) -> &mut App {
     if !app.is_plugin_added::<rig_tui::TuiPlugin>() {
-        app.add_plugins(rig_tui::TuiPlugin);
+        app.add_plugins(rig_tui::TuiPlugins);
+    }
+    if !app.is_plugin_added::<rig_tui::status::StatusLinePlugin>() {
+        app.add_plugins(rig_tui::status::StatusLinePlugin);
     }
     rig_tui::add_view(app);
     app
@@ -371,6 +513,7 @@ pub fn tui_view(app: &mut App) -> &mut App {
 
 /// Presses `keys`, such as `esc 0 d w` or `ctrl+x ctrl+e`, in one frame of
 /// the terminal view ([`tui_view`]), then runs that frame.
+#[cfg(feature = "tui")]
 pub fn press(app: &mut App, keys: &str) {
     use rig_tui::crossterm::event::{Event, KeyEvent};
     use rig_tui::{KeyInput, Keys, PendingInput};

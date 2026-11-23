@@ -1,47 +1,19 @@
 //! Matrix for raw provider response capture through the agent on Ollama's
-//! OpenAI-compatible Chat Completions route: the hook events, `PromptResponse::completion_calls`, and
-//! the streamed terminal record.
+//! OpenAI-compatible Chat Completions route: the hook events,
+//! `PromptResponse::completion_calls`, and the streamed terminal record.
 //!
-//! # The feature
+//! The provider populates `CompletionResponse::raw` on every response, and the
+//! agent exposes that payload per attempt, never a previous attempt's, as `raw` on
+//! the `CompletionResponse` and `ModelTurnFinished` hook events and on each
+//! `CompletionCall` the run records, streamed or not. `raw` is `Value::Null` only
+//! on a value built by hand. Both surfaces fire both events per accepted model
+//! turn, tool-only turns included; `HookContext::is_streaming` tells them apart.
 //!
-//! Capture is always on. The provider populates `CompletionResponse::raw`
-//! on every response, and the agent exposes that payload —
-//! **per attempt**, never a previous attempt's — as `raw` on the
-//! `CompletionResponse` and `ModelTurnFinished` hook events, on each
-//! `CompletionCall` the run records, streamed or not. `raw` is `Value::Null` only on a value
-//! built by hand, with no provider response behind it; `Value::Null` never
-//! means "not requested".
-//!
-//! # Matrix
-//!
-//! | # | Cell | Dimension | expected | Status |
-//! |---|------|-----------|----------|--------|
-//! | 2 | `hooks_observe_raw_streamed` | `agent.prompt(..).stream()` | `CompletionResponse` and `ModelTurnFinished` see `raw`; its usage matches the fixture's usage chunk | recorded |
-//! | 3 | `multi_turn_tool_run_records_distinct_raw_blocking` | tool run, `agent.prompt` | two `completion_calls`, two different payloads whose fingerprints equal the interactions' in order; the first carries `tool_calls` | recorded |
-//!
-//! Both surfaces fire the same two events per accepted model turn:
-//! `CompletionResponse` — after the unary call returns on the blocking
-//! surface, after the whole stream is assembled on the streamed one, with
-//! `HookContext::is_streaming` telling them apart — and the medium-neutral
-//! `ModelTurnFinished`. Tool-only turns fire both. Cell 2 pins which events
-//! fire on the streamed surface and what each carries, and cell 3 that every
-//! attempt of a blocking tool run fires them.
-//!
-//! # Identity on this route
-//!
-//! Ollama assigns no request id. What distinguishes one attempt from the next
-//! is its token accounting, which the daemon reports on every blocking body
-//! and on every stream's usage chunk. Each cell compares that *fingerprint*
-//! of the observed payload against the fixture's, interaction by
-//! interaction, and the multi-turn cells additionally require the two
-//! recorded fingerprints to differ, so "the second call carries the second
-//! attempt's payload" is a real claim.
-//!
-//! Every recorded cell re-derives its premise from its own fixture: every
-//! recorded interaction reports usage, and the multi-turn cells' first
-//! interaction carries a `tool_calls` entry naming `add`.
-//!
-//! Re-record with a local Ollama daemon serving `qwen3:4b`:
+//! Ollama assigns no request id, so each cell identifies an attempt by its token
+//! accounting, compared interaction by interaction against the fixture. The
+//! multi-turn cells also require the two recorded fingerprints to differ, so "the
+//! second call carries the second attempt's payload" is a real claim. Re-record
+//! with a local Ollama daemon serving `qwen3:4b`:
 //! `cargo xtask cassette record ollama/raw_capture_agent_matrix/<scenario>.yaml`.
 
 use std::sync::{Arc, Mutex};

@@ -1,22 +1,23 @@
 //! MCP servers' tools for the rig agent. The servers of `RIG_HOME/mcp.json`
-//! and the approved ones of `<project>/.rig/mcp.json` (the common
-//! `mcpServers` format, stdio or streamable HTTP), and those a client of
-//! rig's names for the run ([`AddMcpServer`]), connect in the background on
-//! rig's tokio runtime, each server's tools registered as `<server>__<tool>`
-//! as the server lists them, with its annotations, and removed when it
-//! disconnects; a lost server is connected again with backoff. A server of
-//! the project starts only once the user approved it as it is written, in
-//! every front.
+//! and `<project>/.rig/mcp.json` (the common `mcpServers` format, stdio or
+//! streamable HTTP), the project's entry replacing the user's of the same
+//! name, and those a client of rig's names for the run ([`AddMcpServer`]),
+//! connect in the background on rig's tokio runtime, each server's tools
+//! registered as `<server>__<tool>` as the server lists them, with its
+//! annotations, and removed when it disconnects; a lost server is connected
+//! again with backoff.
 //!
 //! A server is an entity with an [`McpStatus`]; its tools are entities
-//! [`McpToolOf`] it. Each new server holds a headless run's start
-//! ([`Starting`]) until its first attempt connected or failed, which
-//! `connect_timeout_secs` bounds, so `rig -p --tools <server>__<tool>`
-//! can name its tools. `/mcp` shows the servers; `/mcp add`, `/mcp
-//! remove`, `/mcp approve` and `/mcp deny` change the files and save it.
-//! The `[mcp]` table of `settings.toml` is [`McpSettings`]. [`McpPlugin`]
-//! reads the files; a front that hands rig its client's servers adds
-//! [`McpCorePlugin`], which reads none.
+//! [`McpToolOf`] it. A policy plugin keeps a server from running with an
+//! [`McpHold`], as the opt-in [`approval::McpApprovalPlugin`] does until
+//! the user approves a project's server. Each server that starts holds the
+//! run's start ([`Starting`]) until its first attempt connected or failed,
+//! which `connect_timeout_secs` bounds, so `--tools <server>__<tool>` can
+//! name its tools in every front. `/mcp` shows the servers; `/mcp add` and
+//! `/mcp remove` change the files, and `/mcp <verb>` runs a plugin's
+//! `/mcp-<verb>`. The `[mcp]` table of `settings.toml` is [`McpSettings`].
+//! [`McpPlugin`] reads the files; a front that hands rig its client's
+//! servers adds [`McpCorePlugin`], which reads none.
 //!
 //! ```no_run
 //! use rig_harness::prelude::*;
@@ -24,12 +25,13 @@
 //! App::new().add_plugins(rig_mcp_client::McpPlugin);
 //! ```
 
-mod approval;
+pub mod approval;
 mod config;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io;
-use std::path::{Path, PathBuf};
+use std::num::NonZeroU64;
+use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
@@ -37,27 +39,27 @@ use async_channel::{Receiver, Sender};
 use bevy_ecs::system::SystemParam;
 use bevy_tasks::futures_lite::future;
 use bevy_tasks::{IoTaskPool, TaskPool};
-use rig_basics::print::Starting;
 use rig_core::completion::ToolDefinition;
 use rig_core::effect::{Answered as Answer, EffectId, EffectKind};
 use rig_core::error::ErrorReport;
 use rig_core::message::ToolName;
-use rig_core::serve::{self, BeforeServe, ErasedHandler, Intercept};
+use rig_core::serve::{self, ErasedHandler, Intercept};
 use rig_core::tool::{DynamicTool, Touches};
 use rig_harness::host::cli::Cli;
-use rig_harness::plugin_data::PluginData;
+use rig_harness::host::pipes::{Limited, TooLarge};
 use rig_harness::prelude::*;
-use rig_harness::rig_tools::process;
-use rig_rmcp::{McpConnection, McpTool};
-use rmcp::model::{ClientCapabilities, ClientConfig, Implementation, Tool as McpDefinition};
-use rmcp::service::{NotificationContext, RoleClient};
+use rig_harness::rig_tools::process::{self, Process};
+use rig_rmcp::{McpClientError, McpConnection, McpTool};
+use rmcp::model::{ClientConfig, Tool as McpDefinition};
+use rmcp::service::{ClientInitializeError, NotificationContext, RoleClient};
 use rmcp::transport::StreamableHttpClientTransport;
-use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
+use rmcp::transport::streamable_http_client::{
+    InsufficientScopeError, StreamableHttpClientTransportConfig,
+};
 use rmcp::{ClientHandler, ServiceExt};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use approval::Approvals;
 use config::McpFile;
 pub use config::{Scope, ServerSpec};
 
@@ -94,12 +96,16 @@ impl Plugin for McpPlugin {
 pub struct McpCorePlugin;
 
 impl Plugin for McpCorePlugin {
+    fn finish(&self, app: &mut App) {
+        app.init_resource::<Project>();
+    }
+
     fn build(&self, app: &mut App) {
-        app.add_setting::<McpSettings>("mcp")
+        let client = app.world_mut().spawn(Name::new("MCP client")).id();
+        app.insert_resource(Client(client))
+            .add_setting::<McpSettings>("mcp")
             .init_resource::<RigHome>()
-            .init_resource::<ProjectRoot>()
             .init_resource::<Processes>()
-            .init_resource::<Approvals>()
             .init_resource::<Groups>()
             .register_type::<McpStatus>()
             // A run that keeps no session, such as `rig acp`'s, runs no
@@ -111,6 +117,8 @@ impl Plugin for McpCorePlugin {
                     .run_if(|cli: Option<Res<Cli>>| !cli.is_some_and(|cli| cli.sessionless())),
             )
             .add_observer(add_server)
+            .add_observer(hold)
+            .add_observer(release)
             .add_observer(apply_event)
             .add_observer(close_link)
             .add_systems(
@@ -135,13 +143,18 @@ impl Plugin for McpCorePlugin {
     }
 }
 
+/// The entity [`McpCorePlugin`] spawns as it builds, so attributed to the
+/// plugin that added it, whose [`ProvidedBy`] the tools of its servers take.
+#[derive(Resource)]
+struct Client(Entity);
+
 /// That [`McpPlugin`] is on: the `mcp.json` files are read, and `/mcp`
 /// changes them.
 #[derive(Resource)]
 struct Files;
 
 /// Connects the server `name` for this run, as a client of rig's names it:
-/// in no file, with no approval, its values taken as they are (no
+/// in no file, its values taken as they are (no
 /// `${VAR}`), shown by `/mcp` as `(client)`. It takes the name over a
 /// server of a file, which then does not run (a notice says so), even
 /// when this one fails or is refused. A second server of a name a client
@@ -159,38 +172,44 @@ pub struct AddMcpServer {
 
 /// `/mcp`'s line of help.
 const USAGE: &str = "MCP servers; `/mcp add [--user|--project] <name> <command…|url>`, `/mcp \
-                     remove [--user|--project] <name>`, `/mcp approve <name>`, `/mcp deny <name>`";
+                     remove [--user|--project] <name>`";
 
 /// What `/mcp` takes, for a line it does not.
-const COMMANDS: &str = "/mcp, /mcp add [--user|--project] <name> <command…|url>, /mcp remove \
-                        [--user|--project] <name>, /mcp approve <name> or /mcp deny <name>";
+const COMMANDS: &str = "/mcp, /mcp add [--user|--project] <name> <command…|url> or /mcp remove \
+                        [--user|--project] <name>";
+
+/// How long an attempt waits for a server by default: 30 seconds.
+const CONNECT_TIMEOUT: NonZeroU64 = match NonZeroU64::new(30) {
+    Some(secs) => secs,
+    None => NonZeroU64::MIN,
+};
 
 /// The `[mcp]` table of `settings.toml`, read from the user's file only.
 #[derive(Resource, Deserialize, Clone, Debug)]
 #[serde(default, deny_unknown_fields)]
 pub struct McpSettings {
-    /// Seconds before a lost server is connected again, at least 1; the
-    /// wait doubles up to a minute and starts over once the server answers.
-    pub first_retry_secs: u64,
+    /// Seconds before a lost server is connected again; the wait doubles
+    /// up to a minute and starts over once the server answers. 0 does not
+    /// read, so the settings refuse the run.
+    pub first_retry_secs: NonZeroU64,
     /// Seconds an attempt waits for a server to start, answer and list its
-    /// tools before it counts as failed, at least 1; what a headless run
-    /// waits at most for a server.
-    pub connect_timeout_secs: u64,
-    /// The servers of `RIG_HOME/mcp.json` trusted to say which of their
-    /// tools only read; a project's server never is. A tool
-    /// of one whose `readOnlyHint` says so only reads: its calls run beside
-    /// others, and again after a restart in a restored turn a plugin carries
-    /// on. Another server's word is a hint: a call it says only reads still
-    /// runs beside the reply's other readers, but a restart never runs it
-    /// again.
+    /// tools before it counts as failed; what a headless run waits at most
+    /// for a server. 0 does not read.
+    pub connect_timeout_secs: NonZeroU64,
+    /// The servers, of any file or client, trusted to say which of their
+    /// tools only read. A tool of one whose `readOnlyHint` says so only
+    /// reads: its calls run beside others, and again after a restart in a
+    /// restored turn a plugin carries on. Another server's word is a hint:
+    /// a call it says only reads still runs beside the reply's other
+    /// readers, but a restart never runs it again.
     pub trust_read_only: Vec<String>,
 }
 
 impl Default for McpSettings {
     fn default() -> Self {
         Self {
-            first_retry_secs: 1,
-            connect_timeout_secs: 30,
+            first_retry_secs: NonZeroU64::MIN,
+            connect_timeout_secs: CONNECT_TIMEOUT,
             trust_read_only: Vec::new(),
         }
     }
@@ -214,15 +233,21 @@ pub enum McpState {
     Connecting,
     Connected,
     Retrying,
-    /// A project's server the user did not answer about yet.
-    NotApproved,
-    /// A project's server the user denied.
-    Denied,
+    /// An [`McpHold`] keeps it from running.
+    Held,
     /// `"disabled": true` in its file.
     Disabled,
     /// Its object does not describe a server; `last_error` says why.
     Invalid,
 }
+
+/// While a server's entity carries it, the server does not run: one
+/// spawned with it, or given it before it starts, waits, and one given it
+/// while it runs stops. Removing it starts the server. `/mcp` shows the
+/// reason it holds. Only a policy plugin adds one, typically in an
+/// observer of `On<Add<McpServer>>`, which runs before the server starts.
+#[derive(Component, Clone, Debug)]
+pub struct McpHold(pub String);
 
 /// A server's state, for `/mcp` and views.
 #[derive(Component, Reflect, Clone, Debug, Default)]
@@ -265,15 +290,23 @@ enum ServerEvent {
 struct McpLink(McpConnection);
 
 /// A server task's way to its entity, where each event arrives as a
-/// `Done<ServerEvent>` (a [`Running::stream`] of the channel).
+/// `Done<ServerEvent>` (a [`Running::stream`] of the channel), which holds
+/// at most [`EVENTS`]: the task waits for room.
 #[derive(Clone)]
 struct Outbox(Sender<ServerEvent>);
 
+/// The most events of a server that wait for its entity.
+const EVENTS: usize = 16;
+
 impl Outbox {
-    fn send(&self, event: ServerEvent) {
-        self.0.try_send(event).ok();
+    async fn send(&self, event: ServerEvent) {
+        self.0.send(event).await.ok();
     }
 }
+
+/// The most bytes of one message a stdio server writes: far above any
+/// real message, below what would exhaust memory.
+pub const LINE_LIMIT: usize = 64 * 1024 * 1024;
 
 /// A server as the files name it.
 struct Configured {
@@ -282,8 +315,6 @@ struct Configured {
     written: Value,
     /// What it describes; `None` when disabled.
     spec: Result<Option<ServerSpec>, String>,
-    /// For a project's server, whether the user approved it as written.
-    answer: Option<bool>,
 }
 
 impl Configured {
@@ -292,11 +323,7 @@ impl Configured {
         let (state, why) = match &self.spec {
             Err(why) => (McpState::Invalid, Some(why.clone())),
             Ok(None) => (McpState::Disabled, None),
-            Ok(Some(_)) => match (self.scope, self.answer) {
-                (Scope::User | Scope::Client, _) | (Scope::Project, Some(true)) => return None,
-                (Scope::Project, Some(false)) => (McpState::Denied, None),
-                (Scope::Project, None) => (McpState::NotApproved, None),
-            },
+            Ok(Some(_)) => return None,
         };
         Some(McpStatus {
             state,
@@ -306,12 +333,10 @@ impl Configured {
     }
 }
 
-/// What the files name: the server each name stands for, the project's
-/// servers not approved that a server of the user's of the same name stands
-/// in for meanwhile, and what was wrong with a file or a server in one.
+/// What the files name: the server each name stands for, and what was
+/// wrong with a file or a server in one.
 struct Read {
     servers: BTreeMap<String, Configured>,
-    shadowed: BTreeMap<String, Configured>,
     problems: Vec<String>,
 }
 
@@ -320,37 +345,14 @@ impl Read {
     /// start: each name and the file it is in.
     fn give_way(&mut self, clients: &HashSet<String>) -> Vec<(String, Scope)> {
         let mut gone = Vec::new();
-        for map in [&mut self.servers, &mut self.shadowed] {
-            map.retain(|name, configured| {
-                let kept = !clients.contains(name);
-                if !kept {
-                    gone.push((name.clone(), configured.scope));
-                }
-                kept
-            });
-        }
-        gone.sort();
+        self.servers.retain(|name, configured| {
+            let kept = !clients.contains(name);
+            if !kept {
+                gone.push((name.clone(), configured.scope));
+            }
+            kept
+        });
         gone
-    }
-
-    /// Each project server that waits for an answer, as a line: its name
-    /// and its object as written.
-    fn waiting(&self) -> Vec<String> {
-        let waits = |configured: &&Configured| {
-            configured
-                .idle()
-                .is_some_and(|status| status.state == McpState::NotApproved)
-        };
-        let servers = self.servers.iter().filter(|(_, it)| waits(it));
-        let mut lines: Vec<String> = servers
-            .map(|(name, it)| format!("  {name}: {}", config::describe(&it.written)))
-            .collect();
-        let shadowed = self.shadowed.iter().filter(|(_, it)| waits(it));
-        lines.extend(shadowed.map(|(name, it)| {
-            let written = config::describe(&it.written);
-            format!("  {name} (yours of that name comes first meanwhile): {written}")
-        }));
-        lines
     }
 }
 
@@ -362,42 +364,34 @@ struct Connect<'w> {
     settings: Res<'w, McpSettings>,
     processes: Res<'w, Processes>,
     groups: Res<'w, Groups>,
-    root: Res<'w, ProjectRoot>,
+    project: Res<'w, Project>,
     home: Res<'w, RigHome>,
     workspace: Option<Res<'w, ProjectWorkspace>>,
 }
 
 impl Connect<'_> {
-    /// The project approvals are about: its canonical path.
-    fn project(&self) -> String {
-        let root = &self.root.0;
-        let root = std::fs::canonicalize(root).unwrap_or_else(|_| root.clone());
-        root.display().to_string()
-    }
-
     /// The user's file and the project's, but for a project on another
-    /// host, whose `.rig` is not on this machine, or one whose `.rig` is
-    /// `RIG_HOME`, as the home directory's is.
+    /// host, whose `.rig` is not on this machine, or one without a `.rig`
+    /// of its own ([`Project::config`]).
     fn files(&self) -> Vec<McpFile> {
-        let [user, project] = config::files(self.home.0.root(), &self.root.0);
-        match self.no_project_file() {
-            Some(_) => vec![user],
-            None => vec![user, project],
-        }
+        let home = self.home.0.root();
+        let config = self.project.config.as_deref();
+        let project = config.filter(|_| self.no_project_file().is_none());
+        let project = project.map(|config| config::project_file(home, config));
+        [config::user_file(home)]
+            .into_iter()
+            .chain(project)
+            .collect()
     }
 
     /// Why the project has no file of its own, if it has none.
     fn no_project_file(&self) -> Option<&'static str> {
-        let home = self.home.0.root();
-        let same = |a: &Path, b: &Path| matches!((std::fs::canonicalize(a), std::fs::canonicalize(b)), (Ok(a), Ok(b)) if a == b);
         if self.workspace.as_ref().and_then(|it| it.0.host()).is_some() {
             Some("This project is on another host: rig reads only RIG_HOME/mcp.json for it.")
-        } else if self.root.0.to_str().is_none() {
-            // Its approvals could not tell it from another such path.
-            Some("This project's path is not UTF-8: rig reads only RIG_HOME/mcp.json for it.")
-        } else if same(&self.root.0.join(".rig"), home) {
+        } else if self.project.config.is_none() {
             Some(
-                "This project's .rig is RIG_HOME itself: its servers are those of RIG_HOME/mcp.json.",
+                "This project's .rig is RIG_HOME, or it is your home folder: its servers are \
+                 those of RIG_HOME/mcp.json.",
             )
         } else {
             None
@@ -414,12 +408,11 @@ impl Connect<'_> {
         file.ok_or_else(|| self.no_project_file().unwrap_or_default().to_owned())
     }
 
-    /// Every server the files name, by name: the project's in place of the
-    /// user's of the same name once approved; and what was wrong with a
-    /// file, or with a server in one.
-    fn configured(&self, approvals: &Approvals) -> Read {
+    /// Every server the files name, by name, the project's in place of the
+    /// user's of the same name; and what was wrong with a file, or with a
+    /// server in one.
+    fn configured(&self) -> Read {
         let mut servers = BTreeMap::new();
-        let mut shadowed = BTreeMap::new();
         let mut problems = Vec::new();
         for file in self.files() {
             let named = match file.servers() {
@@ -435,33 +428,19 @@ impl Connect<'_> {
                     let path = file.path();
                     problems.push(format!("{}: server `{name}`: {why}", path.display()));
                 }
-                let answer = match file.scope {
-                    Scope::User | Scope::Client => None,
-                    Scope::Project => approvals.answer(&name, &written),
-                };
                 let configured = Configured {
                     scope: file.scope,
                     written,
                     spec,
-                    answer,
                 };
-                if servers.contains_key(&name) && answer != Some(true) {
-                    shadowed.insert(name, configured);
-                } else {
-                    servers.insert(name, configured);
-                }
+                servers.insert(name, configured);
             }
         }
-        Read {
-            servers,
-            shadowed,
-            problems,
-        }
+        Read { servers, problems }
     }
 
-    /// Spawns the server `name`, connecting it unless it waits, is
-    /// disabled or is invalid. A new server holds a headless start
-    /// ([`Starting`]) until its first attempt ends.
+    /// Spawns the server `name`, connecting it unless it is disabled or
+    /// invalid.
     fn spawn(
         &self,
         commands: &mut Commands,
@@ -474,16 +453,16 @@ impl Connect<'_> {
             written: configured.written.clone(),
         };
         let label = Name::new(format!("mcp:{name}"));
-        match (configured.idle(), &configured.spec) {
-            (None, Ok(Some(spec))) => self.connect(commands, server, label, spec.clone()),
-            (status, _) => {
-                commands.spawn((label, server, status.unwrap_or_default()));
+        match &configured.spec {
+            Ok(Some(spec)) => self.connect(commands, server, label, spec.clone()),
+            _ => {
+                commands.spawn((label, server, configured.idle().unwrap_or_default()));
                 Ok(())
             }
         }
     }
 
-    /// Spawns `server` and starts connecting it.
+    /// Spawns `server`, which starts unless a policy holds it ([`McpHold`]).
     fn connect(
         &self,
         commands: &mut Commands,
@@ -491,71 +470,113 @@ impl Connect<'_> {
         label: Name,
         spec: ServerSpec,
     ) -> Result<(), String> {
-        let Some(runtime) = &self.runtime else {
+        if self.runtime.is_none() {
             return Err("MCP is off: rig has no tokio runtime.".to_owned());
+        }
+        let entity = commands
+            .spawn((label, McpStatus::default(), server, Reach(spec)))
+            .id();
+        // After the observers of its spawn, where a policy holds it.
+        commands.queue(move |world: &mut World| start(world, entity));
+        Ok(())
+    }
+
+    /// Starts connecting the server of `entity`, reached by `spec`: it holds
+    /// a headless start ([`Starting`]) until its first attempt ends.
+    fn run(&self, commands: &mut Commands, entity: Entity, name: String, spec: ServerSpec) {
+        let Some(runtime) = &self.runtime else {
+            return;
         };
-        let (sender, events) = async_channel::unbounded();
+        let (sender, events) = async_channel::bounded(EVENTS);
         let start = Start {
             spec,
             processes: self.processes.clone(),
             groups: self.groups.clone(),
-            root: self.root.0.clone(),
-            limit: Duration::from_secs(self.settings.connect_timeout_secs.max(1)),
+            root: self.project.root.clone(),
+            limit: Duration::from_secs(self.settings.connect_timeout_secs.get()),
+            line_limit: LINE_LIMIT,
         };
-        let first = Duration::from_secs(self.settings.first_retry_secs.max(1));
+        let first = Duration::from_secs(self.settings.first_retry_secs.get());
         // The connection lasts until nothing reads its events: until the
-        // server's entity, and its `Running` with them, is gone.
+        // server's `Running` is gone.
         let closed = sender.clone();
-        let connection = supervise(server.name.clone(), start, first, Outbox(sender));
+        let connection = supervise(name, start, first, Outbox(sender));
         runtime
             .0
             .spawn(future::or(connection, async move { closed.closed().await }));
         let pool = IoTaskPool::get_or_init(TaskPool::default);
-        commands.spawn((
-            label,
+        commands.entity(entity).insert((
             McpStatus::default(),
-            server,
             Starting,
             Running::stream(pool, &self.wake, events),
         ));
-        Ok(())
     }
 }
 
-/// Spawns every server the files name, and says which of the project's
-/// wait for the user's approval, and what was wrong with the files.
+/// How a server that can connect is reached, on its entity.
+#[derive(Component)]
+struct Reach(ServerSpec);
+
+/// Starts the server of `entity` unless it runs, is held or is gone.
+fn start(world: &mut World, entity: Entity) {
+    world.run_system_cached_with(start_server, entity).ok();
+}
+
+fn start_server(
+    In(entity): In<Entity>,
+    connect: Connect,
+    servers: Query<(&McpServer, &Reach), (Without<McpHold>, Without<Running>)>,
+    mut commands: Commands,
+) {
+    if let Ok((server, Reach(spec))) = servers.get(entity) {
+        connect.run(&mut commands, entity, server.name.clone(), spec.clone());
+    }
+}
+
+/// Stops a server as a hold comes, and shows it held.
+fn hold(
+    added: On<Add<McpHold>>,
+    mut servers: Query<&mut McpStatus, With<Reach>>,
+    mut commands: Commands,
+) {
+    let Ok(mut status) = servers.get_mut(added.entity) else {
+        return;
+    };
+    *status = McpStatus {
+        state: McpState::Held,
+        ..McpStatus::default()
+    };
+    commands
+        .entity(added.entity)
+        .remove::<(Running, McpLink, Starting)>()
+        .despawn_related::<McpTools>();
+}
+
+/// Starts a server as its hold goes.
+fn release(removed: On<Remove<McpHold>>, mut commands: Commands) {
+    let entity = removed.entity;
+    commands.queue(move |world: &mut World| start(world, entity));
+}
+
+/// Spawns every server the files name, and says what was wrong with the
+/// files.
 fn connect_configured(
     connect: Connect,
-    data: Option<Res<PluginData>>,
     servers: Query<&McpServer>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let lock = config::lock_path(connect.home.0.root());
-    let approvals = Approvals::read(data.as_deref(), connect.project(), lock);
-    let mut read = connect.configured(&approvals);
-    commands.insert_resource(approvals);
+    let mut read = connect.configured();
     for why in &read.problems {
         notices.write(Notice::error(None, why.clone()));
     }
     for (name, scope) in read.give_way(&clients(servers.iter())) {
         notices.write(Notice::warn(None, gives_way(&name, scope)));
     }
-    let waiting = read.waiting();
     for (name, configured) in read.servers {
         if let Err(why) = connect.spawn(&mut commands, name, &configured) {
             notices.write(Notice::error(None, why));
         }
-    }
-    if !waiting.is_empty() {
-        let path = connect.root.0.join(".rig/mcp.json");
-        let text = format!(
-            "{} names MCP servers you have not approved, so they did not start:\n{}\n/mcp \
-             approve <name> starts one and remembers it; /mcp deny <name> stops asking.",
-            path.display(),
-            waiting.join("\n")
-        );
-        notices.write(Notice::warn(None, text));
     }
 }
 
@@ -614,6 +635,10 @@ fn gives_way(name: &str, scope: Scope) -> String {
     )
 }
 
+/// The message a stdio server's stdout refused, which ended its
+/// connection, if one did.
+type Refused = Arc<Mutex<Option<TooLarge>>>;
+
 /// How one server's process or endpoint is reached.
 struct Start {
     spec: ServerSpec,
@@ -622,6 +647,8 @@ struct Start {
     root: PathBuf,
     /// How long an attempt may take to list the tools.
     limit: Duration,
+    /// The most bytes of a stdio server's message ([`LINE_LIMIT`]).
+    line_limit: usize,
 }
 
 /// Connects `name` again and again: lists its tools, waits for it to go,
@@ -629,7 +656,7 @@ struct Start {
 async fn supervise(name: String, start: Start, first: Duration, outbox: Outbox) {
     let mut wait = first;
     loop {
-        outbox.send(ServerEvent::Connecting);
+        outbox.send(ServerEvent::Connecting).await;
         let lost = match start.run(&outbox).await {
             Ok(()) => {
                 wait = first;
@@ -637,7 +664,7 @@ async fn supervise(name: String, start: Start, first: Duration, outbox: Outbox) 
             }
             Err(error) => error,
         };
-        outbox.send(ServerEvent::Lost(lost));
+        outbox.send(ServerEvent::Lost(lost)).await;
         tokio::time::sleep(wait).await;
         wait = (wait * 2).min(MAX_RETRY.max(first));
     }
@@ -645,15 +672,16 @@ async fn supervise(name: String, start: Start, first: Duration, outbox: Outbox) 
 
 /// The process groups of the stdio servers that run, each from the moment
 /// its process started: as the app exits all are killed at once, and none
-/// starts after. Starting, killing and closing each hold its lock, so no
-/// process is ever outside it.
+/// starts after. Starting and closing each hold its lock, so no process is
+/// ever outside it. Each server's [`Process`] kills its group as it is
+/// dropped, so nothing the server started outlives it.
 #[derive(Resource, Clone, Default)]
 struct Groups(Arc<Mutex<Live>>);
 
 #[derive(Default)]
 struct Live {
     closed: bool,
-    leaders: HashSet<u32>,
+    groups: Vec<process::Group>,
 }
 
 impl Groups {
@@ -662,78 +690,51 @@ impl Groups {
     }
 
     /// Starts `command`, its process in the registry; none once closed.
-    fn spawn(&self, command: &mut tokio::process::Command) -> io::Result<Group> {
+    fn spawn(&self, command: std::process::Command) -> io::Result<Process> {
         let mut live = self.live();
         if live.closed {
             return Err(io::Error::other("rig is exiting"));
         }
-        let child = command.spawn()?;
-        if let Some(leader) = child.id() {
-            live.leaders.insert(leader);
-            process::list_group(leader);
-        }
-        Ok(Group {
-            child,
-            groups: self.clone(),
-        })
+        let process = Process::start_with_stdio(command)?;
+        live.groups.retain(process::Group::running);
+        live.groups.push(process.group());
+        Ok(process)
     }
 
     /// Kills every group, and starts none from now on.
     fn close(&self) {
         let mut live = self.live();
         live.closed = true;
-        live.leaders.drain().for_each(|leader| {
-            kill_group(leader);
-            process::unlist_group(leader);
-        });
-    }
-}
-
-/// Kills the process group `leader` leads; elsewhere than unix, nothing,
-/// as a process is killed as it is dropped there.
-fn kill_group(leader: u32) {
-    #[cfg(unix)]
-    process::kill_group_of(leader);
-    #[cfg(not(unix))]
-    let _ = leader;
-}
-
-/// A stdio server's process, which leads a process group of its own: the
-/// group is killed as this is dropped, so nothing the server started
-/// outlives it.
-struct Group {
-    child: tokio::process::Child,
-    groups: Groups,
-}
-
-impl Drop for Group {
-    fn drop(&mut self) {
-        if let Some(leader) = self.child.id() {
-            let mut live = self.groups.live();
-            kill_group(leader);
-            if live.leaders.remove(&leader) {
-                process::unlist_group(leader);
-            }
-        }
+        live.groups.drain(..).for_each(|group| group.kill());
     }
 }
 
 /// A connection open, and the process it is to, which lives as long as
 /// this.
-type Reached = (McpConnection, Option<Group>);
+type Reached = (McpConnection, Option<Process>);
 
 /// [`Reached`], with the server's tools.
-type Opened = (McpConnection, Vec<McpDefinition>, Option<Group>);
+type Opened = (McpConnection, Vec<McpDefinition>, Option<Process>);
 
 impl Start {
-    /// One connection to the server: `Ok` once it closed after answering.
-    /// Every list of its tools is asked for here, one at a time, so no
-    /// older list replaces a newer one.
+    /// One connection to the server: `Ok` once it closed after answering;
+    /// a message past the limit that ended it, at any point, is why it
+    /// failed.
     async fn run(&self, outbox: &Outbox) -> Result<(), String> {
-        let limit = self.limit.as_secs();
+        let refused = Refused::default();
+        let ran = self.connection(outbox, &refused).await;
+        match *refused.lock().unwrap_or_else(PoisonError::into_inner) {
+            Some(too_large) => Err(format!("the server sent a message of {too_large}")),
+            None => ran,
+        }
+    }
+
+    /// [`Start::run`]'s connection. Every list of its tools is asked for
+    /// here, one at a time, so no older list replaces a newer one.
+    async fn connection(&self, outbox: &Outbox, refused: &Refused) -> Result<(), String> {
         let (changed, changes) = async_channel::bounded(1);
         let opened = async {
-            let (connection, child) = self.open(outbox, Listener(changed)).await?;
+            let (connection, child) = self.open(outbox, Listener(changed), refused).await?;
             // rmcp hands each notification to a task of its own, so a change
             // the server said before a list's answer may reach the listener
             // just after it: the tools count as in once a list stays quiet
@@ -741,7 +742,7 @@ impl Start {
             // the lists that follow.
             let mut tools = Vec::new();
             for _ in 0..GRACE_LISTS {
-                tools = list(&connection, &changes).await?;
+                tools = list(&connection, &changes, self.limit).await?;
                 tokio::time::sleep(CHANGE_GRACE).await;
                 if changes.is_empty() {
                     break;
@@ -751,8 +752,10 @@ impl Start {
         };
         let (connection, tools, child) = tokio::time::timeout(self.limit, opened)
             .await
-            .map_err(|_| format!("no answer within {limit}s"))??;
-        outbox.send(ServerEvent::Connected(connection.clone(), tools));
+            .map_err(|_| no_answer(self.limit))??;
+        outbox
+            .send(ServerEvent::Connected(connection.clone(), tools))
+            .await;
         loop {
             let closed = async {
                 connection.closed().await;
@@ -764,10 +767,9 @@ impl Start {
             }
             // Each list is bounded too, so one left unanswered never holds
             // back the next change.
-            let listed = tokio::time::timeout(self.limit, list(&connection, &changes)).await;
-            match listed.map_err(|_| format!("no answer within {limit}s")) {
-                Ok(Ok(tools)) => outbox.send(ServerEvent::Listed(tools)),
-                Ok(Err(error)) | Err(error) => outbox.send(ServerEvent::Unlisted(error)),
+            match list(&connection, &changes, self.limit).await {
+                Ok(tools) => outbox.send(ServerEvent::Listed(tools)).await,
+                Err(error) => outbox.send(ServerEvent::Unlisted(error)).await,
             }
         }
         // A stdio server's process group is killed as it is dropped.
@@ -776,7 +778,12 @@ impl Start {
     }
 
     /// Starts or reaches the server, with `client` as its MCP client.
-    async fn open(&self, outbox: &Outbox, client: Listener) -> Result<Reached, String> {
+    async fn open(
+        &self,
+        outbox: &Outbox,
+        client: Listener,
+        refused: &Refused,
+    ) -> Result<Reached, String> {
         let (service, child) = match &self.spec {
             ServerSpec::Stdio {
                 command,
@@ -784,33 +791,35 @@ impl Start {
                 env,
                 cwd,
             } => {
-                let launched = self.processes.launcher().command(command);
-                let mut process = tokio::process::Command::from(launched);
-                process
+                let mut launched = self.processes.launcher().command(command);
+                launched
                     .args(args)
                     .envs(env)
                     .stdin(Stdio::piped())
                     .stdout(Stdio::piped())
-                    .stderr(Stdio::null())
-                    .kill_on_drop(true);
+                    .stderr(Stdio::null());
                 if let Some(cwd) = cwd {
-                    process.current_dir(self.root.join(cwd));
+                    launched.current_dir(self.root.join(cwd));
                 }
                 let mut child = self
                     .groups
-                    .spawn(&mut process)
+                    .spawn(launched)
                     .map_err(|error| format!("could not start `{command}`: {error}"))?;
-                if let Some(pid) = child.child.id() {
-                    outbox.send(ServerEvent::Started(pid));
-                }
-                let pipes = (child.child.stdout.take(), child.child.stdin.take());
+                outbox.send(ServerEvent::Started(child.id())).await;
+                let pipes = (child.take_stdout(), child.take_stdin());
                 let (Some(stdout), Some(stdin)) = pipes else {
                     return Err(format!("`{command}` has no pipes"));
                 };
+                let pipes = tokio::process::ChildStdout::from_std(stdout)
+                    .and_then(|stdout| Ok((stdout, tokio::process::ChildStdin::from_std(stdin)?)));
+                let (stdout, stdin) =
+                    pipes.map_err(|error| format!("`{command}`'s pipes: {error}"))?;
+                // rmcp frames the lines; only a line past the limit ends them.
+                let stdout = Limited::new(stdout, self.line_limit, refused.clone());
                 let service = client
                     .serve((stdout, stdin))
                     .await
-                    .map_err(|error| error.to_string())?;
+                    .map_err(|error| unreached(error, false))?;
                 (service, Some(child))
             }
             ServerSpec::Http { url, headers } => {
@@ -825,10 +834,9 @@ impl Start {
                 let config = StreamableHttpClientTransportConfig::with_uri(url.as_str())
                     .custom_headers(sent);
                 let transport = StreamableHttpClientTransport::from_config(config);
-                let service = client
-                    .serve(transport)
-                    .await
-                    .map_err(|error| error.to_string())?;
+                let service = client.serve(transport).await.map_err(|error| {
+                    unreached(error, headers.keys().any(|name| credential(name)))
+                })?;
                 (service, None)
             }
         };
@@ -836,25 +844,102 @@ impl Start {
     }
 }
 
-/// The server's tools, none for a server that offers none (it says so as
-/// it starts); a change said while they are listed waits in `changes`.
+/// The server's tools, within `limit`; a change said while they are listed
+/// waits in `changes`.
 async fn list(
     connection: &McpConnection,
     changes: &Receiver<()>,
+    limit: Duration,
 ) -> Result<Vec<McpDefinition>, String> {
     changes.try_recv().ok();
-    let offers = connection
-        .peer()
-        .peer_info()
-        .is_some_and(|info| info.capabilities.tools.is_some());
-    if !offers {
-        return Ok(Vec::new());
-    }
     connection
-        .peer()
-        .list_all_tools()
+        .list_tools(limit)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(|error| match error {
+            McpClientError::Timeout(_) => no_answer(limit),
+            // rmcp's own words, without rig-rmcp's "MCP request failed" prefix.
+            McpClientError::Request(error) => error.to_string(),
+            other => other.to_string(),
+        })
+}
+
+/// Why a server's answer was given up on after `limit`.
+fn no_answer(limit: Duration) -> String {
+    format!(
+        "no answer within {} s (`[mcp] connect_timeout_secs`)",
+        limit.as_secs()
+    )
+}
+
+/// Whether a configured header carries a credential: `Authorization`,
+/// `Proxy-Authorization`, or a name with `token`, `key`, `auth` or `secret` in it.
+fn credential(name: &str) -> bool {
+    let name = name.to_ascii_lowercase();
+    ["token", "key", "auth", "secret"]
+        .iter()
+        .any(|part| name.contains(part))
+}
+
+/// Why the MCP handshake with a server failed, in words without rmcp's
+/// transport type names. `credential` is whether rig sent a [`credential`]
+/// header: a refusal then means that token, not a missing OAuth sign-in.
+fn unreached(error: ClientInitializeError, credential: bool) -> String {
+    const HEADER_TOKEN: &str = "A server that takes a token in a header works: see \
+                                \"Servers: `mcp.json`\" in the rig-mcp-client README";
+    const CLOSED: &str = "it closed the connection before it answered";
+    let refused = || "it refused the token in its `headers` (HTTP 401)".to_owned();
+    if error.is_authorization_required() {
+        return if credential {
+            refused()
+        } else {
+            format!("it asks for a sign-in (OAuth), which rig does not support. {HEADER_TOKEN}")
+        };
+    }
+    match error {
+        ClientInitializeError::TransportError { error, context } => {
+            let error: &(dyn std::error::Error + 'static) = error.error.as_ref();
+            let chain = || std::iter::successors(Some(error), |error| error.source());
+            let scoped = chain().any(|error| error.is::<InsufficientScopeError>());
+            if credential && scoped {
+                return "the token in its `headers` lacks a permission it needs \
+                        (HTTP 403, insufficient scope)"
+                    .to_owned();
+            }
+            let gone = chain().any(|error| {
+                error
+                    .downcast_ref::<io::Error>()
+                    .is_some_and(|error| error.kind() == io::ErrorKind::BrokenPipe)
+            });
+            if gone {
+                return CLOSED.to_owned();
+            }
+            let why = error.to_string();
+            // rmcp gives a 401 without a challenge, and an answer that is not
+            // JSON-RPC, only as this text.
+            let said = why.strip_prefix("unexpected server response: ");
+            if said.is_some_and(|said| said.starts_with("HTTP 401 ")) {
+                return if credential {
+                    refused()
+                } else {
+                    format!("it needs a token (HTTP 401). {HEADER_TOKEN}")
+                };
+            }
+            let parsed = said.and_then(|said| {
+                said.strip_prefix("could not parse JSON response as ServerJsonRpcMessage: ")
+            });
+            if let Some(parsed) = parsed {
+                return format!("its answer was not MCP JSON ({parsed})");
+            }
+            // An HTTP transport's error already names what it was doing.
+            if why.contains(context.as_ref()) {
+                why
+            } else {
+                format!("{why}, when {context}")
+            }
+        }
+        ClientInitializeError::ConnectionClosed(_) => CLOSED.to_owned(),
+        error => error.to_string(),
+    }
 }
 
 /// The MCP client of one connection: tells its task when the server says
@@ -863,8 +948,7 @@ struct Listener(Sender<()>);
 
 impl ClientHandler for Listener {
     fn get_info(&self) -> ClientConfig {
-        let rig = Implementation::new("rig", env!("CARGO_PKG_VERSION"));
-        ClientConfig::new(ClientCapabilities::default(), rig)
+        rig_rmcp::client_config("rig", env!("CARGO_PKG_VERSION"))
     }
 
     async fn on_tool_list_changed(&self, _: NotificationContext<RoleClient>) {
@@ -954,7 +1038,7 @@ fn kill_on_exit(groups: Res<Groups>) {
 }
 
 /// Closes a connection as its server's link goes, as it is removed,
-/// denied or replaced, for every call and tool still sharing it.
+/// held or replaced, for every call and tool still sharing it.
 fn close_link(
     gone: On<Remove<McpLink>>,
     links: Query<&McpLink>,
@@ -976,13 +1060,17 @@ fn register(
     tools: Vec<McpDefinition>,
     connected: bool,
 ) {
-    let Some(McpServer { name, scope, .. }) = world.get::<McpServer>(server).cloned() else {
+    let Some(McpServer { name, .. }) = world.get::<McpServer>(server).cloned() else {
         return;
     };
-    let trusted = scope == Scope::User
-        && world
-            .get_resource::<McpSettings>()
-            .is_some_and(|settings| settings.trust_read_only.contains(&name));
+    let trusted = world
+        .get_resource::<McpSettings>()
+        .is_some_and(|settings| settings.trust_read_only.contains(&name));
+    // Attributed as what a plugin spawns as it builds is, so a plugin
+    // filter such as tool search finds them.
+    let by = (world.get_resource::<Client>())
+        .and_then(|client| world.get::<ProvidedBy>(client.0))
+        .map(|by| by.0);
     let Ok(mut entity) = world.get_entity_mut(server) else {
         return;
     };
@@ -1002,19 +1090,25 @@ fn register(
         // The server's annotations are hints unless the user trusts it.
         let footprint = trusted.then(|| Touches::from_annotations(&definition.annotations));
         let options = ToolOptions { footprint };
-        match world.spawn_tool(definition, handler, options) {
-            Some(tool) => {
-                world.entity_mut(tool).insert(McpToolOf(server));
-                // Attributed as the tools a plugin spawns as it builds are,
-                // so a plugin filter such as tool search finds them.
-                if let Some(plugin) = world.get_resource::<PluginEntity<McpPlugin>>() {
-                    let plugin = plugin.entity();
-                    world.entity_mut(tool).insert(ProvidedBy(plugin));
-                }
-                count += 1;
+        let Some(tool) = world.spawn_tool(definition, handler, options) else {
+            left_out.push(format!("`{full}` (another tool has that name)"));
+            continue;
+        };
+        if let Ok(mut tool) = world.get_entity_mut(tool) {
+            tool.insert(McpToolOf(server));
+            if let Some(by) = by {
+                tool.insert(ProvidedBy(by));
             }
-            None => left_out.push(format!("`{full}` (another tool has that name)")),
         }
+        // A policy that saw the tool may have held the server: it then
+        // offers none.
+        if world.get::<McpHold>(server).is_some() {
+            if let Ok(mut server) = world.get_entity_mut(server) {
+                server.despawn_related::<McpTools>();
+            }
+            return;
+        }
+        count += 1;
     }
     if let Some(mut status) = world.get_mut::<McpStatus>(server) {
         status.tools = count;
@@ -1061,10 +1155,6 @@ impl Intercept for Disconnected {
         "mcp-disconnected".to_owned()
     }
 
-    async fn before(&self, _: EffectId, _: &EffectKind) -> BeforeServe {
-        BeforeServe::Proceed
-    }
-
     async fn after(
         &self,
         _: EffectId,
@@ -1088,9 +1178,17 @@ impl Intercept for Disconnected {
 /// What `/mcp` reads and changes.
 #[derive(SystemParam)]
 struct Servers<'w, 's> {
-    servers: Query<'w, 's, (Entity, &'static McpServer, &'static McpStatus)>,
+    servers: Query<
+        'w,
+        's,
+        (
+            Entity,
+            &'static McpServer,
+            &'static McpStatus,
+            Option<&'static McpHold>,
+        ),
+    >,
     connect: Connect<'w>,
-    approvals: ResMut<'w, Approvals>,
     files: Option<Res<'w, Files>>,
     commands: Commands<'w, 's>,
 }
@@ -1098,59 +1196,39 @@ struct Servers<'w, 's> {
 impl Servers<'_, '_> {
     /// The names of the servers a client gave.
     fn clients(&self) -> HashSet<String> {
-        clients(self.servers.iter().map(|(_, server, _)| server))
+        clients(self.servers.iter().map(|(_, server, ..)| server))
     }
 
     /// Spawns `name` again as the files name it now, if they do; a server
-    /// that is as it was keeps running. What became of it: its state, and
-    /// whether it was spawned again.
-    fn settle(&mut self, name: &str) -> Result<Option<(McpState, bool)>, String> {
+    /// that is as it was keeps running. Whether it was spawned again.
+    fn settle(&mut self, name: &str) -> Result<bool, String> {
         // The client's server of that name runs, whatever the files say.
         if self.clients().contains(name) {
-            return Ok(None);
+            return Ok(false);
         }
-        let configured = self
-            .connect
-            .configured(&self.approvals)
-            .servers
-            .remove(name);
-        let idle = configured
-            .as_ref()
-            .map(|configured| configured.idle().map(|status| status.state));
-        let waiting = |state: McpState| {
-            let running = [
-                McpState::Connecting,
-                McpState::Connected,
-                McpState::Retrying,
-            ];
-            (!running.contains(&state)).then_some(state)
-        };
-        let mut kept = None;
-        for (entity, server, status) in &self.servers {
+        let configured = self.connect.configured().servers.remove(name);
+        let mut kept = false;
+        for (entity, server, ..) in &self.servers {
             if server.name != name {
                 continue;
             }
             let same = configured.as_ref().is_some_and(|configured| {
                 configured.scope == server.scope && configured.written == server.written
             });
-            if same && idle == Some(waiting(status.state)) && kept.is_none() {
-                kept = Some(status.state);
+            if same && !kept {
+                kept = true;
             } else {
                 self.commands.entity(entity).despawn();
             }
         }
-        let Some(configured) = configured else {
-            return Ok(None);
-        };
-        if let Some(state) = kept {
-            return Ok(Some((state, false)));
+        match configured {
+            Some(configured) if !kept => {
+                self.connect
+                    .spawn(&mut self.commands, name.to_owned(), &configured)?;
+                Ok(true)
+            }
+            _ => Ok(false),
         }
-        let state = configured
-            .idle()
-            .map_or(McpState::Connecting, |status| status.state);
-        self.connect
-            .spawn(&mut self.commands, name.to_owned(), &configured)?;
-        Ok(Some((state, true)))
     }
 
     /// Every server, a line each.
@@ -1158,7 +1236,7 @@ impl Servers<'_, '_> {
         let mut lines: Vec<String> = self
             .servers
             .iter()
-            .map(|(_, server, status)| {
+            .map(|(_, server, status, held)| {
                 let name = &server.name;
                 let error = status.last_error.as_deref().unwrap_or("none");
                 let state = match status.state {
@@ -1168,14 +1246,7 @@ impl Servers<'_, '_> {
                         format!("connected, {} {tools}", status.tools)
                     }
                     McpState::Retrying => format!("retrying; last error: {error}"),
-                    McpState::NotApproved => format!(
-                        "not approved; /mcp approve {name} starts it as written: {}",
-                        config::describe(&server.written)
-                    ),
-                    McpState::Denied => format!(
-                        "denied; /mcp approve {name} starts it as written: {}",
-                        config::describe(&server.written)
-                    ),
+                    McpState::Held => held.map_or("held", |McpHold(why)| why).to_owned(),
                     McpState::Disabled => "disabled in its mcp.json".to_owned(),
                     McpState::Invalid => format!("invalid: {error}"),
                 };
@@ -1190,32 +1261,9 @@ impl Servers<'_, '_> {
                 false => lines.join("\n"),
             };
         }
-        let mut read = self.connect.configured(&self.approvals);
-        let given = read.give_way(&self.clients());
+        let given = self.connect.configured().give_way(&self.clients());
         lines.extend(given.iter().map(|(name, scope)| {
             format!("{name} ({scope}): does not run; the client's of that name does")
-        }));
-        lines.extend(read.shadowed.iter().map(|(name, configured)| {
-            let written = config::describe(&configured.written);
-            let idle = configured.idle();
-            let error = idle.as_ref().and_then(|it| it.last_error.clone());
-            match idle.map(|it| it.state) {
-                Some(McpState::Invalid) => format!(
-                    "{name} (project): invalid: {}; yours comes first",
-                    error.unwrap_or_default()
-                ),
-                Some(McpState::Disabled) => {
-                    format!("{name} (project): disabled in its mcp.json; yours comes first")
-                }
-                Some(McpState::Denied) => format!(
-                    "{name} (project): denied, yours comes first meanwhile; /mcp approve {name} starts \
-                     it in place of yours, as written: {written}"
-                ),
-                _ => format!(
-                    "{name} (project): not approved, yours comes first meanwhile; /mcp approve {name} \
-                     starts it in place of yours, as written: {written}"
-                ),
-            }
         }));
         lines.sort();
         if lines.is_empty() {
@@ -1233,7 +1281,7 @@ impl Servers<'_, '_> {
     }
 
     /// `/mcp add [--project] <name> <command…|url>`: saves the server in the
-    /// user's file, or the project's, approved, and starts it.
+    /// user's file, or the project's, and starts it.
     fn add<'a>(&mut self, mut words: impl Iterator<Item = &'a str>) -> Result<String, String> {
         let usage = "/mcp add [--user|--project] <name> <command…|url>";
         let (scope, name) = match words.next().ok_or_else(|| format!("Use {usage}."))? {
@@ -1254,20 +1302,12 @@ impl Servers<'_, '_> {
         };
         ServerSpec::parse(&written)?;
         let file = self.connect.file(scope)?;
-        file.add(name, written.clone())?;
-        if scope == Scope::Project {
-            self.approvals.set(name, written, true)?;
-        }
-        let path = file.path();
-        Ok(match self.settle(name)? {
-            Some((McpState::Connecting, true)) => {
-                format!(
-                    "Saved MCP server `{name}` in {}; connecting.",
-                    path.display()
-                )
-            }
-            _ => format!("Saved MCP server `{name}` in {}.", path.display()),
-        })
+        file.add(name, written)?;
+        self.settle(name)?;
+        Ok(format!(
+            "Saved MCP server `{name}` in {}.",
+            file.path().display()
+        ))
     }
 
     /// `/mcp remove [--user|--project] <name>`: takes it out of that
@@ -1292,8 +1332,8 @@ impl Servers<'_, '_> {
         let shown = self
             .servers
             .iter()
-            .find(|(_, server, _)| server.name == name)
-            .map(|(_, server, _)| server.scope);
+            .find(|(_, server, ..)| server.name == name)
+            .map(|(_, server, ..)| server.scope);
         let scope = match scope.or(shown) {
             None => return Err(format!("No MCP server `{name}`.")),
             Some(Scope::Client) => {
@@ -1310,86 +1350,51 @@ impl Servers<'_, '_> {
             return Err(format!("{} names no server `{name}`.", path.display()));
         }
         let text = format!("Removed MCP server `{name}` from {}.", path.display());
-        Ok(match self.settle(name)? {
-            Some((state, true)) => {
-                let other = self.connect.file(match scope {
-                    Scope::User => Scope::Project,
-                    Scope::Project | Scope::Client => Scope::User,
-                })?;
-                let other = other.path();
-                let other = other.display();
-                match state {
-                    McpState::Connecting => format!("{text} The one in {other} takes its place."),
-                    McpState::NotApproved => format!(
-                        "{text} The one in {other} is not approved: /mcp approve {name} starts \
-                         it."
-                    ),
-                    McpState::Denied => format!(
-                        "{text} The one in {other} is denied: /mcp approve {name} starts it."
-                    ),
-                    McpState::Disabled => format!("{text} The one in {other} is disabled."),
-                    _ => format!("{text} The one in {other} is invalid; /mcp says why."),
-                }
-            }
-            _ => text,
-        })
-    }
-
-    /// `/mcp approve <name>` and `/mcp deny <name>`: keeps the answer about
-    /// the project's server as it is written now, and starts or stops it.
-    fn answer(&mut self, name: &str, approved: bool) -> Result<String, String> {
-        let file = self.connect.file(Scope::Project)?;
-        let written = file.servers()?.into_iter().find(|(it, _)| it == name);
-        let Some((_, written)) = written else {
-            return Err(format!(
-                "{} names no server `{name}`.",
-                file.path().display()
-            ));
-        };
-        let shown = config::describe(&written);
-        self.approvals.set(name, written, approved)?;
-        let settled = self.settle(name)?;
-        let state = settled.map(|(state, _)| state);
-        Ok(match (approved, state) {
-            (true, Some(McpState::Connecting)) => {
-                format!("Approved `{name}` as written: {shown}; connecting.")
-            }
-            (true, Some(McpState::Disabled)) => {
-                format!("Approved `{name}` as written: {shown}; it is disabled in its mcp.json.")
-            }
-            (true, Some(McpState::Invalid)) => {
-                format!("Approved `{name}` as written: {shown}; it is invalid, /mcp says why.")
-            }
-            (true, _) => format!("Approved `{name}` as written: {shown}."),
-            // Denied, the project's server can only give way to the user's.
-            (false, _) if settled == Some((McpState::Connecting, true)) => format!(
-                "Denied `{name}`: it does not start until /mcp approve {name}. Yours takes its \
-                 place; connecting."
-            ),
-            (false, _) => format!("Denied `{name}`: it does not start until /mcp approve {name}."),
-        })
+        if !self.settle(name)? {
+            return Ok(text);
+        }
+        let other = self.connect.file(match scope {
+            Scope::User => Scope::Project,
+            Scope::Project | Scope::Client => Scope::User,
+        })?;
+        Ok(format!(
+            "{text} The one in {} takes its place; /mcp shows it.",
+            other.path().display()
+        ))
     }
 }
 
-/// `/mcp`, `/mcp add`, `/mcp remove`, `/mcp approve`, `/mcp deny`.
+/// `/mcp`, `/mcp add`, `/mcp remove`, and `/mcp <verb>` for a plugin's
+/// `/mcp-<verb>`.
 fn mcp_command(
     In(args): In<CommandArgs>,
     mut servers: Servers,
+    registered: Query<&Name, With<SlashCommand>>,
     mut notices: MessageWriter<Notice>,
 ) {
     let agent = args.agent;
     let mut words = args.args.split_whitespace();
-    let done = match (words.next(), words.clone().next()) {
-        (None, _) => Ok(servers.list()),
-        (Some(verb), _) if servers.files.is_none() => Err(format!(
+    let done = match words.next() {
+        None => Ok(servers.list()),
+        Some(verb @ ("add" | "remove")) if servers.files.is_none() => Err(format!(
             "/mcp {verb} changes an mcp.json, which rig reads only with rig_mcp_client::McpPlugin \
              on: rig plugin enable rig_mcp_client::McpPlugin"
         )),
-        (Some("add"), _) => servers.add(words),
-        (Some("remove"), _) => servers.remove(words),
-        (Some("approve"), Some(name)) if words.clone().count() == 1 => servers.answer(name, true),
-        (Some("deny"), Some(name)) if words.clone().count() == 1 => servers.answer(name, false),
-        (Some(verb @ ("approve" | "deny")), _) => Err(format!("Use /mcp {verb} <name>.")),
+        Some("add") => servers.add(words),
+        Some("remove") => servers.remove(words),
+        Some(verb)
+            if registered
+                .iter()
+                .any(|name| name.as_str() == format!("/mcp-{verb}")) =>
+        {
+            let rest: Vec<&str> = words.collect();
+            let line = format!("mcp-{verb} {}", rest.join(" "));
+            servers.commands.trigger(RunCommand {
+                mode: args.mode,
+                ..RunCommand::new(agent, line)
+            });
+            return;
+        }
         _ => Err(format!("Use {COMMANDS}.")),
     };
     match done {

@@ -2,18 +2,11 @@
 //!
 //! Natural stops, token-budget truncation and tool-call turns are crossed with
 //! both transports. The tests assert rig's normalized terminal reason and the
-//! provider's recorded wire reason independently; this catches either a wire
-//! dialect change or a normalization regression.
+//! provider's recorded wire reason independently, so either a wire dialect
+//! change or a normalization regression fails.
 //!
-//! | reason | blocking | streaming | control |
-//! |---|---|---|---|
-//! | natural stop | `stop` | `stop` | `reasoning_effort: none` |
-//! | budget exhausted | `length` | `length` | `max_tokens: 1` |
-//! | required tool | `tool_calls` | `tool_calls` | zero-argument `ping` |
-//!
-//! The stop control also records a live dialect rule discovered while probing:
-//! Doubleword rejects `chat_template_kwargs.enable_thinking` and directs
-//! callers to `reasoning_effort`; `"none"` disables reasoning on Qwen 3.5.
+//! The stop control uses `reasoning_effort: "none"` to disable reasoning on
+//! Qwen 3.5, because Doubleword rejects `chat_template_kwargs.enable_thinking`.
 
 use rig::completion::FinishReason;
 use rig::message::{AssistantContent, ToolChoice};

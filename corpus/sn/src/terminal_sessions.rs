@@ -1,19 +1,14 @@
-//! Interactive terminal sessions (held-out spec 08): the agent drives live
-//! programs, such as a REPL, a debugger or an installer, through a real
-//! pseudo-terminal across turns, with `term_open`, `term_send`,
-//! `term_read` and `term_close`, and the user watches and types into them
-//! in a panel of the terminal view (`/term`).
+//! Interactive terminal sessions: the agent drives live programs, such as a REPL, a debugger or
+//! an installer, through a real pseudo-terminal across turns, with `term_open`, `term_send`,
+//! `term_read` and `term_close`, and the user watches and types into them in a panel of the
+//! terminal view (`/term`).
 //!
-//! A terminal is an entity [`TerminalOf`] its agent, so it ends with the
-//! agent; its [`Terminal`] holds the program, which a thread reads into a
-//! screen as it writes, escape sequences interpreted. The program is `sh -c
-//! <command>`, started as every child process starts ([`Processes`]), as
-//! the leader of a session of its own whose controlling terminal is the
-//! pty, so Ctrl+C reaches the job in front and closing kills everything it
-//! started. Every terminal is killed on the way out. The names of an
-//! agent's open terminals are saved with the session ([`TerminalNames`]);
-//! terminals are not restored, and the agent is told with the user's next
-//! message which ones ended.
+//! A terminal is an entity [`TerminalOf`] its agent, so it ends with the agent. Its program is
+//! `sh -c <command>`, started as every child process starts ([`Processes`]), as the leader of a
+//! session of its own whose controlling terminal is the pty, so Ctrl+C reaches the job in front
+//! and closing kills everything it started. Every terminal is killed on the way out. The names
+//! of an agent's open terminals are saved with the session ([`TerminalNames`]); terminals are
+//! not restored, and the agent is told with the user's next message which ones ended.
 
 use std::sync::Arc;
 use std::sync::atomic::Ordering;

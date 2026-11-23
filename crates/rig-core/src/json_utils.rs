@@ -1,15 +1,124 @@
 use serde::Deserialize;
-use serde::de::{self, Deserializer, MapAccess, SeqAccess, Visitor};
-use std::convert::Infallible;
-use std::fmt;
-use std::marker::PhantomData;
-use std::str::FromStr;
+use serde::de::Deserializer;
+use std::cmp::Ordering;
+use std::sync::LazyLock;
 
-/// `skip_serializing_if` helper: serde requires a `fn(&bool) -> bool`, so the
-/// trivially-copy lint does not apply here.
-#[allow(clippy::trivially_copy_pass_by_ref)]
-pub(crate) fn is_false(value: &bool) -> bool {
-    !value
+/// The numeric order of two JSON numbers, exact: integers compare as
+/// integers and an integer against a float rounds neither, so `5` equals
+/// `5.0` but `2^53 + 1` does not equal `2^53` as a float. With serde_json's
+/// `arbitrary_precision`, numbers compare by their literal's decimal value.
+pub(crate) fn compare_numbers(a: &serde_json::Number, b: &serde_json::Number) -> Option<Ordering> {
+    if holds_literals() {
+        return Some(compare_literals(&a.to_string(), &b.to_string()));
+    }
+    let integer = |n: &serde_json::Number| {
+        n.as_i64()
+            .map(i128::from)
+            .or_else(|| n.as_u64().map(i128::from))
+    };
+    match (integer(a), integer(b)) {
+        (Some(a), Some(b)) => Some(a.cmp(&b)),
+        (Some(a), None) => compare_integer_float(a, b.as_f64()?),
+        (None, Some(b)) => compare_integer_float(b, a.as_f64()?).map(Ordering::reverse),
+        (None, None) => a.as_f64()?.partial_cmp(&b.as_f64()?),
+    }
+}
+
+/// Whether a [`serde_json::Number`] keeps the literal it was read from, as
+/// it does with `arbitrary_precision`, which a dependent crate can turn on.
+fn holds_literals() -> bool {
+    static HOLDS: LazyLock<bool> = LazyLock::new(|| {
+        serde_json::from_str::<serde_json::Number>("1.50").is_ok_and(|n| n.to_string() == "1.50")
+    });
+    *HOLDS
+}
+
+/// A JSON number literal as `sign * 0.digits * 10^(exponent + shift)`.
+/// `digits` has no leading or trailing zero, so one value has one form. The
+/// exponent stays text, since a literal's can be any length.
+struct Literal<'a> {
+    sign: i8,
+    exponent_sign: i128,
+    exponent: &'a str,
+    shift: i128,
+    digits: String,
+}
+
+impl<'a> Literal<'a> {
+    fn new(text: &'a str) -> Self {
+        let (sign, text) = text.strip_prefix('-').map_or((1, text), |text| (-1, text));
+        let (mantissa, exponent) = text.split_once(['e', 'E']).unwrap_or((text, ""));
+        let (whole, fraction) = mantissa.split_once('.').unwrap_or((mantissa, ""));
+        let digits = format!("{whole}{fraction}");
+        let digits = digits.trim_start_matches('0');
+        let (exponent_sign, exponent) = match exponent.strip_prefix('-') {
+            Some(exponent) => (-1, exponent),
+            None => (1, exponent.trim_start_matches('+')),
+        };
+        let zero = digits.is_empty();
+        Self {
+            sign: if zero { 0 } else { sign },
+            exponent_sign,
+            exponent: if zero { "" } else { exponent },
+            shift: if zero {
+                0
+            } else {
+                digits.len() as i128 - fraction.len() as i128
+            },
+            digits: digits.trim_end_matches('0').to_owned(),
+        }
+    }
+
+    /// This exponent's signed decimal digits, left-padded to `width`.
+    fn exponent_digits(&self, width: usize) -> impl Iterator<Item = i128> {
+        let padding = std::iter::repeat_n(0, width.saturating_sub(self.exponent.len()));
+        let digits = self.exponent.chars().filter_map(|digit| digit.to_digit(10));
+        padding
+            .chain(digits)
+            .map(|digit| i128::from(digit) * self.exponent_sign)
+    }
+
+    /// This exponent minus `other`'s, held at a size no `shift` can reach
+    /// once past it: each further digit only moves it further away.
+    fn exponent_gap(&self, other: &Self) -> i128 {
+        const FAR: i128 = 1_000_000_000_000_000_000_000_000_000_000_000_000;
+        let width = self.exponent.len().max(other.exponent.len());
+        let digits = self
+            .exponent_digits(width)
+            .zip(other.exponent_digits(width));
+        digits.fold(0, |gap, (a, b)| (gap * 10 + a - b).clamp(-FAR, FAR))
+    }
+}
+
+/// Two JSON number literals in the order of their exact decimal values.
+pub(crate) fn compare_literals(a: &str, b: &str) -> Ordering {
+    let (a, b) = (Literal::new(a), Literal::new(b));
+    a.sign.cmp(&b.sign).then_with(|| {
+        let power = a.exponent_gap(&b) + a.shift - b.shift;
+        let magnitude = power.cmp(&0).then_with(|| a.digits.cmp(&b.digits));
+        if a.sign < 0 {
+            magnitude.reverse()
+        } else {
+            magnitude
+        }
+    })
+}
+
+/// `integer` against `float` without rounding. Inside `i128`'s range a
+/// float's whole part converts exactly. The bound is a literal because
+/// `i128::MAX as f64` rounds up to it.
+fn compare_integer_float(integer: i128, float: f64) -> Option<Ordering> {
+    const LIMIT: f64 = 170_141_183_460_469_231_731_687_303_715_884_105_728.0;
+    if float < -LIMIT {
+        return Some(Ordering::Greater);
+    }
+    if float >= LIMIT {
+        return Some(Ordering::Less);
+    }
+    match integer.cmp(&(float.trunc() as i128)) {
+        Ordering::Equal => 0.0_f64.partial_cmp(&float.fract()),
+        unequal => Some(unequal),
+    }
 }
 
 /// `value` with lexicographically sorted object keys at every depth,
@@ -55,6 +164,8 @@ pub fn remove_preserving_order(
     removed
 }
 
+/// `b`'s top-level keys over `a`'s when both are objects, each replacing the
+/// whole value it covers; otherwise `a`. [`deep_merge`] merges nested objects.
 pub fn merge(a: serde_json::Value, b: serde_json::Value) -> serde_json::Value {
     match (a, b) {
         (serde_json::Value::Object(mut a_map), serde_json::Value::Object(b_map)) => {
@@ -64,6 +175,84 @@ pub fn merge(a: serde_json::Value, b: serde_json::Value) -> serde_json::Value {
             serde_json::Value::Object(a_map)
         }
         (a, _) => a,
+    }
+}
+
+/// Merges `upper` into `body` in place: objects key by key, recursively; any
+/// other value, `null` and arrays included, replaces.
+pub fn deep_merge(
+    body: &mut serde_json::Map<String, serde_json::Value>,
+    upper: serde_json::Map<String, serde_json::Value>,
+) {
+    for (key, value) in upper {
+        match (body.get_mut(&key), value) {
+            (Some(serde_json::Value::Object(lower)), serde_json::Value::Object(upper)) => {
+                deep_merge(lower, upper)
+            }
+            (_, value) => {
+                body.insert(key, value);
+            }
+        }
+    }
+}
+
+/// The byte length of `value`'s JSON text, counted as it is written without
+/// building the string; 0 when `value` does not serialize.
+pub fn json_len(value: &impl serde::Serialize) -> usize {
+    struct Len(usize);
+    impl std::io::Write for Len {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0 += bytes.len();
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut len = Len(0);
+    serde_json::to_writer(&mut len, value).map_or(0, |()| len.0)
+}
+
+/// The field names `T`'s derived `Deserialize` reads, as the input spells
+/// them. Empty for a type that does not deserialize as a plain struct, such
+/// as an enum or a struct with a flattened field.
+pub fn struct_fields<T: serde::de::DeserializeOwned>() -> &'static [&'static str] {
+    let mut fields: &'static [&'static str] = &[];
+    // The deserializer only records the field list and then fails, so the
+    // error is expected.
+    let _ = T::deserialize(FieldNames(&mut fields));
+    fields
+}
+
+/// A deserializer that records the field names a struct asks for.
+struct FieldNames<'a>(&'a mut &'static [&'static str]);
+
+impl<'de> Deserializer<'de> for FieldNames<'_> {
+    type Error = serde::de::value::Error;
+
+    fn deserialize_any<V: serde::de::Visitor<'de>>(self, _: V) -> Result<V::Value, Self::Error> {
+        Err(serde::de::Error::custom(
+            "only a struct's field names are read",
+        ))
+    }
+
+    fn deserialize_struct<V: serde::de::Visitor<'de>>(
+        self,
+        _: &'static str,
+        fields: &'static [&'static str],
+        _: V,
+    ) -> Result<V::Value, Self::Error> {
+        *self.0 = fields;
+        Err(serde::de::Error::custom(
+            "only a struct's field names are read",
+        ))
+    }
+
+    serde::forward_to_deserialize_any! {
+        bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str string
+        bytes byte_buf option unit unit_struct newtype_struct seq tuple
+        tuple_struct map enum identifier ignored_any
     }
 }
 
@@ -78,16 +267,6 @@ pub(crate) fn merge_params(
         (Some(existing), params) => merge(existing, params),
         (None, params) => params,
     })
-}
-
-// Callers require the image or audio feature.
-#[cfg_attr(not(any(feature = "image", feature = "audio")), allow(dead_code))]
-pub fn merge_inplace(a: &mut serde_json::Value, b: serde_json::Value) {
-    if let (serde_json::Value::Object(a_map), serde_json::Value::Object(b_map)) = (a, b) {
-        b_map.into_iter().for_each(|(key, value)| {
-            a_map.insert(key, value);
-        });
-    }
 }
 
 /// Normalize a provider-wire field that may contain encoded JSON in a string.
@@ -299,66 +478,6 @@ fn without_partial_escape(text: &str) -> &str {
     }
 }
 
-/// Deserializes a string or object as one item, a sequence as multiple items,
-/// and null as an empty list. Strings use [`FromStr`]; objects use [`Deserialize`].
-pub fn string_or_vec<'de, T, D>(deserializer: D) -> Result<Vec<T>, D::Error>
-where
-    T: Deserialize<'de> + FromStr<Err = Infallible>,
-    D: Deserializer<'de>,
-{
-    struct StringOrVec<T>(PhantomData<fn() -> T>);
-
-    impl<'de, T> Visitor<'de> for StringOrVec<T>
-    where
-        T: Deserialize<'de> + FromStr<Err = Infallible>,
-    {
-        type Value = Vec<T>;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("a string, sequence, or null")
-        }
-
-        fn visit_str<E>(self, value: &str) -> Result<Vec<T>, E>
-        where
-            E: de::Error,
-        {
-            let item = FromStr::from_str(value).map_err(de::Error::custom)?;
-            Ok(vec![item])
-        }
-
-        fn visit_seq<A>(self, seq: A) -> Result<Vec<T>, A::Error>
-        where
-            A: SeqAccess<'de>,
-        {
-            Deserialize::deserialize(de::value::SeqAccessDeserializer::new(seq))
-        }
-
-        fn visit_map<M>(self, map: M) -> Result<Vec<T>, M::Error>
-        where
-            M: MapAccess<'de>,
-        {
-            let item = Deserialize::deserialize(de::value::MapAccessDeserializer::new(map))?;
-            Ok(vec![item])
-        }
-
-        fn visit_none<E>(self) -> Result<Vec<T>, E>
-        where
-            E: de::Error,
-        {
-            Ok(vec![])
-        }
-
-        fn visit_unit<E>(self) -> Result<Vec<T>, E>
-        where
-            E: de::Error,
-        {
-            Ok(vec![])
-        }
-    }
-
-    deserializer.deserialize_any(StringOrVec(PhantomData))
-}
-
 /// Deserializes `T`, mapping an explicit `null` to `T::default()`.
 ///
 /// Driven through `deserialize_option` rather than `deserialize_any`; the two
@@ -369,6 +488,75 @@ where
     D: Deserializer<'de>,
 {
     Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
+}
+
+/// Deserializes `T` through a [`serde_json::Value`]: the reader for a field
+/// holding floats that serde may buffer, under `#[serde(flatten)]` or in a
+/// tagged or untagged enum. With serde_json's `arbitrary_precision` on
+/// anywhere in a build, a buffered float is a map that only a `Value` reads;
+/// the `Value` then gives `T` each number as written. A format that is not
+/// human-readable, such as bincode, reads `T` directly. An `Option` field
+/// using it also needs `#[serde(default)]` to read a missing field as `None`,
+/// which also lets a shorter array read; where that would widen what a type
+/// reads, give `floats` to the field holding the type instead.
+pub fn floats<'de, T, D>(deserializer: D) -> Result<T, D::Error>
+where
+    T: serde::de::DeserializeOwned,
+    D: Deserializer<'de>,
+{
+    if !deserializer.is_human_readable() {
+        return T::deserialize(deserializer);
+    }
+    T::deserialize(serde_json::Value::deserialize(deserializer)?).map_err(serde::de::Error::custom)
+}
+
+/// Reads `T` from `value` as it would read from the value's JSON text. With
+/// serde_json's `arbitrary_precision` on, a `Value` cannot hand an integer
+/// beyond u64 or i64 to serde's buffer for a tagged, untagged or flattened
+/// type, while the text can. Only a value holding such an integer is read
+/// from its text, so a build without the feature reads `value` directly.
+///
+/// # Errors
+///
+/// When `value` does not read as a `T`.
+pub fn from_value<T: serde::de::DeserializeOwned>(
+    value: &serde_json::Value,
+) -> serde_json::Result<T> {
+    from_value_seed(std::marker::PhantomData, value)
+}
+
+/// [`from_value`] for a seed, such as a reflection deserializer: reads
+/// `value` through `seed` as it would read the value's JSON text.
+///
+/// # Errors
+///
+/// When `value` does not read through `seed`.
+pub fn from_value_seed<S, V>(seed: S, value: &serde_json::Value) -> serde_json::Result<V>
+where
+    S: for<'de> serde::de::DeserializeSeed<'de, Value = V>,
+{
+    if !holds_wide_integer(value) {
+        return seed.deserialize(value);
+    }
+    let text = value.to_string();
+    let mut deserializer = serde_json::Deserializer::from_str(&text);
+    let read = seed.deserialize(&mut deserializer)?;
+    deserializer.end()?;
+    Ok(read)
+}
+
+/// Whether `value` holds an integer beyond u64 and i64.
+pub(crate) fn holds_wide_integer(value: &serde_json::Value) -> bool {
+    match value {
+        serde_json::Value::Number(number) => {
+            !number.is_u64()
+                && !number.is_i64()
+                && (number.as_u128().is_some() || number.as_i128().is_some())
+        }
+        serde_json::Value::Array(items) => items.iter().any(holds_wide_integer),
+        serde_json::Value::Object(fields) => fields.values().any(holds_wide_integer),
+        _ => false,
+    }
 }
 
 #[cfg(test)]
@@ -393,8 +581,6 @@ pub trait Lenient {
     fn str(&self, key: &str) -> Option<&str>;
     /// The unsigned integer at `key`, from a number or a numeric string.
     fn u64(&self, key: &str) -> Option<u64>;
-    /// The integer at `key`, from a number or a numeric string.
-    fn i64(&self, key: &str) -> Option<i64>;
     /// The number at `key`, from a number or a numeric string.
     fn f64(&self, key: &str) -> Option<f64>;
     /// The boolean at `key`.
@@ -416,14 +602,6 @@ impl Lenient for serde_json::Value {
 
     fn u64(&self, key: &str) -> Option<u64> {
         self.get(key)?.as_u64_lenient()
-    }
-
-    fn i64(&self, key: &str) -> Option<i64> {
-        match self.get(key)? {
-            serde_json::Value::Number(number) => number.as_i64(),
-            serde_json::Value::String(text) => text.trim().parse().ok(),
-            _ => None,
-        }
     }
 
     fn f64(&self, key: &str) -> Option<f64> {

@@ -1,34 +1,22 @@
-//! Stray file cleanup: the files an agent's tools created while it worked on
-//! a prompt, offered for deletion when its turn ends.
+//! Stray file cleanup: the files an agent's tools created while it worked on a prompt, offered
+//! for deletion when its turn ends. A call's new files are the ones it published as created
+//! ([`FilesChanged`], [`ChangeKind::Created`]); a call that may write anywhere, such as
+//! `shell`, names none. A subagent's files count for the agent at the top of its tree.
 //!
-//! - A call's new files are the ones it published as created
-//!   ([`FilesChanged`], [`ChangeKind::Created`]): a file tool names what it
-//!   wrote, and the harness's checkpoint of a call that may write anywhere
-//!   (such as `shell`) names the files that appeared while it ran, each
-//!   call from a snapshot taken just before it, so a file made between two
-//!   calls is in neither. Ignored files count only under a `watch_ignored`
-//!   path, which the plugin adds to every checkpoint ([`CheckpointAlso`]).
-//!   A subagent's files count for the agent at the top of its tree.
-//! - When a top-level agent's turn would end, the end is held while the
-//!   files still there are measured. Where someone can answer, a
-//!   multiple [`StrayPicker`] "Files created this turn" offers them,
-//!   scratch-looking names ticked; then a [`StrayActions`] picker asks what
-//!   to do with the ticked ones: **Delete selected** moves them into
-//!   `.rig/trash/<timestamp>/`, **Add selected to .gitignore** ignores
-//!   them, **Keep all** (or closing either picker) leaves them. A run nobody
-//!   answers, such as `--print`, deletes nothing and prints the list after
-//!   the answer.
-//! - The user's next message to the agent carries a note naming the files
-//!   deleted.
-//! - `/restore-strays` lists the recent batches; `/restore-strays <batch>`
-//!   puts one back.
+//! When a top-level agent's turn would end, a multiple [`StrayPicker`] "Files created this
+//! turn" offers the files still there, scratch-looking names ticked. A [`StrayActions`] picker
+//! then asks what to do with the ticked ones: "Delete selected" moves them into
+//! `.rig/trash/<timestamp>/`, "Add selected to .gitignore" ignores them, and "Keep all" (or
+//! closing either picker) leaves them. A run nobody answers, such as `--print`, deletes nothing
+//! and prints the list after the answer. The user's next message to the agent carries a note
+//! naming the files deleted.
 //!
-//! Settings, in `settings.toml`:
+//! `/restore-strays` lists the recent batches and `/restore-strays <batch>` puts one back. The
+//! scratch-looking names are set in `settings.toml`:
 //!
 //! ```toml
 //! [stray]
 //! scratch = ["tmp*", "scratch*", "*.log", "*.bak", "*.orig"]
-//! watch_ignored = ["out.log", "dist"]
 //! ```
 
 use std::collections::BTreeSet;
@@ -37,7 +25,6 @@ use std::sync::Arc;
 
 use bevy_ecs::system::SystemParam;
 use bevy_tasks::{IoTaskPool, TaskPool};
-use rig_basics::checkpoint::{CheckpointAlso, CheckpointPlugin};
 use rig_basics::print::PrintSection;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::{ChangeKind, FilesChanged};
@@ -68,9 +55,6 @@ pub const RESTORE_TITLE: &str = "Restore deleted strays";
 pub struct StraySettings {
     /// File-name globs selected at first in the picker.
     pub scratch: Vec<String>,
-    /// Paths, relative to the project, under which ignored files still
-    /// count as created.
-    pub watch_ignored: Vec<PathBuf>,
 }
 
 impl Default for StraySettings {
@@ -79,7 +63,6 @@ impl Default for StraySettings {
             scratch: ["tmp*", "scratch*", "*.log", "*.bak", "*.orig"]
                 .map(str::to_owned)
                 .into(),
-            watch_ignored: Vec::new(),
         }
     }
 }
@@ -137,18 +120,7 @@ pub struct StrayFilesPlugin;
 
 impl Plugin for StrayFilesPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<CheckpointPlugin>() {
-            app.add_plugins(CheckpointPlugin);
-        }
         app.add_setting::<StraySettings>("stray");
-        let watched = app.world().get_resource::<StraySettings>();
-        let watched = watched
-            .map(|it| it.watch_ignored.clone())
-            .unwrap_or_default();
-        app.world_mut()
-            .get_resource_or_init::<CheckpointAlso>()
-            .0
-            .extend(watched);
         app.init_resource::<ProjectRoot>()
             .init_resource::<ProjectWorkspace>()
             .register_required_components::<Agent, Strays>()
@@ -248,8 +220,8 @@ impl Work<'_> {
 
 /// The agent at the top of `agent`'s tree.
 fn top(mut agent: Entity, parents: &Query<&SpawnedBy>) -> Entity {
-    while let Ok(SpawnedBy(parent)) = parents.get(agent) {
-        agent = *parent;
+    while let Ok(parent) = parents.get(agent).map(SpawnedBy::parent) {
+        agent = parent;
     }
     agent
 }
@@ -329,11 +301,8 @@ fn measured(
             .multiple();
         for file in files {
             picker.items.push(PickItem {
-                label: file.path.clone(),
-                command: String::new(),
-                detail: Some(size(file.size)),
-                more: None,
                 checked: looks_scratch(&settings.scratch, &file.path),
+                ..PickItem::new(file.path.clone(), "").detail(size(file.size))
             });
         }
         let files = files.clone();
@@ -498,13 +467,10 @@ fn batches_listed(
     }
     let mut picker = Picker::new(RESTORE_TITLE).for_agent(agent);
     for batch in recent {
-        picker.items.push(PickItem {
-            label: batch.files.join(", "),
-            command: format!("{RESTORE} {}", batch.id),
-            detail: Some(format!("batch {}", batch.id)),
-            more: None,
-            checked: false,
-        });
+        let item = PickItem::new(batch.files.join(", "), format!("{RESTORE} {}", batch.id));
+        picker
+            .items
+            .push(item.detail(format!("batch {}", batch.id)));
     }
     commands.spawn(picker);
 }

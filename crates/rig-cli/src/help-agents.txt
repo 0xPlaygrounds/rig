@@ -1,0 +1,192 @@
+rig without its terminal view: a script or another agent drives it over
+its stdin and stdout. Logs go to stderr.
+
+One task:
+  rig -p "task"           Answers the task and exits; stdout gets only the
+                          final answer, stderr its progress. Text piped in
+                          follows the task, read until it closes: give
+                          stdin /dev/null (NUL on Windows) otherwise.
+                          More than 64 MiB piped in, text that is not
+                          UTF-8, or a failed read is refused (exit 2).
+  rig -p --json "task"    The same run as JSON lines (below); its last line
+                          is {"v":3,"type":"exit","ms":…,"code":0,
+                          "answer":"…","error":null,"session":"…",
+                          "usage":{…},"usage_complete":true}.
+  Exit codes: 0 answered, 1 failed (also a run whose last turn ends with
+  no answer text, and one a plugin stopped, such as at a budget, even
+  after an answer, and a RIG_HOME/settings.toml that cannot be read, is
+  not TOML or has a [plugins] table that does not read: the agent does
+  not start, stderr says why and no JSON line is written), 2 no task, a
+  refused /command, an unknown --tools name, a --model the catalog
+  lacks, a plugin's settings table that does not read, or piped input
+  refused, 130 interrupted: by a signal, the launcher's death, or nobody
+  reading stdout any more (`| head -1`), which plain -p says on stderr. A
+  reader that leaves while the final answer is written read what it
+  wanted; the run keeps its code. The exit line's code is the agent's: a
+  launcher told to end by a signal passes it on, waits for its agent (at
+  most 15 seconds), then ends as that signal says (143 for SIGTERM) while
+  its agent's exit line says 130, so a script's `wait`, or the shell's
+  prompt after a Ctrl+C, comes after the agent's last line.
+  A failed turn hands its unanswered task back: stderr says "rig: not
+  answered: <task>", its first lines (with --json, a recalled event with
+  all of it), and the session no longer holds it; a turn that ended with
+  no answer text keeps it.
+  Runs side by side in one directory see each other's edits: give each
+  its own files, or its own directory (such as a git worktree).
+  Nobody answers its questions: they are refused unless --answer=ID[,ID…]
+  gives the choices to take, such as --answer=allow.
+
+A conversation:
+  rig --json              Reads one request per line on stdin and writes
+                          events on stdout. Closing stdin ends rig at once.
+                          A line of more than 64 MiB, or one that is not
+                          UTF-8, is answered with an error reply, and the
+                          next line is read.
+
+Both take --model vendor/model, --tools read,shell (only those tools, for
+this run only; an empty list gives none; a name no tool has is refused,
+before any model or tool call, as at a terminal; with the MCP plugin on,
+an MCP server's tool is <server>__<tool>, and the run first
+waits for its servers, each at most [mcp] connect_timeout_secs; with
+--json, notice lines say which connected or failed, and plain -p prints
+the failures, or every notice for a /command) and -r
+<session id or name> (go on with a session; the id is in the `ready` line). rig
+works in its current directory. RIG_HOME (default ~/.rig) holds its
+builds, settings and sessions; RIG_HOME/settings.toml says which plugins
+run ([plugins]), and the agent is built with exactly those. The first
+start builds the agent, which
+takes minutes, and a start waits for another rig's build; stderr says
+so in one line once the wait passes 3 seconds, and is otherwise quiet
+about the build unless it fails.
+
+A job a shell command leaves running on this machine in the background,
+its output elsewhere (`server > log 2>&1 &`), ends when rig exits; `setsid`
+keeps it running after (on macOS: perl -MPOSIX -e 'POSIX::setsid(); exec
+@ARGV' CMD). A job that still holds the call's output open is ended with
+the call, and the call's result says so.
+
+A task that starts with `/` and a name is a slash command. One that starts
+with a path or `//` (a first word with another `/` in it, such as
+"/etc/hosts: what is this?"), or with `/` and a space, goes to the model
+as it is, from -p, piped stdin or a send request.
+
+Every line, both ways, is a JSON object with "v":3. A line of another
+version is refused with a reply saying whether rig or the driver needs
+updating. Every event has "ms", when it was written (Unix milliseconds).
+
+Requests, each with an optional "id" its reply repeats, and "agent" (an
+agent's id; the main agent without one):
+  {"v":3,"type":"send","text":"Fix the tests."}   a message: it starts a
+        turn, or joins the running one at its next model call
+  {"v":3,"type":"stop"}                           stop the turn
+  {"v":3,"type":"answer","ask":7,"choices":["allow"]}   answer a question;
+        "text":"…" answers one whose "text" is true
+  {"v":3,"type":"state"}      the agents (working or not, model) and the
+        open questions, in the reply's "state"
+
+Events, each with "agent" when it is an agent's:
+  ready {session}                      the first line
+  turn_start
+  text {text}                          the reply as it streams
+  tool_call {id, name, args}           id: where the agent's reply asked
+        for the call, such as "m4/1" (the reply's message and the call's
+        place in it), the same on its tool_result. Ids are an agent's
+        own, so two subagents can both have "m1/0": pair a tool_call
+        with its tool_result by "agent" and id. null for a plugin's own
+        call, which nothing pairs. A call run again, such as a retry,
+        has another tool_call with the same id before its one tool_result
+  tool_result {id, name, ok, refused, cancelled, output}   refused:
+        refused before it ran, such as a tool the agent may not use;
+        cancelled: still running when rig exited, its output then what
+        the call gives when stopped, such as its output so far, which ok
+        may count as a success
+  ask {ask, title, body, choices: [{id, label}], text, multiple}
+        an approval (choices deny and allow) or a question, waiting
+  turn_end {outcome, answer, error, usage, first_token_ms}   answered
+        with its final answer, or failed or stopped with why (a turn
+        that ends with no answer text failed); usage has the turn's
+        tokens, calls, and cost in USD, with what its helpers reported
+        while it ran, which leaves out the "unpriced" calls, such as a
+        subscription model's; first_token_ms
+        is when a reply first streamed
+  notice {level, text}                 info, warn or error; what is
+        written at once puts its notices before the text streamed with it
+  recalled {text, why}                 messages the agent did not answer
+        or send, taken out of the session: a failed turn's, which go
+        again only if sent again, or a refused /command, with why
+  usage {model, purpose, usage}        one per model call, its own or
+        one a helper reported, as its usage is recorded, with the agent
+        it counts for: the agent's own calls (purpose turn, compaction,
+        …), and each call its helpers (`rig -p --json` children) reported,
+        theirs and their helpers' (purpose helper, the agent that ran
+        helper); usage has its tokens and, when known, its cost
+  reply {id, ok, error, state}         one per request
+  exit {code, answer, error, session, usage, usage_complete}
+        the last line of `rig -p --json`, and of a conversation that
+        cannot start (an unknown --tools name, no model reachable), after
+        which nothing is written; error says why for any code but 0;
+        usage is the session's total: its usage lines, and those of runs
+        before when it went on with a session; usage_complete is false
+        when a helper's spend in the session (earlier runs included) was
+        not all reported, so usage is a lower bound, or when no usage is
+        kept; it does not count a model call a stop cancelled, whose bill
+        the provider alone knows
+
+With rig_basics::budget::BudgetPlugin enabled, RIG_BUDGET_USD and
+RIG_BUDGET_TOKENS hold a run's session to them as a budget does, besides
+its own budget, its earlier runs' spend included: once they are spent it
+refuses its model calls and stops its turns; a model call in flight then is
+cancelled, and what its provider bills for it is not counted. They are read
+as rig starts; an empty or garbled value allows nothing, so unset one to
+lift it (env -u RIG_BUDGET_USD). A helper child gets what its parent has
+left in them.
+
+A turn's final answer is its turn_end "answer". A message sent mid-turn
+joins that turn, so one turn_end answers both.
+
+When rig exits mid-turn (a signal, the launcher killed, stdout's reader
+gone, or stdin closed in a conversation), it stops each turn as a stop
+request does and still closes what it started: a tool_result
+("cancelled": true) for each running call, a tool_call and a
+tool_result ("Not run: …") for each call of the cut reply that had not
+started, a turn_end ("stopped") for each turn, and with -p the exit line
+(code 130). Read stdout to its end to get them. While stdout's reader
+is more than 1 MiB behind, the agent's work waits for it (requests, a
+stop and the exit go on); once a signal ends the run, the lines get half
+a second more, and those the reader did not take by then are dropped, so
+a reader that stopped reading never holds rig. A driver that keeps
+sending requests while more than 64 MiB of replies waits unread ends the
+run the same way (code 130). The session keeps those results and turns
+as stopped:
+`rig -r <id>` runs nothing of them and goes on with the next message. A
+plugin may carry a turn across the exit instead, such as one waiting on
+a batch API: its turn_end and its running calls' lines are written the
+same, and `rig -r <id>` goes on with it. SIGTERM always does this. SIGINT and SIGHUP do unless rig
+started with them ignored, as a script's `&` job ignores SIGINT and
+`nohup` SIGHUP: rig keeps them ignored. Not covered: SIGKILL and a
+repeat signal two or more seconds after the first (which exits at once)
+write no closing lines, though the launcher still kills the tool
+processes the agent left; nor does a reader killed by the same signal
+get them, as a Ctrl+C in a terminal kills `cat` too. After a SIGKILL,
+`rig -r <id>` stops the turn it cut off and writes its lines first: a
+turn_start, a tool_call and tool_result for each call it had left, and a
+turn_end ("stopped", "the session restarted"); nothing of it runs.
+
+In Python:
+
+  import json, subprocess
+  rig = subprocess.Popen(["rig", "--json"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+  def send(**request):
+      rig.stdin.write(json.dumps({"v": 3, **request}) + "\n"); rig.stdin.flush()
+  send(type="send", text="Which file here is the largest?")
+  for event in map(json.loads, rig.stdout):
+      if event["type"] == "ask":
+          send(type="answer", ask=event["ask"], choices=["allow"])
+      if event["type"] == "turn_end":
+          print(event["answer"] or event["error"]); break
+  rig.stdin.close(); rig.wait()
+
+A session is kept in RIG_HOME/sessions/<id>/: logs/<agent>.jsonl, one JSON
+record per line (the conversation's messages as "push" records, each
+turn as an "aside" of kind "rig.turn", with "end" once it ended), and
+agent.log, the agent's own log.

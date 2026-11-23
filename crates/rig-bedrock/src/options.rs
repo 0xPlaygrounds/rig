@@ -29,13 +29,8 @@ fn claude_reasoning(
     reasoning: &Reasoning,
     max_tokens: Option<u64>,
 ) -> Mapping {
-    // A model the catalog says does not reason is answered by the shared
-    // rule: nothing to turn off, and nothing else to take.
-    if let Some(spec) = spec.filter(|spec| !spec.reasoning.supported()) {
-        return match spec.reasoning.refusal(reasoning) {
-            Some(reason) => Mapping::unsupported(reason),
-            None => Mapping::Omit("the model does not reason"),
-        };
+    if spec.is_some_and(|spec| !spec.reasoning.supported()) {
+        return Mapping::does_not_reason(reasoning);
     }
     match reasoning {
         Reasoning::Off => match spec {
@@ -163,10 +158,7 @@ pub(crate) fn converse(
             _ if always_reasons => {
                 Mapping::unsupported("this model always reasons and takes no setting")
             }
-            _ => match reasoning {
-                Reasoning::Off => Mapping::Omit("the model does not reason"),
-                _ => Mapping::unsupported("the model does not reason"),
-            },
+            _ => Mapping::does_not_reason(reasoning),
         }),
         cache: Mapping::of(cache, |cache| match cache {
             CacheRetention::None => Mapping::Omit("no cache checkpoint is placed"),

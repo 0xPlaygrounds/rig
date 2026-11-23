@@ -1,0 +1,1172 @@
+use std::collections::VecDeque;
+use std::future::{Future, ready};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::mpsc::Receiver;
+use std::sync::{Arc, Mutex};
+
+use rig_core::catalog::{Catalog, Connector, ModelStatus};
+use rig_core::http_client::{
+    self, Bytes, DynHttpClient, HttpClientExt, LazyBody, MultipartForm, Request, Response,
+    StreamingResponse,
+};
+use rig_core::wasm_compat::WasmCompatSend;
+use rig_ecs::prelude::*;
+use rig_harness::commands::RunCommand;
+use rig_harness::harness_protocol::SessionId;
+use rig_harness::host::launcher::Invoked;
+use rig_harness_test_support::{
+    Collected, Ended, app_in, collect, first_agent, log_ended, run_until, scratch_home,
+};
+
+use super::*;
+use crate::models::{FirstPick, ModelLabel};
+
+/// The ChatGPT backend as a test scripts it: each `GET /models` answers
+/// the next of its lists, with its status, once it is let go; every other
+/// streamed request is refused as `model_not_found`. A credential refresh
+/// fails, or is never answered when it stalls. It counts lists and
+/// requests.
+#[derive(Clone, Default)]
+struct Backend {
+    lists: Arc<Mutex<VecDeque<(u16, &'static str)>>>,
+    listed: Arc<AtomicUsize>,
+    sent: Arc<AtomicUsize>,
+    /// Lists wait until this closes.
+    held: Arc<Mutex<Option<async_channel::Receiver<()>>>>,
+    stalls: bool,
+}
+
+impl Backend {
+    /// Holds every list until the returned sender is dropped.
+    fn hold(&self) -> async_channel::Sender<()> {
+        let (release, held) = async_channel::bounded(1);
+        if let Ok(mut holding) = self.held.lock() {
+            *holding = Some(held);
+        }
+        release
+    }
+}
+
+/// What the backend says to a model it does not serve, as it said it to
+/// `gpt-5.3-chat-latest` on 2026-10-31.
+const NOT_FOUND: &str = r#"{"detail":"The 'gpt-5.3-chat-latest' model is not supported when using Codex with a ChatGPT account.","error":{"type":"invalid_request_error","code":"model_not_found","message":"The 'gpt-5.3-chat-latest' model is not supported when using Codex with a ChatGPT account."}}"#;
+
+impl HttpClientExt for Backend {
+    fn send(
+        &self,
+        _: Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
+    {
+        // A credential refresh.
+        let stalls = self.stalls;
+        async move {
+            if stalls {
+                std::future::pending::<()>().await;
+            }
+            Err(http_client::Error::StreamEnded)
+        }
+    }
+
+    fn send_multipart(
+        &self,
+        _: Request<MultipartForm>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
+    {
+        ready(Err(http_client::Error::StreamEnded))
+    }
+
+    fn send_streaming(
+        &self,
+        request: Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend {
+        let listing = request.uri().path().ends_with("/models");
+        let (status, body) = match listing {
+            true => {
+                self.listed.fetch_add(1, Ordering::SeqCst);
+                let next = self
+                    .lists
+                    .lock()
+                    .ok()
+                    .and_then(|mut lists| lists.pop_front());
+                next.unwrap_or((500, "no more lists"))
+            }
+            false => {
+                self.sent.fetch_add(1, Ordering::SeqCst);
+                (400, NOT_FOUND)
+            }
+        };
+        let held = (self.held.lock().ok())
+            .and_then(|held| held.clone())
+            .filter(|_| listing);
+        async move {
+            if let Some(held) = held {
+                held.recv().await.ok();
+            }
+            let (sender, chunks) = async_channel::bounded(1);
+            sender
+                .try_send(Ok(Bytes::from_static(body.as_bytes())))
+                .ok();
+            let chunks: http_client::BoxedStream = Box::pin(chunks);
+            Ok(Response::builder().status(status).body(chunks)?)
+        }
+    }
+}
+
+/// When a credential that never expires expires.
+const NEVER: i64 = 4_102_444_800;
+
+/// An app signed in to ChatGPT in a scratch home named `name` with a
+/// credential that expires at `expires`, whose catalog is the plan's
+/// models alone, served through `backend` once it answers `lists`, and
+/// with what `setup` adds; its first frame ran. Returns its loop's wakes
+/// and the agent.
+fn signed_in(
+    name: &str,
+    (backend, lists): (&Backend, &[(u16, &'static str)]),
+    expires: i64,
+    setup: impl FnOnce(&mut App),
+) -> (App, Receiver<()>, Entity) {
+    signed_in_with(name, (backend, lists), (expires, &[]), setup)
+}
+
+/// [`signed_in`] with a saved key for each of `keyed` too, and their
+/// built-in models in the catalog, in the built-in catalog's order.
+fn signed_in_with(
+    name: &str,
+    (backend, lists): (&Backend, &[(u16, &'static str)]),
+    (expires, keyed): (i64, &[&str]),
+    setup: impl FnOnce(&mut App),
+) -> (App, Receiver<()>, Entity) {
+    if let Ok(mut held) = backend.lists.lock() {
+        held.extend(lists.iter().copied());
+    }
+    let home = scratch_home(name);
+    let credential = format!(
+        r#"{{"access_token":"test-token","refresh_token":"test-refresh","id_token":"test-id","expires_at":{expires},"account_id":"test-account"}}"#
+    );
+    std::fs::create_dir_all(home.auth()).ok();
+    std::fs::write(home.auth().join("chatgpt.json"), credential).ok();
+    for vendor in keyed {
+        assert!(keys::Keys::at(&home).save(vendor, "sk-rig-test").is_ok());
+    }
+    let mut catalog = Catalog::default();
+    let plan = Catalog::builtin().iter().filter(|spec| {
+        spec.provider.vendor() == PROVIDER || keyed.contains(&spec.provider.vendor())
+    });
+    for spec in plan {
+        catalog.insert(spec.clone());
+    }
+    let mut connector = Connector::new(catalog);
+    let http = backend.clone();
+    connector.wrap_http(move |_| DynHttpClient::new(http.clone()));
+    let (mut app, wakes) = app_in(&home, &SessionId::generate());
+    app.insert_resource(Models(connector))
+        .add_plugins((AgentPlugin, LoginPlugin))
+        .init_resource::<Ended>()
+        .add_observer(log_ended);
+    setup(&mut app);
+    app.finish();
+    app.update();
+    let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
+    (app, wakes, agent)
+}
+
+/// The status of the plan's model `name`.
+fn status(world: &World, name: &str) -> Option<ModelStatus> {
+    let models = &world.resource::<Models>().0;
+    let statuses = models.statuses().into_iter();
+    statuses
+        .filter(|(spec, _)| spec.id == name)
+        .map(|(_, status)| status)
+        .next()
+}
+
+/// Sends `text` to `agent` and runs `app` until the turn ended.
+fn ask(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str) {
+    let ended = app.world().resource::<Ended>().0.len();
+    let world = app.world_mut();
+    world.trigger(Deliver::new(agent, text, DeliveryMode::Steer));
+    run_until(app, wakes, |world| {
+        world.resource::<Ended>().0.len() > ended
+    });
+}
+
+/// Puts `agent` on the plan's Sol.
+fn on_sol(app: &mut App, agent: Entity) {
+    app.world_mut().trigger(SetModel {
+        entity: agent,
+        model: "chatgpt/gpt-6.1-sol".to_owned(),
+        kind: ChoiceKind::ForThisRun,
+    });
+}
+
+const SOL: &str =
+    r#"{"models":[{"slug":"gpt-6.1-sol","visibility":"list"},{"slug":"gpt-reserve"}]}"#;
+const NONE: &str = r#"{"models":[]}"#;
+
+#[test]
+fn the_plans_models_are_those_the_backend_lists_for_the_account() {
+    let backend = Backend::default();
+    let release = backend.hold();
+    let (mut app, wakes, _) = signed_in("login-offered", (&backend, &[(200, SOL)]), NEVER, |_| {});
+    let world = app.world();
+    assert_eq!(status(world, "gpt-6.1-sol"), Some(ModelStatus::Checking));
+    assert_eq!(
+        FirstPick::of(world.resource::<Models>()),
+        FirstPick::Checking
+    );
+    drop(release);
+    run_until(&mut app, &wakes, |world| {
+        status(world, "gpt-6.1-sol") == Some(ModelStatus::Usable)
+    });
+    let world = app.world();
+    let terra = status(world, "gpt-6.1-terra");
+    assert!(
+        matches!(terra, Some(ModelStatus::NotOffered(_))),
+        "{terra:?}"
+    );
+    // The first row of the catalog is not offered; the pick skips it.
+    let pick = FirstPick::of(world.resource::<Models>());
+    assert_eq!(pick, FirstPick::Model("chatgpt/gpt-6.1-sol".to_owned()));
+    let reachable: Vec<String> = (world.resource::<Models>().0.reachable().iter())
+        .map(|spec| spec.reference())
+        .collect();
+    assert_eq!(reachable, ["chatgpt/gpt-6.1-sol"]);
+    assert_eq!(backend.listed.load(Ordering::SeqCst), 1);
+}
+
+#[cfg(feature = "tui")]
+#[test]
+fn an_open_model_picker_drops_the_models_the_account_is_not_offered() {
+    use rig_harness::pick::Picker;
+
+    let backend = Backend::default();
+    let release = backend.hold();
+    let lists = [(200, SOL)];
+    let (mut app, wakes, agent) = signed_in("login-picker", (&backend, &lists), NEVER, |app| {
+        app.add_plugins(crate::models::ModelsPlugin);
+    });
+    on_sol(&mut app, agent);
+    app.world_mut()
+        .trigger(RunCommand::new(agent, "model".to_owned()));
+    app.update();
+    let labels = |world: &mut World| -> Vec<String> {
+        let mut pickers = world.query::<&Picker>();
+        let items = pickers.iter(world).flat_map(|picker| picker.items.iter());
+        items.map(|item| item.label.clone()).collect()
+    };
+    let checking = labels(app.world_mut());
+    let terra = checking
+        .iter()
+        .find(|label| label.contains("gpt-6.1-terra"));
+    assert!(
+        terra.is_some_and(|label| label.ends_with("(checking your plan)")),
+        "{checking:?}"
+    );
+    drop(release);
+    run_until(&mut app, &wakes, |world| {
+        status(world, "gpt-6.1-sol") == Some(ModelStatus::Usable)
+    });
+    app.update();
+    let listed = labels(app.world_mut());
+    let plan: Vec<&String> = (listed.iter())
+        .filter(|label| label.starts_with("chatgpt/"))
+        .collect();
+    assert_eq!(plan, ["chatgpt/gpt-6.1-sol  GPT-6.1 Sol  (ChatGPT plan)"]);
+    // A picker not shown yet, as one queued behind another, opens on the
+    // agent's model, wherever its line moved.
+    let world = app.world_mut();
+    let mut pickers = world.query::<&Picker>();
+    let opens = pickers.iter(world).next();
+    let opens = opens.and_then(|picker| picker.items.get(picker.selected));
+    let opens = opens.map(|item| item.command.as_str());
+    assert_eq!(opens, Some("model chatgpt/gpt-6.1-sol"));
+}
+
+#[test]
+fn a_headless_run_with_no_model_waits_for_the_list_and_takes_an_offered_one() {
+    use crate::print::AppHeadlessExt;
+    use rig_harness::harness_protocol::Invocation;
+
+    let backend = Backend::default();
+    let release = backend.hold();
+    let lists = [(200, SOL)];
+    let (mut app, wakes, agent) = signed_in("login-headless", (&backend, &lists), NEVER, |app| {
+        app.insert_resource(Invoked {
+            args: Invocation::default(),
+            terminal: false,
+        })
+        .add_plugins(rig_harness::host::exit::ExitPlugin)
+        .run_headless(Some("Hello.".to_owned()));
+    });
+    for _ in 0..3 {
+        app.update();
+    }
+    assert_eq!(app.world().get::<ModelChoice>(agent), None);
+    assert!(app.should_exit().is_none());
+    drop(release);
+    run_until(&mut app, &wakes, |world| {
+        world.get::<ModelChoice>(agent).is_some()
+    });
+    let chosen = app.world().get::<ModelChoice>(agent).map(|it| it.0.clone());
+    assert_eq!(chosen.as_deref(), Some("chatgpt/gpt-6.1-sol"));
+}
+
+/// What the backend lists for an account offering the plan's default
+/// model and GPT-6.1 Sol.
+const DEFAULT_AND_SOL: &str = r#"{"models":[{"slug":"gpt-6.2-sol","visibility":"list"},{"slug":"gpt-6.1-sol","visibility":"list"}]}"#;
+
+/// The first Anthropic model of the built-in catalog that calls tools.
+fn anthropic_model() -> Option<String> {
+    let mut specs = Catalog::builtin().iter();
+    let spec = specs.find(|spec| spec.tools && spec.provider.vendor() == "anthropic");
+    spec.map(|spec| spec.reference())
+}
+
+/// An app signed in to ChatGPT through `backend`, whose account offers
+/// [`DEFAULT_AND_SOL`], with a saved Anthropic key, the built-in models
+/// of both in catalog order, the run's start, the session's log, the
+/// model plugins and what `setup` adds; its first frame ran.
+fn signed_in_with_a_key(
+    name: &str,
+    backend: &Backend,
+    setup: impl FnOnce(&mut App),
+) -> (App, Receiver<()>, Entity) {
+    assert!(DEFAULT_AND_SOL.contains(&format!(r#""{}""#, chatgpt::DEFAULT_MODEL)));
+    let lists = [(200, DEFAULT_AND_SOL)];
+    signed_in_with(name, (backend, &lists), (NEVER, &["anthropic"]), |app| {
+        app.add_plugins((
+            rig_harness::run::RunPlugin,
+            SessionLogPlugin,
+            crate::models::ModelsPlugin,
+        ))
+        .init_resource::<Taken>()
+        .add_observer(|taken: On<ChoiceTaken>, mut kept: ResMut<Taken>| {
+            kept.0.push((taken.kind, taken.model.clone()));
+        });
+        collect::<Notice>(app);
+        setup(app);
+    })
+}
+
+/// Whether `world`'s ChatGPT sign-in knows what the account offers.
+fn answered(world: &World) -> bool {
+    status(world, chatgpt::DEFAULT_MODEL).is_some_and(|status| status != ModelStatus::Checking)
+}
+
+/// With a usable ChatGPT sign-in and a key that reaches a model listed
+/// before the plan's, the first pick is the plan's default model.
+#[test]
+fn a_usable_sign_in_is_picked_first_on_its_default_model_over_a_key() {
+    let backend = Backend::default();
+    let (mut app, wakes, _) = signed_in_with_a_key("login-pick-default", &backend, |_| {});
+    run_until(&mut app, &wakes, answered);
+    let models = app.world().resource::<Models>();
+    let default = format!("{PROVIDER}/{}", chatgpt::DEFAULT_MODEL);
+    let reachable: Vec<String> = (models.0.reachable().iter())
+        .map(|spec| spec.reference())
+        .collect();
+    let first = reachable.first();
+    assert!(
+        first.is_some_and(|first| *first != default),
+        "{reachable:?}"
+    );
+    assert!(anthropic_model().is_some_and(|key| reachable.contains(&key)));
+    assert_eq!(FirstPick::of(models), FirstPick::Model(default));
+}
+
+/// A terminal view started with nothing saved or named waits for the
+/// sign-in to know what the account offers, then starts on the plan's
+/// default model for this run only.
+#[test]
+fn a_start_with_nothing_chosen_takes_the_first_pick_once_the_sign_in_answers() {
+    let backend = Backend::default();
+    let release = backend.hold();
+    let (mut app, wakes, agent) = signed_in_with_a_key("login-pick-start", &backend, |_| {});
+    for _ in 0..3 {
+        app.update();
+    }
+    assert_eq!(app.world().get::<ModelChoice>(agent), None);
+    drop(release);
+    run_until(&mut app, &wakes, |world| {
+        world.get::<ModelChoice>(agent).is_some()
+    });
+    let default = ModelChoice(format!("{PROVIDER}/{}", chatgpt::DEFAULT_MODEL));
+    let taken = &app.world().resource::<Taken>().0;
+    assert_eq!(taken, &[(ChoiceKind::ForThisRun, Some(default))]);
+}
+
+/// `--model`, a saved default and a model the user chose while the
+/// sign-in was checking each stand: the first pick never replaces them.
+#[test]
+fn a_named_saved_or_chosen_model_is_kept_over_the_first_pick() {
+    let anthropic = anthropic_model();
+    assert!(anthropic.is_some(), "the catalog lists an Anthropic model");
+    let Some(anthropic) = anthropic else { return };
+    let named = anthropic.clone();
+    let invoked = move |app: &mut App| {
+        app.insert_resource(Invoked {
+            args: rig_harness::harness_protocol::Invocation {
+                model: Some(named.clone()),
+                ..Default::default()
+            },
+            terminal: true,
+        });
+    };
+    let saved = anthropic.clone();
+    let remembered = move |app: &mut App| {
+        let home = app.world().resource::<RigHome>().0.clone();
+        let text = format!("[model]\ndefault = \"{saved}\"\n");
+        assert!(std::fs::write(home.settings(), text).is_ok());
+        app.add_plugins(crate::models::defaults::DefaultsPlugin);
+    };
+    let setups: [(&str, Box<dyn FnOnce(&mut App)>); 3] = [
+        ("login-keep-named", Box::new(invoked)),
+        ("login-keep-saved", Box::new(remembered)),
+        ("login-keep-chosen", Box::new(|_: &mut App| {})),
+    ];
+    for (name, setup) in setups {
+        let backend = Backend::default();
+        let release = backend.hold();
+        let (mut app, wakes, agent) = signed_in_with_a_key(name, &backend, setup);
+        app.update();
+        if name == "login-keep-chosen" {
+            app.world_mut().trigger(SetModel {
+                entity: agent,
+                model: anthropic.clone(),
+                kind: ChoiceKind::ByUser,
+            });
+        }
+        drop(release);
+        run_until(&mut app, &wakes, answered);
+        app.update();
+        let chosen = app.world().get::<ModelChoice>(agent).map(|it| it.0.clone());
+        let told = &app.world().resource::<Collected<Notice>>().0;
+        assert_eq!(
+            chosen.as_deref(),
+            Some(anthropic.as_str()),
+            "{name}: {told:?}"
+        );
+    }
+}
+
+/// A model a plugin labels instead of choosing, such as a router, set
+/// while the sign-in was checking, stands once it answers.
+#[test]
+fn a_labelled_model_set_while_the_sign_in_checks_is_kept() {
+    let backend = Backend::default();
+    let release = backend.hold();
+    let (mut app, wakes, agent) = signed_in_with_a_key("login-keep-labelled", &backend, |_| {});
+    app.update();
+    let label = ModelLabel("router".to_owned());
+    app.world_mut().entity_mut(agent).insert(label.clone());
+    drop(release);
+    run_until(&mut app, &wakes, answered);
+    app.update();
+    let world = app.world();
+    assert_eq!(world.get::<ModelChoice>(agent), None);
+    assert_eq!(world.get::<ModelLabel>(agent), Some(&label));
+    assert!(world.resource::<Taken>().0.is_empty());
+}
+
+/// A saved key that cannot be read is told about when the first pick is
+/// the sign-in's default, as when it is a model listed after the key's.
+#[test]
+fn an_unreadable_saved_key_is_told_about_when_the_sign_in_is_picked() {
+    let backend = Backend::default();
+    let (mut app, wakes, agent) = signed_in_with_a_key("login-pick-broken-key", &backend, |app| {
+        let home = app.world().resource::<RigHome>().0.clone();
+        let path = keys::Keys::at(&home).path("anthropic");
+        assert!(std::fs::write(&path, "\"x\"").is_ok());
+    });
+    run_until(&mut app, &wakes, |world| {
+        world.get::<ModelChoice>(agent).is_some()
+    });
+    let default = format!("{PROVIDER}/{}", chatgpt::DEFAULT_MODEL);
+    let chosen = app.world().get::<ModelChoice>(agent).map(|it| it.0.clone());
+    assert_eq!(chosen.as_deref(), Some(default.as_str()));
+    let home = app.world().resource::<RigHome>().0.clone();
+    let shown = keys::Keys::at(&home)
+        .path("anthropic")
+        .display()
+        .to_string();
+    let told = &app.world().resource::<Collected<Notice>>().0;
+    let warned = told.iter().filter(|notice| {
+        notice.text.starts_with(&format!("Using {default}:")) && notice.text.contains(&shown)
+    });
+    assert_eq!(warned.count(), 1, "{told:?}");
+}
+
+#[test]
+fn a_list_that_cannot_be_had_refuses_the_plans_models_and_says_why() {
+    let backend = Backend::default();
+    let lists = [(400, "bad request")];
+    let (mut app, wakes, _) = signed_in("login-unlisted", (&backend, &lists), NEVER, |_| {});
+    run_until(&mut app, &wakes, |world| {
+        status(world, "gpt-6.1-sol") != Some(ModelStatus::Checking)
+    });
+    let pick = FirstPick::of(app.world().resource::<Models>());
+    let said = match &pick {
+        FirstPick::Nothing(Some(why)) => why.starts_with("could not ask ChatGPT which models"),
+        _ => false,
+    };
+    assert!(said, "{pick:?}");
+    assert_eq!(backend.listed.load(Ordering::SeqCst), 1);
+}
+
+/// A gate on the plan's GPT-6.1 Sol in `app`, whose backend is `backend`.
+fn gate_on_sol(app: &App, backend: &Backend) -> Option<offered::Gate> {
+    let session = app.world().resource::<super::Session>();
+    let sol = Catalog::builtin().resolve("chatgpt/gpt-6.1-sol").ok()?;
+    Some(offered::Gate {
+        offered: Arc::clone(&session.offered),
+        spec: sol.spec.clone(),
+        auth: session.auth.clone(),
+        http: DynHttpClient::new(backend.clone()),
+    })
+}
+
+/// The account's models of `app`'s sign-in asked anew at `pace`, and the
+/// status of GPT-6.1 Sol by them, waiting while it is being checked.
+fn paced(
+    app: &App,
+    backend: &Backend,
+    pace: offered::Pace,
+) -> (Arc<offered::Offered>, impl Fn() -> ModelStatus) {
+    let session = app.world().resource::<super::Session>();
+    let offered = Arc::new(offered::Offered::paced(pace));
+    let (asked, auth) = (Arc::clone(&offered), session.auth.clone());
+    let http = DynHttpClient::new(backend.clone());
+    let sol = Catalog::builtin().resolve("chatgpt/gpt-6.1-sol").ok();
+    let sol = sol.map(|found| found.spec.clone());
+    let status = move || {
+        let started = std::time::Instant::now();
+        loop {
+            let Some(sol) = &sol else {
+                return ModelStatus::NoTools;
+            };
+            let status = asked.status(sol, &auth, &http);
+            if status != ModelStatus::Checking || started.elapsed().as_secs() > 20 {
+                return status;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    };
+    (offered, status)
+}
+
+/// A pace with `retries` quick retries and `cooldown` before a listing
+/// asks again.
+fn pace(retries: u32, cooldown: std::time::Duration) -> offered::Pace {
+    let quick = std::time::Duration::from_millis(1);
+    offered::Pace {
+        retry: rig_ecs::retry::RetryPolicy {
+            max_retries: retries,
+            first_backoff: quick,
+            max_backoff: quick,
+            ..rig_ecs::retry::RetryPolicy::DEFAULT
+        },
+        cooldown,
+    }
+}
+
+#[test]
+fn a_list_nobody_waits_for_retries_a_transient_failure_itself() {
+    let backend = Backend::default();
+    let lists = [(503, "busy"), (200, SOL)];
+    let (app, _, _) = signed_in("login-retried", (&backend, &lists), NEVER, |_| {});
+    // A cooldown no listing outlasts: only the fetch's own retry asks again.
+    let (_offered, status) = paced(&app, &backend, pace(1, std::time::Duration::from_secs(600)));
+    assert_eq!(status(), ModelStatus::Usable);
+    assert_eq!(backend.listed.load(Ordering::SeqCst), 2);
+}
+
+#[test]
+fn a_sign_in_during_a_retrys_wait_stops_the_old_fetch() {
+    let backend = Backend::default();
+    let lists = [(503, "busy"), (200, SOL)];
+    let (app, _, _) = signed_in("login-reset", (&backend, &lists), NEVER, |_| {});
+    let session = app.world().resource::<super::Session>();
+    let wait = std::time::Duration::from_millis(300);
+    let retry = rig_ecs::retry::RetryPolicy {
+        max_retries: 1,
+        first_backoff: wait,
+        max_backoff: wait,
+        ..rig_ecs::retry::RetryPolicy::DEFAULT
+    };
+    let offered = Arc::new(offered::Offered::paced(offered::Pace {
+        retry,
+        cooldown: std::time::Duration::from_secs(600),
+    }));
+    let http = DynHttpClient::new(backend.clone());
+    let sol = Catalog::builtin().resolve("chatgpt/gpt-6.1-sol").ok();
+    assert!(sol.is_some(), "the catalog lists GPT-6.1 Sol");
+    let Some(sol) = sol else { return };
+    // The 503 is held until after the sign-in, so its retry's wait starts
+    // with the fetch already forgotten.
+    let release = backend.hold();
+    assert_eq!(
+        offered.status(sol.spec, &session.auth, &http),
+        ModelStatus::Checking
+    );
+    until_listed(&backend, 1);
+    offered.forget();
+    drop(release);
+    std::thread::sleep(wait * 2);
+    assert_eq!(backend.listed.load(Ordering::SeqCst), 1);
+}
+
+/// Waits, at most 10 s, until `backend` was asked for `lists` lists.
+fn until_listed(backend: &Backend, lists: usize) {
+    let started = std::time::Instant::now();
+    while backend.listed.load(Ordering::SeqCst) < lists && started.elapsed().as_secs() < 10 {
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
+
+#[test]
+fn a_request_waiting_on_a_list_a_sign_in_dropped_asks_again() {
+    let backend = Backend::default();
+    let lists = [(200, SOL), (200, SOL)];
+    let (app, _, _) = signed_in("login-dropped", (&backend, &lists), NEVER, |_| {});
+    let gate = gate_on_sol(&app, &backend);
+    assert!(gate.is_some(), "the catalog lists GPT-6.1 Sol");
+    let Some(gate) = gate else { return };
+    let offered = Arc::clone(&app.world().resource::<super::Session>().offered);
+    let release = backend.hold();
+    let proceeded = std::thread::scope(|scope| {
+        let waiting = scope.spawn(|| before(&gate));
+        until_listed(&backend, 1);
+        offered.forget();
+        drop(release);
+        waiting.join().ok()
+    });
+    let proceeded = matches!(proceeded, Some(rig_core::serve::BeforeServe::Proceed));
+    assert!(proceeded);
+    assert_eq!(backend.listed.load(Ordering::SeqCst), 2);
+}
+
+#[test]
+fn a_request_waiting_out_a_wait_asks_again_after_a_sign_in() {
+    let backend = Backend::default();
+    let lists = [(429, "Rate limited: try again in 30s."), (200, SOL)];
+    let (app, _, _) = signed_in("login-wait-reset", (&backend, &lists), NEVER, |_| {});
+    let gate = gate_on_sol(&app, &backend);
+    assert!(gate.is_some(), "the catalog lists GPT-6.1 Sol");
+    let Some(gate) = gate else { return };
+    let offered = Arc::clone(&app.world().resource::<super::Session>().offered);
+    assert!(denied(&gate).is_some());
+    let started = std::time::Instant::now();
+    let proceeded = std::thread::scope(|scope| {
+        let waiting = scope.spawn(|| before(&gate));
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        offered.forget();
+        waiting.join().ok()
+    });
+    let proceeded = matches!(proceeded, Some(rig_core::serve::BeforeServe::Proceed));
+    assert!(proceeded);
+    // Not the 30 s the old account's backend asked for.
+    assert!(started.elapsed() < std::time::Duration::from_secs(10));
+    assert_eq!(backend.listed.load(Ordering::SeqCst), 2);
+}
+
+#[test]
+fn a_listing_asks_again_once_the_cooldown_after_a_failure_passed() {
+    let backend = Backend::default();
+    let lists = [(503, "busy"), (200, SOL)];
+    let (app, _, _) = signed_in("login-relisted", (&backend, &lists), NEVER, |_| {});
+    let cooldown = std::time::Duration::from_secs(1);
+    let (_, status) = paced(&app, &backend, pace(0, cooldown));
+    // Within the cooldown, listing says why and does not ask again.
+    assert!(matches!(status(), ModelStatus::Unavailable(_)));
+    assert!(matches!(status(), ModelStatus::Unavailable(_)));
+    assert_eq!(backend.listed.load(Ordering::SeqCst), 1);
+    // After it, as when a session with no model opens `/model` again.
+    std::thread::sleep(cooldown);
+    assert_eq!(status(), ModelStatus::Usable);
+    assert_eq!(backend.listed.load(Ordering::SeqCst), 2);
+}
+
+/// What `gate` does with a request for its model.
+fn before(gate: &offered::Gate) -> rig_core::serve::BeforeServe {
+    use rig_core::effect::{EffectId, EffectKind};
+    use rig_core::serve::Intercept;
+
+    let asking = EffectKind::Completion {
+        request: Arc::new(rig_core::completion::CompletionRequest::new("Hello.")),
+        stream: true,
+    };
+    bevy_tasks::block_on(gate.before(EffectId::from_raw(1), &asking))
+}
+
+/// The report `gate` denies a request with, if it does.
+fn denied(gate: &offered::Gate) -> Option<rig_core::error::ErrorReport> {
+    match before(gate) {
+        rig_core::serve::BeforeServe::Deny(report) => Some(report),
+        _ => None,
+    }
+}
+
+#[test]
+fn a_list_that_could_not_be_had_is_asked_again_by_the_next_request() {
+    let backend = Backend::default();
+    let lists = [(503, "busy"), (200, SOL)];
+    let (mut app, wakes, agent) = signed_in("login-failed", (&backend, &lists), NEVER, |_| {});
+    let gate = gate_on_sol(&app, &backend);
+    assert!(gate.is_some(), "the catalog lists GPT-6.1 Sol");
+    let Some(gate) = gate else { return };
+    // The busy backend's refusal, with its class: it may be retried.
+    let refused = denied(&gate);
+    assert!(
+        refused.as_ref().is_some_and(|report| report.retryable),
+        "{refused:?}"
+    );
+    on_sol(&mut app, agent);
+    run_until(&mut app, &wakes, |world| {
+        world.get::<Connection>(agent).is_some()
+    });
+    // Listing, which follows the answer, does not ask again, and the
+    // agent keeps its model.
+    for _ in 0..3 {
+        app.update();
+    }
+    assert_eq!(backend.listed.load(Ordering::SeqCst), 1);
+    assert!(app.world().get::<Connection>(agent).is_some());
+    assert!(matches!(
+        before(&gate),
+        rig_core::serve::BeforeServe::Proceed
+    ));
+    assert_eq!(backend.listed.load(Ordering::SeqCst), 2);
+}
+
+#[test]
+fn a_list_refused_with_a_wait_is_asked_again_once_it_is_over() {
+    let backend = Backend::default();
+    let lists = [(429, "Rate limited: try again in 1s."), (200, SOL)];
+    let (app, _, _) = signed_in("login-wait", (&backend, &lists), NEVER, |_| {});
+    let gate = gate_on_sol(&app, &backend);
+    assert!(gate.is_some(), "the catalog lists GPT-6.1 Sol");
+    let Some(gate) = gate else { return };
+    let started = std::time::Instant::now();
+    let first = denied(&gate);
+    let asked = first
+        .as_ref()
+        .and_then(|report| report.retry_after(std::time::SystemTime::now()));
+    assert_eq!(asked, Some(std::time::Duration::from_secs(1)), "{first:?}");
+    // The next request waits out the rest, then asks.
+    assert!(matches!(
+        before(&gate),
+        rig_core::serve::BeforeServe::Proceed
+    ));
+    assert!(started.elapsed() >= std::time::Duration::from_secs(1));
+    assert_eq!(backend.listed.load(Ordering::SeqCst), 2);
+}
+
+#[test]
+fn a_list_refused_with_a_long_wait_refuses_the_next_request_at_once() {
+    let backend = Backend::default();
+    let lists = [(429, "Rate limited: try again in 120s."), (200, SOL)];
+    let (app, _, _) = signed_in("login-long-wait", (&backend, &lists), NEVER, |_| {});
+    let gate = gate_on_sol(&app, &backend);
+    assert!(gate.is_some(), "the catalog lists GPT-6.1 Sol");
+    let Some(gate) = gate else { return };
+    assert!(denied(&gate).is_some());
+    let again = denied(&gate);
+    let waits = again.and_then(|report| report.retry_after(std::time::SystemTime::now()));
+    assert_eq!(waits, Some(std::time::Duration::from_secs(120)));
+    assert_eq!(backend.listed.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn a_credential_refresh_that_never_answers_ends_with_the_lists_deadline() {
+    let backend = Backend {
+        stalls: true,
+        ..Backend::default()
+    };
+    let lists = [(200, SOL)];
+    // Expired: asking first refreshes it, which the backend never answers.
+    let (app, _, _) = signed_in("login-stalled", (&backend, &lists), 0, |_| {});
+    let gate = gate_on_sol(&app, &backend);
+    assert!(gate.is_some(), "the catalog lists GPT-6.1 Sol");
+    let Some(gate) = gate else { return };
+    let started = std::time::Instant::now();
+    let refused = denied(&gate);
+    assert!(started.elapsed() < std::time::Duration::from_secs(20));
+    // A timeout, which may be retried and which signing in again would not
+    // mend.
+    let timed_out = refused.as_ref().is_some_and(|report| {
+        report.kind == rig_core::error::ErrorKind::Timeout
+            && report.retryable
+            && report.message.contains("no answer in 10 s")
+            && !report.message.contains("sign in")
+    });
+    assert!(timed_out, "{refused:?}");
+    let sol = status(app.world(), "gpt-6.1-sol");
+    let said = matches!(&sol, Some(ModelStatus::Unavailable(why))
+        if why.contains("no answer in 10 s") && !why.contains("sign in"));
+    assert!(said, "{sol:?}");
+    assert_eq!(backend.listed.load(Ordering::SeqCst), 0);
+}
+
+#[test]
+fn a_model_the_list_asked_again_leaves_out_is_refused_and_so_is_choosing_it_again() {
+    let backend = Backend::default();
+    let lists = [(200, SOL), (200, NONE)];
+    let (mut app, wakes, agent) = signed_in("login-again", (&backend, &lists), NEVER, |app| {
+        collect::<Notice>(app);
+    });
+    on_sol(&mut app, agent);
+    ask(&mut app, &wakes, agent, "Hello.");
+    assert_eq!(backend.sent.load(Ordering::SeqCst), 1);
+    // The second list leaves Sol out: the agent's connection is refused.
+    run_until(&mut app, &wakes, |world| {
+        world.get::<ModelRefused>(agent).is_some()
+    });
+    let refused = |app: &App| {
+        let refused = app.world().get::<ModelRefused>(agent);
+        refused.map(|ModelRefused(why)| why.clone())
+    };
+    let said = "Cannot use chatgpt/gpt-6.1-sol: not offered to this ChatGPT account.";
+    assert_eq!(refused(&app).as_deref(), Some(said));
+    assert!(app.world().get::<Connection>(agent).is_none());
+    let said = |app: &App| {
+        let notices = app.world().resource::<Collected<Notice>>().0.iter();
+        let refusals = notices.filter(|notice| notice.text.contains("not offered"));
+        refusals.count()
+    };
+    app.update();
+    let before = said(&app);
+    // Choosing it again, as an editor may, is refused again, out loud.
+    on_sol(&mut app, agent);
+    app.update();
+    assert!(app.world().get::<Connection>(agent).is_none());
+    assert_eq!(said(&app), before + 1);
+    assert_eq!(backend.sent.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn a_request_for_another_model_than_the_connected_one_is_checked_too() {
+    use rig_core::completion::CompletionRequest;
+    use rig_core::effect::{EffectId, EffectKind};
+    use rig_core::serve::{BeforeServe, Intercept};
+    use serde_json::json;
+
+    let backend = Backend::default();
+    let lists = [(200, SOL)];
+    let (app, _, _) = signed_in("login-override", (&backend, &lists), NEVER, |_| {});
+    let session = app.world().resource::<super::Session>();
+    let sol = Catalog::builtin().resolve("chatgpt/gpt-6.1-sol").ok();
+    assert!(sol.is_some(), "the catalog lists GPT-6.1 Sol");
+    let Some(sol) = sol else { return };
+    let gate = offered::Gate {
+        offered: Arc::clone(&session.offered),
+        spec: sol.spec.clone(),
+        auth: session.auth.clone(),
+        http: DynHttpClient::new(backend.clone()),
+    };
+    let asking = |model: Option<&str>| EffectKind::Completion {
+        request: Arc::new(
+            CompletionRequest::new("Hello.").model::<String>(model.map(str::to_owned)),
+        ),
+        stream: true,
+    };
+    // A raw `model` among the additional parameters, which the wire sends.
+    let raw = EffectKind::Completion {
+        request: Arc::new(
+            CompletionRequest::new("Hello.").additional_params(json!({ "model": "gpt-6.1-terra" })),
+        ),
+        stream: true,
+    };
+    let before = |kind: &EffectKind| bevy_tasks::block_on(gate.before(EffectId::from_raw(1), kind));
+    assert!(matches!(before(&asking(None)), BeforeServe::Proceed));
+    let terra = before(&asking(Some("gpt-6.1-terra")));
+    let said = match &terra {
+        BeforeServe::Deny(report) => report.message.clone(),
+        _ => String::new(),
+    };
+    assert_eq!(
+        said,
+        "chatgpt/gpt-6.1-terra is not offered to this ChatGPT account"
+    );
+    let raw = before(&raw);
+    assert!(matches!(raw, BeforeServe::Deny(_)), "{raw:?}");
+    // A provider's options, which the wire merges over the model: only
+    // ChatGPT's Responses and shared sections are sent, the route over the
+    // shared one.
+    let optioned = |options: serde_json::Value| {
+        let mut request = CompletionRequest::new("Hello.");
+        request.provider_options = serde_json::from_value(options).unwrap_or_default();
+        assert!(!request.provider_options.is_empty());
+        let kind = EffectKind::Completion {
+            request: Arc::new(request),
+            stream: true,
+        };
+        matches!(before(&kind), BeforeServe::Proceed)
+    };
+    let terra = json!({ "model": "gpt-6.1-terra" });
+    let sol = json!({ "model": "gpt-6.1-sol" });
+    assert!(!optioned(
+        json!({ "chatgpt": { "openai.responses": terra } })
+    ));
+    assert!(!optioned(json!({ "chatgpt": { "*": terra } })));
+    assert!(optioned(
+        json!({ "chatgpt": { "*": terra, "openai.responses": sol } })
+    ));
+    assert!(optioned(json!({ "chatgpt": { "openai.chat": terra } })));
+    assert!(optioned(json!({ "openai": { "openai.responses": terra } })));
+    // An empty override, which preparing the request drops.
+    assert!(matches!(before(&asking(Some(""))), BeforeServe::Proceed));
+    assert_eq!(backend.sent.load(Ordering::SeqCst), 0);
+}
+
+#[test]
+fn the_list_is_asked_again_once_a_run() {
+    let backend = Backend::default();
+    // Were the list asked a third time, the third request would be refused
+    // unsent: the third list leaves Sol out.
+    let lists = [(200, SOL), (200, SOL), (200, NONE)];
+    let (mut app, wakes, agent) = signed_in("login-once", (&backend, &lists), NEVER, |_| {});
+    on_sol(&mut app, agent);
+    ask(&mut app, &wakes, agent, "Hello.");
+    run_until(&mut app, &wakes, |_| {
+        backend.listed.load(Ordering::SeqCst) == 2
+    });
+    run_until(&mut app, &wakes, |world| {
+        status(world, "gpt-6.1-sol") == Some(ModelStatus::Usable)
+    });
+    ask(&mut app, &wakes, agent, "Again.");
+    ask(&mut app, &wakes, agent, "Once more.");
+    assert_eq!(backend.sent.load(Ordering::SeqCst), 3);
+    assert_eq!(backend.listed.load(Ordering::SeqCst), 2);
+}
+
+#[test]
+fn choosing_the_connected_model_in_the_frame_the_list_refuses_it_is_refused() {
+    let backend = Backend::default();
+    let lists = [(200, SOL), (200, NONE)];
+    let (mut app, wakes, agent) = signed_in("login-same-frame", (&backend, &lists), NEVER, |_| {});
+    on_sol(&mut app, agent);
+    run_until(&mut app, &wakes, |world| {
+        status(world, "gpt-6.1-sol") == Some(ModelStatus::Usable)
+    });
+    // The list asked again waits until the turn ended.
+    let release = backend.hold();
+    ask(&mut app, &wakes, agent, "Hello.");
+    drop(release);
+    // No frame runs once the answer is in: only the choice itself can refuse.
+    let offered = Arc::clone(&app.world().resource::<super::Session>().offered);
+    let started = std::time::Instant::now();
+    while offered.known_refusal("gpt-6.1-sol").is_none()
+        && started.elapsed() < std::time::Duration::from_secs(10)
+    {
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    assert!(app.world().get::<ModelRefused>(agent).is_none());
+    on_sol(&mut app, agent);
+    app.world_mut().flush();
+    assert!(app.world().get::<Connection>(agent).is_none());
+    let refused = app.world().get::<ModelRefused>(agent);
+    let said = refused.is_some_and(|ModelRefused(why)| why.contains("not offered"));
+    assert!(said, "{refused:?}");
+}
+
+/// The choices taken, in order, with their kinds.
+#[derive(Resource, Default)]
+struct Taken(Vec<(ChoiceKind, Option<ModelChoice>)>);
+
+#[test]
+fn a_plugin_ending_a_turn_alone_keeps_a_waiting_sign_in_and_the_users_stop_cancels_it() {
+    let backend = Backend::default();
+    let lists = [(200, SOL)];
+    let (mut app, _, agent) = signed_in("login-stop", (&backend, &lists), NEVER, |app| {
+        collect::<Notice>(app);
+    });
+    let (_, prompts) = crossbeam_channel::unbounded();
+    let login = (PendingLogin { prompts }, RequestOf(agent));
+    let login = app.world_mut().spawn(login).id();
+    let cancelled = |app: &App| {
+        let mut notices = app.world().resource::<Collected<Notice>>().0.iter();
+        notices.any(|notice| notice.text.ends_with("sign-in cancelled."))
+    };
+    // As `/compact` ends its turn.
+    let compacted = StopTurn::plugin_alone(agent, "compaction", "compacted");
+    app.world_mut().trigger(compacted);
+    app.update();
+    assert!(app.world().get_entity(login).is_ok());
+    assert!(!cancelled(&app));
+    app.world_mut().trigger(StopTurn::new(agent));
+    app.update();
+    assert!(app.world().get_entity(login).is_err());
+    assert!(cancelled(&app));
+}
+
+#[test]
+fn a_sign_in_switches_the_agent_for_that_run_only() {
+    // The account offers the plan's default, so the switch is not refused.
+    const OFFERS_DEFAULT: &str = r#"{"models":[{"slug":"gpt-6.2-sol","visibility":"list"}]}"#;
+    assert!(OFFERS_DEFAULT.contains(&format!(r#""{}""#, chatgpt::DEFAULT_MODEL)));
+    let backend = Backend::default();
+    let lists = [(200, OFFERS_DEFAULT)];
+    let (mut app, _, agent) = signed_in("login-switch", (&backend, &lists), NEVER, |app| {
+        let keep = |taken: On<ChoiceTaken>, mut kept: ResMut<Taken>| {
+            kept.0.push((taken.kind, taken.model.clone()));
+        };
+        app.init_resource::<Taken>().add_observer(keep);
+    });
+    let (_, prompts) = crossbeam_channel::unbounded();
+    let ended = Done(SignInEnded(Ok(())));
+    app.world_mut()
+        .spawn((PendingLogin { prompts }, RequestOf(agent), ended));
+    app.update();
+    let model = ModelChoice(format!("{PROVIDER}/{}", chatgpt::DEFAULT_MODEL));
+    let taken = &app.world().resource::<Taken>().0;
+    assert_eq!(taken, &[(ChoiceKind::ForThisRun, Some(model))]);
+}
+
+/// Runs itself again with a dummy secret and a fake desktop opener on
+/// `PATH`, so this process's environment stays as it was.
+#[cfg(unix)]
+#[test]
+fn the_browser_opener_gets_no_secret() {
+    use std::os::unix::fs::PermissionsExt;
+
+    const PROBE: &str = "RIG_SECRET_PROBE";
+    const NAME: &str = "login::tests::the_browser_opener_gets_no_secret";
+    if std::env::var_os(PROBE).is_some() {
+        assert!(
+            open_browser("http://127.0.0.1:1/"),
+            "the opener did not start"
+        );
+        return;
+    }
+    let dir = rig_harness_test_support::scratch_dir("rig-basics-browser-opener");
+    let name = if cfg!(target_os = "macos") {
+        "open"
+    } else {
+        "xdg-open"
+    };
+    let opener = dir.join(name);
+    let script = "#!/bin/sh\nenv > \"$OPENER_ENV.part\"\nmv \"$OPENER_ENV.part\" \"$OPENER_ENV\"\n";
+    let written = std::fs::write(&opener, script)
+        .and_then(|()| std::fs::set_permissions(&opener, std::fs::Permissions::from_mode(0o755)));
+    assert!(written.is_ok(), "{written:?}");
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    let path =
+        std::env::join_paths(std::iter::once(dir.clone()).chain(std::env::split_paths(&path)));
+    let recorded = dir.join("env");
+    let output = std::env::current_exe().and_then(|exe| {
+        let mut command = std::process::Command::new(exe);
+        command
+            .args(["--exact", NAME, "--test-threads", "1"])
+            .env(PROBE, "hunter2")
+            .env("PATH", path.unwrap_or_default())
+            .env("OPENER_ENV", &recorded);
+        rig_tools::process::Process::start(command, rig_tools::process::Spawn::default())?
+            .output(None)
+    });
+    assert!(
+        output.as_ref().is_ok_and(|output| output.status.success()
+            && String::from_utf8_lossy(&output.stdout).contains("1 passed")),
+        "the run with a secret failed: {output:?}"
+    );
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    while !recorded.exists() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the fake opener recorded nothing"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let environment = std::fs::read_to_string(&recorded).unwrap_or_default();
+    assert!(environment.contains("OPENER_ENV="), "{environment}");
+    assert!(!environment.contains(PROBE), "the opener inherited {PROBE}");
+}
+
+/// An app whose `settings.toml` is `settings`, with `/login` added.
+fn with_settings(name: &str, settings: &str) -> App {
+    let home = scratch_home(name);
+    let (mut app, _) = app_in(&home, &SessionId::generate());
+    app.insert_resource(rig_harness::settings::Settings::from_toml(settings))
+        .add_plugins((AgentPlugin, LoginPlugin));
+    app
+}
+
+/// The value of `key` in `url`'s query, with the `:` and `/` of a URL in
+/// it decoded.
+fn query_value(url: &str, key: &str) -> Option<String> {
+    let query = url.split_once('?')?.1;
+    let value = query
+        .split('&')
+        .find_map(|pair| pair.strip_prefix(key)?.strip_prefix('='))?;
+    Some(value.replace("%3A", ":").replace("%2F", "/"))
+}
+
+/// The page the browser lands on when the user denies the sign-in on
+/// `authorize_url`.
+fn denied_page(authorize_url: &str) -> Option<String> {
+    use std::io::{Read, Write};
+
+    let redirect = query_value(authorize_url, "redirect_uri")?;
+    let state = query_value(authorize_url, "state")?;
+    let (address, path) = redirect.strip_prefix("http://")?.split_once('/')?;
+    let mut stream = std::net::TcpStream::connect(address).ok()?;
+    write!(
+        stream,
+        "GET /{path}?error=access_denied&state={state} HTTP/1.1\r\nHost: {address}\r\n\r\n"
+    )
+    .ok()?;
+    let mut page = String::new();
+    stream.read_to_string(&mut page).ok()?;
+    Some(page)
+}
+
+/// `[login] app_name` names the app the ChatGPT sign-in pages send the user
+/// back to. The opener plays the browser and denies the sign-in, so no
+/// token is asked for.
+#[test]
+fn the_sign_in_pages_name_the_app_the_settings_name() {
+    let app = with_settings("login-app-name", "[login]\napp_name = \"Acme & Co\"\n");
+    let problems = app
+        .world()
+        .resource::<rig_harness::settings::Settings>()
+        .problems()
+        .join("\n");
+    assert!(problems.is_empty(), "{problems}");
+    let (landed, page) = std::sync::mpsc::channel();
+    let auth = app
+        .world()
+        .resource::<crate::login::Session>()
+        .auth
+        .clone()
+        .with_browser_opener(move |url| {
+            let url = url.to_owned();
+            let landed = landed.clone();
+            std::thread::spawn(move || landed.send(denied_page(&url)).ok());
+            true
+        });
+    let signed_in = bevy_tasks::block_on(auth.sign_in_with_browser(&Backend::default(), |_| {}));
+    assert!(
+        matches!(&signed_in, Err(AuthError::Message(why)) if why.contains("access_denied")),
+        "{signed_in:?}"
+    );
+    let page = page
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    assert!(page.contains("Return to Acme &amp; Co."), "{page}");
+}
+
+/// An empty `[login] app_name` is refused by name rather than read as
+/// unset.
+#[test]
+fn an_empty_app_name_is_refused() {
+    let app = with_settings("login-empty-app-name", "[login]\napp_name = \" \"\n");
+    let problems = app
+        .world()
+        .resource::<rig_harness::settings::Settings>()
+        .problems()
+        .join("\n");
+    assert!(problems.contains("[login]"), "{problems}");
+    assert!(problems.contains("app_name"), "{problems}");
+}

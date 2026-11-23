@@ -1,11 +1,10 @@
-//! CT-02: git guardrails. Every `shell` call is read for the git commands
-//! it would run, through chains, subshells, substitutions, `sh -c`, `cd`,
-//! `git -C` and the repository's aliases, and each is judged against the
-//! repository it would run in before the call starts. A rule set to `deny`
-//! refuses the call, naming the rule and a safer way; `ask` wants the
-//! user's approval, showing the rule and what would be lost (refused when
-//! nobody can answer); `allow` lets it run. The rules and the protected
-//! branches are in `RIG_HOME/git-guard.toml`:
+//! Git guardrails. Every `shell` call is read for the git commands it would run, through
+//! chains, subshells, substitutions, `sh -c`, `cd`, `git -C` and the repository's aliases,
+//! and each is judged against the repository it would run in before the call starts. A rule
+//! set to `deny` refuses the call, naming the rule and a safer way; `ask` wants the user's
+//! approval, showing the rule and what would be lost (refused when nobody can answer);
+//! `allow` lets it run. The rules and the protected branches are in
+//! `RIG_HOME/git-guard.toml`:
 //!
 //! ```toml
 //! [rules]
@@ -23,7 +22,6 @@ use std::path::{Path, PathBuf};
 
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_basics::approval::{ApprovalPlugin, ApprovalSystems, NeedsApproval};
-use rig_basics::checkpoint::CheckpointPlugin;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::FilesChanged;
 use rig_harness::rig_tools::{Shell, ShellArgs};
@@ -183,8 +181,9 @@ fn glob(pattern: &str, name: &str) -> bool {
 }
 
 /// Every file the agent's tool calls changed this session, as absolute
-/// paths: uncommitted changes outside it are the user's. Saved with the
-/// session.
+/// paths: uncommitted changes outside it are the user's. A call that may
+/// write anywhere, such as `shell`, names no files, so what it wrote counts
+/// as the user's. Saved with the session.
 #[derive(Resource, Reflect, Clone, Debug, Default)]
 #[reflect(Resource, Saved, Default)]
 pub struct AgentChanges(pub Vec<String>);
@@ -200,12 +199,7 @@ pub struct GitGuardPlugin;
 
 impl Plugin for GitGuardPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<ApprovalPlugin>() {
-            app.add_plugins(ApprovalPlugin);
-        }
-        if !app.is_plugin_added::<CheckpointPlugin>() {
-            app.add_plugins(CheckpointPlugin);
-        }
+        rig_harness::load::<ApprovalPlugin>(app, "rig-basics", "");
         if !app.world().contains_resource::<GitGuardConfig>() {
             let (config, problems) = read_config(&RigHome::of(app.world()).root().join(CONFIG));
             app.insert_resource(config);

@@ -1,11 +1,7 @@
 use serde_json::json;
-use testcontainers::{
-    GenericImage, ImageExt,
-    core::{IntoContainerPort, WaitFor},
-    runners::AsyncRunner,
-};
+use testcontainers::{GenericImage, ImageExt, core::IntoContainerPort, runners::AsyncRunner};
 
-use crate::common::{WORD_DEFINITIONS, mock_embeddings, openai_client, skip_if_docker_unavailable};
+use crate::common::{WORD_DEFINITIONS, mock_embeddings, openai_client};
 use futures::{StreamExt, TryStreamExt};
 use rig::neo4j::{Neo4jClient, ToBoltType};
 use rig::vector_store::VectorStoreIndex;
@@ -19,6 +15,12 @@ use rig::{
 
 const BOLT_PORT: u16 = 7687;
 const HTTP_PORT: u16 = 7474;
+/// The longest the server or the vector index may take to be ready: a
+/// bound on a hang, as each is waited for.
+const READY_WITHIN: std::time::Duration = std::time::Duration::from_secs(180);
+/// How often the server, or the vector index, is asked again until it is
+/// ready.
+const POLL: std::time::Duration = std::time::Duration::from_millis(500);
 
 #[derive(Embed, Clone, serde::Deserialize, Debug)]
 struct Word {
@@ -29,17 +31,10 @@ struct Word {
 
 #[tokio::test]
 async fn vector_search_test() {
-    if skip_if_docker_unavailable("vector_search_test") {
-        return;
-    }
-
     // Setup a local Neo 4J container for testing. NOTE: docker service must be running.
     // Pinned like `pgvector:pg17` / `scylla:5.4`: a floating `latest` defeats
     // layer caching and lets a rerun silently test a different database version.
     let container = GenericImage::new("neo4j", "5.26.29")
-        .with_wait_for(WaitFor::Duration {
-            length: std::time::Duration::from_secs(5),
-        })
         .with_exposed_port(BOLT_PORT.tcp())
         .with_exposed_port(HTTP_PORT.tcp())
         .with_env_var("NEO4J_AUTH", "none")
@@ -50,9 +45,25 @@ async fn vector_search_test() {
     let port = container.get_host_port_ipv4(BOLT_PORT).await.expect("");
     let host = container.get_host().await.expect("").to_string();
 
-    let neo4j_client = Neo4jClient::connect(&format!("neo4j://{host}:{port}"), "", "")
-        .await
-        .expect("");
+    // The server is ready once it answers a query over Bolt.
+    let deadline = tokio::time::Instant::now() + READY_WITHIN;
+    let neo4j_client = loop {
+        let ready = match Neo4jClient::connect(&format!("neo4j://{host}:{port}"), "", "").await {
+            Ok(client) => match client.graph.run(neo4rs::query("RETURN 1")).await {
+                Ok(()) => Ok(client),
+                Err(error) => Err(error.to_string()),
+            },
+            Err(error) => Err(error.to_string()),
+        };
+        match ready {
+            Ok(client) => break client,
+            Err(error) => assert!(
+                tokio::time::Instant::now() < deadline,
+                "Neo4j never answered a query: {error}"
+            ),
+        }
+        tokio::time::sleep(POLL).await;
+    };
 
     // Setup mock openai API
     let server = httpmock::MockServer::start();
@@ -123,17 +134,20 @@ async fn vector_search_test() {
     // ℹ️ The index name must be unique among both indexes and constraints.
     // A newly created index is not immediately available but is created in the background.
 
-    // Check if the index exists with db.awaitIndex(), the call timeouts if the index is not ready
-    let index_exists = neo4j_client
+    // db.awaitIndex() returns once the index is online, or fails when it
+    // times out; ask again until the deadline.
+    let deadline = tokio::time::Instant::now() + READY_WITHIN;
+    while let Err(error) = neo4j_client
         .graph
         .run(neo4rs::query("CALL db.awaitIndex('vector_index')"))
-        .await;
-    if index_exists.is_err() {
-        println!("Index not ready, waiting for index...");
-        std::thread::sleep(std::time::Duration::from_secs(5));
+        .await
+    {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the vector index never came online: {error}"
+        );
+        tokio::time::sleep(POLL).await;
     }
-
-    println!("Index exists: {index_exists:?}");
 
     // Create a vector index on our vector store
     // IMPORTANT: Reuse the same model that was used to generate the embeddings

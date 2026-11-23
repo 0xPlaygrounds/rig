@@ -14,7 +14,7 @@ use rig::run::OutputMode;
 use rig_cassette::agent::AgentReplayExt;
 use rig_test_support::cassette_models::GeminiModels;
 
-use super::super::support::with_gemini_corpus_breadth_cassette;
+use super::super::support::with_gemini_cassette;
 use crate::goldens::{
     CANCEL_ADD_DISPATCH, CancelAddDispatch, EMBED_KEY, EmbedPrompt, NOTE_KEY, NoteAtOutcome,
     NoteTaker, STOP_ON_TEXT_DELTA, StopOnTextDelta, event_schema, families,
@@ -92,28 +92,25 @@ fn host_bus(client: &GeminiModels, notes: bool, embeds: bool) -> (Handlers, Hand
 /// this wire ids it.
 #[tokio::test]
 async fn output_tool_streamed_effect_log_is_the_golden_fixture() {
-    with_gemini_corpus_breadth_cassette(
-        "corpus_breadth/output_tool_streamed",
-        |client| async move {
-            let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-            let agent = rig::AgentBuilder::new(client.completion(MODEL))
-                .name("golden")
-                .preamble(BASIC_PREAMBLE)
-                .temperature(0.0)
-                .output_schema_raw(event_schema())
-                .output_mode(OutputMode::Tool)
-                .record_to(recorder.clone())
-                .build();
-            let mut stream = agent.prompt(STRUCTURED_OUTPUT_PROMPT).stream();
-            let output = final_output(&mut stream).await.expect("the run answers");
-            drop(stream);
-            assert_event(&output);
-            let log = agent.stamp(recorder.take());
-            assert_eq!(families(&log), [EffectFamily::Completion]);
-            assert!(log.records[0].events.is_some(), "events are kept");
-            crate::goldens::golden_effects("gemini_breadth_output_tool_streamed", &log);
-        },
-    )
+    with_gemini_cassette("corpus_breadth/output_tool_streamed", |client| async move {
+        let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
+        let agent = rig::AgentBuilder::new(client.completion(MODEL))
+            .name("golden")
+            .preamble(BASIC_PREAMBLE)
+            .temperature(0.0)
+            .output_schema_raw(event_schema())
+            .output_mode(OutputMode::Tool)
+            .record_to(recorder.clone())
+            .build();
+        let mut stream = agent.prompt(STRUCTURED_OUTPUT_PROMPT).stream();
+        let output = final_output(&mut stream).await.expect("the run answers");
+        drop(stream);
+        assert_event(&output);
+        let log = agent.stamp(recorder.take());
+        assert_eq!(families(&log), [EffectFamily::Completion]);
+        assert!(log.records[0].events.is_some(), "events are kept");
+        crate::goldens::golden_effects("gemini_breadth_output_tool_streamed", &log);
+    })
     .await;
 }
 
@@ -121,7 +118,7 @@ async fn output_tool_streamed_effect_log_is_the_golden_fixture() {
 /// completion is cancelled at the delta.
 #[tokio::test]
 async fn text_delta_stop_effect_log_is_the_golden_fixture() {
-    with_gemini_corpus_breadth_cassette("corpus_breadth/text_delta_stop", |client| async move {
+    with_gemini_cassette("corpus_breadth/text_delta_stop", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
         let agent = rig::AgentBuilder::new(client.completion(MODEL))
             .name("golden")
@@ -160,7 +157,7 @@ async fn text_delta_stop_effect_log_is_the_golden_fixture() {
 /// recorded, the tool never reaches the bus.
 #[tokio::test]
 async fn tool_dispatch_cancelled_effect_log_is_the_golden_fixture() {
-    with_gemini_corpus_breadth_cassette(
+    with_gemini_cassette(
         "corpus_breadth/tool_dispatch_cancelled",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
@@ -191,7 +188,7 @@ async fn tool_dispatch_cancelled_effect_log_is_the_golden_fixture() {
 /// tool-call ids.
 #[tokio::test]
 async fn custom_at_outcome_effect_log_is_the_golden_fixture() {
-    with_gemini_corpus_breadth_cassette("corpus_breadth/custom_at_outcome", |client| async move {
+    with_gemini_cassette("corpus_breadth/custom_at_outcome", |client| async move {
         let (handlers, model_key) = host_bus(&client, true, false);
         let recorder = rig::cassette::effect_log::EffectLogRecorder::new();
         handlers.record_to(recorder.clone());
@@ -228,7 +225,7 @@ async fn custom_at_outcome_effect_log_is_the_golden_fixture() {
 /// `Tool` output mode, unary: the output tool's call on the id-less wire.
 #[tokio::test]
 async fn output_tool_unary_effect_log_is_the_golden_fixture() {
-    with_gemini_corpus_breadth_cassette("corpus_breadth/output_tool_unary", |client| async move {
+    with_gemini_cassette("corpus_breadth/output_tool_unary", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = rig::AgentBuilder::new(client.completion(MODEL))
             .name("golden")
@@ -253,7 +250,7 @@ async fn output_tool_unary_effect_log_is_the_golden_fixture() {
 /// The prompt embedded through the host's gemini embedding model.
 #[tokio::test]
 async fn embed_prompt_effect_log_is_the_golden_fixture() {
-    with_gemini_corpus_breadth_cassette("corpus_breadth/embed_prompt", |client| async move {
+    with_gemini_cassette("corpus_breadth/embed_prompt", |client| async move {
         let (handlers, model_key) = host_bus(&client, false, true);
         let recorder = rig::cassette::effect_log::EffectLogRecorder::new();
         handlers.record_to(recorder.clone());

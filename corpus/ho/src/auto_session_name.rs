@@ -1,13 +1,9 @@
-//! Plugin corpus (held-out): H19: Name sessions automatically (spec `H19-auto-session-name.md`).
-//!
-//! Once the main agent's turn ends with an answer in a session with no
-//! name, a model call of the plugin's own (on `[auto-name] model`, else the
-//! agent's model) reads the first message the user typed and the start of
-//! the answer, and its 3–6 word title, cleaned, becomes the session's
-//! name: `rig_basics::sessions`' [`SessionTitle`], the one `/name` sets, shown in the
-//! status line and `/resume`. The call is no turn's, so it never reaches
-//! the conversation, and its usage is counted under the purpose
-//! `auto-name`. A name the user set first, also while the call runs,
+//! Names sessions automatically. Once the main agent's turn ends with an answer in a session with
+//! no name, a model call of the plugin's own (on `[auto-name] model`, else the agent's model) reads
+//! the first message the user typed and the start of the answer. Its 3–6 word title, cleaned,
+//! becomes the session's name: `rig_basics::sessions`' [`SessionTitle`], the one `/name` sets,
+//! shown in the status line and `/resume`. The call never reaches the conversation, and its usage
+//! is counted under the purpose `auto-name`. A name the user set first, also while the call runs,
 //! is kept; a failed call is tried once more after the next turn.
 
 use bevy_log::{debug, warn};
@@ -42,9 +38,7 @@ pub struct AutoSessionNamePlugin;
 
 impl Plugin for AutoSessionNamePlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<SessionsPlugin>() {
-            app.add_plugins(SessionsPlugin);
-        }
+        rig_harness::load::<SessionsPlugin>(app, "rig-basics", "");
         app.add_setting::<AutoNameConfig>(NAME)
             .init_resource::<Failures>()
             .add_observer(ask_for_a_name)
@@ -116,7 +110,10 @@ fn ask_for_a_name(
     let mut request =
         ModelRequest::new(CompletionRequest::new(Message::user(prompt)).preamble(PREAMBLE));
     if let Some(reference) = config.model.as_deref() {
-        match models.connect(reference) {
+        match models
+            .connect(reference)
+            .map_err(|why| Models::cannot_use(reference, why))
+        {
             Ok(connection) => request = request.on(connection),
             Err(why) => {
                 warn!("auto-name: cannot use {reference}, so the agent's model names: {why}");

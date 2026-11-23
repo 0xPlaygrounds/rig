@@ -36,8 +36,8 @@ use std::{
 };
 
 use rig_core::{
-    completion::FinishReason,
-    message::{AssistantContent, Message},
+    completion::{CompletionRequest, FinishReason},
+    message::{AssistantContent, Message, ToolChoice},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
@@ -49,7 +49,7 @@ use rig_core::{
 
 use crate::{
     completion::{ResponseIdentity, Usage},
-    handlers::{Handle, Handlers, IndexHandle, ModelHandle, ToolHandle},
+    handlers::{Handle, Handlers},
     tool::{ToolContext, ToolOutput, ToolResult},
 };
 
@@ -74,9 +74,7 @@ fn take<T: 'static>(entry: Box<dyn Entry>) -> Option<T> {
 
 impl Scratchpad {
     fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<TypeId, Box<dyn Entry>>> {
-        self.inner
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+        crate::lock(&self.inner)
     }
 
     /// Insert a value.
@@ -97,14 +95,6 @@ impl Scratchpad {
         let entries = self.lock();
         let entry = entries.get(&TypeId::of::<T>())?;
         (&**entry as &dyn Any).downcast_ref::<T>().cloned()
-    }
-
-    /// Whether a type is present.
-    pub fn contains<T>(&self) -> bool
-    where
-        T: WasmCompatSend + WasmCompatSync + 'static,
-    {
-        self.lock().contains_key(&TypeId::of::<T>())
     }
 
     /// Remove a value.
@@ -145,7 +135,6 @@ pub struct HookContext {
     run_id: RunId,
     turn: AtomicUsize,
     is_streaming: bool,
-    agent_name: Option<String>,
     scratchpad: Scratchpad,
     /// A patch a stack accumulated before one of its hooks denied the
     /// dispatch, keyed by the effect's id. `DispatchAction::Deny` carries only
@@ -153,6 +142,9 @@ pub struct HookContext {
     /// skipped tool result reports) from here; a nested stack records into
     /// the same slot, so the salvage survives any nesting depth.
     salvaged_patches: std::sync::Mutex<HashMap<EffectId, EffectKind>>,
+    /// The current turn's output tool in Tool output mode, whose parameters
+    /// a dispatch patch must keep.
+    output_tool: std::sync::Mutex<Option<String>>,
     /// Seeded and newly appended entries, in append order.
     entries: std::sync::Mutex<Vec<Aside>>,
     /// Appends not yet flushed into the [`AgentRun`](crate::agent::AgentRun)
@@ -161,15 +153,15 @@ pub struct HookContext {
 }
 
 impl HookContext {
-    pub(crate) fn new(is_streaming: bool, agent_name: Option<String>, handlers: Handlers) -> Self {
+    pub(crate) fn new(is_streaming: bool, handlers: Handlers) -> Self {
         Self {
             handlers,
             run_id: RunId::new(),
             turn: AtomicUsize::new(0),
             is_streaming,
-            agent_name,
             scratchpad: Scratchpad::default(),
             salvaged_patches: std::sync::Mutex::new(HashMap::new()),
+            output_tool: std::sync::Mutex::new(None),
             entries: std::sync::Mutex::new(Vec::new()),
             pending_entries: std::sync::Mutex::new(Vec::new()),
         }
@@ -181,53 +173,38 @@ impl HookContext {
     /// inner stack saw, so the inner accumulation is the last rewrite before
     /// the terminal action.
     fn salvage_patch(&self, id: EffectId, kind: EffectKind) {
-        self.salvaged_patches
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+        crate::lock(&self.salvaged_patches)
             .entry(id)
             .or_insert(kind);
     }
 
     /// The effect as patched before the dispatch `id` was denied, if any.
     pub(crate) fn take_salvaged_patch(&self, id: EffectId) -> Option<EffectKind> {
-        self.salvaged_patches
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .remove(&id)
+        crate::lock(&self.salvaged_patches).remove(&id)
     }
 
     /// Seed the entries a resumed run carried; called by the driver at run
     /// start, before any hook fires.
     pub(crate) fn seed_entries(&self, entries: &[Aside]) {
-        self.entries
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .extend_from_slice(entries);
+        crate::lock(&self.entries).extend_from_slice(entries);
     }
 
     /// Drain the appends not yet flushed into the run; called by the driver
     /// at each step boundary.
     pub(crate) fn drain_pending_entries(&self) -> Vec<Aside> {
-        std::mem::take(
-            &mut *self
-                .pending_entries
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner),
-        )
+        std::mem::take(&mut *crate::lock(&self.pending_entries))
+    }
+
+    pub(crate) fn set_output_tool(&self, name: Option<&str>) {
+        *crate::lock(&self.output_tool) = name.map(str::to_owned);
+    }
+
+    fn output_tool(&self) -> Option<String> {
+        crate::lock(&self.output_tool).clone()
     }
 
     pub(crate) fn set_turn(&self, turn: usize) {
         self.turn.store(turn, Ordering::Relaxed);
-    }
-
-    #[cfg(any(test, feature = "test-utils"))]
-    pub(crate) fn set_streaming(&mut self, is_streaming: bool) {
-        self.is_streaming = is_streaming;
-    }
-
-    #[cfg(any(test, feature = "test-utils"))]
-    pub(crate) fn set_agent_name(&mut self, name: String) {
-        self.agent_name = Some(name);
     }
 
     /// Bind a typed key in the run's handler table. Fails when the current
@@ -238,22 +215,6 @@ impl HookContext {
         key: &rig_core::effect::Key<F>,
     ) -> Result<Handle<F>, ErrorReport> {
         self.handlers.bind(key)
-    }
-
-    /// Bind the retrieval index under `key`, for a hook that retrieves for
-    /// itself. Fails when `key` serves another family.
-    pub fn index(&self, key: &rig_core::effect::HandlerKey) -> Result<IndexHandle, ErrorReport> {
-        self.handlers.handle(key)
-    }
-
-    /// [`index`](Self::index) for a completion model.
-    pub fn model(&self, key: &rig_core::effect::HandlerKey) -> Result<ModelHandle, ErrorReport> {
-        self.handlers.handle(key)
-    }
-
-    /// [`index`](Self::index) for a tool.
-    pub fn tool(&self, key: &rig_core::effect::HandlerKey) -> Result<ToolHandle, ErrorReport> {
-        self.handlers.handle(key)
     }
 
     /// Stable run identifier.
@@ -269,11 +230,6 @@ impl HookContext {
     /// Whether the streaming surface is driving this run.
     pub fn is_streaming(&self) -> bool {
         self.is_streaming
-    }
-
-    /// Configured agent name.
-    pub fn agent_name(&self) -> Option<&str> {
-        self.agent_name.as_deref()
     }
 
     /// Shared run scratchpad.
@@ -293,23 +249,15 @@ impl HookContext {
         value: &T,
     ) -> Result<(), serde_json::Error> {
         let entry = Aside::new(kind, Author::rig(), serde_json::to_value(value)?);
-        self.entries
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .push(entry.clone());
-        self.pending_entries
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .push(entry);
+        crate::lock(&self.entries).push(entry.clone());
+        crate::lock(&self.pending_entries).push(entry);
         Ok(())
     }
 
     /// Clone all entries of `kind`, including resumed entries and new appends,
     /// in append order. Reading does not consume entries.
     pub fn entries(&self, kind: &str) -> Vec<Aside> {
-        self.entries
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+        crate::lock(&self.entries)
             .iter()
             .filter(|entry| entry.kind == kind)
             .cloned()
@@ -318,9 +266,7 @@ impl HookContext {
 
     /// Clone the most recent entry of `kind`, if present.
     pub fn last_entry(&self, kind: &str) -> Option<Aside> {
-        self.entries
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+        crate::lock(&self.entries)
             .iter()
             .rev()
             .find(|entry| entry.kind == kind)
@@ -376,27 +322,6 @@ pub struct ModelSelection<'a> {
     pub default_model: &'a ModelRef,
     /// Candidate after all earlier model-selection hooks.
     pub selected_model: &'a ModelRef,
-}
-
-impl<'a> ModelSelection<'a> {
-    /// Construct a model-selection event from borrowed request and candidate state.
-    pub fn new(
-        prompt: &'a Message,
-        history: &'a [Arc<Message>],
-        request_patch: Option<&'a RequestPatch>,
-        previous_model: Option<&'a ModelRef>,
-        default_model: &'a ModelRef,
-        selected_model: &'a ModelRef,
-    ) -> Self {
-        Self {
-            prompt,
-            history,
-            request_patch,
-            previous_model,
-            default_model,
-            selected_model,
-        }
-    }
 }
 
 /// Medium-neutral accepted model-turn event.
@@ -573,12 +498,6 @@ pub enum StepEventKind {
     RunStart,
     /// `on_run_settled`.
     RunSettled,
-    /// `on_completion_call`.
-    CompletionCall,
-    /// `on_model_turn_finished`.
-    ModelTurnFinished,
-    /// `on_invalid_tool_call`.
-    InvalidToolCall,
     /// `on_text_delta`.
     TextDelta,
     /// `on_reasoning_delta`.
@@ -642,17 +561,56 @@ pub enum DispatchAction {
     /// Dispatch this effect instead. A patch must keep the family; the
     /// stack rejects a family change as an internal error before later hooks
     /// observe it. Tool calls must also retain their target name; only their
-    /// arguments may be patched.
+    /// arguments may be patched. Completions must keep the tool choice, the
+    /// tool names, the raw `tools` and `tool_choice` parameters and the output
+    /// schema the turn was prepared with; definitions may be reordered or have
+    /// their descriptions and parameters rewritten, but for the parameters of
+    /// the output tool, which are the output schema. Change the turn's tools through
+    /// [`AgentHook::on_completion_call`] and [`RequestPatch`] instead.
     Patch(EffectKind),
     /// Do not dispatch: the effect resolves failed with this report and
     /// never reaches a handler. For a tool call a report of kind
-    /// `Cancelled` cancels the run; any other kind becomes the skipped
-    /// result the model sees. For a completion any report fails the turn.
+    /// `Cancelled` cancels the run, one of kind `Denied` becomes a refused
+    /// result and any other kind the skipped result the model sees. For a
+    /// completion any report fails the turn.
     Deny(ErrorReport),
+}
+
+/// What a turn's policy and output check fixed when the request was prepared,
+/// by meaning: an unset choice is `Auto`, and the order of a `Specific` choice
+/// or of the definitions does not count. Providers merge the raw `tools` and
+/// `tool_choice` parameters over the typed fields, so they count too, and in
+/// Tool output mode the output tool's parameters are the output schema.
+fn prepared_policy<'a>(
+    request: &'a CompletionRequest,
+    output_tool: Option<&str>,
+) -> impl PartialEq + use<'a> {
+    let mut choice = request.tool_choice.clone().unwrap_or_default();
+    if let ToolChoice::Specific { function_names } = &mut choice {
+        function_names.sort();
+        function_names.dedup();
+    }
+    let mut names: Vec<_> = request.tools.iter().map(|tool| &tool.name).collect();
+    names.sort();
+    let params = request.additional_params.as_ref();
+    let output_parameters = request
+        .tools
+        .iter()
+        .find(|tool| Some(tool.name.as_str()) == output_tool)
+        .map(|tool| &tool.parameters);
+    (
+        choice,
+        names,
+        output_parameters,
+        params.and_then(|params| params.get("tools")),
+        params.and_then(|params| params.get("tool_choice")),
+        request.output_schema.as_ref(),
+    )
 }
 
 /// Validate before a patch becomes visible to policy or execution.
 pub(crate) fn validate_dispatch_patch(
+    output_tool: Option<&str>,
     current: &EffectKind,
     next: &EffectKind,
 ) -> Result<(), ErrorReport> {
@@ -673,6 +631,20 @@ pub(crate) fn validate_dispatch_patch(
         return Err(ErrorReport::new(
             ErrorKind::Other,
             "a dispatch patch cannot change the tool target",
+        ));
+    }
+    if let (
+        EffectKind::Completion {
+            request: current, ..
+        },
+        EffectKind::Completion { request: next, .. },
+    ) = (current, next)
+        && prepared_policy(current, output_tool) != prepared_policy(next, output_tool)
+    {
+        return Err(ErrorReport::new(
+            ErrorKind::Other,
+            "a completion dispatch patch cannot change the tool choice, the tools or the \
+             output schema; change the tools in on_completion_call with a RequestPatch",
         ));
     }
     Ok(())
@@ -737,14 +709,6 @@ impl<'a> DispatchEvent<'a> {
     /// The dispatch context, for a tool-call effect.
     pub fn tool_context(&self) -> Option<&'a ToolContext> {
         self.context
-    }
-
-    /// The request about to be sent, for a completion effect.
-    pub fn completion_request(&self) -> Option<&'a rig_core::completion::CompletionRequest> {
-        match self.kind {
-            EffectKind::Completion { request, .. } => Some(request),
-            _ => None,
-        }
     }
 }
 
@@ -1110,7 +1074,8 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
     }
 
     /// Declare event interest. Memory, retrieval, embedding, reranking, and custom
-    /// dispatches default to false; all other kinds default to true.
+    /// dispatches default to false; all other kinds default to true. The
+    /// completion-call, model-turn and invalid-call callbacks are always called.
     /// For dispatch events, false prevents both boundary callbacks and therefore
     /// prevents this hook from steering that family.
     fn observes(&self, kind: StepEventKind) -> bool {
@@ -1135,6 +1100,10 @@ impl AgentHook for () {
 /// hand-written below.
 macro_rules! for_each_boxed_hook_event {
     ($m:ident) => {
+        $m!(run_start, on_run_start, RunStart, RunStartAction);
+        $m!(run_settled, on_run_settled, RunSettled, ());
+        $m!(dispatch, on_dispatch, DispatchEvent, DispatchAction);
+        $m!(outcome, on_outcome, OutcomeEvent, OutcomeAction);
         $m!(
             completion_call,
             on_completion_call,
@@ -1164,7 +1133,7 @@ macro_rules! for_each_boxed_hook_event {
 }
 
 macro_rules! erased_hook_decl {
-    ($erased:ident, $on:ident, $event:ident, $action:ident) => {
+    ($erased:ident, $on:ident, $event:ident, $action:ty) => {
         fn $erased<'a>(
             &'a self,
             ctx: &'a HookContext,
@@ -1174,7 +1143,7 @@ macro_rules! erased_hook_decl {
 }
 
 macro_rules! erased_hook_forward {
-    ($erased:ident, $on:ident, $event:ident, $action:ident) => {
+    ($erased:ident, $on:ident, $event:ident, $action:ty) => {
         fn $erased<'a>(
             &'a self,
             ctx: &'a HookContext,
@@ -1186,32 +1155,12 @@ macro_rules! erased_hook_forward {
 }
 
 trait DynAgentHook: WasmCompatSend + WasmCompatSync {
-    fn run_start<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: RunStart<'a>,
-    ) -> WasmBoxedFuture<'a, RunStartAction>;
-    fn run_settled<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: RunSettled<'a>,
-    ) -> WasmBoxedFuture<'a, ()>;
     fn model_select(&self, ctx: &HookContext, event: ModelSelection<'_>) -> ModelSelectionAction;
     fn invalid_tool_call<'a>(
         &'a self,
         ctx: &'a HookContext,
         event: &'a InvalidToolCallContext,
     ) -> WasmBoxedFuture<'a, Option<InvalidToolCallAction>>;
-    fn dispatch<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: DispatchEvent<'a>,
-    ) -> WasmBoxedFuture<'a, DispatchAction>;
-    fn outcome<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: OutcomeEvent<'a>,
-    ) -> WasmBoxedFuture<'a, OutcomeAction>;
     for_each_boxed_hook_event!(erased_hook_decl);
     fn observes(&self, kind: StepEventKind) -> bool;
 }
@@ -1220,22 +1169,6 @@ impl<H> DynAgentHook for H
 where
     H: AgentHook,
 {
-    fn run_start<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: RunStart<'a>,
-    ) -> WasmBoxedFuture<'a, RunStartAction> {
-        Box::pin(self.on_run_start(ctx, event))
-    }
-
-    fn run_settled<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: RunSettled<'a>,
-    ) -> WasmBoxedFuture<'a, ()> {
-        Box::pin(self.on_run_settled(ctx, event))
-    }
-
     fn model_select(&self, ctx: &HookContext, event: ModelSelection<'_>) -> ModelSelectionAction {
         self.on_model_select(ctx, event)
     }
@@ -1246,20 +1179,6 @@ where
         event: &'a InvalidToolCallContext,
     ) -> WasmBoxedFuture<'a, Option<InvalidToolCallAction>> {
         Box::pin(self.on_invalid_tool_call(ctx, event))
-    }
-    fn dispatch<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: DispatchEvent<'a>,
-    ) -> WasmBoxedFuture<'a, DispatchAction> {
-        Box::pin(self.on_dispatch(ctx, event))
-    }
-    fn outcome<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: OutcomeEvent<'a>,
-    ) -> WasmBoxedFuture<'a, OutcomeAction> {
-        Box::pin(self.on_outcome(ctx, event))
     }
     for_each_boxed_hook_event!(erased_hook_forward);
     fn observes(&self, kind: StepEventKind) -> bool {
@@ -1293,10 +1212,9 @@ impl std::fmt::Debug for HookStack {
 /// name a [`HookStack`] records for it.
 fn short_type_name<H>() -> &'static str {
     let full = std::any::type_name::<H>();
-    let generics = full.find('<').unwrap_or(full.len());
-    let path = &full[..generics];
+    let path = full.split('<').next().unwrap_or(full);
     match path.rfind("::") {
-        Some(at) => &full[at + 2..],
+        Some(at) => full.get(at + 2..).unwrap_or(full),
         None => full,
     }
 }
@@ -1305,13 +1223,6 @@ impl HookStack {
     /// Creates an empty hook stack.
     pub fn new() -> Self {
         Self::default()
-    }
-
-    /// Creates a hook stack containing `hook`.
-    pub fn with<H: AgentHook + 'static>(hook: H) -> Self {
-        let mut stack = Self::new();
-        stack.push(hook);
-        stack
     }
 
     /// Append a hook. Its recorded name is [`AgentHook::name`] or its type name
@@ -1338,61 +1249,29 @@ impl HookStack {
     pub fn is_empty(&self) -> bool {
         self.hooks.is_empty()
     }
-
-    /// Returns the number of hooks in the stack.
-    pub fn len(&self) -> usize {
-        self.hooks.len()
-    }
 }
 
-/// An action with a neutral `Continue` state that observe-only and steering
-/// dispatch short-circuits on: the first non-`Continue` action wins and later
-/// hooks are not invoked.
-trait ShortCircuitAction: Sized {
-    const CONTINUE: Self;
-    fn is_continue(&self) -> bool;
-}
-
-impl ShortCircuitAction for ObservationAction {
-    const CONTINUE: Self = ObservationAction::Continue;
-    fn is_continue(&self) -> bool {
-        matches!(self, ObservationAction::Continue)
-    }
-}
-
-impl ShortCircuitAction for ModelTurnAction {
-    const CONTINUE: Self = ModelTurnAction::Continue;
-    fn is_continue(&self) -> bool {
-        matches!(self, ModelTurnAction::Continue)
-    }
-}
-
-/// Dispatches to each hook in registration order, returning the first action
-/// that is not `Continue` without invoking the remaining hooks.
-async fn first_non_continue<'a, A, F>(hooks: &'a [Arc<dyn DynAgentHook>], mut dispatch: F) -> A
-where
-    A: ShortCircuitAction,
-    F: FnMut(&'a dyn DynAgentHook) -> WasmBoxedFuture<'a, A>,
-{
-    for hook in hooks {
-        let action = dispatch(hook.as_ref()).await;
-        if !action.is_continue() {
-            return action;
-        }
-    }
-    A::CONTINUE
-}
-
-/// Generate the `HookStack` methods whose dispatch is exactly
-/// [`first_non_continue`] over the erased hooks: `(on_* name, erased name,
-/// event type, action type)`, mirroring `for_each_boxed_hook_event!`. The
-/// genuinely chaining events (`on_model_select`, `on_completion_call`,
-/// `on_invalid_tool_call`, `on_dispatch`, `on_outcome`) stay hand-written.
+/// Generate the `HookStack` methods that dispatch to each hook in registration
+/// order and return the first action that is not `Continue`, without invoking
+/// the remaining hooks: `(on_* name, erased name, event type, action type)`,
+/// then the [`StepEventKind`] a hook must observe to be called, if any,
+/// mirroring `for_each_boxed_hook_event!`. The genuinely chaining events
+/// (`on_model_select`, `on_completion_call`, `on_invalid_tool_call`,
+/// `on_dispatch`, `on_outcome`) stay hand-written.
 macro_rules! stack_first_non_continue {
-    ($($on:ident, $erased:ident, $event:ident, $action:ident;)+) => {
+    ($($on:ident, $erased:ident, $event:ident, $action:ident $(, $kind:ident)?;)+) => {
         $(
             async fn $on(&self, ctx: &HookContext, event: $event<'_>) -> $action {
-                first_non_continue(&self.hooks, |hook| hook.$erased(ctx, event)).await
+                for hook in &self.hooks {
+                    $(if !hook.observes(StepEventKind::$kind) {
+                        continue;
+                    })?
+                    let action = hook.$erased(ctx, event).await;
+                    if !matches!(action, $action::Continue) {
+                        return action;
+                    }
+                }
+                $action::Continue
             }
         )+
     };
@@ -1402,6 +1281,9 @@ impl AgentHook for HookStack {
     async fn on_run_start(&self, ctx: &HookContext, event: RunStart<'_>) -> RunStartAction {
         let mut rewritten: Option<Message> = None;
         for hook in &self.hooks {
+            if !hook.observes(StepEventKind::RunStart) {
+                continue;
+            }
             let current = RunStart {
                 prompt: rewritten.as_ref().unwrap_or(event.prompt),
                 ..event
@@ -1417,7 +1299,9 @@ impl AgentHook for HookStack {
 
     async fn on_run_settled(&self, ctx: &HookContext, event: RunSettled<'_>) {
         for hook in &self.hooks {
-            hook.run_settled(ctx, event).await;
+            if hook.observes(StepEventKind::RunSettled) {
+                hook.run_settled(ctx, event).await;
+            }
         }
     }
 
@@ -1473,9 +1357,9 @@ impl AgentHook for HookStack {
 
     stack_first_non_continue! {
         on_model_turn_finished, model_turn_finished, ModelTurnFinished, ModelTurnAction;
-        on_text_delta, text_delta, TextDelta, ObservationAction;
-        on_reasoning_delta, reasoning_delta, ReasoningDelta, ObservationAction;
-        on_tool_call_delta, tool_call_delta, ToolCallDelta, ObservationAction;
+        on_text_delta, text_delta, TextDelta, ObservationAction, TextDelta;
+        on_reasoning_delta, reasoning_delta, ReasoningDelta, ObservationAction, ReasoningDelta;
+        on_tool_call_delta, tool_call_delta, ToolCallDelta, ObservationAction, ToolCallDelta;
     }
     async fn on_invalid_tool_call(
         &self,
@@ -1503,7 +1387,10 @@ impl AgentHook for HookStack {
             match hook.dispatch(ctx, current).await {
                 DispatchAction::Proceed => {}
                 DispatchAction::Patch(next) => {
-                    if let Err(report) = validate_dispatch_patch(current.kind, &next) {
+                    let output_tool = ctx.output_tool();
+                    if let Err(report) =
+                        validate_dispatch_patch(output_tool.as_deref(), current.kind, &next)
+                    {
                         if let Some(kind) = patched {
                             ctx.salvage_patch(event.id, kind);
                         }
@@ -1513,7 +1400,7 @@ impl AgentHook for HookStack {
                 }
                 deny @ DispatchAction::Deny(_) => {
                     // The denial wins, but an earlier hook's patch is what
-                    // the skipped result must report: keep it for the engine.
+                    // the skipped or refused result must report: keep it for the engine.
                     if let Some(kind) = patched {
                         ctx.salvage_patch(event.id, kind);
                     }

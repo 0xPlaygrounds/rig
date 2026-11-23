@@ -23,8 +23,8 @@ Add the companion crate to your `Cargo.toml`, along with the rig-core crate:
 
 ```toml
 [dependencies]
-rig-core = "0.36.0"
-rig-postgres = "0.2.5"
+rig-core = "0.47.0"
+rig-postgres = "0.47.0"
 ```
 
 You can also run `cargo add rig-core rig-postgres` to add the most recent versions of the dependencies to your project.
@@ -39,7 +39,7 @@ to an agent with `AgentBuilder::memory`. It needs no extension.
 
 ```toml
 [dependencies]
-rig-postgres = { version = "0.46.0-rc.1", features = ["memory"] }
+rig-postgres = { version = "0.47.0", features = ["memory"] }
 ```
 
 `PostgresSessionStore::open(pool)` makes three tables in the connection's
@@ -112,61 +112,6 @@ Declare the database URL:
 export DATABASE_URL="postgres://myuser:mypassword@localhost:5432/mydatabase"
 ```
 
-Define the document you want to index, it has to implement `Embed`, `Serialize` and `Deserialize`.
+Define the document you want to index; it has to implement `Embed`, `Serialize` and `Deserialize`. Different document types can share one table.
 
-> Note: you can index different type of documents in the same table.
-
-Example:
-
-```rust
-#[derive(Embed, Clone, Serialize, Deserialize, Debug)]
-pub struct Product {
-    name: String,
-    category: String,
-    #[embed]
-    description: String,
-    price: f32
-}
-```
-
-Example usage
-
-```rust
-    // OpenAI's embedding model, erased once: the builder and the store each
-    // take a clone of the handle.
-    let model = rig::providers::openai::OpenAI::from_env()?
-            .embedding(rig::providers::openai::TEXT_EMBEDDING_3_SMALL, None)
-        .erase();
-
-    // connect to Postgres
-    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL not set");
-    let pool = PgPoolOptions::new() .connect(&database_url) .await?;
-
-    // run migrations (optional but recommended)
-    sqlx::migrate!("./migrations").run(&pool).await?;
-
-    // init documents
-    let products: Vec<Product> = ...;
-
-    let documents = EmbeddingsBuilder::new(model.clone())
-        .documents(products)
-        .unwrap()
-        .build()
-        .await?;
-
-    // Create your index
-    let vector_store = PostgresVectorStore::with_defaults(model, pool);
-
-    // store documents
-    vector_store.insert_documents(documents).await?;
-
-    // retrieve embeddings
-    let req = VectorSearchRequest::builder()
-        .query("Which phones have more than 16Gb and support 5G")
-        .samples(50)
-        .build();
-    let results = vector_store.top_n::<Product>(req).await?;
-
-    ...
-
-```
+See [examples/vector_search_postgres.rs](examples/vector_search_postgres.rs) for a complete example that embeds, stores and queries documents.

@@ -35,8 +35,7 @@ pub fn default_ndims(model: &str) -> usize {
 
 /// Gemini's batch embedding endpoint.
 ///
-/// `POST /v1beta/models/{model}:batchEmbedContents`, authenticated by the
-/// `key` query parameter the GenerateContent family uses.
+/// `POST /v1beta/models/{model}:batchEmbedContents`.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Embeddings {
     /// The provider this wire speaks to.
@@ -76,7 +75,8 @@ impl Wire for Embeddings {
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(super::PROVIDER_NAME)
             .model(self.model.as_str())
-            .capabilities(Capabilities::embedding(1024, self.ndims))
+            // `batchEmbedContents` refuses more than 100 requests.
+            .capabilities(Capabilities::embedding(100, self.ndims))
     }
 
     fn encode(&self, request: Vec<String>, _mode: Mode) -> Result<Encoded, EncodeError> {
@@ -103,14 +103,10 @@ impl Wire for Embeddings {
             );
         }
 
-        let request = http::Request::post(format!(
-            "{}/v1beta/models/{}:batchEmbedContents?key={}",
-            self.provider.base_url,
-            self.model,
-            self.provider.api_key.expose()
-        ))
-        .header(http::header::CONTENT_TYPE, "application/json")
-        .body(Body::Bytes(serde_json::to_vec(&body)?))?;
+        let path = format!("/v1beta/models/{}:batchEmbedContents", self.model);
+        let request = self
+            .provider
+            .post_json(&path, Body::Bytes(serde_json::to_vec(&body)?))?;
         // `batchEmbedContents` has no streaming variant, so a streamed call
         // sends the same bytes and reads the same whole reply.
         Ok(Encoded::new(request, Framing::Whole))

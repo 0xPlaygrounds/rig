@@ -1,30 +1,17 @@
-//! Raw provider response capture on Venice's streaming chat-completions
-//! path.
+//! Raw provider response capture on Venice's streaming chat-completions path.
 //!
-//! **The feature.** Every stream's terminal
-//! [`rig::completion::CompletionResponse::raw`] carries the decoder's own
-//! terminal record: for Venice the shared chat-completions record, a JSON
-//! object with the keys `usage`, `finish_reason`, `response_id`, `model`,
-//! `logprobs` and `additional_params`. It is that record rather than the
-//! socket's bytes. Capture is always on: there is no flag to request it,
-//! nothing about it reaches the wire, and a `Value::Null` only ever means a
-//! terminal built by hand with no provider record behind it. It is the
-//! terminal record only, never the stream's frames. Venice stamps the
-//! request's `cost` on the terminal frame alone, and the rebuilt document
-//! keeps it, alongside the `object` tag the frames repeat. The tag has no
-//! slot on the normalized terminal; the cost is its usage's cost.
+//! Every stream's terminal [`rig::completion::CompletionResponse::raw`] carries the decoder's
+//! own terminal record: for Venice the shared chat-completions record, a JSON object with the
+//! keys `usage`, `finish_reason`, `response_id`, `model`, `logprobs` and `additional_params`.
+//! Capture is always on, and a `Value::Null` only means a terminal built by hand. Venice stamps
+//! the request's `cost` on the terminal frame alone, and the record keeps it beside the
+//! `object` tag the frames repeat. `stream_raw_exposes_terminal_cost` pins that `raw.cost.usd`
+//! and the usage's cost equal the recorded terminal frame's, and that no earlier frame carried
+//! a cost.
 //!
-//! | # | Cell | Dimension | expected | Status |
-//! |---|------|-----------|----------|--------|
-//! | 2 | `stream_raw_exposes_terminal_cost` | terminal-only field | `raw.cost.usd` and the usage's cost equal the recorded terminal frame's, and no earlier frame carried a cost | recorded |
-//!
-//! Every cell is recorded. The premise every cell re-derives from its own
-//! fixture is that usage appears on exactly one frame — the stream's last
-//! data frame — so the raw terminal record's usage is knowable from the bytes
-//! and a recording whose stream stopped reporting usage fails loudly instead
-//! of covering nothing. Venice contracts no request-id header, so the
-//! terminal's `provider_request_id` is `None` — pinned as the documented
-//! outcome.
+//! The cell first checks that usage appears only on the stream's last data frame, so a
+//! recording that stopped reporting usage fails loudly. Venice contracts no request-id header,
+//! so the terminal's `provider_request_id` is `None`.
 
 use rig::completion::CompletionRequest;
 use serde_json::json;

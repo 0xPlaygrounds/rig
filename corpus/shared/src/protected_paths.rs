@@ -1,17 +1,15 @@
-//! Protected paths (corpus spec 02): the file tools never read secrets
-//! nor write outside the project or into `.git/`.
+//! Protected paths: the file tools never read secrets nor write outside the project or into
+//! `.git/`.
 //!
-//! The rules are `deny_read` and `deny_write` globs: defaults, then
-//! `RIG_HOME/paths.toml`, then the project's `.rig/paths.toml`. A Gate
-//! system checks every path a tool call names (its `path`, `file` and
-//! `paths` arguments) when the call is about to run, resolved first (`~`,
-//! `..` and symbolic links) so none sneaks past, and refuses a denied one.
-//! A Review system drops the matches in read-protected files from each
-//! search's result, read from the hits it published, before the model sees
-//! it. `/paths` lists the rules and what each blocked.
+//! The rules are `deny_read` and `deny_write` globs: defaults, then `RIG_HOME/paths.toml`, then the
+//! project's `.rig/paths.toml`. A Gate system checks every path a tool call names (its `path`,
+//! `file` and `paths` arguments) when the call is about to run, resolved first (`~`, `..` and
+//! symbolic links) so none sneaks past, and refuses a denied one. A Review system drops the matches
+//! in read-protected files from each search's result before the model sees it. `/paths` lists the
+//! rules and what each blocked.
 
 use std::collections::HashMap;
-use std::path::{Component as Part, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::confirm_destructive::ConfirmSystems;
@@ -20,6 +18,7 @@ use glob::{MatchOptions, Pattern};
 use rig_core::effect::Answered;
 use rig_core::tool::ToolOutput;
 use rig_harness::prelude::*;
+use rig_tools::workspace::{Local, Workspace};
 use rig_tools::{Found, SearchHits, render};
 use serde::Deserialize;
 
@@ -187,8 +186,8 @@ impl PathPolicy {
     /// The default rules for the project at `root`, then those of each of
     /// `files` that exists, in order.
     pub fn load(root: &Path, files: &[PathBuf]) -> Self {
-        let root = real(&std::path::absolute(root).unwrap_or_else(|_| root.to_path_buf()));
-        let home = std::env::home_dir().map(|home| real(&home));
+        let root = Local.canonical(root);
+        let home = std::env::home_dir().map(|home| Local.canonical(&home));
         let mut policy = Policy {
             root,
             home,
@@ -263,9 +262,8 @@ impl Policy {
         Ok(Matcher::Root(Pattern::new(glob)?, anywhere))
     }
 
-    /// `raw` as the file system sees it: `~` expanded, relative to the
-    /// root, symbolic links followed as far as the path exists, and `..`
-    /// and `.` taken out of the rest.
+    /// `raw` as the file tools see it: `~` expanded, relative to the root,
+    /// and resolved as [`Workspace::canonical`] does.
     fn resolve(&self, raw: &str) -> PathBuf {
         let home = self.home.as_deref().unwrap_or(Path::new("/"));
         // The coding tools' rule: a first component `~`.
@@ -273,32 +271,8 @@ impl Policy {
             Ok(rest) => home.join(rest),
             Err(_) => PathBuf::from(raw),
         };
-        real(&self.root.join(path))
+        Local.canonical(&self.root.join(path))
     }
-}
-
-/// `path` (absolute) with its longest existing prefix canonicalized and
-/// the rest normalized without the file system.
-fn real(path: &Path) -> PathBuf {
-    let parts: Vec<Part> = path.components().collect();
-    for split in (0..=parts.len()).rev() {
-        let (head, tail) = parts.split_at(split);
-        let head: PathBuf = head.iter().collect();
-        let Ok(mut resolved) = head.canonicalize() else {
-            continue;
-        };
-        for part in tail {
-            match part {
-                Part::ParentDir => {
-                    resolved.pop();
-                }
-                Part::Normal(name) => resolved.push(name),
-                Part::CurDir | Part::RootDir | Part::Prefix(_) => {}
-            }
-        }
-        return resolved;
-    }
-    path.to_path_buf()
 }
 
 /// How many calls each rule blocked, and how many `search` matches it
@@ -370,6 +344,7 @@ fn filter_searches(
         let mut hidden = Vec::new();
         let mut kept = Found {
             stopped: found.stopped,
+            skipped: found.skipped,
             ..Found::default()
         };
         for hit in found.hits {
@@ -378,7 +353,21 @@ fn filter_searches(
                 None => kept.hits.push(hit),
             }
         }
-        if hidden.is_empty() {
+        for name in found.names {
+            match policy.check(Access::Read, &name.to_string_lossy()) {
+                Some(rule) => hidden.push(rule.label()),
+                None => kept.names.push(name),
+            }
+        }
+        // A protected path it could not read is not named either.
+        let unread = found.unread.len();
+        kept.unread = (found.unread.into_iter())
+            .filter(|unread| {
+                let path = unread.path.to_string_lossy();
+                policy.check(Access::Read, &path).is_none()
+            })
+            .collect();
+        if hidden.is_empty() && kept.unread.len() == unread {
             continue;
         }
         let noun = if hidden.len() == 1 {
@@ -386,11 +375,13 @@ fn filter_searches(
         } else {
             "matches"
         };
-        let text = format!(
-            "{}\n[{} {noun} in protected files hidden]",
-            render(&kept),
-            hidden.len()
-        );
+        let text = match hidden.len() {
+            0 => render(&kept),
+            count => format!(
+                "{}\n[{count} {noun} in protected files hidden]",
+                render(&kept)
+            ),
+        };
         *outcome = Outcome::from(ToolResult::success(ToolOutput::text(text)));
         if !restored {
             for rule in hidden {

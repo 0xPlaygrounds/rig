@@ -2,24 +2,13 @@
 //!
 //! This matrix exercises the request serializer and response normalizer around
 //! caller-owned text history, Unicode-bearing text, and both public completion
-//! surfaces.
-//!
-//! The input space is a 2 × 2 × 2 cross-product:
-//!
-//! | dimension | values |
-//! |---|---|
-//! | transport | blocking, streaming |
-//! | model | `mistral-small-latest`, `ministral-3b-latest` |
-//! | surface | provider-native raw, normalized Rig response |
-//!
-//! That is 8 cells. Each proves the exact serialized history from its fixture
-//! and compares the observed response text to those exact blocking or SSE
-//! bytes. Tool-history shapes are covered on OpenAI Chat and OpenRouter by the
-//! same matrix.
+//! surfaces, on two models and both transports. Each cell proves the exact
+//! serialized history from its fixture and compares the observed response text
+//! to those exact blocking or SSE bytes. Tool-history shapes are covered on
+//! OpenAI Chat and OpenRouter by the same matrix.
 //!
 //! The four `mistral-small-latest` cells are ignored until they are
-//! re-recorded, and no cell holds a fixture; a re-recorded cell maps to
-//! `crates/rig-cassette/fixtures/cassettes/mistral/history_roundtrip_matrix/<test-name>.yaml`.
+//! re-recorded.
 
 use rig::streaming::Item;
 use rig_test_support::cassette_models::OpenAiModels;
@@ -32,7 +21,7 @@ use rig::message::{AssistantContent, UserContent};
 use rig::streaming::StreamEvent;
 use serde_json::Value;
 
-use super::support::with_mistral_history_roundtrip_cassette_result;
+use super::support::with_mistral_cassette_result;
 use rig::completion::CompletionRequest;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -286,7 +275,7 @@ fn cell(transport: Transport, model: ModelVariant, surface: Surface, shape: Shap
 // mapping between tests and fixtures.
 
 crate::matrix::case_matrix! {
-    wrapper: with_mistral_history_roundtrip_cassette_result, family: history_roundtrip_matrix_case;
+    wrapper: with_mistral_cassette_result, family: history_roundtrip_matrix_case;
     # [tokio :: test]
     # [ignore = "stale cassette: its request predates item-shaped history, and Mistral rate-limited the re-record"]
     blocking_mistral_small_raw_text: ("history_roundtrip_matrix/blocking_mistral_small_raw_text", configured, cell (Transport :: Blocking , ModelVariant :: MistralSmall , Surface :: Raw , Shape :: Text ,));

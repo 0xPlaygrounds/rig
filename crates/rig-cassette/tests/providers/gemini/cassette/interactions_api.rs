@@ -45,7 +45,7 @@ fn first_tool_call(choice: &[AssistantContent]) -> Option<ToolCall> {
 
 #[tokio::test]
 async fn basic_interaction_returns_id() {
-    super::super::support::with_gemini_interactions_cassette(
+    super::super::support::with_gemini_cassette(
         "interactions_api/basic_interaction_returns_id",
         |client| async move {
             let model = client.interactions("gemini-3-flash-preview");
@@ -81,7 +81,7 @@ async fn basic_interaction_returns_id() {
 
 #[tokio::test]
 async fn followup_with_previous_interaction_id() {
-    super::super::support::with_gemini_interactions_cassette(
+    super::super::support::with_gemini_cassette(
         "interactions_api/followup_with_previous_interaction_id",
         |client| async move {
             let model = client.interactions("gemini-3-flash-preview");
@@ -117,7 +117,7 @@ async fn followup_with_previous_interaction_id() {
 
 #[tokio::test]
 async fn google_search_tool_interaction() {
-    super::super::support::with_gemini_interactions_cassette(
+    super::super::support::with_gemini_cassette(
         "interactions_api/google_search_tool_interaction",
         |client| async move {
             let model = client.interactions("gemini-3-flash-preview");
@@ -150,7 +150,7 @@ async fn google_search_tool_interaction() {
 
 #[tokio::test]
 async fn tool_result_roundtrip() {
-    super::super::support::with_gemini_interactions_cassette(
+    super::super::support::with_gemini_cassette(
         "interactions_api/tool_result_roundtrip",
         |client| async move {
             let model = client.interactions("gemini-3-flash-preview");
@@ -270,7 +270,7 @@ fn assert_tool_use_usage(usage: &rig::completion::Usage, raw: &serde_json::Value
 /// non-zero tool-use count (Google Search reports zero).
 #[tokio::test]
 async fn code_execution_usage_counts_the_tool_use_prompt_as_input() {
-    super::super::support::with_gemini_interactions_cassette(
+    super::super::support::with_gemini_cassette(
         "interactions_api/code_execution_usage",
         |client| async move {
             let model = client.interactions("gemini-3-flash-preview");

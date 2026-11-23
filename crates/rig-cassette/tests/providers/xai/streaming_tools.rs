@@ -65,6 +65,7 @@ async fn responses_stream_preserves_tool_result_flow() {
             let agent = rig::AgentBuilder::new(client.completion(xai::GROK_4))
                 .preamble(XAI_STATUS_TOOL_PREAMBLE)
                 .tool(StatusWordTool)
+                .additional_params(json!({ "store": false }))
                 .build();
 
             let mut stream = agent.prompt(XAI_STATUS_TOOL_PROMPT).max_turns(5).stream();

@@ -5,7 +5,7 @@
 //! recorded wire traffic, not synthetic chunks.
 //!
 //! Re-record with:
-//! `RIG_PROVIDER_TEST_MODE=record OPENAI_API_KEY=... cargo test --test openai streaming_grammar_chat -- --test-threads=1`
+//! `RIG_PROVIDER_TEST_MODE=record OPENAI_API_KEY=... cargo test -p rig-cassette --all-features --test integration openai::cassette::streaming_grammar_chat -- --test-threads=1`
 //!
 //! Cassette IDs are scrub placeholders (`call_`/`chatcmpl-` prefixes are
 //! preserved); assertions derive expected IDs from the recorded turn and never
@@ -64,7 +64,7 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
 
     run.choice = response.choice.clone();
     // The shared lifecycle validator runs over every recorded turn this
-    // suite drains (#2258 C1).
+    // suite drains.
     rig_core::test_utils::streaming_conformance::assert_valid_event_stream(&raw_items, &run.choice);
     run.response = Some(response.clone());
     run

@@ -1,25 +1,15 @@
-//! SN-11: leftover debug code detector.
+//! Leftover debug code detector. When an agent's turn would end having changed files, the lines
+//! the turn added (each file compared with its content before the turn) are matched against
+//! patterns by file extension: `dbg!(`, `console.log(`, `breakpoint()` and the like, and
+//! `TODO`, `FIXME` or `XXX` in a comment. If any match, the agent is sent one message listing
+//! each as `path:line: text`, asking it to remove each one or say why it stays, and its turn
+//! carries on. At most one nudge per turn the user started; what the agent kept then is the
+//! file's content before the next turn, so it is never raised again.
 //!
-//! When an agent's turn would end having changed files, the lines the turn
-//! added (each file compared with its content before the turn) are matched
-//! against patterns by file extension: `dbg!(`, `console.log(`,
-//! `breakpoint()` and the like, and `TODO`, `FIXME` or `XXX` in a comment.
-//! If any match, the agent is sent one message listing each as
-//! `path:line: text`, asking it to remove each one or say why it stays, and
-//! its turn carries on. At most one nudge per turn the user started; what
-//! the agent kept then is the file's content before the next turn, so it is
-//! never raised again.
-//!
-//! The content before the turn is read in `Gate`, as each call that writes
-//! named files (its `Footprint`) is about to run, the first time the turn
-//! touches each file. A call that may write anywhere, such as `shell`,
-//! reports what it changed (its checkpoint's `FilesChanged`): a file it is
-//! the first to change was missing before (created) or is read, as the
-//! call settles, from the turn's checkpoint taken before its first such
-//! call (`TurnCheckpoint`), which keeps content in the session's scratch.
-//! A subagent's calls count for the agent at the root of its spawns, whose
-//! turn ends with them. `/leftovers off|on` switches it for the session,
-//! saved with it.
+//! Only calls that write named files (their `Footprint`) are checked; a call that may write
+//! anywhere, such as `shell`, names no files and is not checked. A subagent's calls count for
+//! the agent at the root of its spawns, whose turn ends with them. `/leftovers off|on` switches
+//! it for the session, saved with it.
 //!
 //! The project's `.rig/leftovers.toml` adds patterns:
 //!
@@ -38,9 +28,7 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 use bevy_tasks::{IoTaskPool, TaskPool};
-use rig_basics::checkpoint::{CheckpointPlugin, TurnCheckpoint};
 use rig_harness::prelude::*;
-use rig_harness::rig_core::tool::{ChangeKind, FilesChanged};
 use rig_harness::rig_tools::workspace::Workspace;
 use serde::Deserialize;
 
@@ -58,9 +46,6 @@ pub struct LeftoverDetectorPlugin;
 
 impl Plugin for LeftoverDetectorPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<CheckpointPlugin>() {
-            app.add_plugins(CheckpointPlugin);
-        }
         app.init_resource::<ProjectRoot>()
             .init_resource::<ProjectWorkspace>()
             .init_resource::<LeftoverSwitch>()
@@ -78,7 +63,6 @@ impl Plugin for LeftoverDetectorPlugin {
                 toggle,
             )
             .add_observer(snapshot_read)
-            .add_observer(checkpointed)
             .add_observer(scanned)
             .add_observer(reset);
     }
@@ -291,7 +275,7 @@ fn scan(
 /// The agent at the root of `agent`'s spawns, whose turn a subagent's
 /// changes count for.
 fn root_of(mut agent: Entity, parents: &Query<&SpawnedBy>) -> Entity {
-    while let Ok(&SpawnedBy(parent)) = parents.get(agent) {
+    while let Ok(parent) = parents.get(agent).map(SpawnedBy::parent) {
         agent = parent;
     }
     agent
@@ -375,54 +359,6 @@ fn snapshot_read(
         files.before.entry(snapshot.path.clone()).or_insert(text);
     }
     commands.entity(read.entity).despawn();
-}
-
-/// Keeps the content before the turn of each file a call that may write
-/// anywhere is the first of the turn to change: none for a file it
-/// created, else the file as the turn's checkpoint from before its first
-/// such call kept it, a read of the session's scratch on this machine.
-fn checkpointed(
-    settled: On<Add<Settled>>,
-    calls: Query<(&Footprint, &Published, &ForAgent, &CallOf), With<ToolRequest>>,
-    turns: Query<&TurnCheckpoint>,
-    parents: Query<&SpawnedBy>,
-    mut agents: Query<&mut TurnFiles>,
-    switch: Res<LeftoverSwitch>,
-) {
-    let Ok((footprint, published, &ForAgent(agent), &CallOf(turn))) = calls.get(settled.entity)
-    else {
-        return;
-    };
-    if switch.off || footprint.0 != Touches::Writes(Scope::Anything) {
-        return;
-    }
-    let Ok(FilesChanged(changes)) = published
-        .0
-        .get::<FilesChanged>()
-        .map(Option::unwrap_or_default)
-    else {
-        return;
-    };
-    let Ok(mut files) = agents.get_mut(root_of(agent, &parents)) else {
-        return;
-    };
-    let first = turns.get(turn).ok().and_then(TurnCheckpoint::first);
-    for change in changes {
-        let path = PathBuf::from(change.path);
-        if files.before.contains_key(&path) {
-            continue;
-        }
-        let was = match (change.kind, &first) {
-            (ChangeKind::Created, _) => None,
-            // Not kept: larger than a checkpoint keeps, or no scratch.
-            (ChangeKind::Modified, Some(first)) => match first.content(&path) {
-                Some(Ok(bytes)) => Some(String::from_utf8_lossy(&bytes).into_owned()),
-                _ => continue,
-            },
-            _ => continue,
-        };
-        files.before.insert(path, was);
-    }
 }
 
 /// A check of a turn's files done off the main thread.

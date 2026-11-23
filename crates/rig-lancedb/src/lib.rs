@@ -12,7 +12,7 @@
 //!
 //! [`LanceDbVectorIndex`] searches an existing LanceDB table, exactly or
 //! approximately according to [`SearchParams`], narrowed by [`LanceDBFilter`]
-//! SQL predicates. The `rig` facade re-exports this crate as `rig::lancedb`
+//! SQL predicates, and inserts documents into it. The `rig` facade re-exports this crate as `rig::lancedb`
 //! under the `lancedb` feature.
 
 use std::ops::Range;
@@ -22,17 +22,26 @@ use lancedb::{
     query::{QueryBase, VectorQuery},
 };
 use rig_core::{
+    Embed,
+    embeddings::Embedding,
     vector_store::{
-        VectorSearchIdResult, VectorSearchResult, VectorStoreError, VectorStoreIndex,
+        InsertDocuments, VectorSearchIdResult, VectorSearchResult, VectorStoreError,
+        VectorStoreIndex, flatten_embedded,
         request::{FilterError, SearchFilter, VectorSearchRequest},
     },
     wasm_compat::WasmCompatSend,
 };
-use serde::de::DeserializeOwned;
+use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
-use utils::{execute_query, filter_embeddings};
+use utils::{
+    distance, embedding_column, execute_query, filter_embeddings, invalid_input, rows_to_batch,
+    unscorable_value,
+};
 
 mod utils;
+
+#[cfg(test)]
+mod tests;
 
 /// Vector index over a LanceDB table.
 ///
@@ -62,6 +71,39 @@ impl LanceDbVectorIndex {
             id_field: id_field.to_string(),
             search_params,
         })
+    }
+
+    /// Runs `req`'s nearest-neighbour query, projecting `columns`.
+    async fn search(
+        &self,
+        req: &VectorSearchRequest<LanceDBFilter>,
+        columns: Vec<String>,
+    ) -> Result<Vec<Value>, VectorStoreError> {
+        let prompt_embedding = self.model.embed_text(req.query()).await?;
+        let mut query = self
+            .table
+            .vector_search(prompt_embedding.vec)
+            .map_err(VectorStoreError::datastore)?
+            .limit(req.samples() as usize)
+            .distance_range(None, req.threshold().map(|x| x as f32))
+            .select(lancedb::query::Select::Columns(columns));
+        if let Some(filter) = req.filter() {
+            query = query.only_if(filter.clone().into_inner()?);
+        }
+        execute_query(&self.build_query(query)).await
+    }
+
+    /// The row's id column as text (a number id in its decimal form), refused
+    /// when it is missing or neither text nor a number.
+    fn row_id(&self, value: &Value) -> Result<String, VectorStoreError> {
+        match value.get(self.id_field.as_str()) {
+            Some(Value::String(id)) => Ok(id.clone()),
+            Some(Value::Number(id)) => Ok(id.to_string()),
+            _ => Err(VectorStoreError::MissingIdError(format!(
+                "row has no text or number `{}` column",
+                self.id_field
+            ))),
+        }
     }
 
     /// Applies the configured search parameters. Probe and refinement settings
@@ -342,11 +384,82 @@ impl SearchParams {
         self
     }
 
-    /// Names the embedding column to search. Needed only when the table has more
-    /// than one float-list column.
+    /// Names the embedding column to search and insert into. Needed only when the
+    /// table has more than one float-list column.
     pub fn column(mut self, column: impl Into<String>) -> Self {
         self.column = Some(column.into());
         self
+    }
+}
+
+impl InsertDocuments for LanceDbVectorIndex {
+    /// Appends one row per embedding, holding the document's fields and that
+    /// embedding, in a single write: on an error nothing is inserted.
+    ///
+    /// The embedding goes in [`SearchParams::column`], or else in the table's only
+    /// float-list column. Errors when a document is not a JSON object, has no id,
+    /// has no embeddings, has a field with no column or one named like the
+    /// embedding column, leaves out a non-nullable column, or has a value its
+    /// column would store differently, or when an embedding's length differs
+    /// from the column's, a value of it is not finite in the column's float
+    /// type, or its squared length is not finite, such as one holding `1e300`.
+    /// Values stored differently are a number with a fraction for an integer
+    /// column, such as `1.5`, a number too large for a Float16 or Float32
+    /// column, such as `1e300`, and a binary value that is not an even-length
+    /// hex string, such as `abc` or a `Vec<u8>`.
+    async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
+        &self,
+        documents: Vec<(Doc, Vec<Embedding>)>,
+    ) -> Result<(), VectorStoreError> {
+        if documents.iter().any(|(_, vecs)| vecs.is_empty()) {
+            return Err(invalid_input(
+                "a document has no embeddings, so it would not be stored".to_string(),
+            ));
+        }
+
+        let schema = self
+            .table
+            .schema()
+            .await
+            .map_err(VectorStoreError::datastore)?;
+        let column = embedding_column(&schema, self.search_params.column.as_deref())?;
+
+        let rows = flatten_embedded(documents, |document, embedding| {
+            let Value::Object(mut row) = document.clone() else {
+                return Err(invalid_input(format!(
+                    "document is not a JSON object: {document}"
+                )));
+            };
+            if row.get(&self.id_field).is_none_or(Value::is_null) {
+                return Err(VectorStoreError::MissingIdError(format!(
+                    "document has no `{}` field: {document}",
+                    self.id_field
+                )));
+            }
+            let name = column.name();
+            if let Some(value) = unscorable_value(column, &embedding.vec) {
+                return Err(invalid_input(format!(
+                    "embedding of document {} cannot be scored: with value {value:e} it or its squared length is not finite in column `{name}`",
+                    row.get(&self.id_field).unwrap_or(&Value::Null)
+                )));
+            }
+            if row.insert(name.clone(), embedding.vec.into()).is_some() {
+                return Err(invalid_input(format!(
+                    "document field `{name}` would be overwritten by its embedding"
+                )));
+            }
+            Ok(Value::Object(row))
+        })?;
+
+        let Some(batch) = rows_to_batch(schema, &rows, &self.id_field)? else {
+            return Ok(());
+        };
+        self.table
+            .add(batch)
+            .execute()
+            .await
+            .map_err(VectorStoreError::datastore)?;
+        Ok(())
     }
 }
 
@@ -354,8 +467,10 @@ impl VectorStoreIndex for LanceDbVectorIndex {
     type Filter = LanceDBFilter;
 
     /// Returns matches scored by distance, with embedding columns projected
-    /// out. A row missing its distance scores zero, and a row whose id column is
-    /// absent or non-textual gets a placeholder id.
+    /// out. Errors when a row's distance is not finite, as for an L2 distance
+    /// past Float32, which LanceDB computes distances in, and with
+    /// `MissingIdError` when a row's id column is missing or neither text nor a
+    /// number.
     ///
     /// # Example
     /// ```no_run
@@ -383,79 +498,38 @@ impl VectorStoreIndex for LanceDbVectorIndex {
         &self,
         req: VectorSearchRequest<LanceDBFilter>,
     ) -> Result<Vec<VectorSearchResult<T>>, VectorStoreError> {
-        let prompt_embedding = self.model.embed_text(req.query()).await?;
         let schema = self
             .table
             .schema()
             .await
             .map_err(VectorStoreError::datastore)?;
 
-        let mut query = self
-            .table
-            .vector_search(prompt_embedding.vec.clone())
-            .map_err(VectorStoreError::datastore)?
-            .limit(req.samples() as usize)
-            .distance_range(None, req.threshold().map(|x| x as f32))
-            .select(lancedb::query::Select::Columns(filter_embeddings(&schema)));
-
-        if let Some(filter) = req.filter() {
-            query = query.only_if(filter.clone().into_inner()?);
-        }
-
-        execute_query(&self.build_query(query))
+        self.search(&req, filter_embeddings(&schema))
             .await?
             .into_iter()
-            .enumerate()
-            .map(|(i, value)| {
+            .map(|value| {
                 Ok(VectorSearchResult {
-                    score: match value.get("_distance") {
-                        Some(Value::Number(distance)) => distance.as_f64().unwrap_or_default(),
-                        _ => 0.0,
-                    },
-                    id: match value.get(self.id_field.as_str()) {
-                        Some(Value::String(id)) => id.clone(),
-                        _ => format!("unknown{i}"),
-                    },
-                    document: serde_json::from_value(value).map_err(VectorStoreError::JsonError)?,
+                    score: distance(&value, &self.id_field)?,
+                    id: self.row_id(&value)?,
+                    document: rig_core::json_utils::from_value(&value)
+                        .map_err(VectorStoreError::JsonError)?,
                 })
             })
             .collect()
     }
 
-    /// Like [`LanceDbVectorIndex::top_n`] but projects only the id column,
-    /// returning an empty id when the column is absent or non-textual.
+    /// Like [`LanceDbVectorIndex::top_n`] but projects only the id column.
     async fn top_n_ids(
         &self,
         req: VectorSearchRequest<LanceDBFilter>,
     ) -> Result<Vec<VectorSearchIdResult>, VectorStoreError> {
-        let prompt_embedding = self.model.embed_text(req.query()).await?;
-
-        let mut query = self
-            .table
-            .query()
-            .select(lancedb::query::Select::Columns(vec![self.id_field.clone()]))
-            .nearest_to(prompt_embedding.vec.clone())
-            .map_err(VectorStoreError::datastore)?
-            .distance_range(None, req.threshold().map(|x| x as f32))
-            .limit(req.samples() as usize);
-
-        if let Some(filter) = req.filter() {
-            query = query.only_if(filter.clone().into_inner()?);
-        }
-
-        execute_query(&self.build_query(query))
+        self.search(&req, vec![self.id_field.clone()])
             .await?
             .into_iter()
             .map(|value| {
                 Ok(VectorSearchIdResult {
-                    score: match value.get("distance") {
-                        Some(Value::Number(distance)) => distance.as_f64().unwrap_or_default(),
-                        _ => 0.0,
-                    },
-                    id: match value.get(self.id_field.as_str()) {
-                        Some(Value::String(id)) => id.clone(),
-                        _ => "".to_string(),
-                    },
+                    score: distance(&value, &self.id_field)?,
+                    id: self.row_id(&value)?,
                 })
             })
             .collect()

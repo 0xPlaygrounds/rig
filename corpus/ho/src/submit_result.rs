@@ -1,17 +1,13 @@
-//! Plugin corpus (held-out): H07: Structured result tool that ends the turn
-//! (spec `H07-submit-result.md`).
+//! A structured result tool that ends the turn. `--schema FILE` (or `/schema FILE`) offers the
+//! top-level agent the `submit_result` tool, whose parameters are the JSON schema in `FILE`; a
+//! schema whose root is no object refuses the start. A valid call is the run's result
+//! ([`SubmitResult`]): once the other calls of its reply settled, the turn ends answered with the
+//! JSON itself, which `--print` prints alone, on one line.
 //!
-//! `--schema FILE` (or `/schema FILE`) offers the top-level agent the
-//! `submit_result` tool, whose parameters are the JSON schema in `FILE`; a
-//! schema whose root is no object refuses the start. A valid call is the
-//! run's result ([`SubmitResult`]): once the other calls of its reply
-//! settled, a Gate system answers the turn's next model call with the JSON
-//! itself, so nothing more is sent and the turn ends answered with it, which
-//! `--print` prints alone, on one line. The stack refuses arguments that do
-//! not fit the schema with its complaints, and the third such call fails the run
-//! (exit code 2). A turn that ends in text gets one reminder; the second
-//! such end fails the run (exit code 3). In the terminal view the answer is
-//! a JSON block and the tool goes after one success, unless `--schema-keep`.
+//! Arguments that do not fit the schema are refused with the schema's complaints, and the third
+//! such call fails the run (exit code 2). A turn that ends in text gets one reminder; the second
+//! such end fails the run (exit code 3). In the terminal view the answer is a JSON block and the
+//! tool goes after one success, unless `--schema-keep`.
 
 use std::path::{Path, PathBuf};
 
@@ -199,7 +195,7 @@ fn load_startup_schema(
         Ok(schema) => offer(&mut commands, tool.entity, schema),
         Err(why) => {
             notices.write(Notice::error(None, format!("--{SCHEMA}: {why}")));
-            commands.trigger(Exit(ExitReason::Failed(INVALID_EXIT)));
+            commands.trigger(Exit(ExitReason::Failed(FailCode::or_failure(INVALID_EXIT))));
         }
     }
 }
@@ -297,7 +293,7 @@ fn judge(
         let why = format!("{MAX_INVALID} invalid {TOOL} calls; the last: {errors}");
         commands.entity(turn).insert(TurnOutcome::Failed(why));
         if !tool.interactive {
-            commands.trigger(Exit(ExitReason::Failed(INVALID_EXIT)));
+            commands.trigger(Exit(ExitReason::Failed(FailCode::or_failure(INVALID_EXIT))));
         }
     }
 }
@@ -330,7 +326,9 @@ fn remind(
         let why = format!("The turn ended twice without calling {TOOL}.");
         notices.write(Notice::error(agent, why));
         if !tool.interactive {
-            commands.trigger(Exit(ExitReason::Failed(NO_RESULT_EXIT)));
+            commands.trigger(Exit(ExitReason::Failed(FailCode::or_failure(
+                NO_RESULT_EXIT,
+            ))));
         }
     }
 }

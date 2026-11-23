@@ -1,13 +1,10 @@
-//! Plugin corpus: 51. Git status-line item (spec `51-git-status-item.md`).
-//!
-//! The terminal view's status line shows the current git branch and how
-//! many files are changed, such as `main ±3`: refreshed at startup, after
-//! every turn, and after every call of a tool that may change files, at
-//! most once a second, with git run off the main thread. A detached HEAD
-//! shows its short commit, and a rebase under way `REBASE`; outside a
-//! repository the item is hidden. Its place is the `[git_status]` table of
-//! the settings. Without the terminal view (the `tui` feature off, or a run
-//! another front takes) the plugin does nothing: no item and no git.
+//! Git status-line item. The terminal view's status line shows the current git branch and how
+//! many files are changed, such as `main ±3`: refreshed at startup, after every turn, and after
+//! every call of a tool that may change files, at most once a second, with git run off the main
+//! thread. A detached HEAD shows its short commit, and a rebase under way `REBASE`; outside a
+//! repository the item is hidden. Its place is the `[git_status]` table of the settings.
+//! Without the terminal view (the `tui` feature off, or a run another front takes) the plugin
+//! does nothing: no item and no git.
 
 #[cfg(feature = "tui")]
 mod item;
@@ -22,7 +19,14 @@ use rig_harness::prelude::*;
 pub struct GitStatusItemPlugin;
 
 impl Plugin for GitStatusItemPlugin {
-    fn build(&self, _app: &mut App) {}
+    /// Reads the table whatever front takes the run, so a build describing
+    /// itself checks it.
+    fn build(&self, app: &mut App) {
+        #[cfg(feature = "tui")]
+        app.add_setting::<GitStatusSettings>("git_status");
+        #[cfg(not(feature = "tui"))]
+        let _ = app;
+    }
 
     /// Once every plugin offered its front, so the run's is known.
     fn finish(&self, app: &mut App) {

@@ -1,17 +1,14 @@
-//! SN-18: vim-style modal editing in the terminal view's input box.
+//! Vim-style modal editing in the terminal view's input box. The input starts in insert mode
+//! (`[vim] start = "normal"` in `settings.toml` changes that), where keys type as without the
+//! plugin. Esc goes to normal mode, where keys run through [`editor::Editor`] (motions, counts,
+//! operators, registers, undo and a visual selection), written back into the main input
+//! ([`MainInput`]).
 //!
-//! The input starts in insert mode (`[vim] start = "normal"` in
-//! `settings.toml` changes that), where keys type as without the plugin.
-//! A filter in [`InputSystems::Filter`] reads each key with the input the
-//! keys before it left: Esc goes to normal mode, where it takes the
-//! keys and runs them through [`editor::Editor`] (motions, counts,
-//! operators, registers, undo and a visual selection), written back into
-//! the main input ([`MainInput`]). While a picker, a question or a panel has the keys
-//! ([`InputContext`]), it leaves them alone. Enter stays the view's key,
-//! so it sends in either mode. Twice within [`DOUBLE_ESC`] in normal mode
-//! with an empty input, the Esc goes on to the view, doing what it does
-//! without the plugin. The mode shows in the status line, and `/vim on|off`
-//! toggles it, kept in [`PluginData::user`] for every session.
+//! While a picker, a question or a panel has the keys ([`InputContext`]), the plugin leaves
+//! them alone. Enter stays the view's key, so it sends in either mode. Twice within
+//! [`DOUBLE_ESC`] in normal mode with an empty input, the Esc goes on to the view, doing what
+//! it does without the plugin. The mode shows in the status line, and `/vim on|off` toggles it,
+//! kept in [`PluginData::user`] for every session.
 
 pub mod editor;
 
@@ -95,9 +92,7 @@ pub struct VimPlugin;
 
 impl Plugin for VimPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<TuiPlugin>() {
-            app.add_plugins(TuiPlugin);
-        }
+        rig_harness::load::<TuiPlugin>(app, "rig-tui", "");
         app.add_setting::<VimSettings>("vim");
         let start = match app.world().get_resource::<VimSettings>().map(|s| s.start) {
             Some(StartMode::Normal) => Mode::Normal,

@@ -1,14 +1,10 @@
-//! Refuse edits to files the agent has not read (spec `H01-read-before-edit.md`).
-//!
-//! Each agent keeps, in its saved [`ReadFiles`], the content hash of every
-//! file it last read with a successful `read`, or changed with a
-//! successful `edit` or `write`: the hashes those tools published
-//! ([`FilesRead`], [`FileChange::after`]) of the bytes they read or wrote.
-//! A Gate system judges each `edit`, and each `write` over an existing
-//! file, when it is about to run, by the file its footprint names: a file
-//! the agent never read, or one whose content changed on disk since, is
-//! refused, and the model reads why. A conversation compacted into a
-//! summary forgets what its agent read.
+//! Refuse edits to files the agent has not read. Each agent keeps, in its saved [`ReadFiles`], the
+//! content hash of every file it last read with a successful `read`, or changed with a successful
+//! `edit` or `write`: the hashes those tools published ([`FilesRead`], [`FileChange::after`]) of
+//! the bytes they read or wrote. Each `edit`, and each `write` over an existing file, is judged by
+//! the file its footprint names when it is about to run: a file the agent never read, or one whose
+//! content changed on disk since, is refused, and the model reads why. A conversation compacted
+//! into a summary forgets what its agent read.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -16,6 +12,7 @@ use std::path::Path;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::{FileChange, FilesChanged, FilesRead, content_hash};
 use rig_harness::rig_memory::summary_in;
+use rig_tools::workspace::{Local, Workspace};
 use rig_tools::{Edit, Read, Write};
 
 /// The content hash of each file the agent last read or wrote itself, by
@@ -86,7 +83,7 @@ fn unread(read: Option<&ReadFiles>, path: &Path) -> Option<String> {
             "Read {shown} first: it has not been read in this conversation."
         ));
     };
-    let now = rig_tools::fs::read_text(&path.to_string_lossy())
+    let now = <dyn Workspace>::read_text(&Local, path)
         .ok()
         .map(|text| content_hash(text.as_bytes()).0);
     (now.as_ref() != Some(seen))

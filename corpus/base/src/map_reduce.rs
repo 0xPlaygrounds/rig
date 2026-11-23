@@ -19,6 +19,7 @@ use std::path::{Path, PathBuf};
 
 use rig_basics::subagents::{SpawnSubagent, SpawnedAgent};
 use rig_harness::prelude::*;
+use rig_harness::rig_ecs::session_log::Never;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -87,9 +88,7 @@ pub struct MapReducePlugin;
 
 impl Plugin for MapReducePlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<rig_basics::subagents::SubagentsPlugin>() {
-            app.add_plugins(rig_basics::subagents::SubagentsPlugin);
-        }
+        rig_harness::load::<rig_basics::subagents::SubagentsPlugin>(app, "rig-basics", "");
         let options = ToolOptions {
             footprint: Some(Touches::Writes(Scope::Anything)),
         };
@@ -185,7 +184,7 @@ pub struct MapWorker {
 /// interrupted, but brings back a worker the exit cut off mid-turn, which
 /// would carry on with no job and no file rule, so this plugin retires it.
 #[derive(Component, Reflect, Default)]
-#[reflect(Component, Saved, Default)]
+#[reflect(Component, Saved(Never), Default)]
 pub struct WasMapWorker;
 
 /// The arguments of a `map_files` call.
@@ -244,7 +243,7 @@ fn on_map(
         tools.iter().any(|def| def.0.name.as_str() == name)
             && access
                 .get(called.agent)
-                .is_ok_and(|access| access.allows(name))
+                .is_ok_and(|access| access.keeps(name))
     };
     let tools = |names: &[&str]| {
         let names = names.iter().filter(|name| has(name));
@@ -465,8 +464,10 @@ fn on_worker_end(
             .final_answer()
             .ok_or_else(|| "ended without a final message".to_owned()),
         TurnOutcome::Failed(why) => Err(short(why)),
-        TurnOutcome::Stopped(None) => Err("stopped".to_owned()),
-        TurnOutcome::Stopped(Some(why)) => Err(format!("stopped: {why}")),
+        TurnOutcome::Stopped(stop) => match stop.cause() {
+            StopCause::User => Err("stopped".to_owned()),
+            cause => Err(format!("stopped: {cause}")),
+        },
     };
     if let Some(answer) = map.settle(job, path.clone(), result, &mut commands) {
         decision.decide(Decider::plugin("map-reduce"), answer);

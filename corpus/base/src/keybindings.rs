@@ -1,22 +1,19 @@
-//! Plugin corpus: 53. Custom key bindings (spec `53-keybindings.md`).
-//!
-//! `RIG_HOME/keys.toml` binds keys of the terminal view's input:
+//! Custom key bindings. `RIG_HOME/keys.toml` binds keys of the terminal view's input:
 //!
 //! ```toml
 //! "alt+m" = { cycle_model = ["deepseek/deepseek-flash", "deepseek/deepseek-v4-pro"] }
 //! "ctrl+g" = { command = "/compact" }
 //! "ctrl+t" = { insert = "Think step by step." }
-//! "ctrl+o" = { send = "Go on.", label = "Continue" }
+//! "alt+c" = { send = "Go on.", label = "Continue" }
 //! "ctrl+e" = { editor = true, override = true }
 //! ```
 //!
-//! Each is a `rig_tui` [`KeyBinding`] in the input's scope. One whose keys
-//! another binding takes, such as the view's own `ctrl+e` (the end of the
-//! line), replaces it only with `override = true`; otherwise it is refused
-//! at startup with a notice naming the binding in the way. Other plugins
-//! bind keys with `rig_tui`'s `add_key_binding`, and `/keys` lists every
-//! binding with the plugin it came from. The file is read when the app is
-//! built, so `/reload` takes a change.
+//! Each is a `rig_tui` [`KeyBinding`] in the input's scope. One whose keys another binding
+//! takes, such as the view's own `ctrl+e` (the end of the line), replaces it only with
+//! `override = true`; otherwise it is refused at startup with a notice naming the binding in
+//! the way. Other plugins bind keys with `rig_tui`'s `add_key_binding`, and `/keys` lists every
+//! binding with the plugin it came from. The file is read when the app is built, so `/reload`
+//! takes a change.
 
 use std::path::PathBuf;
 
@@ -44,9 +41,7 @@ struct Draft(PathBuf, Option<Entity>);
 
 impl Plugin for KeyBindingsPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<TuiPlugin>() {
-            app.add_plugins(TuiPlugin);
-        }
+        rig_harness::load::<TuiPlugin>(app, "rig-tui", "");
         app.init_resource::<RigHome>()
             .add_command(
                 "keys",
@@ -229,6 +224,7 @@ fn cycle_model(
             commands.trigger(SetModel {
                 entity: agent,
                 model: model.clone(),
+                kind: ChoiceKind::ByUser,
             });
         }
     }

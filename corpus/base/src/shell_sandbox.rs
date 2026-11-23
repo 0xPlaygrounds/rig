@@ -1,12 +1,9 @@
-//! Plugin corpus: 04. Sandboxed shell (spec `04-shell-sandbox.md`).
-//!
-//! [`ShellSandboxPlugin`] starts every child process, and so every `shell`
-//! command, in a sandbox, by setting the app's [`Processes`] launcher:
-//! `bwrap` on Linux, `sandbox-exec` on macOS. The project directory and
-//! `$TMPDIR` are writable, the rest of the file system read-only, the home
-//! directory hidden but for an allowlist, and the network off unless
-//! `/sandbox net on` allowed it for the session. Without a sandbox program,
-//! `shell` calls are refused.
+//! Sandboxed shell. [`ShellSandboxPlugin`] starts every child process, and so every `shell`
+//! command, in a sandbox, by setting the app's [`Processes`] launcher: `bwrap` on Linux,
+//! `sandbox-exec` on macOS. The project directory and `$TMPDIR` are writable, the rest of
+//! the file system read-only, the home directory hidden but for an allowlist, and the
+//! network off unless `/sandbox net on` allowed it for the session. Without a sandbox
+//! program, `shell` calls are refused.
 
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};

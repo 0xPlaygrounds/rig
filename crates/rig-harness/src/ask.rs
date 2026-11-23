@@ -10,10 +10,8 @@
 //! Gate after [`AskSystems`], so a line the user typed wins. A plugin asks only
 //! when [`Answerers::can_answer`], else it applies its own policy, such as
 //! refusing. While a question that takes text is open, the user's next line to
-//! the agent answers it, unless the question is [`inline`](Ask::inline). The
-//! plugin guide's
-//! [questions section](crate::plugin_guide#asking-the-user-questions-and-pickers)
-//! has the rest.
+//! the agent answers it, unless the question is [`inline`](Ask::inline).
+//! Choices from a list are a [`Picker`](crate::pick::Picker) instead.
 //!
 //! ```
 //! use rig_harness::prelude::*;
@@ -202,6 +200,43 @@ impl Ask {
         self.multiple = true;
         self
     }
+
+    /// Whether `answer` answers it, the rule every front applies: each
+    /// choice is one it offers, and it takes one choice, or text alone when
+    /// it takes text ([`Ask::free_text`]), unless it takes several
+    /// ([`Ask::multiple`]), when any number does.
+    ///
+    /// # Errors
+    ///
+    /// [`AnswerRefused`] says what is wrong with `answer`.
+    pub fn check(&self, answer: &Answer) -> Result<(), AnswerRefused> {
+        let offered = |id: &&String| self.choices.iter().any(|choice| &choice.id == *id);
+        if let Some(id) = answer.choices.iter().find(|id| !offered(id)) {
+            return Err(AnswerRefused::NotOffered(id.clone()));
+        }
+        match answer.choices.len() {
+            _ if self.multiple => Ok(()),
+            1 => Ok(()),
+            0 if answer.text.is_some() && self.free_text => Ok(()),
+            0 => Err(AnswerRefused::NoChoice),
+            _ => Err(AnswerRefused::SeveralChoices),
+        }
+    }
+}
+
+/// Why an [`Answer`] does not answer an [`Ask`] ([`Ask::check`]).
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
+pub enum AnswerRefused {
+    /// It takes a choice, by this id, that the question does not offer.
+    #[error("the question offers no choice `{0}`")]
+    NotOffered(String),
+    /// It takes no choice, and no text the question takes.
+    #[error("the answer needs a choice")]
+    NoChoice,
+    /// It takes several choices for a question that takes one.
+    #[error("the question takes one choice")]
+    SeveralChoices,
 }
 
 /// How an [`Ask`] was answered: the choices taken and the text typed,
@@ -253,7 +288,7 @@ impl Answer {
     /// refused.
     pub fn of(outcome: &Outcome) -> Option<Self> {
         match &outcome.0 {
-            Ok(EffectOutcome::Custom { payload }) => Self::deserialize(payload).ok(),
+            Ok(EffectOutcome::Custom { payload }) => rig_core::json_utils::from_value(payload).ok(),
             _ => None,
         }
     }

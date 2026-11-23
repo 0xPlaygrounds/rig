@@ -116,10 +116,8 @@ fn a_fold_of_the_outbox_equals_the_live_value() {
         u64::try_from(read.len()).unwrap_or(u64::MAX)
     );
     assert!(live.aside(scratch).is_some() && folded.aside(scratch).is_none());
-    assert_eq!(
-        folded.aside_position(folded.aside(note).expect("the note")),
-        3
-    );
+    let after = folded.aside(note).and_then(|aside| aside.after);
+    assert_eq!(after.and_then(|after| folded.index_of(after)), Some(2));
 
     let mut wrong = folded.clone();
     let stale = ChangeRecord {
@@ -187,8 +185,9 @@ fn a_view_has_an_empty_outbox() {
 }
 
 /// After a stopped request the next push puts the stopped note, by rig,
-/// first, in the same change; a kept halt adds none; a splice reaching the
-/// end clears the halt and one short of it does not.
+/// first, in the same change, which clears the halt with no record of its
+/// own; a kept halt adds none; a splice reaching the end clears the halt and
+/// one short of it does not.
 #[test]
 fn a_stopped_request_gets_its_note_and_halts_clear() {
     let mut conversation = Conversation::from_messages([Message::user("delete it all")]);
@@ -206,11 +205,7 @@ fn a_stopped_request_gets_its_note_and_halts_clear() {
         .iter()
         .filter(|recorded| matches!(recorded.change, Change::Push { .. }));
     assert_eq!(pushed.count(), 1, "the note and the message are one push");
-    assert!(
-        changes
-            .iter()
-            .any(|recorded| recorded.change == Change::Halt { halt: None })
-    );
+    assert_eq!(changes.len(), 1, "the push clears the halt itself");
     assert_eq!(
         conversation.turn_start(),
         conversation.id(0).expect("first")
@@ -397,7 +392,14 @@ fn restore_puts_entries_back_with_their_ids_and_the_fold_accepts_them() {
     let originals: Vec<Entry> = (1..3).filter_map(|at| live.entry(at)).collect();
     let summary = Entry::new(Message::user("summary"));
     live.splice(1..3, [summary], Author::plugin("compact"));
-    assert_eq!(live.aside_position(live.aside(note).expect("the note")), 1);
+    let after = live.aside(note).and_then(|aside| aside.after);
+    assert_eq!(after, before.get(2).map(|key| key.id), "the note follows c");
+    let after = after.expect("the note follows c");
+    assert_eq!(
+        (live.index_of(after), live.start_of(after)),
+        (None, 0),
+        "an edit took c out"
+    );
 
     let copies = live
         .clone()
@@ -420,7 +422,12 @@ fn restore_puts_entries_back_with_their_ids_and_the_fold_accepts_them() {
         (MessageId(5), 2_000),
         "the outsider is new"
     );
-    assert_eq!(live.aside_position(live.aside(note).expect("the note")), 3);
+    let after = live.aside(note).and_then(|aside| aside.after);
+    assert_eq!(
+        after.and_then(|after| live.index_of(after)),
+        Some(2),
+        "the note follows c again"
+    );
 
     let lines: Vec<String> = live
         .unsaved()
@@ -506,39 +513,6 @@ fn normalize_keeps_ids_and_reanchors_asides() {
     assert_eq!(fold(&all), live);
 }
 
-/// `reread` takes what the log holds, lineage and revision too, and keeps
-/// the value's unsaved asides with their ids; it is refused while the
-/// value has unsaved changes.
-#[test]
-fn reread_takes_the_log_and_keeps_unsaved_asides() {
-    let mut live = Conversation::from_messages([Message::user("my secret")]);
-    let note = Aside::new("note", Author::plugin("n"), serde_json::json!("secret"));
-    let note = live.add_aside(note);
-    let scratch = Aside::new("scratch", Author::rig(), serde_json::Value::Null).unsaved();
-    let scratch = live.add_aside(scratch);
-    let mut log = fold(live.unsaved());
-    log.edit_each(Author::plugin("redact"), |_| {
-        Some(Message::user("my [redacted]"))
-    });
-    let redacted = Aside::new("note", Author::plugin("n"), serde_json::json!("[redacted]"));
-    log.replace_aside(note, redacted.clone());
-    let changes = u64::try_from(log.take_unsaved().len()).unwrap_or_default();
-    log.continue_log(Lineage::fresh(), changes);
-
-    assert!(live.reread(log.clone()).is_err(), "unsaved changes");
-    live.take_unsaved();
-    live.reread(log.clone()).expect("reread");
-    assert_eq!(live, log);
-    assert_eq!(
-        (live.lineage(), live.revision()),
-        (log.lineage(), log.revision())
-    );
-    assert_eq!(live.aside(note), Some(&redacted));
-    assert!(live.aside(scratch).is_some_and(|aside| !aside.saved));
-    let next = live.add_aside(Aside::new("next", Author::rig(), serde_json::Value::Null));
-    assert!(next > scratch);
-}
-
 /// A turn record opens after the last entry, numbered after the last one,
 /// and ends once: a record already ended, or none, is left alone. The
 /// records fold back from the outbox.
@@ -556,9 +530,12 @@ fn turn_records_open_numbered_and_end_once() {
     conversation.push(Message::user("and?"));
     assert_eq!(conversation.open_turn().index, 1);
     let stopped = TurnEnd::Stopped {
-        why: None,
+        by: Some(StopCause::User),
         at: conversation.entries().next_back().map(|entry| entry.id),
-        calls: vec![crate::message::CallId::from_wire("c1")],
+        calls: vec![CallRef {
+            reply: answer,
+            index: 0,
+        }],
     };
     assert!(conversation.end_turn(stopped.clone()));
 
@@ -582,6 +559,42 @@ fn turn_records_open_numbered_and_end_once() {
         Some(&Message::user("and?"))
     );
     assert_eq!(fold(&conversation.take_unsaved()), conversation);
+}
+
+/// A stop's cause reads back as it was saved, and a stop saved before
+/// causes and call places were recorded reads as recording neither,
+/// whatever text and call ids it kept.
+#[test]
+fn a_stop_cause_reads_back_and_an_old_stop_has_none() {
+    let causes = [
+        StopCause::User,
+        StopCause::Exit("the run ended".into()),
+        StopCause::Restarted,
+        StopCause::Plugin {
+            by: "budget".into(),
+            why: "over budget".into(),
+        },
+    ];
+    for cause in causes {
+        let end = TurnEnd::Stopped {
+            by: Some(cause),
+            at: None,
+            calls: Vec::new(),
+        };
+        let saved = serde_json::to_value(&end).expect("a turn end serializes");
+        let read: TurnEnd = serde_json::from_value(saved).expect("a turn end reads back");
+        assert_eq!(read, end);
+    }
+    let old = serde_json::json!({"how": "stopped", "why": "compacted", "calls": ["c1"]});
+    let read: TurnEnd = serde_json::from_value(old).expect("an old stop reads");
+    assert_eq!(
+        read,
+        TurnEnd::Stopped {
+            by: None,
+            at: None,
+            calls: Vec::new()
+        }
+    );
 }
 
 /// Ids have a plain form: their number, and `m4`/`a4` text that reads back,

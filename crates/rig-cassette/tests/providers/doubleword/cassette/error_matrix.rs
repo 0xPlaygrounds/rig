@@ -1,24 +1,13 @@
 //! Provider-error matrix for Doubleword chat completions.
 //!
-//! Three stable failure classes—unknown model, invalid credentials and an
-//! out-of-range sampling parameter—are crossed with blocking and streaming
-//! transports. Every cell requires a 4xx status, a preserved provider body,
-//! and a recorded JSON error envelope, preventing a generic transport string
-//! from replacing the actionable upstream diagnostic.
+//! Three stable failure classes, an invalid key (403), an unknown model (404) and
+//! `temperature: 100` (400), are crossed with blocking and streaming transports. Every cell
+//! requires the 4xx status, the preserved provider body and its nested `error` envelope, so a
+//! generic transport string cannot replace the actionable upstream diagnostic.
 //!
-//! | failure | blocking | streaming | envelope |
-//! |---|---|---|---|
-//! | invalid key | 403 | 403 | nested `error` |
-//! | unknown model | 404 | 404 | nested `error` |
-//! | `temperature: 100` | 400 | 400 | nested `error` |
-//!
-//! The out-of-range cells first recorded a flat top-level `message` / `type`
-//! / `code` envelope; Doubleword now answers them with the nested envelope
-//! too, so every failure class shares one shape.
-//!
-//! Streaming status failures open a rig stream successfully and surface the
-//! preserved `ProviderError` as its first in-band item. The matrix treats
-//! that as the streaming contract and proves the body/status match blocking.
+//! A streaming status failure opens a rig stream successfully and surfaces the preserved
+//! `ProviderError` as its first in-band item. The matrix treats that as the streaming contract
+//! and proves the body and status match blocking.
 
 use futures::StreamExt;
 use rig::error::ErrorReport;

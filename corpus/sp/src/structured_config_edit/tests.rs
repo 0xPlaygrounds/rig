@@ -7,7 +7,7 @@ use rig_core::test_utils::MockCompletionModel;
 use rig_harness::prelude::*;
 use rig_harness_test_support::{
     MemoryStore, ToolOutputs, app_on, calls, connect, log_tool_outputs, reply, run_until,
-    start_call,
+    scratch_dir, start_call,
 };
 use serde_json::json;
 
@@ -30,9 +30,7 @@ const BROKEN: &str = "name: demo\njobs:\n  test: run: x\n";
 /// A directory of its own for `name`, beside the test binary, holding the
 /// fixtures.
 fn project(name: &str) -> PathBuf {
-    let exe = std::env::current_exe().unwrap_or_default();
-    let dir = exe.with_file_name(name);
-    std::fs::remove_dir_all(&dir).ok();
+    let dir = scratch_dir(name);
     std::fs::create_dir_all(dir.join(".github")).ok();
     for (file, text) in [
         ("Cargo.toml", CARGO),
@@ -92,11 +90,13 @@ fn values_change_by_key_path_and_nothing_else_moves() {
         .init_resource::<ToolOutputs>()
         .add_observer(log_tool_outputs)
         .add_plugins((AgentPlugin, StructuredConfigEditPlugin));
-    let mut agent = app.world_mut().spawn(Agent);
-    if let Some(connection) = connect(&model) {
-        let choice = ModelChoice(connection.spec.reference());
-        agent.insert((connection, choice));
-    }
+    let agent = match connect(&model) {
+        Some(connection) => {
+            let choice = ModelChoice(connection.spec.reference());
+            spawn_root(app.world_mut(), (connection, choice))
+        }
+        None => spawn_root(app.world_mut(), ()),
+    };
     let agent = agent.id();
     app.finish();
     app.update();
@@ -171,7 +171,7 @@ fn a_read_only_mode_refuses_config_set_as_it_refuses_edit_and_lets_config_get_re
     app.finish();
     app.update();
     let world = app.world_mut();
-    let agent = world.spawn((Agent, PlanMode)).id();
+    let agent = spawn_root(world, PlanMode).id();
     let edit = json!({ "path": "Cargo.toml", "edits": [{ "old_text": "1.0.100", "new_text": "1.0.200" }] });
     let set =
         json!({ "path": "Cargo.toml", "key": "dependencies.serde.version", "value": "1.0.200" });

@@ -62,6 +62,9 @@ pub struct AgentRunner<O = ()> {
     /// Typed context cloned freshly for every tool dispatch.
     pub(crate) tool_context: ToolContext,
     pub(crate) concurrency: usize,
+    /// Whether a tool call waits for the earlier calls of its reply it
+    /// conflicts with ([`ordered_by_footprint`](Self::ordered_by_footprint)).
+    pub(crate) ordered: bool,
     pub(crate) error_usage: Option<Arc<Mutex<Usage>>>,
     pub(crate) output: O,
 }
@@ -95,6 +98,7 @@ impl AgentRunner {
             tool_server_handle: agent.tool_server_handle.clone(),
             tool_context: ToolContext::new(),
             concurrency: 1,
+            ordered: false,
             error_usage: None,
             output: (),
         }
@@ -167,12 +171,6 @@ impl<O> AgentRunner<O> {
     /// ([`AgentBuilder::conversation`](super::AgentBuilder::conversation)).
     pub fn conversation(mut self, log: impl Into<String>) -> Self {
         self.config.conversation = Some(log.into());
-        self
-    }
-
-    /// This run neither loads nor saves a conversation.
-    pub fn without_memory(mut self) -> Self {
-        self.config.memory = None;
         self
     }
 
@@ -274,12 +272,6 @@ impl<O> AgentRunner<O> {
         self
     }
 
-    /// Remove the agent's configured maximum token count for this run.
-    pub fn without_max_tokens(mut self) -> Self {
-        self.config.spec_mut().max_tokens = None;
-        self
-    }
-
     /// Shallow-merge object fields into the provider-specific parameters for
     /// this run. Later fields win. A non-object baseline is replaced by the
     /// supplied object. A later completion-call hook patch has final
@@ -297,22 +289,6 @@ impl<O> AgentRunner<O> {
                 }
                 _ => params,
             });
-        self
-    }
-
-    /// Replace all provider-specific parameters for this run. A later
-    /// completion-call hook patch has final precedence: object values
-    /// shallow-merge, while a non-object on either side causes wholesale
-    /// replacement by the hook value.
-    pub fn replace_additional_params(mut self, params: serde_json::Value) -> Self {
-        self.config.spec_mut().additional_params = Some(params);
-        self
-    }
-
-    /// Remove the agent's configured provider-specific parameters for this run.
-    /// A later completion-call hook may still supply its own parameters.
-    pub fn without_additional_params(mut self) -> Self {
-        self.config.spec_mut().additional_params = None;
         self
     }
 
@@ -380,12 +356,6 @@ impl<O> AgentRunner<O> {
         self
     }
 
-    /// Remove the agent's configured tool-choice policy for this run.
-    pub fn without_tool_choice(mut self) -> Self {
-        self.config.spec_mut().tool_choice = None;
-        self
-    }
-
     /// Opt in or out of recording sensitive request, response, and tool content
     /// on GenAI telemetry spans for this run.
     ///
@@ -429,6 +399,25 @@ impl<O> AgentRunner<O> {
         self
     }
 
+    /// Order the tool calls of one reply by what each touches, for this run:
+    /// a call waits to start until every earlier call of its reply that it
+    /// conflicts with has settled ([`Touches::must_wait`]), and a waiting
+    /// call holds no [`tool_concurrency`](Self::tool_concurrency) slot, so
+    /// later calls that conflict with nothing unsettled before them start
+    /// beside it. A call's footprint is what its tool says of it
+    /// ([`Tool::footprint`](crate::tool::Tool::footprint)), read from the
+    /// arguments the model sent, so a dispatch hook that rewrites them does
+    /// not change whom the call waits for. A tool that cannot say may change
+    /// anything ([`Touches::default`]). Off by default: calls start in call order
+    /// as slots free up. The setting is not saved with the run.
+    ///
+    /// [`Touches::must_wait`]: rig_core::tool::Touches::must_wait
+    /// [`Touches::default`]: rig_core::tool::Touches::default
+    pub fn ordered_by_footprint(mut self, ordered: bool) -> Self {
+        self.ordered = ordered;
+        self
+    }
+
     /// Set the retry budget for invalid tool-call recovery. Invalid tool-call
     /// retries also consume the total model-call budget.
     pub fn max_invalid_tool_call_retries(mut self, retries: usize) -> Self {
@@ -455,6 +444,7 @@ impl<O> AgentRunner<O> {
             tool_server_handle,
             tool_context,
             concurrency,
+            ordered,
             error_usage,
             output: replaced,
         } = self;
@@ -465,6 +455,7 @@ impl<O> AgentRunner<O> {
             tool_server_handle,
             tool_context,
             concurrency,
+            ordered,
             error_usage,
             output,
         };
@@ -497,14 +488,9 @@ impl AgentRunner {
         let usage = Arc::new(Mutex::new(Usage::default()));
         self.error_usage = Some(usage.clone());
         let result = self.run_under(ambient).await;
-        let observed = result.as_ref().map_or_else(
-            |_| {
-                *usage
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-            },
-            |response| response.usage,
-        );
+        let observed = result
+            .as_ref()
+            .map_or_else(|_| *crate::lock(&usage), |response| response.usage);
         (result, observed)
     }
 
@@ -532,11 +518,7 @@ impl AgentRunner {
     /// The run-scoped hook context: minted once per run, shared by every
     /// hook event.
     pub(crate) fn hook_context(&self, is_streaming: bool) -> HookContext {
-        HookContext::new(
-            is_streaming,
-            self.config.name.clone(),
-            self.config.handlers.clone(),
-        )
+        HookContext::new(is_streaming, self.config.handlers.clone())
     }
 
     /// Drive the agent loop to completion, returning the aggregated
@@ -555,42 +537,22 @@ impl AgentRunner {
     }
 
     async fn run_under(self, ambient: tracing::Span) -> Result<PromptResponse, PromptError> {
-        let (agent_span, created_agent_span) = self.open_agent_span(ambient);
-        let hook_ctx = self.hook_context(false);
-        let run = self.build_run();
-
-        // Instrument the fold under the captured agent span, not the poller's span.
-        let record_telemetry_content = self.config.record_telemetry_content;
         // Boxed, so the futures awaiting the run stay small.
-        let mut driver = Box::pin(drive_agent(
-            self,
-            UnaryTurnSource::new(record_telemetry_content),
-            run,
-            agent_span.clone(),
-            created_agent_span,
-            hook_ctx,
-        ));
-        let fold = async move {
-            let mut response = None;
-            while let Some(item) = driver.next().await {
-                match item {
-                    Ok(DriveItem::Done(done)) => response = Some(done),
-                    Ok(DriveItem::Surfaced(_) | DriveItem::Projected(_)) => {}
-                    Err(err) => {
-                        // Drain through termination so engine teardown completes
-                        // rather than being dropped at the error yield.
-                        while driver.next().await.is_some() {}
-                        return Err(err);
-                    }
+        let mut driver = Box::pin(drive_agent(self, UnaryTurnSource::default(), ambient));
+        let mut response = None;
+        while let Some(item) = driver.next().await {
+            match item {
+                Ok(DriveItem::Done(done)) => response = Some(done),
+                Ok(DriveItem::Surfaced(_) | DriveItem::Live(_) | DriveItem::Projected(_)) => {}
+                Err(err) => {
+                    // Drain through termination so engine teardown completes
+                    // rather than being dropped at the error yield.
+                    while driver.next().await.is_some() {}
+                    return Err(err);
                 }
             }
-            response.ok_or_else(|| {
-                PromptError::Provider(ProviderError::Response(
-                    "agent run ended without producing a final response".to_string(),
-                ))
-            })
-        };
-        fold.instrument(agent_span).await
+        }
+        response.ok_or_else(no_final_response)
     }
 }
 
@@ -602,6 +564,13 @@ impl std::future::IntoFuture for AgentRunner {
     fn into_future(self) -> Self::IntoFuture {
         Box::pin(self.run())
     }
+}
+
+/// The error of a run that ended without a final response.
+pub(crate) fn no_final_response() -> PromptError {
+    PromptError::Provider(ProviderError::Response(
+        "agent run ended without producing a final response".to_string(),
+    ))
 }
 
 #[cfg(test)]

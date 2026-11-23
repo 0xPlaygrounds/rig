@@ -5,7 +5,11 @@ use rig_harness::rig_core::completion::message::{
 };
 use rig_harness::rig_core::conversation::Author;
 use rig_harness::rig_core::message::ToolName;
+use rig_harness::rig_tools::process::Launcher;
+use rig_harness::rig_tools::remote::{Hosts, Remote};
+use rig_harness::rig_tools::workspace::Local;
 use serde_json::json;
+use std::sync::Arc;
 
 use super::*;
 
@@ -126,12 +130,16 @@ fn a_compacted_conversation_replays_what_its_summary_replaced_in_place_of_the_su
         return;
     };
     let first = call_id("main", first, 0);
-    // The id a live call of the last turn has.
-    let second = call_id_in("main", &conversation, &CallId::from_wire("c1"), |_| false);
-    let second = second.unwrap_or_default();
+    // The id the call of the last turn has: its reply's, not the first's.
+    let last_reply = conversation.entries().rev().find_map(|entry| {
+        matches!(entry.message, message::Message::Assistant(_)).then_some(entry.id)
+    });
+    let second = last_reply
+        .map(|id| call_id("main", id, 0))
+        .unwrap_or_default();
     assert_ne!(first, second);
     let replaced = BTreeMap::from([(summary, originals)]);
-    let updates = replay("main", &conversation, &replaced, Path::new("/p"));
+    let updates = replay("main", &conversation, &replaced, Path::new("/p"), &Local);
     let shown: Vec<String> = updates
         .iter()
         .map(|update| match update {
@@ -205,7 +213,13 @@ fn a_call_is_known_by_where_it_sits_whatever_the_providers_id() {
     messages.push(message::Message::Assistant(AssistantMessage::new(asked)));
     messages.push(message::Message::User { content: results });
     let conversation = Conversation::from_messages(messages);
-    let updates = replay("main", &conversation, &BTreeMap::new(), Path::new("/p"));
+    let updates = replay(
+        "main",
+        &conversation,
+        &BTreeMap::new(),
+        Path::new("/p"),
+        &Local,
+    );
     let done: Vec<_> = updates
         .into_iter()
         .filter_map(|update| match update {
@@ -230,15 +244,6 @@ fn a_call_is_known_by_where_it_sits_whatever_the_providers_id() {
             at(6, 1, "\"five\""),
         ]
     );
-    // Live calls find the same ids: each the first not taken yet.
-    let repeated = CallId::from_wire("c9");
-    let first = call_id_in("main", &conversation, &repeated, |_| false);
-    let (first_id, second_id) = (at(6, 0, ""), at(6, 1, ""));
-    assert_eq!(first.as_deref(), Some(first_id.trim_end()));
-    let second = call_id_in("main", &conversation, &repeated, |id| {
-        id == first_id.trim_end()
-    });
-    assert_eq!(second.as_deref(), Some(second_id.trim_end()));
 }
 
 #[test]
@@ -254,8 +259,13 @@ fn an_embedded_resource_is_fenced_longer_than_its_own_fences() {
 
 #[test]
 fn a_location_is_a_local_file_made_absolute_and_none_for_another_host_or_home() {
+    let bench = Remote::new("bench", ["ssh", "bench"], Launcher::default);
+    let Ok(bench) = bench else {
+        return assert!(bench.is_ok());
+    };
+    let workspace = Hosts::new(Arc::new(Local), [bench]);
     let at = |path: &str| {
-        let located = locations(&json!({ "path": path }), Path::new("/p"));
+        let located = locations(&json!({ "path": path }), Path::new("/p"), &workspace);
         located
             .into_iter()
             .map(|location| location.path)
@@ -278,30 +288,73 @@ fn a_location_is_a_local_file_made_absolute_and_none_for_another_host_or_home() 
 }
 
 #[test]
-fn rigs_file_tools_have_their_acp_kinds_and_a_move_both_its_files() {
+fn rigs_file_tools_have_their_acp_kinds() {
     for (tool, expected) in [
         ("read", acp::ToolKind::Read),
         ("list", acp::ToolKind::Read),
         ("edit", acp::ToolKind::Edit),
         ("write", acp::ToolKind::Edit),
         ("delete", acp::ToolKind::Delete),
-        ("move", acp::ToolKind::Move),
         ("search", acp::ToolKind::Search),
         ("shell", acp::ToolKind::Execute),
         ("files__add", acp::ToolKind::Other),
     ] {
         assert_eq!(kind(tool), expected, "{tool}");
     }
-    let moved = locations(
-        &json!({ "from": "a.txt", "to": "/q/b.txt" }),
+}
+
+/// A saved call of a stopped reply never ran: it is shown failed, not
+/// pending, and a later call that reuses its id keeps its own result.
+#[test]
+fn a_saved_call_of_a_stopped_reply_is_shown_failed_not_pending() {
+    let (Ok(write), Some([asked, answered])) =
+        (ToolName::new("write"), read("c1", "a.txt", "a text"))
+    else {
+        return;
+    };
+    let cut = ToolCall::from_wire("c1", ToolFunction::parse(write, r#"{"path": "big.py""#));
+    let stopped = AssistantMessage::aborted(None, vec![AssistantContent::ToolCall(cut)], "stopped");
+    let conversation = Conversation::from_messages([
+        message::Message::user("Write big.py."),
+        message::Message::Assistant(stopped),
+        message::Message::user("Read a.txt instead."),
+        asked,
+        answered,
+    ]);
+    let updates = replay(
+        "main",
+        &conversation,
+        &BTreeMap::new(),
         Path::new("/p"),
+        &Local,
     );
-    let moved: Vec<_> = moved.into_iter().map(|location| location.path).collect();
+    let closed: Vec<_> = updates
+        .iter()
+        .filter_map(|update| match update {
+            acp::SessionUpdate::ToolCallUpdate(update) => Some((
+                update.fields.status,
+                update.fields.raw_output.clone().unwrap_or_default(),
+            )),
+            _ => None,
+        })
+        .collect();
     assert_eq!(
-        moved,
+        closed,
         [
-            absolute(Path::new("/p").join("a.txt")),
-            absolute("/q/b.txt")
+            (Some(acp::ToolCallStatus::Failed), json!("Never ran.")),
+            (Some(acp::ToolCallStatus::Completed), json!("a text")),
         ]
     );
+}
+
+/// A local file with a colon in its first name, such as a time stamp,
+/// keeps its location: its prefix names no configured remote.
+#[test]
+fn a_local_file_with_a_colon_in_its_name_has_a_location() {
+    let located = locations(&json!({ "path": "notes:2024.md" }), Path::new("/p"), &Local);
+    let paths = located
+        .into_iter()
+        .map(|location| location.path)
+        .collect::<Vec<_>>();
+    assert_eq!(paths, [absolute(Path::new("/p").join("notes:2024.md"))]);
 }

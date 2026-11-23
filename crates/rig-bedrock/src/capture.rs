@@ -55,7 +55,7 @@ pub(crate) async fn chunk(body: &mut SdkBody) -> Option<Result<Bytes, ProviderEr
     Some(match frame {
         Ok(frame) => Ok(frame.into_data().unwrap_or_default()),
         Err(error) => Err(ProviderError::Http(
-            rig_core::http_client::Error::instance(std::io::Error::other(error)).into(),
+            rig_core::http_client::Error::transient(error).into(),
         )),
     })
 }

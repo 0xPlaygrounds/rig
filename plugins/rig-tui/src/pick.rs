@@ -5,9 +5,13 @@ use bevy_ecs::system::SystemParam;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::style::Stylize;
 use ratatui::text::{Line, Span};
+use rig_core::conversation::pairing::safe_start;
+use rig_core::conversation::{self, Aside, Author, MessageId, TURN, TurnEnd, TurnRecord};
+use rig_core::json_utils::json_len;
+use rig_core::message::{AssistantContent, Message, ToolResultContent, UserContent};
 use rig_ecs::stage::{Effect, Outcome, Settled, SupersededBy};
 use rig_harness::ask::Ask;
-use rig_harness::pick::{Chosen, Highlighted, PickPreview, Picker};
+use rig_harness::pick::{Chosen, Highlighted, PickPreview, Picker, TickBox, Ticked};
 use rig_tools::shorten;
 use unicode_width::UnicodeWidthStr;
 
@@ -17,10 +21,14 @@ use super::editor::{Editor, MainEditor};
 use super::pane::{TranscriptPane, TranscriptSource};
 use super::panel::{PanelCanvas, Placement, TuiPanel};
 use super::view::TuiView;
-use super::view::{ItemRow, ScrollTo, TranscriptItem};
+use super::view::{ItemRow, ScrollTo, TranscriptItem, TranscriptSlot};
 
 /// Lines a page key moves.
 const PAGE: usize = 10;
+
+/// About how much of a conversation a preview lays out, in bytes of what
+/// its messages draw: a few screens, laid out in tens of milliseconds.
+const PREVIEW_BYTES: usize = 64 * 1024;
 
 /// On a [`Picker`] or an [`Ask`]: keys of its own in the view's choice
 /// list, found before the view's own. A plain character's binding works
@@ -77,7 +85,14 @@ pub enum ChoiceAction {
 ///   choice a typed note goes with). Once anything is ticked, Enter
 ///   answers exactly the ticked rows.
 /// - **Right** and **Left** show and hide a choice's or an item's
-///   [`more`](rig_harness::ask::Choice::more).
+///   [`more`](rig_harness::ask::Choice::more). In a picker with a tree
+///   ([`PickItem::parent`](rig_harness::pick::PickItem::parent)) they open
+///   and close the selected branch instead, and Left on an item goes up to
+///   its branch. Branches start folded; what is typed finds items in folded
+///   ones and shows them under their branch.
+/// - Ticking a branch switches it over its items: one with every item on,
+///   or some (`[~]`), turns off, keeping its items' ticks; one off turns
+///   back on; one on whose items are all off turns each of them on.
 /// - **Shift+Up** and **Shift+Down** scroll a long body; **PageUp** and
 ///   **PageDown** page the list. A picker adds keys with [`ChoiceKeys`].
 /// - A question with initial text or a multi-line answer is answered in
@@ -104,23 +119,14 @@ pub struct PickerInput {
     /// Whether ticks are in play: an item started ticked, or the user
     /// ticked or unticked one. Enter then answers exactly the ticked.
     pub(crate) touched: bool,
-    /// The item highlighted last, by its command (a choice's id) and its
-    /// label, which a picker filled again selects again.
-    pub(crate) picked: Option<(String, String)>,
+    /// The item highlighted last, by its position, its command (a choice's
+    /// id) and its label, which a picker filled again selects again.
+    pub(crate) picked: Option<(usize, String, String)>,
+    /// The positions of the branches open, in a picker with a tree.
+    pub(crate) open: Vec<usize>,
 }
 
 impl PickerInput {
-    /// What is typed, which filters the items or answers.
-    pub fn filter(&self) -> &str {
-        &self.filter
-    }
-
-    /// The items ticked, by their position in the list, in a choice of
-    /// several.
-    pub fn ticked(&self) -> &[usize] {
-        &self.ticked
-    }
-
     /// Whether it is a question answered in the input rather than over the
     /// transcript.
     pub fn in_input(&self) -> bool {
@@ -162,6 +168,8 @@ pub(crate) struct Item<'a> {
     pub(crate) checked: bool,
     /// What it says beyond its label, shown when the user asks.
     pub(crate) more: Option<&'a str>,
+    /// The position of the branch it sits under, in a picker with a tree.
+    pub(crate) parent: Option<usize>,
 }
 
 impl Item<'_> {
@@ -221,37 +229,147 @@ impl Listing<'_> {
     /// What the selected row says beyond its label, when the user asked
     /// for it.
     pub(crate) fn more(&self, choosing: &PickerInput) -> Option<&str> {
-        let rows = self.rows(&choosing.filter);
+        let rows = self.rows(choosing);
         match rows.get(choosing.selected) {
             Some(Row::Item(index)) if choosing.more => self.items.get(*index)?.more,
             _ => None,
         }
     }
 
-    /// The rows that `filter` leaves: the items whose label, detail or, as
-    /// [`finds_more`](Self::finds_more) says, more holds every word of it,
-    /// ignoring case, those whose label does first; then, for free text, the
-    /// typed answer.
-    pub(crate) fn rows(&self, filter: &str) -> Vec<Row> {
-        let lower = filter.to_lowercase();
-        let holds = |said: &[Option<&str>]| {
-            let said = said.iter().flatten().copied().collect::<Vec<_>>();
-            let said = said.join("\n").to_lowercase();
-            lower.split_whitespace().all(|word| said.contains(word))
+    /// The rows that what `choosing` typed leaves: the items whose label,
+    /// detail or, as [`finds_more`](Self::finds_more) says, more holds every
+    /// word of it, ignoring case, those whose label does first; then, for
+    /// free text, the typed answer. In a tree they keep the list's order:
+    /// with nothing typed, the items whose branches are all open; else
+    /// those found, the branches above them, and what an open branch found
+    /// holds.
+    pub(crate) fn rows(&self, choosing: &PickerInput) -> Vec<Row> {
+        let lower = choosing.filter.to_lowercase();
+        let holds = |said: &[Option<&str>]| holds(&lower, said);
+        let finds = |item: &Item<'_>| self.finds(&lower, item);
+        let mut rows: Vec<Row> = if self.tree() {
+            let shown = self.shown(&choosing.open, (!lower.trim().is_empty()).then_some(&finds));
+            (shown.into_iter().enumerate())
+                .filter(|(_, shown)| *shown)
+                .map(|(index, _)| Row::Item(index))
+                .collect()
+        } else {
+            let found = (self.items.iter().enumerate()).filter(|(_, item)| finds(item));
+            let (named, beside): (Vec<_>, Vec<_>) =
+                found.partition(|(_, item)| holds(&[Some(item.label)]));
+            (named.into_iter().chain(beside))
+                .map(|(index, _)| Row::Item(index))
+                .collect()
         };
-        let found = (self.items.iter().enumerate()).filter(|(_, item)| {
-            let more = item.more.filter(|_| self.finds_more);
-            holds(&[Some(item.label), item.detail, more])
-        });
-        let (named, beside): (Vec<_>, Vec<_>) =
-            found.partition(|(_, item)| holds(&[Some(item.label)]));
-        let mut rows: Vec<Row> = (named.into_iter().chain(beside))
-            .map(|(index, _)| Row::Item(index))
-            .collect();
         if self.free_text {
             rows.push(Row::Typed);
         }
         rows
+    }
+
+    /// Whether `lower`, typed in lower case, finds `item`: its label,
+    /// detail or, as [`finds_more`](Self::finds_more) says, more holds
+    /// every word.
+    fn finds(&self, lower: &str, item: &Item<'_>) -> bool {
+        let more = item.more.filter(|_| self.finds_more);
+        holds(lower, &[Some(item.label), item.detail, more])
+    }
+
+    /// The row what `choosing` typed selects among `rows`: in a tree, the
+    /// first item whose label or, as [`finds_more`](Self::finds_more)
+    /// says, more is what was typed; else the first item whose label holds
+    /// it and no such item under it follows; else the first item found
+    /// with no item found under it. So a search lands on what it names
+    /// rather than on what only mentions it. Without a tree, the first.
+    pub(crate) fn found_row(&self, choosing: &PickerInput, rows: &[Row]) -> usize {
+        let lower = choosing.filter.trim().to_lowercase();
+        if !self.tree() || lower.is_empty() {
+            return 0;
+        }
+        let item = |row: &Row| match row {
+            Row::Item(index) => self.items.get(*index).map(|item| (*index, item)),
+            Row::Typed => None,
+        };
+        let is = |said: &str| said.to_lowercase() == lower;
+        let named = |item: &Item<'_>| {
+            is(item.label) || item.more.filter(|_| self.finds_more).is_some_and(is)
+        };
+        let labelled = |item: &Item<'_>| holds(&lower, &[Some(item.label)]);
+        let found = |item: &Item<'_>| self.finds(&lower, item);
+        // The first row `matches` takes that no row it takes under it follows.
+        let deepest = |matches: &dyn Fn(&Item<'_>) -> bool| {
+            rows.iter().position(|row| {
+                item(row).is_some_and(|(index, shown)| {
+                    matches(shown)
+                        && !(rows.iter().filter_map(item)).any(|(other, below)| {
+                            matches(below) && self.branches(other).any(|branch| branch == index)
+                        })
+                })
+            })
+        };
+        (rows
+            .iter()
+            .position(|row| item(row).is_some_and(|(_, shown)| named(shown))))
+        .or_else(|| deepest(&labelled))
+        .or_else(|| deepest(&found))
+        .unwrap_or(0)
+    }
+
+    /// Whether it has a tree: an item sits under another.
+    pub(crate) fn tree(&self) -> bool {
+        self.items.iter().any(|item| item.parent.is_some())
+    }
+
+    /// Which items a tree shows with the branches `open`: with nothing
+    /// typed, those whose branches are all open; else those `finds` finds,
+    /// the branches above them, and those under an open branch found
+    /// through open branches.
+    fn shown(&self, open: &[usize], finds: Option<&dyn Fn(&Item<'_>) -> bool>) -> Vec<bool> {
+        let Some(finds) = finds else {
+            return (0..self.items.len())
+                .map(|index| self.branches(index).all(|branch| open.contains(&branch)))
+                .collect();
+        };
+        let found: Vec<bool> = self.items.iter().map(finds).collect();
+        let mut shown = found.clone();
+        for index in (0..self.items.len()).rev() {
+            if shown.get(index) == Some(&true)
+                && let Some(parent) = self.parent(index)
+                && let Some(above) = shown.get_mut(parent)
+            {
+                *above = true;
+            }
+        }
+        for (index, shown) in shown.iter_mut().enumerate() {
+            let mut branches = self.branches(index);
+            *shown |= branches
+                .find(|branch| !open.contains(branch) || found.get(*branch) == Some(&true))
+                .is_some_and(|branch| open.contains(&branch));
+        }
+        shown
+    }
+
+    /// The branch the item at `index` sits under, when it is listed before
+    /// it.
+    pub(crate) fn parent(&self, index: usize) -> Option<usize> {
+        let parent = self.items.get(index)?.parent?;
+        (parent < index).then_some(parent)
+    }
+
+    /// The branches above the item at `index`, nearest first.
+    pub(crate) fn branches(&self, index: usize) -> impl Iterator<Item = usize> + '_ {
+        std::iter::successors(self.parent(index), |branch| self.parent(*branch))
+    }
+
+    /// Whether the item at `index` is a branch: another sits under it.
+    pub(crate) fn is_branch(&self, index: usize) -> bool {
+        (0..self.items.len()).any(|other| self.parent(other) == Some(index))
+    }
+
+    /// How the item at `index` shows with `ticked`.
+    pub(crate) fn tick(&self, index: usize, ticked: &[usize]) -> TickBox {
+        let parents: Vec<_> = self.items.iter().map(|item| item.parent).collect();
+        TickBox::of(&parents, index, ticked)
     }
 }
 
@@ -289,6 +407,7 @@ impl Choices<'_, '_> {
                         detail: item.detail.as_deref(),
                         checked: item.checked,
                         more: item.more.as_deref().or(item.detail.as_deref()),
+                        parent: item.parent,
                     })
                     .collect(),
                 free_text: picker.free_text,
@@ -319,6 +438,7 @@ fn listing<'a>(ask: &'a Ask, keys: &'a [(KeyCode, ChoiceAction)]) -> Listing<'a>
                 detail: None,
                 checked: choice.checked,
                 more: choice.more.as_deref(),
+                parent: None,
             })
             .collect(),
         free_text: ask.free_text,
@@ -351,8 +471,8 @@ fn carried(choosing: PickerInput, old: &Ask, new: &Ask) -> PickerInput {
         false => new.multiple && choice.checked,
     });
     let (old_rows, new_rows) = (
-        listing(old, &[]).rows(&choosing.filter),
-        listing(new, &[]).rows(&choosing.filter),
+        listing(old, &[]).rows(&choosing),
+        listing(new, &[]).rows(&choosing),
     );
     let row = match old_rows.get(choosing.selected) {
         Some(Row::Item(index)) => id_at(index)
@@ -417,7 +537,7 @@ pub(crate) fn queue_choices(
         {
             commands
                 .entity(entity)
-                .try_remove::<(PickerInput, Highlighted)>();
+                .try_remove::<(PickerInput, Highlighted, Ticked)>();
             commands
                 .entity(next)
                 .try_insert(carried(shown.clone(), old, new));
@@ -461,24 +581,35 @@ pub(crate) fn queue_choices(
     show_first(&view, &choices, (&showing, input), &mut commands);
 }
 
+/// Where the terminal view takes in this frame's pickers and questions, in
+/// `Update` after the agent loop, and finds a picker's selection again
+/// when it was filled again. A plugin that fills a picker again in `Update`
+/// does so before it, so the next key acts on the rows shown.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ChoiceSystems;
+
 /// Selects again, in `shown` filled again, the item `state` had selected,
-/// by its command, else its label, among the rows what is typed leaves;
-/// else the row it was on, as far as there are rows.
+/// at its place with its command and label, else by its command, else by
+/// its label, among the rows what is typed leaves; else the row it was on,
+/// as far as there are rows.
 fn refill(state: &mut PickerInput, shown: &Listing<'_>) {
-    let rows = shown.rows(&state.filter);
+    state.open.retain(|index| *index < shown.items.len());
+    let rows = shown.rows(state);
     let item = |row: &Row| match row {
-        Row::Item(index) => shown.items.get(*index),
+        Row::Item(index) => shown.items.get(*index).map(|item| (*index, item)),
         Row::Typed => None,
     };
     let picked = state.picked.as_ref();
-    let by = |same: &dyn Fn(&Item<'_>, &(String, String)) -> bool| {
+    let by = |same: &dyn Fn((usize, &Item<'_>), &(usize, String, String)) -> bool| {
         picked.and_then(|picked| {
             rows.iter()
                 .position(|row| item(row).is_some_and(|item| same(item, picked)))
         })
     };
-    let found = by(&|item, (id, _)| !id.is_empty() && item.id == id)
-        .or_else(|| by(&|item, (_, label)| item.label == label));
+    let found =
+        by(&|(index, item), (at, id, label)| index == *at && item.id == id && item.label == label)
+            .or_else(|| by(&|(_, item), (_, id, _)| !id.is_empty() && item.id == id))
+            .or_else(|| by(&|(_, item), (_, _, label)| item.label == label));
     let selected = found.unwrap_or(state.selected);
     state.selected = selected.min(rows.len().saturating_sub(1));
     state.ticked.retain(|index| *index < shown.items.len());
@@ -500,7 +631,7 @@ pub(crate) fn show_first(
         }
         commands
             .entity(entity)
-            .try_remove::<(PickerInput, Highlighted)>();
+            .try_remove::<(PickerInput, Highlighted, Ticked)>();
     }
     let first = view.queue.iter().find_map(|&entity| {
         let shown = choices.shown(entity)?;
@@ -510,16 +641,27 @@ pub(crate) fn show_first(
             .filter(|(_, item)| shown.multiple && item.checked)
             .map(|(index, _)| index)
             .collect();
-        let state = PickerInput {
+        let selected = shown.selected.min(shown.items.len().saturating_sub(1));
+        // Noted at once, so a picker filled again before its first frame
+        // finds the item it opened on, not the row at that index.
+        let item = shown.items.get(selected).filter(|_| draft.is_none());
+        let picked = item.map(|item| (selected, item.id.to_owned(), item.label.to_owned()));
+        let mut state = PickerInput {
             filter: String::new(),
-            selected: shown.selected.min(shown.items.len().saturating_sub(1)),
+            selected,
             touched: !ticked.is_empty(),
             ticked,
             scroll: 0,
             draft,
             more: false,
-            picked: None,
+            picked,
+            // The branches above the item selected at first are open.
+            open: shown.branches(selected).collect(),
         };
+        let rows = shown.rows(&state);
+        if let Some(row) = rows.iter().position(|row| *row == Row::Item(selected)) {
+            state.selected = row;
+        }
         Some((entity, state))
     });
     if let Some((entity, state)) = first {
@@ -529,25 +671,38 @@ pub(crate) fn show_first(
 
 /// Keeps [`Highlighted`] on the picker or question shown over the
 /// transcript at the item its selected row is, and none on a typed answer,
-/// and notes that item for a picker filled again, unless it was filled
-/// since: its selection is found again first.
+/// and [`Ticked`] at its ticks in one of several; and notes that item for a
+/// picker filled again, unless it was filled since: its selection is found
+/// again first.
 pub(crate) fn mark_highlighted(
-    mut showing: Query<(Entity, &mut PickerInput, Option<&Highlighted>)>,
+    mut showing: Query<(
+        Entity,
+        &mut PickerInput,
+        Option<&Highlighted>,
+        Option<&Ticked>,
+    )>,
     filled: Query<(), Changed<Picker>>,
     choices: Choices,
     mut commands: Commands,
 ) {
-    for (entity, mut state, highlighted) in &mut showing {
+    for (entity, mut state, highlighted, ticked) in &mut showing {
         let Some(shown) = choices.shown(entity).filter(|_| state.draft.is_none()) else {
             continue;
         };
-        let rows = shown.rows(&state.filter);
+        if shown.multiple && ticked.is_none_or(|ticked| ticked.0 != state.ticked) {
+            commands
+                .entity(entity)
+                .try_insert(Ticked(state.ticked.clone()));
+        }
+        let rows = shown.rows(&state);
         let index = match rows.get(state.selected) {
             Some(Row::Item(index)) => Some(*index),
             _ => None,
         };
-        let item = index.and_then(|index| shown.items.get(index));
-        let picked = item.map(|item| (item.id.to_owned(), item.label.to_owned()));
+        let picked = index.and_then(|index| {
+            let item = shown.items.get(index)?;
+            Some((index, item.id.to_owned(), item.label.to_owned()))
+        });
         if state.picked != picked && !filled.contains(entity) {
             state.bypass_change_detection().picked = picked;
         }
@@ -573,7 +728,7 @@ pub(crate) fn choice_key(
     let control = key.modifiers.contains(KeyModifiers::CONTROL);
     let alt = key.modifiers.contains(KeyModifiers::ALT);
     let shift = key.modifiers.contains(KeyModifiers::SHIFT);
-    let rows = shown.rows(&choosing.filter);
+    let rows = shown.rows(choosing);
     let last = rows.len().saturating_sub(1);
     let typing =
         !choosing.filter.is_empty() || matches!(rows.get(choosing.selected), Some(Row::Typed));
@@ -591,16 +746,18 @@ pub(crate) fn choice_key(
         KeyCode::Char(_) if control || key.modifiers.contains(KeyModifiers::ALT) => {}
         KeyCode::Char(character) => {
             choosing.filter.push(character);
-            choosing.selected = 0;
+            choosing.selected = shown.found_row(choosing, &shown.rows(choosing));
         }
         KeyCode::Backspace => {
             choosing.filter.pop();
-            choosing.selected = 0;
+            choosing.selected = shown.found_row(choosing, &shown.rows(choosing));
         }
         KeyCode::Up => choosing.selected = choosing.selected.saturating_sub(1),
         KeyCode::Down => choosing.selected = (choosing.selected + 1).min(last),
         KeyCode::PageUp => choosing.selected = choosing.selected.saturating_sub(PAGE),
         KeyCode::PageDown => choosing.selected = (choosing.selected + PAGE).min(last),
+        KeyCode::Right if shown.tree() => unfold(choosing, shown, &rows, true),
+        KeyCode::Left if shown.tree() => unfold(choosing, shown, &rows, false),
         KeyCode::Right => choosing.more = true,
         KeyCode::Left => choosing.more = false,
         KeyCode::Tab if shown.ticks => {
@@ -647,11 +804,53 @@ fn choice_action(
     None
 }
 
-/// Ticks or unticks the selected item; whether one is selected.
+/// In a tree, opens the selected branch or goes to its first item
+/// (`open`), else closes it or goes up to the selected item's branch.
+fn unfold(choosing: &mut PickerInput, shown: &Listing<'_>, rows: &[Row], open: bool) {
+    let Some(&Row::Item(index)) = rows.get(choosing.selected) else {
+        return;
+    };
+    let is_open = choosing.open.contains(&index);
+    let to = match (open, shown.is_branch(index), is_open) {
+        (true, true, false) => {
+            choosing.open.push(index);
+            return;
+        }
+        (true, true, true) => rows.get(choosing.selected + 1).copied(),
+        (false, true, true) => {
+            choosing.open.retain(|branch| *branch != index);
+            return;
+        }
+        (false, _, _) => shown.parent(index).map(Row::Item),
+        (true, false, _) => None,
+    };
+    if let Some(at) = to.and_then(|to| rows.iter().position(|row| *row == to)) {
+        choosing.selected = at;
+    }
+}
+
+/// Ticks or unticks the selected item, switching a branch over its items
+/// as [`PickerInput`] says; whether one is selected.
 fn tick(choosing: &mut PickerInput, shown: &Listing<'_>, rows: &[Row]) -> bool {
     let Some(Row::Item(index)) = rows.get(choosing.selected) else {
         return false;
     };
+    if shown.multiple && shown.is_branch(*index) {
+        let on = choosing.ticked.contains(index);
+        match shown.tick(*index, &choosing.ticked) {
+            TickBox::On | TickBox::Mixed => choosing.ticked.retain(|ticked| ticked != index),
+            TickBox::Off if !on => choosing.ticked.push(*index),
+            TickBox::Off => {
+                let under = (0..shown.items.len())
+                    .filter(|item| shown.branches(*item).any(|branch| branch == *index));
+                choosing.ticked.extend(under);
+            }
+        }
+        choosing.ticked.sort_unstable();
+        choosing.ticked.dedup();
+        choosing.touched = true;
+        return true;
+    }
     match choosing.ticked.binary_search(index) {
         Ok(at) => {
             choosing.ticked.remove(at);
@@ -678,6 +877,13 @@ fn answer(choosing: &PickerInput, shown: &Listing<'_>, rows: &[Row]) -> Option<O
             Some(Some(chosen.with_text(choosing.filter.trim())))
         }
     }
+}
+
+/// Whether `said`, joined and in lower case, holds every word of `lower`.
+fn holds(lower: &str, said: &[Option<&str>]) -> bool {
+    let said = said.iter().flatten().copied().collect::<Vec<_>>();
+    let said = said.join("\n").to_lowercase();
+    lower.split_whitespace().all(|word| said.contains(word))
 }
 
 /// Marks the transcript pane that draws a picker's conversation preview.
@@ -711,7 +917,7 @@ pub(crate) fn follow_previews(
         if previewing(picker).is_none() || pane.is_some() && !preview.is_changed() {
             continue;
         }
-        let source = TranscriptSource::Value(conversation.clone());
+        let source = TranscriptSource::Value(window(conversation, *at));
         let shown = TranscriptPane::new(source).titled("preview");
         let pane = match pane {
             Some((pane, _)) => commands.entity(pane).insert(shown).id(),
@@ -731,6 +937,121 @@ pub(crate) fn follow_previews(
             item,
             row: ItemRow::Top(0),
         });
+    }
+}
+
+/// The part of `conversation` a preview lays out, its entries keeping
+/// their ids: `at`'s entry, else the last, then the entries after it, then
+/// those before it, until they pass [`PREVIEW_BYTES`]. Its edges may take in
+/// more, so no call is parted from its results, and no stopped call from
+/// the entry its stop is drawn under. Turn records stay; other asides stay
+/// when drawn within it.
+fn window(
+    conversation: &conversation::Conversation,
+    at: Option<MessageId>,
+) -> conversation::Conversation {
+    let messages = conversation.messages();
+    let at = at.and_then(|at| conversation.index_of(at));
+    let first = at.unwrap_or(messages.len().saturating_sub(1));
+    let mut size = messages.get(first).map_or(0, |message| drawn_size(message));
+    let mut within = |message: &Message| {
+        let fits = size < PREVIEW_BYTES;
+        if fits {
+            size += drawn_size(message);
+        }
+        fits
+    };
+    let after = messages.iter().skip(first.saturating_add(1));
+    let after = after.take_while(|message| within(message)).count();
+    let before = messages.iter().take(first).rev();
+    let before = before.take_while(|message| within(message)).count();
+    let mut start = first - before;
+    let mut end = (first + 1 + after).min(messages.len());
+    while start > 0 && safe_start(messages, start) != start {
+        start -= 1;
+    }
+    end = safe_start(messages, end);
+    // A stop past the end takes the window to it when the reply whose
+    // calls it answered, the last of its turn asking for one, is in it.
+    let stopped = |turn: TurnRecord, end: usize| {
+        let Some(TurnEnd::Stopped {
+            at: Some(stop),
+            calls,
+            ..
+        }) = turn.end
+        else {
+            return None;
+        };
+        let stop = conversation.index_of(stop).filter(|stop| *stop >= end)?;
+        let asked = calls
+            .iter()
+            .filter_map(|call| conversation.index_of(call.reply));
+        (start..end).contains(&asked.max()?).then_some(stop)
+    };
+    while let Some(stop) = conversation
+        .turns()
+        .find_map(|(_, turn)| stopped(turn, end))
+    {
+        end = safe_start(messages, stop.saturating_add(1));
+    }
+    let mut shown = conversation.view();
+    shown.splice(end.., [], Author::rig());
+    shown.splice(..start, [], Author::rig());
+    for (id, aside) in conversation.asides() {
+        if aside.kind == TURN {
+            continue;
+        }
+        match TranscriptSlot::of_aside(aside, conversation) {
+            TranscriptSlot::Top if start == 0 => {}
+            TranscriptSlot::After(index) if index.saturating_add(1) == start => {
+                let top = Aside {
+                    after: None,
+                    ..aside.clone()
+                };
+                shown.replace_aside(id, top);
+            }
+            TranscriptSlot::After(index) | TranscriptSlot::Inside(index, _)
+                if (start..end).contains(&index) => {}
+            _ => {
+                shown.remove_aside(id);
+            }
+        }
+    }
+    shown
+}
+
+/// About how much of `message` is drawn, in bytes: its text, reasoning,
+/// calls' arguments and text or JSON results. Media, a provider's own
+/// data and system messages draw a row or nothing.
+fn drawn_size(message: &Message) -> usize {
+    match message {
+        Message::System { .. } => 0,
+        Message::User { content } => content
+            .iter()
+            .map(|item| match item {
+                UserContent::Text(text) => text.text.len(),
+                UserContent::ToolResult(result) => result
+                    .content
+                    .iter()
+                    .map(|part| match part {
+                        ToolResultContent::Text(text) => text.text.len(),
+                        ToolResultContent::Json { value } => json_len(value),
+                        _ => 0,
+                    })
+                    .sum(),
+                _ => 0,
+            })
+            .sum(),
+        Message::Assistant(reply) => reply
+            .content
+            .iter()
+            .map(|item| match item {
+                AssistantContent::Text(text) => text.text.len(),
+                AssistantContent::Reasoning(reasoning) => reasoning.text.len(),
+                AssistantContent::ToolCall(call) => json_len(&call.function.arguments),
+                _ => 0,
+            })
+            .sum(),
     }
 }
 

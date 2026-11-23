@@ -11,7 +11,7 @@ use rig::providers::gemini;
 use rig::streaming::StreamEvent;
 use rig_cassette::agent::AgentReplayExt;
 
-use super::super::support::with_gemini_corpus_delta_cassette;
+use super::super::support::with_gemini_cassette;
 use crate::goldens::families;
 use crate::support::{Adder, TOOLS_PREAMBLE};
 
@@ -19,7 +19,7 @@ const ADD_PROMPT: &str = "Use the add tool to add 17 and 25, then reply with jus
 
 #[tokio::test]
 async fn interactions_baseline_effect_log_is_the_golden_fixture() {
-    with_gemini_corpus_delta_cassette("corpus_delta/interactions_baseline", |client| async move {
+    with_gemini_cassette("corpus_delta/interactions_baseline", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
         let agent = rig::agent::AgentBuilder::new(
             client.interactions(gemini::completion::GEMINI_2_5_FLASH),

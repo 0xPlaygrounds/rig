@@ -68,7 +68,8 @@ pub(crate) const OPENAI_DIALECTS: &[&openai::wire::Dialect] = &[
 /// A provider's request grammar and configuration type.
 /// The OpenAI family includes Chat Completions and Responses; select the endpoint
 /// through [`openai::OpenAIConfig::with_route`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Format {
     /// OpenAI's grammar: Chat Completions and the Responses endpoint.
     OpenAi,
@@ -112,37 +113,12 @@ impl fmt::Display for Format {
     }
 }
 
-impl Serialize for Format {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(self.as_str())
-    }
-}
-
-impl<'de> Deserialize<'de> for Format {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let name = String::deserialize(deserializer)?;
-        Self::named(&name).ok_or_else(|| {
-            de::Error::custom(format!(
-                "`{name}` is not a protocol family ({})",
-                Format::names()
-            ))
-        })
-    }
-}
-
 /// Registered dialect definition and its configuration family.
 #[derive(Debug, Clone, Copy)]
 enum Registered {
     OpenAi(openai::wire::Dialect),
     Anthropic(anthropic::wire::Dialect),
     Gemini,
-}
-
-/// Identity is the `(vendor, format)` pair, as for [`ProviderId`].
-impl PartialEq for Registered {
-    fn eq(&self, other: &Self) -> bool {
-        self.vendor() == other.vendor() && self.format() == other.format()
-    }
 }
 
 impl Registered {
@@ -202,6 +178,17 @@ impl Registered {
             Self::Anthropic(dialect) => vec![dialect.api_key_env],
             Self::Gemini => vec![gemini::API_KEY_ENV],
         }
+    }
+
+    /// The variables that point this selection at a server: its base-URL
+    /// override and that override's alias.
+    fn base_url_envs(&self) -> Vec<&'static str> {
+        let envs = match self {
+            Self::OpenAi(dialect) => [dialect.base_url_env, dialect.quirks.base_url_env_alias],
+            Self::Anthropic(dialect) => [dialect.base_url_env, None],
+            Self::Gemini => [None, None],
+        };
+        envs.into_iter().flatten().collect()
     }
 
     /// Whether this selection's key expires within the hour.
@@ -601,6 +588,24 @@ impl ProviderId {
         }
     }
 
+    /// Whether the environment sets this selection's key or base URL to a
+    /// non-empty value: what makes a provider that needs no credential,
+    /// such as a local server, configured rather than merely reachable at
+    /// its default address. `false` for a catalog-only or declared provider.
+    pub(crate) fn configured_in_env(&self) -> bool {
+        let Kind::Registered(registered) = &self.0 else {
+            return false;
+        };
+        let set = |name: &'static str| {
+            env::optional(name).is_ok_and(|value| value.is_some_and(|value| !value.is_empty()))
+        };
+        let mut envs = registered
+            .key_envs()
+            .into_iter()
+            .chain(registered.base_url_envs());
+        envs.any(set)
+    }
+
     /// Whether this selection's key is a session token that expires within
     /// the hour, so a key saved for later runs soon stops working.
     pub fn short_lived_key(&self) -> bool {
@@ -751,15 +756,13 @@ pub enum SelectionError {
 /// persistent hosts and typed options on the configuration, not the dialect.
 /// Deserialization reports unknown configuration fields by name.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum ProviderConfig {
     /// An OpenAI-shaped provider, on either of its two endpoints.
-    #[serde(rename = "openai")]
     OpenAi(openai::wire::OpenAIConfig),
     /// A Messages-format provider.
-    #[serde(rename = "anthropic")]
     Anthropic(anthropic::wire::AnthropicConfig),
     /// Gemini.
-    #[serde(rename = "gemini")]
     Gemini(gemini::GeminiConfig),
 }
 
@@ -966,7 +969,7 @@ impl ConnectOptions {
     /// use rig_core::providers::registry::ConnectOptions;
     ///
     /// let options = ConnectOptions::new().api_key("access-token").account_id("account");
-    /// let model = Catalog::builtin().connect_with("chatgpt/gpt-5.5", options)?;
+    /// let model = Catalog::builtin().connect_with("chatgpt/gpt-6.2-sol", options)?;
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
     pub fn account_id(mut self, account_id: impl Into<String>) -> Self {

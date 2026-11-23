@@ -120,6 +120,7 @@ fn run(app: &mut App, wakes: &std::sync::mpsc::Receiver<()>) {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     app.world_mut()
         .trigger(Deliver::new(agent, "Read the docs.", DeliveryMode::Steer));
@@ -249,7 +250,4 @@ fn asks_once_per_domain() {
     assert_eq!(denied, &["asked.invalid".to_owned()]);
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(WebFetchPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(WebFetchPlugin);

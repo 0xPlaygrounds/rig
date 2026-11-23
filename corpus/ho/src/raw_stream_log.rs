@@ -1,26 +1,12 @@
-//! Plugin corpus (held-out): H26: Raw provider stream log (spec
-//! `H26-raw-stream-log.md`).
+//! Raw provider stream log. `/rawlog on|off` (or `--rawlog`) records every model call, an agent's,
+//! a subagent's or a plugin's own, to `<session>/raw/<turn>-<call>-<model>.jsonl`: each HTTP send
+//! as it went out (the body, no headers), the response's status and headers, then each chunk of the
+//! body as it came, with the milliseconds since the send, then the error, if any. Every send is a
+//! record of its own in the call's file, so a retry of the call shares it.
 //!
-//! `/rawlog on|off` (or `--rawlog`) records every model call, an agent's,
-//! a subagent's or a plugin's own, to `<session>/raw/<turn>-<call>-<model>.jsonl`:
-//! each HTTP send as it went out (the body, no headers), the response's
-//! status and headers, then each chunk of the body as it came, with the
-//! milliseconds since the send, then the error, if any. Every send is a
-//! record of its own in the call's file: a retry of the call, or a resend
-//! inside one dispatch.
-//!
-//! - Every model is reached through a `Tee`: the plugin wraps the
-//!   [`Models`] transport once, at build. The tee passes everything on
-//!   unchanged and hands a copy of each send of a recorded call (its
-//!   [`Serving`] names the call's effect) to a writer thread.
-//! - Prepare: each model call admitted while the log is on is recorded by
-//!   its effect id, until its entity is gone; a call that supersedes a
-//!   recorded one, such as a retry, shares its file.
-//! - The writer thread redacts secrets ([`redact`]), writes the
-//!   lines, keeps the folder under 50 MB (oldest files first) and reports
-//!   back as a stream on an entity: one notice when it first trims, and one
-//!   warning when a write fails, which turns the log off.
-//! - Whether the log is on is a saved resource.
+//! Secrets are redacted before writing. The folder is kept under 50 MB, oldest files first, with
+//! one notice when it first trims. A failed write turns the log off with a warning. Whether the log
+//! is on is saved with the session.
 
 use std::collections::{HashMap, VecDeque};
 use std::fs::{File, OpenOptions};
@@ -425,50 +411,40 @@ struct Tee {
 }
 
 impl HttpClientExt for Tee {
-    fn send<T, U>(
+    fn send(
         &self,
-        req: Request<T>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        T: Into<Bytes> + WasmCompatSend,
-        U: From<Bytes> + WasmCompatSend + 'static,
+        req: Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
-        let req = req.map(Into::into);
         let tap = Tap::begin(&self.recorded, &req);
-        let sent = self.inner.send::<Bytes, Bytes>(req);
+        let sent = self.inner.send(req);
         async move {
             let sent = sent.await;
             tap.sent(&sent);
             sent.map(|response| {
-                response.map(|body| -> LazyBody<U> {
+                response.map(|body| -> LazyBody {
                     Box::pin(async move {
                         let body = body.await;
                         tap.chunk(&body);
-                        body.map(U::from)
+                        body
                     })
                 })
             })
         }
     }
 
-    fn send_multipart<U>(
+    fn send_multipart(
         &self,
         req: Request<MultipartForm>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        U: From<Bytes> + WasmCompatSend + 'static,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
         self.inner.send_multipart(req)
     }
 
-    fn send_streaming<T>(
+    fn send_streaming(
         &self,
-        req: Request<T>,
-    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
-    where
-        T: Into<Bytes> + WasmCompatSend,
-    {
-        let req = req.map(Into::into);
+        req: Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend {
         let tap = Tap::begin(&self.recorded, &req);
         let sent = self.inner.send_streaming(req);
         async move {

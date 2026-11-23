@@ -1,32 +1,16 @@
-//! Raw provider response capture on OpenRouter's streaming chat-completions
-//! path.
+//! Raw provider response capture on OpenRouter's streaming chat-completions path.
 //!
-//! **The feature.** Every stream's terminal
-//! [`rig::completion::CompletionResponse::raw`] carries the record the chat
-//! decoder reassembled from the reply's frames: a JSON object with the keys
-//! `usage`, `finish_reason`, `response_id`, `model`, `logprobs` and
-//! `additional_params`. Unlike a unary reply's `raw`, this one is that record
-//! rather than the socket's bytes. Capture is always on: there is no flag to
-//! request it, nothing about it reaches the wire, and a `Value::Null` only
-//! ever means a terminal built by hand with no provider record behind it. It
-//! is the terminal record only, never the stream's frames.
+//! Every stream's terminal [`rig::completion::CompletionResponse::raw`] carries the record the
+//! chat decoder reassembled from the reply's frames: a JSON object with the keys `usage`,
+//! `finish_reason`, `response_id`, `model`, `logprobs` and `additional_params`. Capture is
+//! always on, and a `Value::Null` only means a terminal built by hand. A gateway reports things
+//! the normalized terminal has no slot for, and the cell pins that `raw.usage.cost` and the
+//! routed `raw.additional_params.provider` equal the recorded terminal frame's.
 //!
-//! **Why it matters here.** A gateway reports things the normalized terminal
-//! has no slot for: the terminal's accumulated `additional_params` carries
-//! the routed `provider` the frames repeat. OpenRouter's terminal usage also
-//! carries the turn's `cost`, which the normalized usage reports as well. The record's `usage` is the provider's usage
-//! object, extra fields included, so both reach a caller through `raw`. That
-//! is the capability the cell pins: `raw.usage.cost` and
-//! `raw.additional_params.provider` equal the recorded terminal frame's.
-//!
-//! The premise the cell re-derives from its fixture is that usage appears on
-//! exactly one frame, the stream's last data frame, so the raw terminal
-//! record's usage is knowable from the bytes and a recording whose stream
-//! stopped reporting usage fails loudly instead of covering nothing. That is [`chat::recorded_sole_usage_frame`], the
-//! single-frame rule rather than the agreeing-closing-frames rule the
-//! dialects that repeat their accounting need. OpenRouter contracts no
-//! request-id header, so the terminal's `provider_request_id` is `None` —
-//! pinned as the documented outcome.
+//! The cell first checks, through [`chat::recorded_sole_usage_frame`], that usage appears only
+//! on the stream's last data frame, so a recording that stopped reporting usage fails loudly.
+//! OpenRouter contracts no request-id header, so the terminal's `provider_request_id` is
+//! `None`.
 
 use rig::completion::CompletionRequest;
 use serde_json::json;

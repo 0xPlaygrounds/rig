@@ -1,6 +1,5 @@
-use std::ffi::{OsStr, OsString};
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 use rig_harness::prelude::*;
@@ -11,21 +10,18 @@ use rig_harness_test_support::{
     Collected, MemoryStore, ToolOutputs, app_on, collect, connect, log_tool_outputs, reply,
     run_until, start_call,
 };
-use rig_tools::process::{Launcher, Process, Spawn};
-use rig_tools::workspace::{Contents, Listing, Stat, Workspace};
+use rig_tools::workspace::{Contents, Stat, Workspace};
 use rig_tools::{Shell, ShellArgs};
 
 use super::remote::RemoteHostsPlugin;
-use super::{AttachPlugin, AttachSystems, ReadTool, SharedShell, ShellOutput, ShellTool};
+use super::{AttachPlugin, AttachSystems, EditTool, ReadTool, ShellTool, WriteTool};
 
 /// The shell tool on `processes`, cutting as `output` says.
-fn shell(processes: &Processes, output: &ShellOutput) -> SharedShell {
-    SharedShell {
-        shell: Shell::default(),
-        processes: processes.clone(),
-        output: output.clone(),
-        dir: None,
-    }
+fn shell(processes: &Processes, output: &ShellOutput) -> PerCallShell {
+    let mut world = World::new();
+    world.insert_resource(processes.clone());
+    world.insert_resource(output.clone());
+    PerCallShell::new(Shell::default(), &mut world)
 }
 
 #[test]
@@ -41,7 +37,7 @@ fn an_agent_with_a_work_dir_reads_and_runs_commands_there() {
     app.finish();
     app.update();
     let world = app.world_mut();
-    let agent = world.spawn((Agent, WorkDir(dir.clone()))).id();
+    let agent = spawn_root(world, WorkDir(dir.clone())).id();
     let calls = [
         ("read", json!({ "path": "note.txt" })),
         ("read", json!({ "path": "../note.txt" })),
@@ -106,32 +102,7 @@ impl Workspace for Served {
         Err(io::ErrorKind::Unsupported.into())
     }
 
-    fn remove(&self, _: &Path) -> io::Result<()> {
-        Err(io::ErrorKind::Unsupported.into())
-    }
-
-    fn rename(&self, _: &Path, _: &Path) -> io::Result<()> {
-        Err(io::ErrorKind::Unsupported.into())
-    }
-
-    fn canonical(&self, path: &Path) -> PathBuf {
-        path.to_path_buf()
-    }
-
-    fn files(&self, _: &Path, _: Option<&str>, _: Listing) -> io::Result<Vec<PathBuf>> {
-        Ok(Vec::new())
-    }
-
-    fn spawn(
-        &self,
-        _: &Launcher,
-        _: Option<&Path>,
-        _: &OsStr,
-        _: &[OsString],
-        _: Spawn,
-    ) -> io::Result<Process> {
-        Err(io::ErrorKind::Unsupported.into())
-    }
+    crate::tests::workspace_stubs!();
 }
 
 #[test]
@@ -145,12 +116,44 @@ fn a_call_without_a_work_dir_reads_from_the_project_root_in_the_apps_workspace()
     app.finish();
     app.update();
     let world = app.world_mut();
-    let agent = world.spawn(Agent).id();
+    let agent = spawn_root(world, ()).id();
     start_call(world, agent, ("read", "r1"), json!({ "path": "note.txt" }));
     let read = |world: &World| world.resource::<ToolOutputs>().0.get("r1").cloned();
     run_until(&mut app, &wakes, |world| read(world).is_some());
     let read = read(app.world()).unwrap_or_default();
     assert!(read.contains("served text"), "{read}");
+}
+
+/// An app with [`AttachPlugin`] in `workspace` at `root`, its loop's
+/// wakes, and an agent whose model answers every message, so each stays in
+/// the conversation, with the notices kept.
+fn attaching(
+    workspace: Option<Arc<dyn Workspace>>,
+    root: &Path,
+    settings: &str,
+) -> (App, std::sync::mpsc::Receiver<()>, Entity) {
+    let (mut app, wakes) = app_on(&MemoryStore::default());
+    if let Some(workspace) = workspace {
+        app.insert_resource(ProjectWorkspace(workspace));
+    }
+    app.insert_resource(Settings::from_toml(settings))
+        .insert_resource(ProjectRoot(root.to_path_buf()))
+        .add_plugins((AgentPlugin, AttachPlugin, RemoteHostsPlugin));
+    collect::<Notice>(&mut app);
+    collect::<Recalled>(&mut app);
+    app.finish();
+    app.update();
+    let model = MockCompletionModel::from_stream_turns([reply("read"), reply("read")]);
+    let agent = match connect(&model) {
+        Some(connection) => spawn_root(app.world_mut(), connection).id(),
+        None => spawn_root(app.world_mut(), ()).id(),
+    };
+    (app, wakes, agent)
+}
+
+/// What `agent`'s conversation holds, as text.
+fn said(world: &World, agent: Entity) -> String {
+    format!("{:?}", world.get::<Conversation>(agent))
 }
 
 /// The labels of the files attached to each message, as a plugin after
@@ -185,7 +188,7 @@ fn an_agent_attaches_from_its_work_dir_and_is_warned_of_a_missing_path() {
     app.finish();
     app.update();
     let world = app.world_mut();
-    let agent = world.spawn((Agent, WorkDir(dir.clone()))).id();
+    let agent = spawn_root(world, WorkDir(dir.clone())).id();
     let text = "compare @a.txt with @gone/x.rs, @alice";
     world.spawn((Incoming::new(text, DeliveryMode::Steer), ForAgent(agent)));
     app.update();
@@ -202,20 +205,10 @@ fn an_agent_attaches_from_its_work_dir_and_is_warned_of_a_missing_path() {
 
 #[test]
 fn in_another_workspace_a_message_waits_for_its_files() {
-    let (mut app, wakes) = app_on(&MemoryStore::default());
-    app.insert_resource(ProjectWorkspace(Arc::new(Served)))
-        .insert_resource(ProjectRoot("/served".into()))
-        .add_plugins((AgentPlugin, AttachPlugin));
-    app.finish();
-    app.update();
-    let world = app.world_mut();
-    // A model answers it, so the message stays in the conversation.
-    let model = MockCompletionModel::from_stream_turns([reply("read")]);
-    let agent = world.spawn(Agent).id();
-    if let Some(connection) = connect(&model) {
-        world.entity_mut(agent).insert(connection);
-    }
-    let message = world
+    let served: Arc<dyn Workspace> = Arc::new(Served);
+    let (mut app, wakes, agent) = attaching(Some(served), Path::new("/served"), "");
+    let message = app
+        .world_mut()
         .spawn((
             Incoming::new("read @note.txt", DeliveryMode::Steer),
             ForAgent(agent),
@@ -224,22 +217,144 @@ fn in_another_workspace_a_message_waits_for_its_files() {
     app.update();
     let held = app.world().get::<Holds>(message).is_some();
     assert!(held, "the message waits for its files");
-    let said = |world: &World| {
-        let conversation = world.get::<Conversation>(agent);
-        format!("{conversation:?}")
-    };
     run_until(&mut app, &wakes, |world| {
-        said(world).contains("served text")
+        said(world, agent).contains("served text")
     });
     assert!(
-        said(app.world()).contains("served text"),
+        said(app.world(), agent).contains("served text"),
         "{}",
-        said(app.world())
+        said(app.world(), agent)
+    );
+}
+
+/// `@HOST:PATH` attaches that host's file through its transport, even with
+/// a file at the same path here.
+#[cfg(unix)]
+#[test]
+fn a_host_reference_attaches_the_hosts_file() {
+    let exe = std::env::current_exe().unwrap_or_default();
+    let dir = exe.with_file_name(format!("attach-host-{}", std::process::id()));
+    let home = dir.join("home");
+    std::fs::create_dir_all(&home).ok();
+    std::fs::write(home.join("note.txt"), "ON_THE_HOST").ok();
+    std::fs::create_dir_all(dir.join("bench:~")).ok();
+    std::fs::write(dir.join("bench:~").join("note.txt"), "WRONG_LOCAL_SHADOW").ok();
+    let settings = format!(
+        "[remote.hosts]\nbench = ['sh', '-c', 'cd \"$0\" && HOME=\"$0\" exec sh -c \"$1\"', '{}']\n",
+        home.display()
+    );
+    let (mut app, wakes, agent) = attaching(None, &dir, &settings);
+    let text = "quote @bench:~/note.txt";
+    let world = app.world_mut();
+    world.spawn((Incoming::new(text, DeliveryMode::Steer), ForAgent(agent)));
+    run_until(&mut app, &wakes, |world| {
+        said(world, agent).contains("ON_THE_HOST")
+    });
+    let first = said(app.world(), agent);
+    assert!(
+        first.contains("ON_THE_HOST") && !first.contains("WRONG_LOCAL_SHADOW"),
+        "{first}"
+    );
+    // From a work directory on the host, `~` is the host's home, and the
+    // file goes by its place there.
+    std::fs::write(home.join("other.txt"), "OTHER_ON_THE_HOST").ok();
+    let world = app.world_mut();
+    world
+        .entity_mut(agent)
+        .insert(WorkDir("bench:~/app".into()));
+    let text = "quote @~/other.txt";
+    world.spawn((Incoming::new(text, DeliveryMode::Steer), ForAgent(agent)));
+    run_until(&mut app, &wakes, |world| {
+        said(world, agent).contains("OTHER_ON_THE_HOST")
+    });
+    let said = said(app.world(), agent);
+    assert!(said.contains("bench:~/other.txt"), "{said}");
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// Whether the file name of `path` holds `part`.
+fn named(path: &Path, part: &str) -> bool {
+    path.file_name()
+        .is_some_and(|name| name.to_string_lossy().contains(part))
+}
+
+/// This machine's disk behind a slow transport: every path but a file
+/// named `…local…` is said to be on a host, and every look at one but a
+/// file named `…fast…` waits until `released` (at most 5 s).
+#[derive(Debug, Default)]
+struct Slow {
+    released: Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl Workspace for Slow {
+    fn host_for(&self, path: &Path) -> Option<&str> {
+        (!named(path, "local")).then_some("test://slow")
+    }
+
+    fn stat(&self, path: &Path) -> io::Result<Stat> {
+        let started = std::time::Instant::now();
+        let fast = named(path, "fast");
+        while !fast
+            && !self.released.load(std::sync::atomic::Ordering::Relaxed)
+            && started.elapsed() < std::time::Duration::from_secs(5)
+        {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        rig_tools::workspace::Local.stat(path)
+    }
+
+    fn read(&self, path: &Path, limit: u64) -> io::Result<Contents> {
+        rig_tools::workspace::Local.read(path, limit)
+    }
+
+    fn write(&self, _: &Path, _: &[u8]) -> io::Result<()> {
+        Err(io::ErrorKind::Unsupported.into())
+    }
+
+    crate::tests::workspace_stubs!();
+}
+
+/// While a slow workspace reads a message's files the frame goes on, and
+/// stopping the turn puts the message back in the input instead of sending
+/// it.
+#[test]
+fn a_slow_read_holds_the_message_and_a_stop_recalls_it() {
+    let slow = Slow::default();
+    let released = slow.released.clone();
+    let (mut app, _wakes, agent) = attaching(Some(Arc::new(slow)), Path::new("/nowhere"), "");
+    let text = "read @notes.txt";
+    let message = app
+        .world_mut()
+        .spawn((Incoming::new(text, DeliveryMode::Steer), ForAgent(agent)))
+        .id();
+    let started = std::time::Instant::now();
+    app.update();
+    let waited = started.elapsed();
+    let held = app.world().get::<Holds>(message).is_some();
+    assert!(held, "the message waits for its files");
+    assert!(waited < std::time::Duration::from_secs(2), "{waited:?}");
+    app.world_mut().trigger(StopTurn::new(agent));
+    app.update();
+    app.update();
+    // The read it left, once it ends, sends nothing.
+    released.store(true, std::sync::atomic::Ordering::Relaxed);
+    let after = std::time::Instant::now();
+    while after.elapsed() < std::time::Duration::from_millis(300) {
+        app.update();
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    let recalled = &app.world().resource::<Collected<Recalled>>().0;
+    let back: Vec<&str> = recalled.iter().map(|back| back.text.as_str()).collect();
+    assert_eq!(back, [text]);
+    let conversation = app.world().get::<Conversation>(agent);
+    assert!(
+        conversation.is_none_or(|conversation| conversation.messages().is_empty()),
+        "{conversation:?}"
     );
 }
 
 /// What `shell` answers `command`.
-fn run(shell: &SharedShell, command: &str) -> String {
+fn run(shell: &PerCallShell, command: &str) -> String {
     let args = ShellArgs::new(command);
     bevy_tasks::block_on(shell.call(&mut ToolContext::new(), args)).unwrap_or_default()
 }
@@ -270,6 +385,22 @@ fn without_a_cut_the_shell_returns_every_line() {
     output.set(None);
     let whole = run(&shell, &count);
     assert_eq!(numbers(&whole), lines, "{whole:.200}");
+}
+
+#[test]
+fn a_shell_call_reports_its_output_as_it_runs() {
+    let (mut app, wakes) = app_on(&MemoryStore::default());
+    app.add_plugins((AgentPlugin, ShellTool));
+    app.finish();
+    app.update();
+    let world = app.world_mut();
+    let agent = spawn_root(world, ()).id();
+    let command = json!({ "command": "sleep 1" });
+    let call = start_call(world, agent, ("shell", "c0"), command);
+    // The call's output is where its tool reports as it runs.
+    run_until(&mut app, &wakes, |world| {
+        call.is_some_and(|call| world.get::<CallOutput>(call).is_some())
+    });
 }
 
 /// The texts of the system prompt's `remote_hosts` sections.
@@ -307,7 +438,7 @@ fn a_host_path_reaches_the_host_the_settings_name() {
     app.finish();
     app.update();
     let world = app.world_mut();
-    let agent = world.spawn(Agent).id();
+    let agent = spawn_root(world, ()).id();
     let calls = [
         ("read", json!({ "path": "bench:~/note.txt" })),
         ("read", json!({ "path": "note.txt" })),
@@ -374,4 +505,455 @@ fn a_host_path_reaches_the_host_the_settings_name() {
             .host()
             .is_none()
     );
+}
+
+/// The lines of `agent`'s transcript as the terminal view lays them out
+/// at 120 columns.
+#[cfg(feature = "tui")]
+fn transcript(app: &mut App, agent: Entity) -> Vec<String> {
+    let view = rig_tui::TranscriptView::default();
+    let laid = rig_tui::TranscriptLayout::lay_out(app.world_mut(), &view, agent, 120);
+    let lines = laid.map(|laid| laid.lines().map(|line| line.text).collect());
+    lines.unwrap_or_default()
+}
+
+/// A resumed session draws the rows of `read`, `edit` and a failing
+/// `shell` as the live one did, from what each call published: the
+/// session keeps it with the call's result, so no effect log is needed.
+#[cfg(feature = "tui")]
+#[test]
+fn a_resumed_session_draws_its_tool_rows_as_the_live_one_did() {
+    use rig_harness::settings::Settings;
+    use rig_harness_test_support::{
+        Ended, calls, first_agent, log_ended, scripted_models, tui_view,
+    };
+
+    use super::EditTool;
+
+    let exe = std::env::current_exe().unwrap_or_default();
+    let dir = exe.with_file_name(format!("resumed-rows-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).ok();
+    std::fs::write(dir.join("notes.txt"), "one\ntwo\nthree\n").ok();
+    let edits = json!([{ "old_text": "two", "new_text": "TWO" }]);
+    let model = MockCompletionModel::from_stream_turns([
+        calls("r1", "read", json!({ "path": "notes.txt" })),
+        calls("e1", "edit", json!({ "path": "notes.txt", "edits": edits })),
+        calls("s1", "shell", json!({ "command": "echo out; exit 3" })),
+        reply("done"),
+    ]);
+    let store = MemoryStore::default();
+    let open = |model: &MockCompletionModel| {
+        let (mut app, wakes) = app_on(&store);
+        app.insert_resource(Settings::default())
+            .insert_resource(scripted_models([("test/model", model)]))
+            .add_plugins((AgentPlugin, SessionLogPlugin, ReadTool, EditTool, ShellTool))
+            .init_resource::<Ended>()
+            .add_observer(log_ended);
+        tui_view(&mut app);
+        app.finish();
+        app.cleanup();
+        app.update();
+        (app, wakes)
+    };
+    let (mut live, wakes) = open(&model);
+    let world = live.world_mut();
+    let agent = (ModelChoice("test/model".to_owned()), WorkDir(dir.clone()));
+    let agent = spawn_root(world, agent).id();
+    world.trigger(Deliver::new(agent, "go", DeliveryMode::Queue));
+    run_until(&mut live, &wakes, |world| {
+        !world.resource::<Ended>().0.is_empty()
+    });
+    live.update();
+    let rows = transcript(&mut live, agent);
+    drop(live);
+    let (mut resumed, _) = open(&MockCompletionModel::from_stream_turns([reply("unused")]));
+    let agent = first_agent(resumed.world_mut()).unwrap_or(Entity::PLACEHOLDER);
+    let resumed_rows = transcript(&mut resumed, agent);
+    for rows in [rows, resumed_rows] {
+        let has = |text: &str| rows.iter().any(|row| row.contains(text));
+        // The read's count and numbered lines, the edit's diff and how the
+        // command ended.
+        assert!(
+            has("read notes.txt 3 lines") && has("     2  two"),
+            "{rows:#?}"
+        );
+        assert!(has("@@ -1,3 +1,3 @@"), "{rows:#?}");
+        let shell = rows.iter().find(|row| row.contains("$ echo out; exit 3"));
+        let ended = shell.is_some_and(|row| row.trim_end().ends_with("· exit 3"));
+        assert!(ended, "{rows:#?}");
+    }
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// A message sent while one before it still waits for its files waits
+/// too, so the model reads them in the order they were sent.
+#[test]
+fn a_message_does_not_pass_one_whose_files_are_read() {
+    let slow = Slow::default();
+    let released = slow.released.clone();
+    let (mut app, wakes, agent) = attaching(Some(Arc::new(slow)), Path::new("/nowhere"), "");
+    let first = "FIRST_MESSAGE @notes.txt";
+    app.world_mut()
+        .spawn((Incoming::new(first, DeliveryMode::Steer), ForAgent(agent)));
+    app.update();
+    let second = app
+        .world_mut()
+        .spawn((
+            Incoming::new("SECOND_MESSAGE", DeliveryMode::Steer),
+            ForAgent(agent),
+        ))
+        .id();
+    app.update();
+    let held = app.world().get::<Holds>(second).is_some();
+    assert!(held, "the second message waits for the first");
+    released.store(true, std::sync::atomic::Ordering::Relaxed);
+    run_until(&mut app, &wakes, |world| {
+        said(world, agent).contains("SECOND_MESSAGE")
+    });
+    let said = said(app.world(), agent);
+    let at = |text: &str| said.find(text);
+    assert!(
+        at("FIRST_MESSAGE").is_some() && at("FIRST_MESSAGE") < at("SECOND_MESSAGE"),
+        "{said}"
+    );
+}
+
+/// Stopping the turn while a message waits for its files, and another
+/// behind it, puts both back in the input, in the order they were sent.
+#[test]
+fn a_stop_recalls_every_held_message_in_order() {
+    let slow = Slow::default();
+    let released = slow.released.clone();
+    let (mut app, _wakes, agent) = attaching(Some(Arc::new(slow)), Path::new("/nowhere"), "");
+    for text in ["FIRST_MESSAGE @notes.txt", "SECOND_MESSAGE"] {
+        let message = (Incoming::new(text, DeliveryMode::Steer), ForAgent(agent));
+        app.world_mut().spawn(message);
+        app.update();
+    }
+    app.world_mut().trigger(StopTurn::new(agent));
+    app.update();
+    released.store(true, std::sync::atomic::Ordering::Relaxed);
+    let recalled = &app.world().resource::<Collected<Recalled>>().0;
+    let back: Vec<&str> = recalled.iter().map(|back| back.text.as_str()).collect();
+    assert_eq!(back, ["FIRST_MESSAGE @notes.txt\n\nSECOND_MESSAGE"]);
+}
+
+/// A message that is not the user's own, such as a skill's, waiting behind
+/// one whose files are read, goes on when a stop puts the user's back in
+/// the input.
+#[test]
+fn a_skills_message_is_not_left_waiting_by_a_stop() {
+    let slow = Slow::default();
+    let released = slow.released.clone();
+    let (mut app, wakes, agent) = attaching(Some(Arc::new(slow)), Path::new("/nowhere"), "");
+    let first = (
+        Incoming::new("FIRST_MESSAGE @notes.txt", DeliveryMode::Steer),
+        ForAgent(agent),
+    );
+    app.world_mut().spawn(first);
+    app.update();
+    let mut skill = Incoming::new("SKILL_BODY", DeliveryMode::Steer);
+    skill.author = Author::user().titled("skill");
+    let skill = app.world_mut().spawn((skill, ForAgent(agent))).id();
+    app.update();
+    app.world_mut().trigger(StopTurn::new(agent));
+    app.update();
+    released.store(true, std::sync::atomic::Ordering::Relaxed);
+    assert!(app.world().get::<Holds>(skill).is_none());
+    run_until(&mut app, &wakes, |world| {
+        said(world, agent).contains("SKILL_BODY")
+    });
+    assert!(said(app.world(), agent).contains("SKILL_BODY"));
+}
+
+/// A skill's message whose own files were read while it waited behind a
+/// user's message goes on once a stop puts the user's back in the input.
+#[test]
+fn a_read_skills_message_goes_on_after_a_stop() {
+    let slow = Slow::default();
+    let released = slow.released.clone();
+    let (mut app, wakes, agent) = attaching(Some(Arc::new(slow)), Path::new("/nowhere"), "");
+    let first = (
+        Incoming::new("FIRST_MESSAGE @notes.txt", DeliveryMode::Steer),
+        ForAgent(agent),
+    );
+    app.world_mut().spawn(first);
+    app.update();
+    let mut skill = Incoming::new("SKILL_BODY @fast.txt", DeliveryMode::Steer);
+    skill.author = Author::user().titled("skill");
+    let skill = app.world_mut().spawn((skill, ForAgent(agent))).id();
+    // Its own files are read; it waits only for the first.
+    let read = |world: &World| {
+        let holds = world.try_query::<(&HoldOf, &super::ReadFiles)>();
+        holds.is_some_and(|mut holds| holds.iter(world).any(|(&HoldOf(on), _)| on == skill))
+    };
+    run_until(&mut app, &wakes, read);
+    assert!(app.world().get::<Holds>(skill).is_some(), "it waits");
+    app.world_mut().trigger(StopTurn::new(agent));
+    run_until(&mut app, &wakes, |world| {
+        said(world, agent).contains("SKILL_BODY")
+    });
+    released.store(true, std::sync::atomic::Ordering::Relaxed);
+    assert!(said(app.world(), agent).contains("SKILL_BODY"));
+}
+
+/// A message held behind one whose files are on a host has its own files
+/// on this machine attached at once, for the plugins after
+/// [`AttachSystems`], such as one that redacts secrets; only its delivery
+/// waits.
+#[test]
+fn a_held_messages_local_files_are_attached_at_once() {
+    let exe = std::env::current_exe().unwrap_or_default();
+    let dir = exe.with_file_name(format!("attach-local-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).ok();
+    std::fs::write(dir.join("fast_local.txt"), "LOCAL_TEXT").ok();
+    let slow = Slow::default();
+    let released = slow.released.clone();
+    let (mut app, wakes, agent) = attaching(Some(Arc::new(slow)), &dir, "");
+    app.world_mut().spawn((
+        Incoming::new("FIRST_MESSAGE @notes.txt", DeliveryMode::Steer),
+        ForAgent(agent),
+    ));
+    app.update();
+    let second = (
+        Incoming::new("SECOND_MESSAGE @fast_local.txt", DeliveryMode::Steer),
+        ForAgent(agent),
+    );
+    let second = app.world_mut().spawn(second).id();
+    app.update();
+    let held = app.world().get::<Holds>(second).is_some();
+    let attached = app.world().get::<Incoming>(second).is_some_and(|message| {
+        (message.parts.iter()).any(|part| matches!(part, MessagePart::Attachment(_)))
+    });
+    released.store(true, std::sync::atomic::Ordering::Relaxed);
+    assert!(held && attached, "held {held}, attached {attached}");
+    run_until(&mut app, &wakes, |world| {
+        said(world, agent).contains("SECOND_MESSAGE")
+    });
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// A message naming a file here and one on a host has the one here
+/// attached at once, for the plugins after [`AttachSystems`]; the one on
+/// the host follows when it is read.
+#[test]
+fn a_mixed_messages_local_file_is_attached_at_once() {
+    let exe = std::env::current_exe().unwrap_or_default();
+    let dir = exe.with_file_name(format!("attach-mixed-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).ok();
+    std::fs::write(dir.join("fast_local.txt"), "LOCAL_TEXT").ok();
+    let slow = Slow::default();
+    let released = slow.released.clone();
+    let (mut app, wakes, agent) = attaching(Some(Arc::new(slow)), &dir, "");
+    let text = "MIXED @fast_local.txt @notes.txt";
+    let message = (Incoming::new(text, DeliveryMode::Steer), ForAgent(agent));
+    let message = app.world_mut().spawn(message).id();
+    app.update();
+    let labels = |world: &World| -> Vec<String> {
+        let message = world.get::<Incoming>(message);
+        let parts = message.into_iter().flat_map(|message| &message.parts);
+        (parts.filter_map(|part| match part {
+            MessagePart::Attachment(attached) => Some(attached.label.clone()),
+            MessagePart::Text(_) => None,
+        }))
+        .collect()
+    };
+    let held = app.world().get::<Holds>(message).is_some();
+    let attached = labels(app.world());
+    released.store(true, std::sync::atomic::Ordering::Relaxed);
+    assert!(held, "it waits for the host's file");
+    assert_eq!(attached, ["fast_local.txt"]);
+    run_until(&mut app, &wakes, |world| {
+        said(world, agent).contains("MIXED")
+    });
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// A message waiting behind one the kernel drops while its files are
+/// read, such as one a plugin replaced, goes on.
+#[test]
+fn a_message_goes_on_when_the_one_before_is_dropped() {
+    let slow = Slow::default();
+    let released = slow.released.clone();
+    let (mut app, wakes, agent) = attaching(Some(Arc::new(slow)), Path::new("/nowhere"), "");
+    let first = (
+        Incoming::new("FIRST_MESSAGE @notes.txt", DeliveryMode::Steer),
+        ForAgent(agent),
+    );
+    let first = app.world_mut().spawn(first).id();
+    app.update();
+    let second = (
+        Incoming::new("SECOND_MESSAGE", DeliveryMode::Steer),
+        ForAgent(agent),
+    );
+    let second = app.world_mut().spawn(second).id();
+    app.update();
+    let held = app.world().get::<Holds>(second).is_some();
+    app.world_mut().despawn(first);
+    run_until(&mut app, &wakes, |world| {
+        said(world, agent).contains("SECOND_MESSAGE")
+    });
+    released.store(true, std::sync::atomic::Ordering::Relaxed);
+    assert!(held, "the second message waited for the first");
+    assert!(said(app.world(), agent).contains("SECOND_MESSAGE"));
+}
+
+/// A message's files come in the order it names them, a file on a host
+/// read later included: images carry no name to the model.
+#[test]
+fn a_mixed_messages_files_keep_the_order_it_names_them() {
+    let exe = std::env::current_exe().unwrap_or_default();
+    let dir = exe.with_file_name(format!("attach-order-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).ok();
+    std::fs::write(dir.join("fast_local.txt"), "LOCAL_TEXT").ok();
+    std::fs::write(dir.join("fast_remote.txt"), "REMOTE_TEXT").ok();
+    let (mut app, wakes, agent) = attaching(Some(Arc::new(Slow::default())), &dir, "");
+    let text = "ORDER @fast_local.txt @fast_remote.txt";
+    app.world_mut()
+        .spawn((Incoming::new(text, DeliveryMode::Steer), ForAgent(agent)));
+    run_until(&mut app, &wakes, |world| {
+        said(world, agent).contains("REMOTE_TEXT")
+    });
+    let said = said(app.world(), agent);
+    let at = |text: &str| said.find(text);
+    assert!(
+        at("LOCAL_TEXT").is_some() && at("LOCAL_TEXT") < at("REMOTE_TEXT"),
+        "{said}"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// A file on a host under a directory that may not be searched there is
+/// reported with why, not as missing.
+#[cfg(unix)]
+#[test]
+fn a_host_path_that_cannot_be_read_says_why() {
+    use std::os::unix::fs::PermissionsExt;
+    let exe = std::env::current_exe().unwrap_or_default();
+    let dir = exe.with_file_name(format!("attach-host-locked-{}", std::process::id()));
+    let locked = dir.join("home").join("locked");
+    std::fs::create_dir_all(&locked).ok();
+    std::fs::write(locked.join("x.txt"), "SECRET").ok();
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).ok();
+    // Root reads it anyway: nothing to check there.
+    let readable = std::fs::metadata(locked.join("x.txt")).is_ok();
+    let settings = format!(
+        "[remote.hosts]\nbench = ['sh', '-c', 'cd \"$0\" && HOME=\"$0\" exec sh -c \"$1\"', '{}']\n",
+        dir.join("home").display()
+    );
+    let (mut app, wakes, agent) = attaching(None, &dir, &settings);
+    let text = "quote @bench:~/locked/x.txt";
+    app.world_mut()
+        .spawn((Incoming::new(text, DeliveryMode::Steer), ForAgent(agent)));
+    run_until(&mut app, &wakes, |world| {
+        said(world, agent).contains("quote")
+    });
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).ok();
+    std::fs::remove_dir_all(&dir).ok();
+    if readable {
+        return;
+    }
+    let notices = &app.world().resource::<Collected<Notice>>().0;
+    let warned: Vec<&str> = (notices.iter())
+        .filter(|notice| notice.level == NoticeLevel::Warn)
+        .map(|notice| notice.text.as_str())
+        .collect();
+    assert!(
+        warned.len() == 1
+            && warned
+                .iter()
+                .all(|text| text.starts_with("could not read bench:~/locked/x.txt: ")),
+        "{warned:?}"
+    );
+}
+
+/// What counts as read is each agent's own: an agent replaces a file only
+/// if it read or wrote that version itself. One agent's edit of a file the
+/// other read, and a file only the other read, are refused to the other
+/// until it reads them.
+#[test]
+fn each_agent_replaces_only_files_it_saw_itself() {
+    let exe = std::env::current_exe().unwrap_or_default();
+    let dir = exe.with_file_name(format!("seen-per-agent-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).ok();
+    std::fs::write(dir.join("shared.txt"), "one\n").ok();
+    std::fs::write(dir.join("theirs.txt"), "theirs\n").ok();
+    let (mut app, wakes) = app_on(&MemoryStore::default());
+    app.insert_resource(ProjectRoot(dir.clone()))
+        .add_plugins((AgentPlugin, ReadTool, EditTool, WriteTool))
+        .init_resource::<ToolOutputs>()
+        .add_observer(log_tool_outputs);
+    app.finish();
+    app.update();
+    let world = app.world_mut();
+    let main = spawn_root(world, ()).id();
+    let helper = spawn_root(world, ()).id();
+    let edit = json!({ "path": "shared.txt", "edits": [{ "old_text": "one", "new_text": "two" }] });
+    let steps = [
+        (main, "read", "1", json!({ "path": "shared.txt" })),
+        (helper, "read", "2", json!({ "path": "shared.txt" })),
+        (helper, "edit", "3", edit),
+        (
+            main,
+            "write",
+            "4",
+            json!({ "path": "shared.txt", "content": "main\n" }),
+        ),
+        (helper, "read", "5", json!({ "path": "theirs.txt" })),
+        (
+            main,
+            "write",
+            "6",
+            json!({ "path": "theirs.txt", "content": "main\n" }),
+        ),
+        (main, "read", "7", json!({ "path": "shared.txt" })),
+        (
+            main,
+            "write",
+            "8",
+            json!({ "path": "shared.txt", "content": "main\n" }),
+        ),
+    ];
+    for (agent, tool, id, args) in steps {
+        start_call(app.world_mut(), agent, (tool, id), args);
+        let done = |world: &World| world.resource::<ToolOutputs>().0.contains_key(id);
+        run_until(&mut app, &wakes, done);
+    }
+    let outputs = app.world().resource::<ToolOutputs>().0.clone();
+    let text = |name: &str| std::fs::read_to_string(dir.join(name)).ok();
+    let (theirs, shared) = (text("theirs.txt"), text("shared.txt"));
+    std::fs::remove_dir_all(&dir).ok();
+    let said = |id: &str| outputs.get(id).cloned().unwrap_or_default();
+    assert!(said("4").contains("changed since"), "{}", said("4"));
+    assert!(said("6").contains("not been read"), "{}", said("6"));
+    assert_eq!(theirs.as_deref(), Some("theirs\n"));
+    assert!(said("8").starts_with("Replaced"), "{}", said("8"));
+    assert_eq!(shared.as_deref(), Some("main\n"));
+}
+
+/// A file too large to attach is named to the model with the reason, as
+/// it is to the user, and a missing path too, so neither goes looking.
+#[test]
+fn the_model_is_told_which_files_were_not_attached_and_why() {
+    let exe = std::env::current_exe().unwrap_or_default();
+    let dir = exe.with_file_name(format!("unattached-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).ok();
+    let huge = std::fs::File::create(dir.join("huge.txt"));
+    assert!(huge.and_then(|file| file.set_len(17 * 1024 * 1024)).is_ok());
+    let (mut app, _, agent) = attaching(None, &dir, "");
+    let text = "how big is @huge.txt and @gone.txt?";
+    let world = app.world_mut();
+    world.entity_mut(agent).insert(WorkDir(dir.clone()));
+    world.spawn((Incoming::new(text, DeliveryMode::Steer), ForAgent(agent)));
+    app.update();
+    let said = said(app.world(), agent);
+    assert!(said.contains("huge.txt is not attached: "), "{said}");
+    assert!(said.contains("the tools open files up to 16 MB"), "{said}");
+    assert!(said.contains("@gone.txt: no such file"), "{said}");
+    let typed = app
+        .world()
+        .get::<Conversation>(agent)
+        .and_then(|conversation| rig_tools::attach::first_typed(conversation));
+    assert_eq!(typed.as_deref(), Some(text));
+    std::fs::remove_dir_all(&dir).ok();
 }

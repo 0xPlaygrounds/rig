@@ -34,6 +34,11 @@ fn start(store: &MemoryStore, project: &Path) -> (App, Receiver<()>) {
         .add_observer(log_ended);
     app.finish();
     app.update();
+    // `/compact` summarizes all but the newest message of a short conversation.
+    app.world_mut()
+        .resource_mut::<rig_basics::compaction::CompactionDefault>()
+        .0
+        .keep_recent_tokens = 1;
     (app, wakes)
 }
 
@@ -127,7 +132,4 @@ fn the_working_set_follows_a_compaction_and_a_resume() {
     assert_eq!(tracked.runs.len(), 1, "restored");
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(WorkingSetPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(WorkingSetPlugin);

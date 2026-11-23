@@ -189,13 +189,7 @@ impl crate::wire::Wire for Interactions {
             "Gemini interactions completion request",
             &body,
         );
-        let request = http::Request::post(self.provider.interactions_uri(path))
-            .header("Content-Type", "application/json")
-            .header(
-                crate::providers::gemini::GeminiConfig::INTERACTIONS_KEY_HEADER,
-                self.provider.api_key.expose(),
-            )
-            .body(body.into_body())?;
+        let request = self.provider.post_json(path, body.into_body())?;
         // Gemini supplies no transport request-id response header.
         Ok(crate::wire::Encoded::new(request, framing))
     }
@@ -396,6 +390,12 @@ impl crate::wire::Wire for InteractionResume {
             ));
         }
         let id = &self.interaction_id;
+        if !super::cached_content::is_resource_id(id) {
+            return Err(EncodeError::request(format!(
+                "`{id}` is not an interaction id: expected letters, digits, `-` and `_`, since \
+                 the id is spliced into the request path"
+            )));
+        }
         let (path, framing) = match mode {
             Mode::Unary => (
                 format!("/v1beta/interactions/{id}"),
@@ -411,11 +411,9 @@ impl crate::wire::Wire for InteractionResume {
                 (path, crate::wire::Framing::Sse)
             }
         };
-        let request = http::Request::get(self.provider.interactions_uri(&path))
-            .header(
-                crate::providers::gemini::GeminiConfig::INTERACTIONS_KEY_HEADER,
-                self.provider.api_key.expose(),
-            )
+        let request = self
+            .provider
+            .request(http::Method::GET, &path)
             .body(crate::wire::Body::empty())?;
         Ok(crate::wire::Encoded::new(request, framing))
     }

@@ -1,25 +1,20 @@
-//! Plugin corpus: 54. OpenTelemetry tracing (spec `54-otel-tracing.md`).
+//! OpenTelemetry tracing. Each turn is exported as an OpenTelemetry trace: a `turn` span with a
+//! `model.request` child for every model call of the turn (its own and those plugins make for
+//! it) and a `tool.call` child for every tool call. A model call of no turn is a root span
+//! named after its purpose, such as `compaction`. An agent whose work is recorded under an
+//! effect ([`EffectParent`]), such as the subagent of a `task` call, has its turns under that
+//! effect's span. Spans live on the entities they trace: a call or turn that goes away
+//! unfinished ends its span as such.
 //!
-//! Each turn is exported as an OpenTelemetry trace: a `turn` span with a
-//! `model.request` child for every model call of the turn (its own and
-//! those plugins make for it) and a `tool.call` child for every tool call.
-//! A model call of no turn is a root span named after its purpose, such as
-//! `compaction`. An agent whose work is recorded under an effect
-//! ([`EffectParent`]), such as the subagent of a `task` call, has its turns
-//! under that effect's span. Spans live on the entities they trace: a call
-//! or turn that goes away unfinished ends its span as such.
+//! Attribute names follow the GenAI semantic conventions where one exists (`gen_ai.*`), and
+//! `rig.*` otherwise. Spans are exported over OTLP/HTTP by the SDK's batch processor, on a
+//! thread of its own, so a collector that does not answer never holds the agent up; the spans
+//! of a failed export are counted and `/telemetry` reports them.
 //!
-//! Attribute names follow the GenAI semantic conventions where one exists
-//! (`gen_ai.*`), and `rig.*` otherwise. Spans are exported over OTLP/HTTP by
-//! the SDK's batch processor, on a thread of its own, so a collector that
-//! does not answer never holds the agent up; the spans of a failed export
-//! are counted and `/telemetry` reports them.
-//!
-//! Enabled by the `[otel]` settings table (`endpoint`, `capture_content`)
-//! or by `OTEL_EXPORTER_OTLP_ENDPOINT` (and
-//! `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true`), which win, or
-//! by a [`Tracing`] resource the app inserts before adding the plugin.
-//! Without any, it does nothing.
+//! Enabled by the `[otel]` settings table (`endpoint`, `capture_content`) or by
+//! `OTEL_EXPORTER_OTLP_ENDPOINT` (and
+//! `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true`), which win, or by a [`Tracing`]
+//! resource the app inserts before adding the plugin. Without any, it does nothing.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -352,19 +347,20 @@ fn end_turn(
     if let Some(message::Message::User { content }) = asked {
         let len: usize = content
             .iter()
-            .filter_map(|item| match item {
-                UserContent::Text(text) => Some(text.text.len()),
-                _ => None,
-            })
+            .filter_map(UserContent::as_text)
+            .map(str::len)
             .sum();
         span.set_attribute(size("rig.user_message.length", len));
     }
     let (how, status) = match outcome {
         TurnOutcome::Answered(_) => ("answered", Status::Ok),
         TurnOutcome::Failed(why) => ("failed", Status::error(why.clone())),
-        TurnOutcome::Stopped(why) => (
+        TurnOutcome::Stopped(stop) => (
             "interrupted",
-            Status::error(why.clone().unwrap_or_else(|| "interrupted".to_owned())),
+            Status::error(match stop.cause() {
+                StopCause::User => "interrupted".to_owned(),
+                cause => cause.to_string(),
+            }),
         ),
     };
     span.set_attribute(KeyValue::new("rig.turn.outcome", how));

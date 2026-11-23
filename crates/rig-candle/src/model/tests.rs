@@ -153,7 +153,7 @@ fn tiny_tokenizer_with_end_header(
     if mark_end_header_special {
         special_tokens.push(AddedToken::from(end_header, true));
     }
-    tokenizer.add_special_tokens(&special_tokens);
+    tokenizer.add_special_tokens(special_tokens)?;
     Ok(tokenizer.to_string(false)?.into_bytes())
 }
 
@@ -183,7 +183,7 @@ fn tiny_smollm2_tokenizer(
     if mark_end_special {
         special.push(AddedToken::from(end, true));
     }
-    tokenizer.add_special_tokens(&special);
+    tokenizer.add_special_tokens(special)?;
     Ok(tokenizer.to_string(false)?.into_bytes())
 }
 

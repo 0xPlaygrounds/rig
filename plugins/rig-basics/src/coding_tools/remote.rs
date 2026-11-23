@@ -9,7 +9,6 @@ use rig_harness::prelude::{
     PromptSection, Resource, Tool, ToolDef,
 };
 use rig_harness::rig_core::serde::Deserialize;
-use rig_tools::process::Launcher;
 use rig_tools::remote::{Hosts, Remote};
 use rig_tools::{Edit, Read, Search, Shell, Write};
 
@@ -34,14 +33,15 @@ pub struct RemoteSettings {
 }
 
 impl RemoteSettings {
-    /// Each host's [`Remote`], its transport started under `launcher`'s
-    /// policy, and a line about each host that is left out, such as one
-    /// with no transport.
-    pub fn remotes(&self, launcher: &Launcher) -> (Vec<Remote>, Vec<String>) {
+    /// Each host's [`Remote`], its transport started under the policy
+    /// `processes` gives for each operation, and a line about each host
+    /// that is left out, such as one with no transport.
+    pub fn remotes(&self, processes: &Processes) -> (Vec<Remote>, Vec<String>) {
         let mut remotes = Vec::new();
         let mut problems = Vec::new();
         for (name, transport) in &self.hosts {
-            match Remote::new(name, transport, launcher.clone()) {
+            let processes = processes.clone();
+            match Remote::new(name, transport, move || processes.launcher()) {
                 Ok(remote) => remotes.push(remote),
                 Err(error) => problems.push(format!("[remote.hosts] {name} is left out: {error}")),
             }
@@ -72,8 +72,8 @@ impl Plugin for RemoteHostsPlugin {
 
     fn finish(&self, app: &mut App) {
         let world = app.world_mut();
-        let launcher = world.resource::<Processes>().launcher();
-        let (remotes, problems) = world.resource::<RemoteSettings>().remotes(&launcher);
+        let processes = world.resource::<Processes>().clone();
+        let (remotes, problems) = world.resource::<RemoteSettings>().remotes(&processes);
         if world.contains_resource::<Messages<Notice>>() {
             for problem in problems {
                 world.write_message(Notice::error(None, problem));
@@ -116,7 +116,7 @@ impl Plugin for RemoteHostsPlugin {
             if name == Read::NAME {
                 def.description.push_str(&format!(
                     " Work on the files of a remote host ({hosts}) in place, by HOST:PATH paths \
-                     in `read`, `edit`, `write` and `search` and `shell` with `cwd` HOST:DIR, \
+                     in `read`, `edit` and `write`, and `shell` with `cwd` HOST:DIR, \
                      not on copies here."
                 ));
             }
@@ -137,8 +137,8 @@ fn prompt(first: &str, names: &[String]) -> String {
     format!(
         "Remote hosts: {}. A path written HOST:PATH is that host's file, as scp reads it: \
          `{first}:~/app/src/lib.rs`, `{first}:/srv/app` (a relative PATH is under the remote \
-         home). `read`, `edit`, `write` and `search` act on it there, and `shell` with `cwd` \
-         set to such a directory, such as `{first}:~/app`, runs the command there. Every \
+         home). `read`, `edit` and `write` act on it there, and `shell` with `cwd` set to \
+         such a directory, such as `{first}:~/app`, runs the command there. Every \
          other path is on this machine. Read and edit remote files in place this way, not \
          through copies here. The tools name remote files in the same form: pass those paths \
          back as they are. A `shell` exit code of 255 from a host can mean its connection \

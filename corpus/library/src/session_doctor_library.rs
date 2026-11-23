@@ -1,20 +1,17 @@
-//! SP-19: `session-doctor <sessions-dir> [--fix <out-dir>] [--json]`, a
-//! plain program on rig's library crates (rig-core and rig-memory; no Bevy,
-//! no harness) that checks whether every saved session still loads.
+//! `session-doctor <sessions-dir> [--fix <out-dir>] [--json]`, a plain program on rig's library
+//! crates (rig-core and rig-memory; no Bevy, no harness) that checks whether every saved session
+//! still loads.
 //!
-//! Each directory under `<sessions-dir>` is one saved session, a
-//! [`DirStore`]. It is read without writing ([`Session::read_lenient`]) and
-//! classed ([`Class`]): a log of a format other than this build's
-//! ([`FORMAT`](rig_memory::FORMAT)) or one that cannot be read makes it `other-format` or
-//! `unreadable`; otherwise a torn last record ([`Repair::TornTail`]) makes it
-//! `truncated`, and asides of kinds neither rig-core nor rig-memory defines
-//! `unknown-entries`.
+//! Each directory under `<sessions-dir>` is one saved session, a [`DirStore`]. It is read without
+//! writing ([`Session::read_lenient`]) and classed ([`Class`]): a log of a format other than this
+//! build's ([`FORMAT`](rig_memory::FORMAT)) or one that cannot be read makes it `other-format` or
+//! `unreadable`; otherwise a torn last record ([`Repair::TornTail`]) makes it `truncated`, and
+//! asides of kinds neither rig-core nor rig-memory defines `unknown-entries`.
 //!
-//! With `--fix`, each fixable session is copied store to store into
-//! `<out-dir>/<name>` and opened there with a [`Writer`], the library's own
-//! repair path: it sets each torn tail aside. The copy is read back and must hold the same messages,
-//! saved values and unknown entries as the original read; one that does
-//! not is deleted. The originals are only ever read.
+//! With `--fix`, each fixable session is copied store to store into `<out-dir>/<name>` and opened
+//! there with a [`Writer`], the library's own repair path: it sets each torn tail aside. The copy
+//! is read back and must hold the same messages, saved values and unknown entries as the original
+//! read; one that does not is deleted. The originals are only ever read.
 
 use std::collections::BTreeMap;
 use std::fmt::{self, Write as _};
@@ -25,12 +22,12 @@ use std::sync::Arc;
 
 use rig_core::conversation::{Aside, AsideId, Conversation, TURN};
 use rig_core::message::Message;
-use rig_memory::{COMPACTED, DirStore, Repair, Session, SessionError, Store, Writer};
+use rig_memory::{DirStore, Repair, Session, SessionError, Store, Writer};
 use serde::Serialize;
 
 /// The aside kinds rig's library crates define; any other is unknown to
 /// them.
-const KNOWN: [&str; 2] = [TURN, COMPACTED];
+const KNOWN: [&str; 1] = [TURN];
 
 /// What a saved session is to this build of the library.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]

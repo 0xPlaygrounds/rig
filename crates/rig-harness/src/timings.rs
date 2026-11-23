@@ -12,22 +12,22 @@
 //! ```
 //! use rig_harness::prelude::*;
 //!
-//! /// The plugins whose systems took longest, slowest first.
+//! /// The system runs of the last frame, slowest first.
 //! fn slowest(timings: PluginTimings, names: Query<&Name>) -> Vec<String> {
-//!     let mut totals: Vec<_> = timings.totals().into_iter().collect();
-//!     totals.sort_by_key(|(_, timing)| std::cmp::Reverse(timing.total));
+//!     let mut runs = timings.last_frame();
+//!     runs.sort_by_key(|run| std::cmp::Reverse(run.took));
 //!     let mut lines = Vec::new();
-//!     for ((plugin, schedule), timing) in totals {
-//!         let plugin = plugin.and_then(|plugin| names.get(plugin).ok());
+//!     for run in runs {
+//!         let plugin = run.plugin.and_then(|plugin| names.get(plugin).ok());
 //!         let plugin = plugin.map_or("rig", Name::as_str);
-//!         let schedule = schedule.unwrap_or_default();
-//!         lines.push(format!("{plugin} in {schedule}: {:?}", timing.total));
+//!         let schedule = run.schedule.unwrap_or_default();
+//!         lines.push(format!("{plugin} in {schedule}: {:?}", run.took));
 //!     }
 //!     lines
 //! }
 //! ```
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::mem;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -51,17 +51,15 @@ const SYSTEM: &str = "system";
 const SCHEDULE: &str = "schedule";
 
 /// How long each system ran, by the system's name, such as
-/// `rig_tui::input::read_input`, and the schedule it ran in: totals so far,
-/// and each run of the last whole frame. Clones share the timings; the log
-/// fills them from other threads as systems run.
+/// `rig_tui::input::read_input`, and the schedule it ran in: each run of the
+/// last whole frame. Clones share the timings; the log fills them from other
+/// threads as systems run.
 #[derive(Resource, Clone, Default)]
 pub struct SystemTimings(Arc<Mutex<Timings>>);
 
 /// What [`SystemTimings`] holds.
 #[derive(Default)]
 struct Timings {
-    /// Per system and schedule.
-    totals: BTreeMap<(String, Option<String>), Timing>,
     /// The runs of this frame so far, in order.
     frame: Vec<(String, Option<String>, Duration)>,
     /// The runs of the last whole frame, in order.
@@ -71,41 +69,9 @@ struct Timings {
     schedules: Vec<String>,
 }
 
-/// How often a system, or the systems of a plugin, ran and for how long.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Timing {
-    /// How many runs.
-    pub runs: u64,
-    /// Their time together.
-    pub total: Duration,
-    /// The longest run.
-    pub max: Duration,
-}
-
-impl Timing {
-    fn add(&mut self, took: Duration) {
-        self.runs += 1;
-        self.total += took;
-        self.max = self.max.max(took);
-    }
-}
-
 impl SystemTimings {
     fn lock(&self) -> MutexGuard<'_, Timings> {
         self.0.lock().unwrap_or_else(PoisonError::into_inner)
-    }
-
-    /// Each system's timing so far, by its name and its schedule's label.
-    pub fn systems(&self) -> BTreeMap<(String, Option<String>), Timing> {
-        self.lock().totals.clone()
-    }
-
-    /// Forgets every timing, such as to measure from now on.
-    pub fn clear(&self) {
-        let mut timings = self.lock();
-        timings.totals.clear();
-        timings.frame.clear();
-        timings.last.clear();
     }
 
     /// Ends the frame: its runs become the last whole frame's.
@@ -118,8 +84,6 @@ impl SystemTimings {
     fn record(&self, system: &str, took: Duration) {
         let mut timings = self.lock();
         let schedule = timings.schedules.last().cloned();
-        let key = (system.to_owned(), schedule.clone());
-        timings.totals.entry(key).or_default().add(took);
         timings.frame.push((system.to_owned(), schedule, took));
     }
 }
@@ -153,20 +117,6 @@ pub struct SystemRun {
 }
 
 impl PluginTimings<'_, '_> {
-    /// The timings so far per plugin and schedule.
-    pub fn totals(&self) -> BTreeMap<(Option<Entity>, Option<String>), Timing> {
-        let plugin = self.plugin_of();
-        let mut totals = BTreeMap::<_, Timing>::new();
-        for ((system, schedule), timing) in self.timings.lock().totals.iter() {
-            let total = totals.entry((plugin(system, schedule), schedule.clone()));
-            let total = total.or_default();
-            total.runs += timing.runs;
-            total.total += timing.total;
-            total.max = total.max.max(timing.max);
-        }
-        totals
-    }
-
     /// Each system run of the last whole frame, in order.
     pub fn last_frame(&self) -> Vec<SystemRun> {
         let plugin = self.plugin_of();

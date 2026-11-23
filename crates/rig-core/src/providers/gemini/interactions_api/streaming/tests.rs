@@ -101,7 +101,7 @@ fn classify_interactions_frame(data: &str) -> WireEvent<InteractionsEvent> {
 
 /// The Interactions wire bound to a transport answering with `frames` as
 /// one SSE body, driven through the full normalized path.
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 async fn drive_frames(
     frames: &[&str],
 ) -> (
@@ -128,7 +128,7 @@ async fn drive_frames(
     (items, stream.finish().await)
 }
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 fn texts_of(items: &[Result<Item<StreamEvent>, String>]) -> Vec<&str> {
     items
         .iter()
@@ -139,7 +139,7 @@ fn texts_of(items: &[Result<Item<StreamEvent>, String>]) -> Vec<&str> {
         .collect()
 }
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 #[tokio::test]
 async fn provider_error_event_ends_the_stream_without_draining_later_frames() {
     let (items, outcome) = drive_frames(&[
@@ -163,7 +163,7 @@ async fn provider_error_event_ends_the_stream_without_draining_later_frames() {
 /// `interaction.created` and after each event the API marks with an
 /// `event_id`; a stream that resumes an interaction names it without that
 /// event, and joins the step that was open.
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 #[tokio::test]
 async fn resume_points_yield_cursors() -> anyhow::Result<()> {
     use futures::StreamExt;
@@ -239,7 +239,7 @@ async fn resume_points_yield_cursors() -> anyhow::Result<()> {
 /// Not a cassette test: an overload or quota hit is a transient condition
 /// that cannot be recorded on demand, and the defect is the verdict the
 /// envelope gets, which a hand-written frame pins exactly.
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 #[tokio::test]
 async fn an_in_band_error_with_a_status_code_is_classified_like_the_rest_stream()
 -> anyhow::Result<()> {
@@ -485,4 +485,25 @@ fn a_call_reads_arguments_a_delta_sends_as_json_or_omits() {
         .map(|call| serde_json::Value::Object(call.function.arguments.clone()))
         .collect();
     assert_eq!(arguments, [json!({"x": 17})]);
+}
+
+/// Counts whose sum passes `u64::MAX` are an error, without a panic or a
+/// wrapped total, on either side and in the total.
+#[test]
+fn usage_counts_that_overflow_are_an_error() {
+    for usage in [
+        json!({"total_input_tokens": u64::MAX, "total_tool_use_tokens": 1}),
+        json!({"total_output_tokens": u64::MAX, "total_thought_tokens": 1}),
+        json!({"total_input_tokens": u64::MAX, "total_output_tokens": 1}),
+    ] {
+        let failed = usage_of(&usage);
+        assert!(
+            failed
+                .as_ref()
+                .is_err_and(|error| error.to_string().contains("overflow")),
+            "{failed:?}"
+        );
+    }
+    let fits = usage_of(&json!({"total_input_tokens": 2, "total_output_tokens": 3}));
+    assert_eq!(fits.map(|usage| usage.total_tokens).ok(), Some(Some(5)));
 }

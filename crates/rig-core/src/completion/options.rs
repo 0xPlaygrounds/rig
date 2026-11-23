@@ -23,8 +23,6 @@ mod merge;
 
 pub(crate) use mapping::OptionName;
 pub use mapping::{Mapping, OptionFields, OptionMap};
-#[cfg(feature = "image")]
-pub(crate) use merge::deep_merge;
 pub use merge::{BaseInput, FinalBody, RawAt, Rewrite, check, param, request_params};
 pub(crate) use merge::{BodyRefusal, CatalogRefusal, catalog_refusals, collect_refusals};
 
@@ -57,7 +55,7 @@ pub struct GenerationOptions {
     #[serde(default)]
     pub parallel_tool_calls: Option<bool>,
     /// Nucleus sampling probability mass.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::json_utils::floats")]
     pub top_p: Option<f64>,
     /// Sampling seed, for providers that offer best-effort determinism.
     #[serde(default)]
@@ -277,6 +275,13 @@ impl Effort {
             Self::XHigh => "xhigh",
             Self::Max => "max",
         }
+    }
+
+    /// The level `word` names by its serde name, the inverse of
+    /// [`Self::as_str`].
+    pub(crate) fn named(word: &str) -> Option<Self> {
+        Self::deserialize(serde::de::value::StrDeserializer::<serde::de::value::Error>::new(word))
+            .ok()
     }
 }
 

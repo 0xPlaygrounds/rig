@@ -10,10 +10,7 @@ use rig_harness_test_support::{
 
 use super::*;
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(ConversationChaptersPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(ConversationChaptersPlugin);
 
 /// How many boundary calls settled.
 #[derive(Resource, Default)]
@@ -64,6 +61,7 @@ fn start(home: &Home, id: &SessionId, models: &Models3) -> (App, Receiver<()>, E
     app.world_mut().trigger(SetModel {
         entity: agent,
         model: "test/agent".to_owned(),
+        kind: ChoiceKind::ForThisRun,
     });
     (app, wakes, agent)
 }

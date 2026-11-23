@@ -1174,7 +1174,7 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"order_id":"A-1"},"id":"call_1412368","name":"lookup_order"},"thoughtSignature":"EmkKZwFpFH0TPK1QbB1IIo3+Y2cbf4TvXfEDFTdPsOdTgWtnPSHVYwlemURh3HtTpQcMpPB1dWiYN2lq5aX81BWWzt/BAeIfPJPXJPMyjNgLUpjYOPAtfW7aE34UXqsINwAuj5mI3IBHafQ="}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-3.8-flash","responseId":"XATBapTIHP6CmtkPpIqh4AE","usageMetadata":{"candidatesTokenCount":20,"promptTokenCount":86,"promptTokensDetails":[{"modality":"TEXT","tokenCount":86}],"serviceTier":"standard","totalTokenCount":106}}'
+  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"order_id":"A-1"},"id":"call_10201892604708166908","name":"lookup_order"},"thoughtSignature":"EmkKZwFpFH0Tf6+Rkr3BRUE5n5FS8Cm1UsBlBpiiIjJo39Pcja+oRAIfXVTNwJ4NkJdYCPlxE23kUDDkWUto5qSPfx1fL4+FYD1O2FcYvJXvREe4a6PDC0+vITRSGkGfbZwcZryoS1FDo2g="}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-3.8-flash","responseId":"bHrtavb4B6uzmtkPmLzS-QI","usageMetadata":{"candidatesTokenCount":20,"promptTokenCount":86,"promptTokensDetails":[{"modality":"TEXT","tokenCount":86}],"serviceTier":"standard","totalTokenCount":106}}'
 ---
 provider: gemini
 encoder: POST /v1beta/models/{model}:generateContent
@@ -1413,7 +1413,7 @@ encoder: POST /v1beta/models/{model}:generateContent
 shape: bf539c69304cd3e2
 calls: []
 ends: []
-source: gemini/auto_caching/lifecycle.yaml#60
+source: gemini/stateful_chain_matrix/cached_content_lifecycle_chain.yaml#8
 then:
   status: 403
   header:

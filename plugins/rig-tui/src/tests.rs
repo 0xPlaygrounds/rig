@@ -27,24 +27,50 @@ pub(crate) fn scratch(name: &str) -> std::path::PathBuf {
     dir
 }
 
+/// Places for plugins' files, all in memory, the session's in `session`.
+pub(crate) fn data(session: &rig_harness::rig_memory::MemoryStore) -> PluginData {
+    PluginData {
+        session: std::sync::Arc::new(session.clone()),
+        project: std::sync::Arc::new(rig_harness::rig_memory::MemoryStore::default()),
+        user: std::sync::Arc::new(rig_harness::rig_memory::MemoryStore::default()),
+    }
+}
+
 /// An agent with the terminal view's input and choices, but no terminal:
 /// its keys are the [`PendingInput`] [`press`] pushes. Also returns the
 /// agent.
 pub(crate) fn view_app() -> (App, Entity) {
+    view_app_with(|_| {})
+}
+
+/// [`view_app`], with `plugin` built after the terminal view and its
+/// status line (not the key hints or the terminal title), and every
+/// plugin's `finish` run, as a run does.
+pub(crate) fn view_app_with(plugin: impl FnOnce(&mut App)) -> (App, Entity) {
+    view_app_of(|app| {
+        app.add_plugins((TuiPlugin, crate::status::StatusLinePlugin));
+        plugin(app);
+    })
+}
+
+/// [`view_app`] with the view's plugins `add` adds, and every plugin's
+/// `finish` run, as a run does.
+pub(crate) fn view_app_of(add: impl FnOnce(&mut App)) -> (App, Entity) {
     let mut app = App::new();
     app.set_error_handler(rig_harness::error::panic)
         .insert_resource(Invoked::default())
-        .add_plugins((AgentPlugin, AskPlugin, PickPlugin, TuiPlugin))
-        .init_resource::<Delivered>()
-        .add_observer(
-            |accepted: On<Add<Started>>,
-             messages: Query<&Incoming>,
-             mut delivered: ResMut<Delivered>| {
-                if let Ok(message) = messages.get(accepted.entity) {
-                    delivered.0.push(message.text().to_owned());
-                }
-            },
-        );
+        .add_plugins((AgentPlugin, AskPlugin, PickPlugin));
+    add(&mut app);
+    app.finish();
+    app.init_resource::<Delivered>().add_observer(
+        |accepted: On<Add<Started>>,
+         messages: Query<&Incoming>,
+         mut delivered: ResMut<Delivered>| {
+            if let Ok(message) = messages.get(accepted.entity) {
+                delivered.0.push(message.text().to_owned());
+            }
+        },
+    );
     add_view(&mut app);
     app.update();
     let world = app.world_mut();
@@ -53,6 +79,19 @@ pub(crate) fn view_app() -> (App, Entity) {
         .single(world)
         .unwrap_or(Entity::PLACEHOLDER);
     (app, agent)
+}
+
+/// Adds `message` to `agent`'s conversation, then runs a frame.
+pub(crate) fn say(app: &mut App, agent: Entity, message: rig_core::completion::Message) {
+    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
+        conversation.push(message);
+    }
+    app.update();
+}
+
+/// Where in `lines` the first that contains `text` is.
+pub(crate) fn line_of(lines: &[String], text: &str) -> Option<usize> {
+    lines.iter().position(|line| line.contains(text))
 }
 
 /// Writes `kind` events of `keys` (such as `ctrl+x ctrl+e`), then runs a
@@ -371,12 +410,11 @@ fn a_screen_built_from_the_public_widgets_draws_and_sends() {
     let world = app.world_mut();
     let agent = world.query_filtered::<Entity, With<Agent>>().single(world);
     let Ok(agent) = agent else { return };
-    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
-        conversation.push(rig_core::completion::Message::user(
-            "where is the config read?",
-        ));
-    }
-    app.update();
+    say(
+        &mut app,
+        agent,
+        rig_core::completion::Message::user("where is the config read?"),
+    );
     let rows = app.world().resource::<TuiTestScreen>().rows();
     let area = app.world().resource::<TuiFrame>().area(pane);
     assert!(area.is_some_and(|area| area.y == 3), "{area:?}");

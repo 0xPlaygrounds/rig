@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_methods, reason = "test fixtures")]
+
 use serde_json::json;
 
 use super::*;
@@ -89,7 +91,7 @@ fn scratch(name: &str) -> PathBuf {
 #[test]
 fn a_change_touches_only_the_bytes_of_its_server() {
     let dir = scratch("splice");
-    let [user, _] = files(&dir, &dir);
+    let user = user_file(&dir);
     let before = "{\r\n\t\"other\": {\"a\": [1,2]},\r\n\t\"mcpServers\": {\r\n\t\t\"x\": {\"command\": \"x\"}\r\n\t}\r\n}\r\n";
     fs::write(user.path(), before).ok();
     assert_eq!(
@@ -131,7 +133,7 @@ fn a_project_file_that_is_a_link_is_never_read_or_written() {
     let users = dir.join("users-mcp.json");
     let secret = "{\"mcpServers\":{\"gh\":{\"url\":\"https://h\",\"headers\":{\"Authorization\":\"Bearer SECRET\"}}}}\n";
     fs::write(&users, secret).ok();
-    let [_, project] = files(&dir.join("home"), &dir);
+    let project = project_file(&dir.join("home"), &dir.join(".rig"));
     fs::create_dir_all(dir.join(".rig")).ok();
     // A checkout's link to the user's file.
     std::os::unix::fs::symlink(&users, project.path()).ok();
@@ -158,7 +160,7 @@ fn the_users_file_keeps_its_permissions_and_its_link() {
     fs::create_dir_all(dir.join("dotfiles")).ok();
     fs::create_dir_all(dir.join("home")).ok();
     std::os::unix::fs::symlink(&dotfiles, dir.join("home/mcp.json")).ok();
-    let [user, _] = files(&dir.join("home"), &dir);
+    let user = user_file(&dir.join("home"));
     // A link to a file not made yet is followed too.
     assert_eq!(user.add("first", json!({ "command": "first" })), Ok(()));
     assert!(
@@ -190,7 +192,7 @@ fn a_project_write_never_leaves_the_project() {
     let repo = dir.join("repo");
     fs::create_dir_all(&repo).ok();
     std::os::unix::fs::symlink(&home, repo.join(".rig")).ok();
-    let [_, project] = files(&home, &repo);
+    let project = project_file(&home, &repo.join(".rig"));
     assert!(project.servers().is_err());
     let refused = project.add("x", json!({ "command": "x" }));
     assert!(refused.is_err_and(|why| {
@@ -225,7 +227,7 @@ fn a_write_keeps_the_files_group() {
         fs::remove_dir_all(dir).ok();
         return;
     };
-    let [user, _] = files(&dir, &dir);
+    let user = user_file(&dir);
     fs::write(user.path(), "{}\n").ok();
     let given = std::os::unix::fs::chown(user.path(), None, Some(other));
     assert!(given.is_ok(), "{given:?}");
@@ -233,4 +235,109 @@ fn a_write_keeps_the_files_group() {
     let gid = fs::metadata(user.path()).map(|metadata| metadata.gid());
     assert_eq!(gid.ok(), Some(other));
     fs::remove_dir_all(dir).ok();
+}
+
+/// A private file's staged copy is never readable by others, watched
+/// while writes run.
+#[cfg(unix)]
+#[test]
+fn a_private_file_is_never_staged_readable() {
+    use std::os::unix::fs::PermissionsExt;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    let dir = scratch("staged");
+    let user = user_file(&dir);
+    // Long enough that writing it outlasts one look at the directory.
+    let padded = json!({ "pad": "x".repeat(1 << 20), "mcpServers": {} });
+    fs::write(user.path(), padded.to_string()).ok();
+    fs::set_permissions(user.path(), fs::Permissions::from_mode(0o600)).ok();
+    let done = AtomicBool::new(false);
+    let (open, writes) = std::thread::scope(|scope| {
+        let watcher = scope.spawn(|| {
+            while !done.load(Ordering::Relaxed) {
+                for entry in fs::read_dir(&dir).into_iter().flatten().flatten() {
+                    if !entry
+                        .file_name()
+                        .to_string_lossy()
+                        .starts_with(".mcp.json.")
+                    {
+                        continue;
+                    }
+                    let seen = entry
+                        .metadata()
+                        .map(|meta| meta.permissions().mode() & 0o777);
+                    if let Some(open) = seen.ok().filter(|seen| seen & 0o077 != 0) {
+                        return Some(open);
+                    }
+                }
+            }
+            None
+        });
+        let writes: Vec<_> = (0..40)
+            .take_while(|_| !watcher.is_finished())
+            .map(|at| user.add(&format!("s{at}"), json!({ "command": "x" })))
+            .collect();
+        done.store(true, Ordering::Relaxed);
+        (watcher.join().ok().flatten(), writes)
+    });
+    let mode = fs::metadata(user.path()).map(|meta| meta.permissions().mode() & 0o777);
+    fs::remove_dir_all(&dir).ok();
+    assert!(writes.iter().all(Result::is_ok), "{writes:?}");
+    assert_eq!(open, None, "staged readable by others");
+    assert_eq!(mode.ok(), Some(0o600));
+}
+
+#[test]
+fn a_secret_variable_is_refused_by_name_and_never_expanded() {
+    let header = json!({ "url": "https://h", "headers": { "X": "${RIG_SECRET_CRYPT}" } });
+    let env = json!({ "command": "x", "env": { "K": "${RIG_SECRET_CRYPT:-none}" } });
+    let lower = json!({ "url": "https://h/${rig_secret_crypt:-none}" });
+    let refusal = |field: &str, name: &str| {
+        Err(format!(
+            "`{field}`: ${{{name}}} is a secret of rig's, which no server is given"
+        ))
+    };
+    assert_eq!(
+        ServerSpec::parse(&header),
+        refusal("headers.X", "RIG_SECRET_CRYPT")
+    );
+    assert_eq!(
+        ServerSpec::parse(&env),
+        refusal("env.K", "RIG_SECRET_CRYPT")
+    );
+    assert_eq!(
+        ServerSpec::parse(&lower),
+        refusal("url", "rig_secret_crypt")
+    );
+}
+
+/// A new mcp.json, whose headers may hold a token, is private.
+#[cfg(unix)]
+#[test]
+fn a_new_mcp_json_is_private() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = scratch("new-mode");
+    fs::create_dir_all(dir.join("home")).ok();
+    let user = user_file(&dir.join("home"));
+    let server = json!({ "url": "https://h", "headers": { "Authorization": "Bearer sk-secret" } });
+    assert_eq!(user.add("x", server), Ok(()));
+    let mode = fs::metadata(user.path()).map(|metadata| metadata.permissions().mode() & 0o777);
+    fs::remove_dir_all(dir).ok();
+    assert_eq!(mode.ok(), Some(0o600));
+}
+
+/// A default with paired braces is whole: with the variable set, none of
+/// it is left behind. An unpaired `{` leaves the `${` unclosed.
+#[test]
+fn a_default_with_braces_is_whole() {
+    let path = std::env::var("PATH").unwrap_or_default();
+    assert_eq!(expand(r#"${PATH:-{"a":{"b":1}}}"#, "env.K"), Ok(path));
+    assert_eq!(
+        expand(r#"${RIG_TEST_UNSET_B59:-{"a":1}}!"#, "env.K"),
+        Ok(r#"{"a":1}!"#.to_owned())
+    );
+    assert_eq!(
+        expand("${PATH:-{a}", "env.K"),
+        Err("`env.K`: a `${` is not closed".to_owned())
+    );
 }

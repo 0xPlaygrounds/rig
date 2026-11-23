@@ -85,10 +85,7 @@ fn app(
         .insert_resource(TuiTestScreen::new(80, 30));
     tui_view(&mut app);
     collect::<Notice>(&mut app);
-    let agent = app
-        .world_mut()
-        .spawn((Agent, ModelChoice("test/a".to_owned())))
-        .id();
+    let agent = spawn_root(app.world_mut(), ModelChoice("test/a".to_owned())).id();
     app.finish();
     app.cleanup();
     app.update();
@@ -274,6 +271,7 @@ fn a_prefill_starts_one_stored_reply_and_is_cleared_after_it() {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model: "test/b".to_owned(),
+        kind: ChoiceKind::ForThisRun,
     });
     ask(&mut app, &wakes, agent, r#"prefill {""#, "Give me JSON.", 3);
     assert_eq!(b.request_count(), 0);
@@ -317,6 +315,7 @@ fn a_prefill_starts_one_stored_reply_and_is_cleared_after_it() {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model: "test/a".to_owned(),
+        kind: ChoiceKind::ForThisRun,
     });
     let before = answers(app.world(), agent).len();
     ask(&mut app, &wakes, agent, r#"prefill {""#, "Again.", 5);
@@ -333,7 +332,4 @@ fn a_prefill_starts_one_stored_reply_and_is_cleared_after_it() {
     assert_eq!(last.as_deref(), Some(r#"{"x": 3}"#));
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(ReplyPrefillPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(ReplyPrefillPlugin);

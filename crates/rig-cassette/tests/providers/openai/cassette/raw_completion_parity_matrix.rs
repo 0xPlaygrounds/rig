@@ -1,44 +1,21 @@
-//! Raw parity for OpenAI: the provider-native view of a reply reproduces
-//! what `Model::call` returns.
-//!
-//! # What this pins
+//! Raw parity for OpenAI: the provider-native view of a reply reproduces what
+//! `Model::call` returns.
 //!
 //! One call yields both views of one reply. The normalized
 //! [`CompletionResponse`] is what `completion()` returns, and
 //! [`CompletionResponse::raw`] holds the provider's reply document verbatim.
-//! Reading `raw` as JSON, under the provider's own field names, must
-//! reproduce the response the call already handed back.
+//! Reading `raw` as JSON, under the provider's own field names, must reproduce
+//! the response the call already handed back. On both routes the `x-request-id`
+//! transport id is a header, not a body field, so the provider-native view
+//! matches only once the call's own transport id is attached to it.
 //!
-//! On the Chat Completions route the transport request id from the
-//! `x-request-id` header is not in the reply document. It is a header, not a
-//! body field, and `raw` is the body. So the provider-native
-//! view reproduces `completion()` only once the call's own transport id is
-//! attached to it.
-//!
-//! On the Responses route the reply document carries no transport id
-//! either, for the same reason, so the same rule holds.
-//!
-//! Every parity cell issues the same request twice — two interactions of one
-//! scenario, replayed in order by the harness. The first call supplies the
-//! provider-native view, the second the `completion()` view. The two
-//! responses are distinct provider turns, so each side is first checked
-//! against *its own* fixture interaction (id, request-id header, usage,
-//! model, finish reason), and then the two sides are compared on the fields
-//! the contract names: `finish_reason()`, `model`, `usage`, and
-//! `provider_request_id.is_some()`. Identity is compared structurally
-//! (`response_id` present with the route's prefix, `provider_request_id`
-//! present) — two live turns cannot share ids.
-//!
-//! # Matrix
-//!
-//! | # | Cell | Dimension | expected | Status |
-//! |---|------|-----------|----------|--------|
-//! | 5 | `responses_tool_turn_parity` | Responses, forced tool call | raw ≡ completion (`ToolCalls`) | recorded |
-//!
-//! Every cell is recorded; none is unit-only. Premise, re-derived from each
-//! cell's fixture bytes after the wrapper returns: every recorded response
-//! carries an `x-request-id` header — without that the cells would prove
-//! nothing about the transport id.
+//! Every parity cell issues the same request twice, as two interactions of one
+//! scenario. The first supplies the provider-native view, the second the
+//! `completion()` view. Each side is checked against its own fixture interaction,
+//! then the two are compared on `finish_reason()`, `model`, `usage` and
+//! `provider_request_id.is_some()`. Identity is compared structurally because two
+//! live turns cannot share ids. Each cell re-derives from its fixture that every
+//! response carries an `x-request-id` header.
 
 use rig::completion::{
     AssistantContent, CompletionRequest, CompletionResponse, FinishReason, ToolDefinition,

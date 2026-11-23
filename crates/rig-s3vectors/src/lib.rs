@@ -337,7 +337,7 @@ impl VectorStoreIndex for S3VectorsVectorStore {
                     VectorStoreError::DatastoreError("S3Vectors response missing metadata".into())
                 })?;
                 let val = document_to_json_value(&metadata_document);
-                let metadata: T = serde_json::from_value(val)?;
+                let metadata: T = rig_core::json_utils::from_value(&val)?;
 
                 Ok(VectorSearchResult {
                     score: distance,

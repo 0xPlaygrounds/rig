@@ -40,6 +40,7 @@ fn start(store: &MemoryStore, model: &MockCompletionModel) -> (App, Receiver<()>
     app.world_mut().trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     app.world_mut().resource_mut::<ShownAgent>().0 = Some(agent);
     app.update();
@@ -236,7 +237,4 @@ fn steer_queue_edit_interrupt_and_restart() {
     );
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(SteerQueuePlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(SteerQueuePlugin);

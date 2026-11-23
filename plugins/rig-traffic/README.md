@@ -13,12 +13,6 @@ one run with `rig --traffic-log`, or for every run in
 log = true
 ```
 
-An existing plugin list that predates this entry can add it with:
-
-```sh
-rig plugin add rig_traffic::TrafficPlugin
-```
-
 Off, it installs nothing: no transport wrapper, thread or system. On, it
 wraps the models' HTTP transport and opens the log once the session store is
 open; a run without a store writes nothing. The writer runs on a thread of
@@ -61,8 +55,8 @@ foreach inputs as $x ({};
 ## Join exchanges to agents and turns
 
 `effects.jsonl` is written by
-`rig_basics::telemetry::effect_log::EffectLogPlugin`, which the default
-`plugins.toml` lists disabled. Enable it before recording the session:
+`rig_basics::telemetry::effect_log::EffectLogPlugin`, which is off by
+default. Enable it before recording the session:
 
 ```sh
 rig plugin enable rig_basics::telemetry::effect_log::EffectLogPlugin

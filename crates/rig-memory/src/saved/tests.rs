@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use serde_json::json;
 
-use crate::{MODEL, SavedAgent, Session, TITLE};
+use crate::{CURRENT, MODEL, SavedAgent, Session, TITLE};
 
 fn agent(id: &str, parent: Option<&str>, retired: bool) -> SavedAgent {
     SavedAgent {
@@ -13,9 +13,10 @@ fn agent(id: &str, parent: Option<&str>, retired: bool) -> SavedAgent {
     }
 }
 
-/// The main agent is the first nothing spawned, by id, of those a restore
-/// brings back; its model and title read by their keys, and a value of
-/// another shape is an error, not a silent `None`.
+/// Without a current agent, the main agent is the first by id that
+/// nothing spawned, of those a restore brings back; its model and title
+/// read by their keys, and a value of another shape is an error, not a
+/// silent `None`.
 #[test]
 fn the_main_agent_and_its_saved_values_read_without_the_host() {
     let mut main = agent("b", None, false);
@@ -43,4 +44,28 @@ fn the_main_agent_and_its_saved_values_read_without_the_host() {
     let title = found.and_then(|agent| agent.value::<String>(TITLE));
     assert!(title.is_some_and(|title| title.is_err()));
     assert!(Session::default().main_agent().is_none());
+}
+
+/// The main agent is the current one the session names, though another
+/// sorts first; a current agent a restore leaves out, a subagent or an
+/// unknown id names none.
+#[test]
+fn the_main_agent_is_the_current_one() {
+    let main = |current: &str| {
+        let session = Session {
+            agents: vec![
+                agent("a-first", None, false),
+                agent("0-gone", None, true),
+                agent("child", Some("a-first"), false),
+                agent("b-fork", None, false),
+            ],
+            saved: BTreeMap::from([(CURRENT.to_owned(), json!(current))]),
+            ..Session::default()
+        };
+        session.main_agent().map(|agent| agent.id.clone())
+    };
+    assert_eq!(main("b-fork").as_deref(), Some("b-fork"));
+    for none in ["0-gone", "child", "unknown"] {
+        assert_eq!(main(none).as_deref(), Some("a-first"), "{none}");
+    }
 }

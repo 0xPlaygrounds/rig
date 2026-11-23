@@ -52,11 +52,7 @@ impl Operation for Completion {
             .telemetry
             .map_or(GenAiOperation::Chat, |telemetry| telemetry(call.mode));
         debug_assert!(telemetry.is_completion());
-        // A wire that picks its API per request records the one it used.
-        let replay = call
-            .wire
-            .replay
-            .map(|target| target.route(request).unwrap_or(target));
+        let replay = call.wire.replay;
         let model = request
             .model
             .as_deref()
@@ -93,11 +89,6 @@ impl Operation for Completion {
         }
     }
 
-    /// The reply's normalized usage.
-    fn observed_usage(finish: &Finish) -> Option<&crate::completion::Usage> {
-        Some(&finish.usage)
-    }
-
     /// Resolve the model the request addresses once, as the request's
     /// `model`: the one it names, else the wire's. The history is checked
     /// with [`CompletionRequest::validate_message_content`], then
@@ -126,8 +117,7 @@ impl Operation for Completion {
             .take()
             .filter(|model| !model.is_empty())
             .or_else(|| Some(target.model().to_owned()).filter(|model| !model.is_empty()));
-        let target = target.route(&request).unwrap_or(target);
-        // Every option the routed wire cannot honour is reported here, before
+        // Every option the wire cannot honour is reported here, before
         // any wire encodes, whatever its encoder does.
         crate::completion::options::check(target, &mut request)?;
         // Message cache points name the history as written; they are moved
@@ -192,8 +182,14 @@ impl Operation for Completion {
 
 impl crate::wire::reply::Closing<Completion> for Assembled {
     fn close(shared: &mut Shared<Completion>) {
-        let Shared { fold, items, .. } = shared;
-        fold.close_open(items);
+        let Shared {
+            fold, items, end, ..
+        } = shared;
+        let cut = end
+            .as_ref()
+            .and_then(|end| end.reason.as_ref())
+            .is_some_and(crate::completion::FinishReason::truncated_output);
+        fold.close_open(items, cut);
     }
 }
 
@@ -262,6 +258,11 @@ pub struct ReplyFold {
     facts: crate::catalog::ModelFacts,
     // The writer.
     open: BTreeMap<usize, Draft>,
+    /// The calls closed as never stated complete, with their wire indices
+    /// (which a later item may reuse), held until the reply ends so that
+    /// their ends come with it. A reply that never ends leaves them out of
+    /// its partial reply, as it does the items still open.
+    held: Vec<(usize, Draft)>,
     /// The position of the block each wire index last closed, whose item
     /// [`Out::edit`] may still amend until the reply ends.
     ended: HashMap<usize, usize>,
@@ -293,8 +294,9 @@ pub struct ReplyFold {
     /// complete. An item there may be the partner a later one needs, so
     /// blocks from it on replay from their canonical fields.
     first_incomplete: Option<usize>,
-    /// The calls still open when the provider ended the reply, in the
-    /// order they opened ([`CompletionResponse::unfinished_calls`]).
+    /// The calls still open when the provider ended the reply, and those
+    /// closed early when the reply was cut, in the order they opened
+    /// ([`CompletionResponse::unfinished_calls`]).
     unfinished: Vec<CallId>,
     /// The call the last index-less fragment went to.
     last_call: Option<usize>,
@@ -509,6 +511,7 @@ impl ReplyFold {
             origin,
             facts: crate::catalog::ModelFacts::default(),
             open: BTreeMap::new(),
+            held: Vec::new(),
             ended: HashMap::new(),
             next_part: 0,
             call_ids: HashSet::new(),
@@ -712,24 +715,18 @@ impl ReplyFold {
     }
 
     /// Close the item at `index`: its block becomes visible, holding the
-    /// provider's item as its native when `closing` says it is complete.
+    /// provider's item as its native when `closing` says it is complete. A
+    /// call the provider never stated complete is held until the reply ends
+    /// ([`Self::close_open`]), whichever path closed it: its end comes in the
+    /// same step as the reply's, so whoever reads the call's end can read the
+    /// reply's, and it is one of the reply's unfinished calls when the reply
+    /// was cut.
     fn close_item(
         &mut self,
         items: &mut Items,
         index: usize,
         closing: Closing,
     ) -> Result<(), ProviderError> {
-        self.close_block(items, index, closing).map(drop)
-    }
-
-    /// [`Self::close_item`], saying the id of the call it closed, if it
-    /// closed one.
-    fn close_block(
-        &mut self,
-        items: &mut Items,
-        index: usize,
-        closing: Closing,
-    ) -> Result<Option<CallId>, ProviderError> {
         let mut draft = self.open.remove(&index).ok_or_else(|| not_open(index))?;
         // A call streams what it has not yet: its start, if it names a tool,
         // and the argument text since its last fragment.
@@ -737,6 +734,21 @@ impl ReplyFold {
         if self.run == Some(index) {
             self.run = None;
         }
+        if closing == Closing::Incomplete && matches!(draft.body, Body::Call { .. }) {
+            self.held.push((index, draft));
+            return Ok(());
+        }
+        self.settle(items, index, draft, (closing, false))
+    }
+
+    /// Make the closed `draft` at `index` a block of the reply.
+    fn settle(
+        &mut self,
+        items: &mut Items,
+        index: usize,
+        draft: Draft,
+        (closing, unfinished): (Closing, bool),
+    ) -> Result<(), ProviderError> {
         self.ended.insert(index, draft.part.index());
         let Draft {
             part,
@@ -755,7 +767,7 @@ impl ReplyFold {
         let content = match body {
             Body::Text(text) => {
                 if text.is_empty() && item.is_null() {
-                    return Ok(None);
+                    return Ok(());
                 }
                 // Resolved at close: a provider may cite a text before its
                 // last fragment arrives.
@@ -771,7 +783,7 @@ impl ReplyFold {
             }
             Body::Reasoning { text, redacted } => {
                 if text.is_empty() && !redacted && item.is_null() {
-                    return Ok(None);
+                    return Ok(());
                 }
                 let reasoning = Reasoning {
                     text,
@@ -795,20 +807,25 @@ impl ReplyFold {
                         index,
                         "the provider closed a tool call without a name; nothing can answer it"
                     );
-                    return Ok(None);
+                    return Ok(());
                 };
                 let function = arguments.function(name);
                 let (id, item) = self.distinct_call_id(id, item);
-                // A call that streamed no text (none arrived, or only a
-                // placeholder `null`) states the arguments it ends with.
-                if arguments.streamed == 0 {
-                    let json = serde_json::Value::Object(function.arguments.clone()).to_string();
-                    emit(items, StreamEvent::Arguments { part, json });
+                if unfinished {
+                    self.unfinished.push(id.clone());
                 }
-                let call = ToolCall::new(id.clone(), function);
+                let call = ToolCall::new(id, function);
                 let content = self.with_item(AssistantContent::ToolCall(call), item);
+                // A call that streamed no text (none arrived, or only a
+                // prefix of a placeholder `null`) states the arguments it
+                // ends with, as a whole call would.
+                if arguments.streamed == 0
+                    && let Some(fragment) = StreamEvent::fragment(part, &content)
+                {
+                    emit(items, fragment);
+                }
                 emit(items, StreamEvent::End { part, content });
-                return Ok(Some(id));
+                return Ok(());
             }
         };
         if !started {
@@ -816,13 +833,13 @@ impl ReplyFold {
                 items,
                 StreamEvent::Start {
                     part,
-                    kind: kind_of(&content),
+                    kind: PartKind::of(&content),
                     name: None,
                 },
             );
         }
         emit(items, StreamEvent::End { part, content });
-        Ok(None)
+        Ok(())
     }
 
     /// `block` holding `item` as its native, with where it keeps its blob,
@@ -848,16 +865,7 @@ impl ReplyFold {
     ) -> Result<(), ProviderError> {
         let position = *self.ended.get(&index).ok_or_else(|| not_open(index))?;
         let slots = self.blob_slots;
-        let queued = items.iter_mut().find_map(|item| match item {
-            Ok(Item::Event(StreamEvent::End { part, content })) if part.index() == position => {
-                Some(content)
-            }
-            _ => None,
-        });
-        let content = match queued {
-            Some(content) => Some(content),
-            None => self.choice.get_mut(position).and_then(Option::as_mut),
-        };
+        let content = ended_content(&mut self.choice, items, position);
         if let Some(content) = content {
             if let Some(item) = item_of(content) {
                 edit(item);
@@ -904,16 +912,7 @@ impl ReplyFold {
             );
             return;
         };
-        let queued = items.iter_mut().find_map(|item| match item {
-            Ok(Item::Event(StreamEvent::End { part, content })) if part.index() == position => {
-                Some(content)
-            }
-            _ => None,
-        });
-        let content = match queued {
-            Some(content) => Some(content),
-            None => self.choice.get_mut(position).and_then(Option::as_mut),
-        };
+        let content = ended_content(&mut self.choice, items, position);
         match content {
             Some(AssistantContent::Text(text)) => {
                 let kept = if replace {
@@ -990,68 +989,40 @@ impl ReplyFold {
             }
             content => content,
         };
-        let part = self.next();
-        let name = match &content {
-            AssistantContent::ToolCall(call) => Some(call.function.name.clone()),
-            _ => None,
-        };
-        emit(
-            items,
-            StreamEvent::Start {
-                part,
-                kind: kind_of(&content),
-                name,
-            },
-        );
-        match &content {
-            AssistantContent::Text(text) if !text.text.is_empty() => emit(
-                items,
-                StreamEvent::Text {
-                    part,
-                    text: text.text.clone(),
-                },
-            ),
-            AssistantContent::Reasoning(reasoning) if !reasoning.text.is_empty() => emit(
-                items,
-                StreamEvent::Reasoning {
-                    part,
-                    text: reasoning.text.clone(),
-                },
-            ),
-            AssistantContent::ToolCall(call) => emit(
-                items,
-                StreamEvent::Arguments {
-                    part,
-                    json: call.function.arguments_json(),
-                },
-            ),
-            _ => {}
+        for event in StreamEvent::whole(self.next(), &content) {
+            emit(items, event);
         }
-        emit(items, StreamEvent::End { part, content });
         Ok(())
     }
 
-    /// Close every item still open when the provider ends the reply, in the
-    /// order they opened. The block a boundary-less wire was streaming is
-    /// complete; any other item was never stated complete, so its block has
-    /// no native. Calls keep what their arguments state.
-    pub(crate) fn close_open(&mut self, items: &mut Items) {
-        let mut open: Vec<(Part, usize)> = self
-            .open
-            .iter()
-            .map(|(index, draft)| (draft.part, *index))
+    /// Close every item still open when the provider ends the reply, and
+    /// end the calls held, all in the order they opened. The block a
+    /// boundary-less wire was streaming is complete; any other item was
+    /// never stated complete, so its block has no native. Calls keep what
+    /// their arguments state. A call still open is unfinished; a held call
+    /// is unfinished only when the reply was `cut` (its finish truncated
+    /// the output), since a finish that did not cut it leaves it a call
+    /// the provider sent as it is.
+    pub(crate) fn close_open(&mut self, items: &mut Items, cut: bool) {
+        let mut closing: Vec<(usize, Draft, (Closing, bool))> = std::mem::take(&mut self.held)
+            .into_iter()
+            .map(|(index, draft)| (index, draft, (Closing::Incomplete, cut)))
             .collect();
-        open.sort();
-        for (_, index) in open {
-            let closing = if self.run == Some(index) {
-                Closing::Complete
+        for (index, draft) in std::mem::take(&mut self.open) {
+            let complete = self.run.take_if(|run| *run == index).is_some();
+            let how = if complete {
+                (Closing::Complete, false)
             } else {
-                Closing::Incomplete
+                (Closing::Incomplete, true)
             };
-            match self.close_block(items, index, closing) {
-                Ok(Some(call)) if closing == Closing::Incomplete => self.unfinished.push(call),
-                Ok(_) => {}
-                Err(error) => items.push_back(Err(error)),
+            closing.push((index, draft, how));
+        }
+        closing.sort_by_key(|(_, draft, _)| draft.part);
+        for (index, mut draft, how) in closing {
+            // A call streams what it has not yet, as when it closes.
+            stream_call(items, &mut draft);
+            if let Err(error) = self.settle(items, index, draft, how) {
+                items.push_back(Err(error));
             }
         }
     }
@@ -1222,6 +1193,24 @@ pub(crate) fn canonical(block: AssistantContent) -> AssistantContent {
     }
 }
 
+/// The content of the part at `position` after it ended: its end event
+/// while that waits in `items` to be taken, else what the fold holds.
+fn ended_content<'a>(
+    choice: &'a mut [Option<AssistantContent>],
+    items: &'a mut Items,
+    position: usize,
+) -> Option<&'a mut AssistantContent> {
+    items
+        .iter_mut()
+        .find_map(|item| match item {
+            Ok(Item::Event(StreamEvent::End { part, content })) if part.index() == position => {
+                Some(content)
+            }
+            _ => None,
+        })
+        .or_else(|| choice.get_mut(position).and_then(Option::as_mut))
+}
+
 /// The provider item `content` holds, if any.
 fn item_of(content: &mut AssistantContent) -> Option<&mut serde_json::Value> {
     let native = match content {
@@ -1232,16 +1221,6 @@ fn item_of(content: &mut AssistantContent) -> Option<&mut serde_json::Value> {
         AssistantContent::Opaque(opaque) => return Some(&mut opaque.item),
     };
     native.map(|native| &mut native.item)
-}
-
-fn kind_of(content: &AssistantContent) -> PartKind {
-    match content {
-        AssistantContent::Text(_) => PartKind::Text,
-        AssistantContent::Reasoning(_) => PartKind::Reasoning,
-        AssistantContent::ToolCall(_) => PartKind::ToolCall,
-        AssistantContent::Image(_) => PartKind::Image,
-        AssistantContent::Opaque(_) => PartKind::Opaque,
-    }
 }
 
 pub(crate) type Items = std::collections::VecDeque<Result<Item<StreamEvent>, ProviderError>>;
@@ -1391,7 +1370,9 @@ impl<'id> Out<'id, Completion> {
     ) -> Result<(), ProviderError> {
         let mut shared = self.lock();
         let Shared { fold, items, .. } = &mut *shared;
-        match fold.open.get_mut(&index) {
+        // A call held at a reused index is the latest closed there.
+        let held = fold.held.iter_mut().rev().find(|(at, _)| *at == index);
+        match fold.open.get_mut(&index).or(held.map(|(_, draft)| draft)) {
             Some(draft) => {
                 edit(&mut draft.item);
                 Ok(())
@@ -1666,16 +1647,11 @@ impl<'id> Out<'id, Completion> {
 }
 
 /// The events a stream of `response` would have carried: each part whole,
-/// in order.
-pub(crate) fn events_of(
-    response: &CompletionResponse,
-) -> Result<Vec<Item<StreamEvent>>, ProviderError> {
-    let mut turn = ReplyFold::new(response.origin.clone());
-    let mut items = Items::new();
-    for content in &response.choice {
-        turn.write_content(&mut items, content.clone())?;
-    }
-    items.into_iter().collect()
+/// in order, holding the content the response holds.
+pub(crate) fn events_of(response: &CompletionResponse) -> Vec<Item<StreamEvent>> {
+    let parts = (0..).zip(&response.choice);
+    let events = parts.flat_map(|(at, content)| StreamEvent::whole(Part::new(at), content));
+    events.map(Item::Event).collect()
 }
 
 #[cfg(test)]

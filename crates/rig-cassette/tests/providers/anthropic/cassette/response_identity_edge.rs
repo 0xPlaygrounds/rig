@@ -1,4 +1,4 @@
-//! Adversarial response-identity coverage (rig#2265 / PR #2313 follow-up):
+//! Adversarial response-identity coverage:
 //! feature collisions, failure/recovery paths, and replay semantics, chosen
 //! because a plausible implementation error would make each cell fail.
 
@@ -94,7 +94,7 @@ async fn repaired_invalid_call_keeps_call_identity() {
             assert!(!response.completion_calls.is_empty());
             for call in &response.completion_calls {
                 assert_transport_request_id(
-                    call.provider_request_id.as_deref(),
+                    call.identity.provider_request_id.as_deref(),
                     "recovered-run completion call",
                 );
             }

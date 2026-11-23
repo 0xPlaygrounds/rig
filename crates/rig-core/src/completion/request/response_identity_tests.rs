@@ -1,7 +1,7 @@
 use super::*;
 
 /// `provider_request_id` is skipped when `None`, so a response written
-/// without one loads with the field `None` (rig#2265).
+/// without one loads with the field `None`.
 #[test]
 fn completion_response_without_request_id_deserializes() {
     let response: CompletionResponse = serde_json::from_str(

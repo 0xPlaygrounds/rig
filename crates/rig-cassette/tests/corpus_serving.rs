@@ -2,67 +2,18 @@
 //!
 //! The bus-level axes: how the bus serves a program's dispatches
 //! (`ServingPolicy`), which model answers each turn (`model_route` and
-//! `on_model_select`), and whose bus it is (the agent's own, or a host's
-//! via `over_bus`). The claim of the serving cells is that the trace is
-//! independent of the policy: the same program under serial or concurrent
-//! serving, one or two runner slots, default or one-deep buffers, records
-//! the same dispatches in the same order (dispatch order), so one cassette
-//! serves every cell. The routing cells show the required row naming
-//! every route and a never-selected route advertised on replay from the
-//! row alone. The host-bus cells show a header with no policy and a log
-//! the agent stamped for its host.
+//! `on_model_select`), and whose bus it is (the agent's own, or a host's via
+//! `over_bus`). The serving cells claim the trace is independent of the policy.
+//! The same program under serial or concurrent serving, one or two runner slots,
+//! default or one-deep buffers, records the same dispatches in the same order, so
+//! one cassette serves every cell.
 //!
-//! # Dimensions
-//!
-//! | axis | values recorded |
-//! |---|---|
-//! | `serial_per_handler` | false · true |
-//! | `tool_concurrency` | 1 · 2 |
-//! | buffers | default · `command_capacity: 1, stream_capacity: 1` |
-//! | tool wire | anthropic (two calls in one turn) · gemini (two turns, id-less) · openai (two turns, dual ids) |
-//! | events | dropped · kept |
-//! | routing | one model · a route selected after the first turn · a route registered, never selected |
-//! | bus ownership | own · a host's (unary · streamed with events) |
-//!
-//! Full cross-product: 2 × 2 × 2 × 3 × 2 × 3 × 3 = 432. Recorded:
-//! the 11 cells below. Pruned: the serving axes are crossed only on the
-//! program that can show them (anthropic's two calls in one turn, the one
-//! provider that emits them); a two-turn program has nothing for
-//! concurrency to overlap, so it gets one serial cell (gemini) and one
-//! concurrency-two cell (openai) to show the trace does not change;
-//! buffers at one are crossed with concurrency two only, the case that
-//! parks; routing and ownership are crossed with the tool-call-turn
-//! program only, since neither changes what is asked.
-//!
-//! # Cells
-//!
-//! | golden | producer | policy | cassette |
-//! |---|---|---|---|
-//! | `anthropic_serving_serial_concurrency_one` | `corpus_serving.rs` `serial_concurrency_one_…` | serial, 1 slot | the two-tool stream (`streaming_tools/…`) |
-//! | `anthropic_serving_concurrent_concurrency_one` | `concurrent_concurrency_one_…` | concurrent, 1 slot | the same |
-//! | `anthropic_serving_concurrent_concurrency_two` | `concurrent_concurrency_two_…` | concurrent, 2 slots | the same |
-//! | `anthropic_serving_concurrent_concurrency_two_events` | `concurrent_concurrency_two_events_…` | concurrent, 2 slots, events kept | the same |
-//! | `anthropic_serving_capacity_one` | `capacity_one_…` | concurrent, 2 slots, every buffer at 1 | the same |
-//! | `gemini_serving_two_turns_serial` | gemini `corpus_serving.rs` `two_turns_serial_…` | serial, two turns, id-less calls | `hook_stress/…` |
-//! | `openai_serving_two_turns_concurrency_two` | openai `corpus_serving.rs` `two_turns_concurrency_two_…` | 2 slots, two turns, dual ids | `effect_corpus/tool_call_turns` |
-//! | `anthropic_serving_model_route` | `model_route_…` | route `fast` (Haiku 4.5) selected after the first turn | recorded: `corpus_serving/model_route` |
-//! | `anthropic_serving_model_route_unselected` | `model_route_unselected_…` | route registered, never selected | `effect_corpus/tool_call_turn` |
-//! | `anthropic_serving_host_bus` | `host_bus_…` | a host's bus, `bus: None` | recorded: `corpus_serving/host_bus` |
-//! | `anthropic_serving_host_bus_streamed` | `host_bus_streamed_…` | the same, events kept | recorded: `corpus_serving/host_bus_streamed` |
-//!
-//! # What the matrix found
-//!
-//! - The required row omitted model routes: a program with a route the
-//!   hook never selected had the same row as one without, and a golden
-//!   whose route was selected named it only in the signature. Fixed in
-//!   `rig-agent` (`route_keys`); the replay registers a route from the
-//!   log through `model_route_handler`, added for it.
-//! - A required key of the completion or retrieval family that the
-//!   record never dispatched to could not be replayed at all
-//!   (`describe_required` knew tools only), so the unselected-route golden
-//!   was unreplayable. The log replayer now describes every required family.
-//! - An agent over a host's bus stamps the host's recording through
-//!   `rig_cassette::agent::AgentReplayExt::stamp`.
+//! The serving axes are crossed only on anthropic's program with two calls in one
+//! turn, the one provider that emits them; a two-turn program has nothing for
+//! concurrency to overlap. The routing cells show the required row naming every
+//! route, and a never-selected route advertised on replay from the row alone. The
+//! host-bus cells show a header with no policy and a log the agent stamped for
+//! its host through `rig_cassette::agent::AgentReplayExt::stamp`.
 
 use crate::corpus;
 use rig_cassette::agent::AgentReplayExt;

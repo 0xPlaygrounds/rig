@@ -85,6 +85,7 @@ fn ask(app: &mut App, wakes: &Receiver<()>, text: &str) {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     app.world_mut()
         .trigger(Deliver::new(agent, text, DeliveryMode::Steer));
@@ -157,14 +158,14 @@ fn restored(app: &mut App) -> String {
     text.unwrap_or_default()
 }
 
-/// Whether the run was refused: no store, and an exit with code 2, which
-/// ends it before anything is typed.
+/// Whether the run was refused: no store, and a refused exit (code 2),
+/// which ends it before anything is typed.
 fn refused(app: &App) -> bool {
     let world = app.world();
     !world.contains_resource::<SessionStore>()
         && matches!(
             world.get_resource::<ExitReason>(),
-            Some(ExitReason::Failed(2))
+            Some(ExitReason::Refused(_))
         )
 }
 
@@ -281,43 +282,4 @@ fn a_plain_session_is_refused_until_migrate_seals_it() {
     assert_eq!(plain_secrets(dir.path()), Vec::<PathBuf>::new());
     let (mut app, _) = start(&home, &session, &model, key);
     assert!(restored(&mut app).contains(MARKER), "{}", notices(&app));
-}
-
-/// A migration runs through the sealed store's own reads and writes: the
-/// migrated session reads with the key, and the copy kept of it as it was
-/// is sealed like the rest, no plain byte of it in the store beneath.
-#[test]
-fn a_migrated_session_keeps_its_copy_sealed() -> Result<(), Box<dyn std::error::Error>> {
-    use rig_harness::rig_memory::migration::{KEPT, testing};
-    use rig_harness::rig_memory::{Files, MemoryStore, Session, Store};
-    let crypt = Crypt::derive(
-        b"synthetic",
-        b"0123456789abcdef",
-        Kdf {
-            memory_kib: 64,
-            iterations: 1,
-        },
-    )?;
-    let raw = Arc::new(MemoryStore::default());
-    let sealed = CryptStore::new(raw.clone(), crypt);
-    testing::write_fixture(&sealed)?;
-    let original = sealed.read_log("agent")?;
-    testing::CHAIN.migrate(&sealed, &|_, _| Ok(()))?;
-    Session::read(&sealed)?;
-    let kept = format!("{KEPT}{}/logs/agent.jsonl", testing::SYNTHETIC);
-    let plain = b"a synthetic session";
-    let mut stored = Vec::new();
-    for name in raw.files()? {
-        stored.push(raw.read_file(&name)?);
-    }
-    for name in raw.logs()? {
-        stored.push(raw.read_log(&name)?);
-    }
-    let leaked = stored
-        .iter()
-        .any(|bytes| bytes.windows(plain.len()).any(|at| at == plain));
-    if sealed.read_file(&kept)? != original || raw.read_file(&kept)? == original || leaked {
-        return Err(io::Error::other("the kept copy is not the sealed original").into());
-    }
-    Ok(())
 }

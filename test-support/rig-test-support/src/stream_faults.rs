@@ -32,12 +32,6 @@ use rig_core::error::ErrorKind;
 
 use rig_core::error::ErrorReport;
 
-use rig_core::observe::Action;
-
-use rig_core::observe::AdapterEvent;
-
-use rig_core::observe::ObservationLog;
-
 use rig_core::streaming::{Item, StreamEvent};
 
 use rig_agent::test_utils::SequencedStreamingHttpClient;
@@ -109,8 +103,8 @@ pub fn frame_data(frame: &str) -> serde_json::Value {
 
 /// A wire family's SSE shape: where a recorded stream's terminal sits,
 /// what its text deltas carry, and the in-band error frame the adapter's
-/// unit tests pin for it. The failure rows cut a wire's own #2501
-/// recording with these; the #2490 cells read the same shapes.
+/// unit tests pin for it. The failure rows cut a wire's own recording
+/// with these, and the stream-fault cells read the same shapes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SseShape {
     /// OpenAI Chat Completions and every OpenAI-compatible wire (DeepSeek,
@@ -307,8 +301,7 @@ pub const CHAT_REFUSAL_FRAMES: [&str; 5] = [
     r#"{"id":"chatcmpl-1","model":"gpt-4o","choices":[],"usage":{"prompt_tokens":10,"completion_tokens":8,"total_tokens":18}}"#,
 ];
 /// The whole body Gemini answered a refused prompt with: one feedback
-/// chunk, no candidates, then the stream closes (#2475; the rigcoder
-/// capture of 2026-09-08).
+/// chunk, no candidates, then the stream closes.
 pub const GEMINI_BLOCKED_FRAME: &str = r#"{"promptFeedback":{"blockReason":"SAFETY"},"usageMetadata":{"promptTokenCount":795,"totalTokenCount":795}}"#;
 
 /// A recorded Responses frame's event name and data, rewritten by `edit`
@@ -538,21 +531,4 @@ impl Tool for CountedSubtract {
         self.0.0.fetch_add(1, Ordering::SeqCst);
         Subtract.call(context, args).await
     }
-}
-
-/// Every provider-boundary fact, in order.
-pub fn adapter_events(log: &ObservationLog) -> Vec<AdapterEvent> {
-    log.trace()
-        .observations
-        .iter()
-        .filter_map(|observation| match &observation.action {
-            Action::Adapter { observation } => Some(observation.event.clone()),
-            _ => None,
-        })
-        .collect()
-}
-
-/// The whole trace, serialized: what an analysis sink would persist.
-pub fn trace_json(log: &ObservationLog) -> String {
-    serde_json::to_string(&log.trace()).expect("the trace serializes")
 }

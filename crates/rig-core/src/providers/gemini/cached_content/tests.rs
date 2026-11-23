@@ -6,10 +6,9 @@ use crate::test_utils::{MockHttpResponse, SequencedHttpClient};
 ///
 /// `resource_path`'s unit tests prove the string is refused; this proves the
 /// refusal happens *before* the request is built. It matters because the
-/// URL these handles produce is not malformed — `Gemini::uri`
-/// appends the API key with `&` once the path contains a `?`, so
-/// `DELETE /v1beta/cachedContents/abc?stale&key=…` is a well-formed request
-/// that deletes cache `abc` and returns 200.
+/// URL these handles produce is not malformed: `DELETE
+/// /v1beta/cachedContents/abc?stale` is a well-formed request that deletes
+/// cache `abc` and returns 200.
 #[tokio::test]
 async fn a_mis_targeting_handle_never_reaches_the_socket() {
     for smuggled in ["abc?stale", "abc#frag", "abc/def", ""] {
@@ -49,8 +48,8 @@ async fn a_mis_targeting_handle_never_reaches_the_socket() {
 #[test]
 fn ttl_serializes_in_geminis_duration_form() {
     assert_eq!(
-        CacheExpiry::ttl_string(Duration::from_secs(600)),
-        "600.000000000s"
+        serde_json::to_value(CacheExpiry::ttl(Duration::from_secs(600))).ok(),
+        Some(json!({ "ttl": "600.000000000s" }))
     );
 }
 
@@ -98,8 +97,7 @@ fn caches(
 
 /// A cursor carrying URL-significant characters is percent-encoded rather
 /// than interpolated, so it cannot truncate the path or inject a query
-/// parameter — Gemini appends `key=` to every URI, so a raw `&` in the
-/// cursor would sit next to the credential.
+/// parameter.
 #[tokio::test]
 async fn pagination_percent_encodes_the_cursor() {
     let (caches, http_client) = caches(vec![
@@ -121,7 +119,7 @@ async fn pagination_percent_encodes_the_cursor() {
         .map(|request| request.uri)
         .collect();
     assert!(
-        uris[1].contains("pageSize=1&pageToken=weird+token%26x%3D1&key="),
+        uris[1].ends_with("pageSize=1&pageToken=weird+token%26x%3D1"),
         "the cursor must be percent-encoded: {uris:?}",
     );
 }
@@ -145,7 +143,7 @@ fn bound_caches(
 }
 
 #[tokio::test]
-async fn the_bound_cache_sends_each_recorded_path_with_the_key_in_the_query() {
+async fn the_bound_cache_sends_each_recorded_path() {
     const HANDLE: &str = r#"{"name":"cachedContents/leaky","model":"models/gemini-2.5-flash"}"#;
     let http = SequencedHttpClient::new([
         MockHttpResponse::success(HANDLE),
@@ -176,10 +174,10 @@ async fn the_bound_cache_sends_each_recorded_path_with_the_key_in_the_query() {
     assert_eq!(
         uris,
         vec![
-            "https://generativelanguage.googleapis.com/v1beta/cachedContents?key=test-key",
-            "https://generativelanguage.googleapis.com/v1beta/cachedContents/leaky?key=test-key",
-            "https://generativelanguage.googleapis.com/v1beta/cachedContents/leaky?updateMask=ttl&key=test-key",
-            "https://generativelanguage.googleapis.com/v1beta/cachedContents/leaky?key=test-key",
+            "https://generativelanguage.googleapis.com/v1beta/cachedContents",
+            "https://generativelanguage.googleapis.com/v1beta/cachedContents/leaky",
+            "https://generativelanguage.googleapis.com/v1beta/cachedContents/leaky?updateMask=ttl",
+            "https://generativelanguage.googleapis.com/v1beta/cachedContents/leaky",
         ]
     );
 }
@@ -253,4 +251,45 @@ async fn a_reply_of_the_other_shape_names_the_shape_it_carried() {
         matches!(&on_list, ProviderError::Response(message) if message.contains("not a listing page")),
         "{on_list:?}"
     );
+}
+
+/// Create and both expiry patches send a JSON body, so each says so; the
+/// body-less get and delete send no content type.
+#[test]
+fn every_cache_write_sends_its_json_content_type() {
+    use crate::wire::{Mode, Wire};
+
+    let wire = crate::providers::gemini::GeminiConfig::new("test-key").cached_contents();
+    let content_type = |request: CachedContentRequest| {
+        let encoded = wire
+            .encode(request, Mode::Unary)
+            .expect("the request encodes");
+        encoded
+            .request
+            .headers()
+            .get(http::header::CONTENT_TYPE)
+            .map(|value| value.as_bytes().to_vec())
+    };
+    let json = Some(b"application/json".to_vec());
+    let name = || "cachedContents/abc".to_owned();
+    assert_eq!(
+        content_type(CachedContentRequest::Create(
+            NewCachedContent::new("gemini-2.5-flash").content("corpus")
+        )),
+        json
+    );
+    for expiry in [
+        CacheExpiry::ttl(Duration::from_secs(600)),
+        CacheExpiry::ExpireTime("2030-01-01T00:00:00Z".to_owned()),
+    ] {
+        assert_eq!(
+            content_type(CachedContentRequest::UpdateExpiry {
+                name: name(),
+                expiry
+            }),
+            json
+        );
+    }
+    assert_eq!(content_type(CachedContentRequest::Get(name())), None);
+    assert_eq!(content_type(CachedContentRequest::Delete(name())), None);
 }

@@ -1,8 +1,6 @@
-//! OC-05: read-only SQL tools. `<project>/.rig/db.toml` names the
-//! development databases, and two tools let the agent look at them:
-//! `db_schema` lists their tables with row counts or one table's columns,
-//! keys and indexes, and `db_query` runs one read statement and answers a
-//! Markdown table.
+//! Read-only SQL tools. `<project>/.rig/db.toml` names the development databases, and two tools let
+//! the agent look at them: `db_schema` lists their tables with row counts or one table's columns,
+//! keys and indexes, and `db_query` runs one read statement and answers a Markdown table.
 //!
 //! ```toml
 //! [[database]]
@@ -12,12 +10,10 @@
 //! row_limit = 50    # 200 by default
 //! ```
 //!
-//! Nothing can change data: the connection is opened read-only and
-//! `query_only`, and a statement runs only when it is one statement that
-//! reads (`SELECT`, `WITH`, `VALUES`, `EXPLAIN`, a `PRAGMA` without `=`)
-//! and SQLite says it is read-only. Each query stops after
-//! [`QUERY_TIMEOUT`], and as soon as its call is cancelled, such as when
-//! the turn is interrupted.
+//! Nothing can change data: the connection is opened read-only and `query_only`, and a statement
+//! runs only when it is one statement that reads (`SELECT`, `WITH`, `VALUES`, `EXPLAIN`, a `PRAGMA`
+//! without `=`) and SQLite says it is read-only. Each query stops after [`QUERY_TIMEOUT`], and as
+//! soon as its call is cancelled, such as when the turn is interrupted.
 
 use std::path::PathBuf;
 use std::sync::Arc;

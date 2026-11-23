@@ -1,11 +1,8 @@
-//! FH-22: a tamper-evident audit log. Every tool call that may change
-//! something or reach outside, every question that decided whether one
-//! runs, and the session's start, resume and end are appended to
-//! `RIG_HOME/audit/<date>.jsonl` ([`chain`]), hash-chained, before the
-//! call's result reaches the model. When the log cannot be written, the
-//! calls it would record are refused. `rig audit verify [from-date]`
-//! checks the chain and `rig audit show --session <id>` lists a session's
-//! entries.
+//! A tamper-evident audit log. Every tool call that may change something or reach outside, every
+//! question that decided whether one runs, and the session's start, resume and end are appended to
+//! `RIG_HOME/audit/<date>.jsonl` ([`chain`]), hash-chained, before the call's result reaches the
+//! model. When the log cannot be written, the calls it would record are refused. `rig audit verify
+//! [from-date]` checks the chain and `rig audit show --session <id>` lists a session's entries.
 
 pub mod chain;
 
@@ -121,6 +118,7 @@ impl Plugin for AuditLogPlugin {
                 AuditSystems::Gate.in_set(Stage::Gate),
                 AuditSystems::Record
                     .after(ReviewSystems::Act)
+                    .after(rig_basics::redact::RedactSystems)
                     .in_set(Stage::Review),
             ),
         )
@@ -185,7 +183,7 @@ impl Context<'_, '_> {
     /// An entry of `event` for `agent`, with its parents.
     fn entry(&self, event: Event, agent: Option<Entity>) -> Entry {
         let id = |agent| self.agents.get(agent).ok().map(|(id, _)| id.0.clone());
-        let by = |agent| self.agents.get(agent).ok()?.1.map(|by| by.0);
+        let by = |agent| self.agents.get(agent).ok()?.1.map(SpawnedBy::parent);
         let parents = std::iter::successors(agent.and_then(by), |&parent| by(parent))
             .filter_map(id)
             .collect();
@@ -513,7 +511,7 @@ fn audit_command(invoked: Option<Res<Invoked>>, log: Res<AuditLog>, mut commands
         }
         Err(text) => {
             eprintln!("{text}");
-            ExitReason::Failed(1)
+            ExitReason::Failed(FailCode::FAILURE)
         }
     };
     commands.trigger(Exit(reason));

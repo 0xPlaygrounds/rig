@@ -55,7 +55,7 @@ fn answered_by(app: &mut App, model: &MockCompletionModel) -> Entity {
         .query_filtered::<Entity, (With<Agent>, Without<SpawnedBy>)>()
         .iter(world)
         .next();
-    let agent = found.unwrap_or_else(|| world.spawn(Agent).id());
+    let agent = found.unwrap_or_else(|| spawn_root(world, ()).id());
     if let Some(connection) = connect(model) {
         let choice = ModelChoice(connection.spec.reference());
         world.entity_mut(agent).insert((connection, choice));
@@ -189,6 +189,24 @@ fn task_starts_a_subagent_as_a_profile() {
 }
 
 #[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(AgentProfilesPlugin);
+fn a_profile_in_a_limited_run_keeps_its_tools_for_later_runs() {
+    let store = MemoryStore::default();
+    let (mut app, wakes) = start(&store);
+    app.insert_resource(RunTools::new(["task", "read", "message", "wait"]));
+    let model = MockCompletionModel::from_stream_turns([reply("Reviewed."), reply("Thanks.")]);
+    let parent = answered_by(&mut app, &model);
+    let args = json!({ "description": "Review", "prompt": "Review it.", "profile": "reviewer" });
+    start_call(app.world_mut(), parent, ("task", "t1"), args);
+    until_ended(&mut app, &wakes, 2);
+    let (_, tools) = sent(model.requests().first());
+    assert_eq!(tools, ["message", "read", "wait"]);
+    let world = app.world();
+    let child = world
+        .get::<Spawned>(parent)
+        .and_then(|spawned| spawned.iter().next());
+    let access = child.and_then(|child| world.get::<ToolAccess>(child));
+    // Out of this run only: a later run gives it the profile's `search`.
+    assert!(access.is_some_and(|access| access.keeps("search") && !access.allows("search")));
 }
+
+rig_defaults_test_support::stages_ordered_test!(AgentProfilesPlugin);

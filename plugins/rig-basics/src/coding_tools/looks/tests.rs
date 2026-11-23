@@ -4,24 +4,18 @@ use rig_harness::rig_core::tool::{
     ContentHash, FileChange, FileRead, FilesChanged, FilesRead, Hunk, HunkLine, Lines, LinesShown,
     ToolContext, ToolResult, ToolResultContext,
 };
-use rig_tui::ratatui::text::Line;
-use rig_tui::{CallState, ToolCallView};
+use rig_tui::{CallState, LookLine, ToolRender};
 
 use super::{edit, read, shell, write};
 
 /// What `look` draws for a `tool` call with `args` that answered `output`.
-fn drawn(
-    look: fn(&ToolCallView<'_>) -> Vec<Line<'static>>,
-    tool: &str,
-    args: Value,
-    output: &str,
-) -> String {
+fn drawn(look: fn(&ToolRender) -> Vec<LookLine>, tool: &str, args: Value, output: &str) -> String {
     drawn_with(look, tool, args, output, None)
 }
 
 /// [`drawn`], for a call that published `facts`.
 fn drawn_with(
-    look: fn(&ToolCallView<'_>) -> Vec<Line<'static>>,
+    look: fn(&ToolRender) -> Vec<LookLine>,
     tool: &str,
     args: Value,
     output: &str,
@@ -32,8 +26,8 @@ fn drawn_with(
     };
     let call = ToolCall::from_wire("c1", ToolFunction::new(name, args));
     let result = call.answer(&ToolResult::success(output.to_owned().into()));
-    let mut view = ToolCallView::new(&call, Some(&result), CallState::Done);
-    view.facts = facts;
+    let mut view = ToolRender::new(call, Some(result), CallState::Done);
+    view.facts = facts.cloned();
     let lines: Vec<String> = look(&view).iter().map(ToString::to_string).collect();
     lines.join("\n")
 }
@@ -106,11 +100,11 @@ fn a_read_file_is_drawn_in_its_languages_colors() {
     let call = ToolCall::from_wire("c1", ToolFunction::new(name, json!({ "path": "a.rs" })));
     let output = "fn main() {}\n";
     let result = call.answer(&ToolResult::success(output.to_owned().into()));
-    let view = ToolCallView::new(&call, Some(&result), CallState::Done);
+    let view = ToolRender::new(call, Some(result), CallState::Done);
     let lines = read(&view);
     let code = lines
         .get(1)
-        .map(|line| line.spans.clone())
+        .map(|line| line.colored().spans)
         .unwrap_or_default();
     assert!(
         code.iter().skip(1).any(|span| span.style.fg.is_some()),
@@ -153,9 +147,20 @@ fn an_edit_is_drawn_as_the_diff_it_published() {
     // The header names the file; the diff does not name it again.
     assert!(!drew.contains("/p/a.rs"), "{drew}");
     assert!(!drew.contains("+++"), "{drew}");
-    let without = drawn(edit, "edit", args, "Edited a.rs: line 2.");
+    let without = drawn(edit, "edit", args.clone(), "Edited a.rs: line 2.");
     assert!(!without.contains("new_call"), "{without}");
     assert!(without.contains("Edited a.rs: line 2."), "{without}");
+    // A change kept without its hunks, such as one with a key block, draws
+    // the whole reply.
+    let mut bare = ToolContext::default();
+    bare.insert_result(FilesChanged(vec![FileChange::modified("/p/a.rs", 1, 1)]))
+        .ok();
+    let bare = bare.result_context();
+    let drew = drawn_with(edit, "edit", args, reply, Some(&bare));
+    assert!(
+        drew.contains("[lines 1-2]") && drew.contains("new_call();"),
+        "{drew}"
+    );
 }
 
 /// A stopped call draws what the stop answered it, not what it would have
@@ -175,7 +180,7 @@ fn a_stopped_call_draws_its_answer_not_its_proposal() {
     ] {
         let stopped = ToolResult::failed(ToolExecutionError::other(said.to_owned()));
         let result = call.answer(&stopped);
-        let view = ToolCallView::new(&call, Some(&result), CallState::Stopped);
+        let view = ToolRender::new(call.clone(), Some(result), CallState::Stopped);
         let lines: Vec<String> = write(&view).iter().map(ToString::to_string).collect();
         let drawn = lines.join("\n");
         assert!(drawn.contains("· stopped"), "{drawn}");

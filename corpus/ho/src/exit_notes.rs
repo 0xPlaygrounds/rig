@@ -1,18 +1,15 @@
-//! Plugin corpus (held-out): H14: Session notes written on exit (spec `H14-exit-notes.md`).
-//!
-//! When the app is about to exit for good (`/quit`, Ctrl-D, the end of a
-//! `--print` run, a signal), a session that changed files or had at least
-//! three turns gets a note in `.rig/notes/<date>-<session>.md`: what the
-//! main agent's conversation was about, summarized by a model call of the
-//! plugin's own, and the files its tool calls changed. The plugin holds the
-//! exit effect until the note is written, at most 15 s; Esc, or a second
-//! quit, skips the summary. `/notes-now` writes the note without quitting.
+//! Session notes written on exit. When the app is about to exit for good (`/quit`, Ctrl-D, the end
+//! of a `--print` run, a signal), a session that changed files or had at least three turns gets a
+//! note in `.rig/notes/<date>-<session>.md`: what the main agent's conversation was about,
+//! summarized by a model call of the plugin's own, and the files its tool calls changed. The plugin
+//! holds the exit effect until the note is written, at most 15 s; Esc, or a second quit, skips the
+//! summary. `/notes-now` writes the note without quitting.
 
 use std::path::Path;
 
 use rig_basics::sessions::SessionTitle;
 use rig_harness::prelude::*;
-use rig_harness::rig_core::message::{AssistantContent, Message};
+use rig_harness::rig_core::message::Message;
 use rig_harness::rig_core::tool::FilesChanged;
 use rig_tui::{AppKeyBindingsExt, KeyBinding, KeyPress, run_command};
 use serde::Deserialize;
@@ -195,7 +192,10 @@ fn ask_for_notes(
         let Some(model) = &settings.model else {
             continue;
         };
-        match models.connect(model) {
+        match models
+            .connect(model)
+            .map_err(|why| Models::cannot_use(model, why))
+        {
             Ok(connection) => call.connection = Some(connection),
             Err(why) => {
                 let why = format!("Session notes on the agent's model: {model}: {why}");
@@ -341,14 +341,7 @@ fn take_notes(
         }
     }
     let summary = outcome.completion().and_then(|response| {
-        let text: String = response
-            .choice
-            .iter()
-            .filter_map(|item| match item {
-                AssistantContent::Text(text) => Some(text.text.as_str()),
-                _ => None,
-            })
-            .collect();
+        let text = response.text();
         let text = text.trim();
         (response.error.is_none() && !text.is_empty()).then(|| text.to_owned())
     });

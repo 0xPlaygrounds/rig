@@ -13,7 +13,7 @@ use rig::handlers::Handlers;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig_cassette::agent::AgentReplayExt;
 
-use super::super::support::with_anthropic_corpus_oracle_cassette;
+use super::super::support::with_anthropic_cassette;
 use crate::goldens::{
     NOTE_KEY, NoteAtOutcome, NoteTaker, StopAfterTurnN, families, stop_after_turn_reason,
 };
@@ -29,7 +29,7 @@ const ADD_PROMPT: &str = "Use the add tool to add 17 and 25, then reply with jus
 /// dispatched, and the replay must agree.
 #[tokio::test]
 async fn concurrent_notes_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_oracle_cassette("corpus_oracle/concurrent_notes", |client| async move {
+    with_anthropic_cassette("corpus_oracle/concurrent_notes", |client| async move {
         let handlers = Handlers::default();
         let model_key = HandlerKey::from("golden/model:default");
         handlers
@@ -87,7 +87,7 @@ async fn concurrent_notes_effect_log_is_the_golden_fixture() {
 /// turn, and the header names the hook with its state.
 #[tokio::test]
 async fn stop_after_turn_two_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_oracle_cassette(
+    with_anthropic_cassette(
         "corpus_oracle/stop_after_turn_two",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();

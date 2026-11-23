@@ -126,10 +126,10 @@ async fn a_rerank_reply_keeps_the_provider_order_and_the_indices_it_named() {
 
 #[test]
 fn a_rerank_request_carries_the_query_the_documents_and_the_options() {
-    let encoded = voyage()
-        .rerank("rerank-2.5")
-        .with_top_k(1)
-        .with_return_documents(true)
+    let mut wire = voyage().rerank("rerank-2.5");
+    wire.top_k = Some(1);
+    wire.return_documents = true;
+    let encoded = wire
         .encode(
             RerankRequest {
                 query: "which is best?".to_owned(),
@@ -169,4 +169,16 @@ fn a_serialized_config_carries_no_key_material() {
             "a wire a host may persist must not carry the credential: {serialized}"
         );
     }
+}
+
+#[test]
+fn voyage_3_5_lite_is_the_id_voyage_serves_with_its_width() {
+    assert_eq!(
+        crate::providers::voyageai::VOYAGE_3_5_LITE,
+        "voyage-3.5-lite"
+    );
+    assert_eq!(
+        crate::providers::voyageai::model_dimensions_from_identifier("voyage-3.5-lite"),
+        Some(1024)
+    );
 }

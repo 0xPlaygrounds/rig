@@ -35,7 +35,7 @@ fn image() -> Image {
     }
 }
 
-/// chatA NEW-1, NEW-2, #2380, chatB NEW (placeholders): a text model gets
+/// A text model gets
 /// every image as a placeholder, and a vision model reads a user image and
 /// a tool result's image moved to a user message.
 #[test]

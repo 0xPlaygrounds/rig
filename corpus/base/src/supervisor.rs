@@ -70,9 +70,7 @@ pub struct SupervisorPlugin;
 
 impl Plugin for SupervisorPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<SubagentsPlugin>() {
-            app.add_plugins(SubagentsPlugin);
-        }
+        rig_harness::load::<SubagentsPlugin>(app, "rig-basics", "");
         let options = ToolOptions {
             footprint: Some(Touches::Independent),
         };
@@ -242,6 +240,7 @@ fn supervise(
                 commands.trigger(SetModel {
                     entity: supervisor,
                     model,
+                    kind: ChoiceKind::ForThisRun,
                 });
             }
         }
@@ -355,9 +354,10 @@ fn check_by_time(
     mut commands: Commands,
 ) {
     let supervisor = due.entity;
-    let Ok((mut settings, &SpawnedBy(worker))) = supervisors.get_mut(supervisor) else {
+    let Ok((mut settings, worker)) = supervisors.get_mut(supervisor) else {
         return;
     };
+    let worker = worker.parent();
     if let Ok(conversation) = workers.get(worker)
         && unseen(conversation, settings.seen) < conversation.messages().len()
     {
@@ -520,7 +520,7 @@ fn on_verdict(
             decision.decide(Decider::plugin("supervisor"), outcome);
         }
     };
-    let Ok(&SpawnedBy(worker)) = supervisors.get(called.agent) else {
+    let Ok(worker) = supervisors.get(called.agent).map(SpawnedBy::parent) else {
         answer(Err("Only a supervisor gives verdicts."));
         return;
     };
@@ -551,11 +551,9 @@ fn on_verdict(
             answer(Ok("The worker's turn is stopped and the user told why."));
             // Its calls that have not started never start, the others are
             // told why they stopped, and the turn ends.
-            if let Some(turn) = turn {
+            if turn.is_some() {
                 let why = format!("the supervisor stopped it: {reason}");
-                commands
-                    .entity(turn)
-                    .try_insert(TurnOutcome::Stopped(Some(why)));
+                commands.trigger(StopTurn::plugin_alone(worker, NAME, &why));
             }
             let told = format!("The supervisor stopped the turn: {reason}");
             notices.write(Notice::info(worker, told));

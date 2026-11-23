@@ -1,47 +1,22 @@
 //! Structural guard: a multi-turn conversation's wire prefix must not move.
 //!
-//! Provider prompt caching is a **prefix match** — the cache key is derived from
-//! the exact bytes up to each breakpoint, so any change to an earlier block
-//! invalidates everything after it. A conversation whose turn-2 request rewrites,
-//! reorders, or drops a block that turn-1 already sent therefore busts the cache
-//! on every turn, and the cost shows up in production rather than in CI.
+//! Provider prompt caching is a prefix match, so a turn-2 request that
+//! rewrites, reorders or drops a block turn 1 already sent busts the cache on
+//! every turn. These checks are derived from cassettes already recorded and
+//! cost no provider traffic. The rule lives in
+//! `test-support/rig-test-support/src/cache_prefix.rs`, so the per-scenario
+//! conformance harness applies the identical flattening. A test whose
+//! behavior deliberately moves the prefix, such as compaction or history
+//! rewriting, records that in `MOVES_CACHE_PREFIX` with a non-empty reason,
+//! and a stale entry is reported.
 //!
-//! Nothing else in the tree pins this. Each cassette test asserts on *its own*
-//! turn's values; none compares turn N-1's request against turn N's. This check
-//! is derived entirely from cassettes already recorded, so it costs no provider
-//! traffic and applies retroactively to the whole corpus.
-//!
-//! Ported from `inspirations/pydantic-ai` (`tests/cassette_utils.py`
-//! `check_cache_prefix_stability`), which guards the same invariant across a
-//! 1313-cassette corpus. The invariant is imported; the plumbing is rig's. The
-//! rule itself lives in `test-support/rig-test-support/src/cache_prefix.rs` so that the per-scenario
-//! conformance harness (`test-support/rig-test-support/src/cache_conformance.rs`) applies the
-//! identical flattening rather than a second copy that could drift.
-//!
-//! A test whose behavior is *deliberately* prefix-moving — compaction, history
-//! rewriting, dynamic tool disclosure — records that fact in
-//! `MOVES_CACHE_PREFIX`, with a reason. An entry with an empty reason is
-//! rejected, and an entry that stops matching a real cassette is reported as
-//! stale.
-//!
-//! # Three checks, three different blind spots
-//!
-//! 1. [`recorded_conversations_do_not_move_their_cache_prefix`] compares
-//!    consecutive recorded requests. It can only see what was recorded.
-//! 2. [`every_provider_is_covered_by_the_prefix_check`] asserts the first check
-//!    actually *looked* at each provider. It previously failed open: any
-//!    endpoint the table did not model was skipped silently, and the only global
-//!    guard was `compared_pairs > 0` across the entire corpus — so a provider
-//!    could have 100% of its traffic skipped while the suite stayed green. It
-//!    did: Bedrock's `/model/<id>/converse` and Ollama's `/api/chat` were 100%
-//!    unmodeled, which is 72 recorded requests that no prefix check ever saw.
-//! 3. [`provider_request_serialization_is_deterministic`] serializes the same
-//!    request twice in-process. This is the only one of the three that can catch
-//!    unstable map or tool ordering, because *neither* of the others can: the
-//!    replay matcher compares canonical (key-sorted) JSON, and `serde_json::Value`
-//!    round-trips normalize key order too. A `HashMap` leaking into a request
-//!    body would bust every real provider cache while all recorded evidence
-//!    looked identical.
+//! [`recorded_conversations_do_not_move_their_cache_prefix`] compares
+//! consecutive recorded requests. [`every_provider_is_covered_by_the_prefix_check`]
+//! asserts the first check looked at each provider, so an unmodeled endpoint
+//! cannot be skipped silently. Each `<provider>_request_serialization_is_deterministic`
+//! test serializes the same request twice in process; it is the only check that
+//! catches unstable map or tool ordering, since the replay matcher and
+//! `serde_json::Value` both normalize key order.
 
 #![allow(clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
 use std::collections::BTreeMap;
@@ -235,10 +210,9 @@ const MOVES_CACHE_PREFIX: &[(&str, &str)] = &[
 /// that a provider whose cache-bearing endpoint genuinely cannot be modeled is
 /// recorded as a *decision* rather than disappearing into a silent skip.
 ///
-/// It is deliberately empty. Every provider directory in the corpus now has a
-/// modeled conversational endpoint; if that stops being true, the census failure
-/// message says which provider drifted and adding an entry here is the explicit,
-/// reasoned way to accept it.
+/// It is deliberately empty: every provider directory in the corpus has a
+/// modeled conversational endpoint. If that stops being true, the census failure
+/// says which provider drifted, and an entry here is the reasoned way to accept it.
 const COVERAGE_EXEMPT_PROVIDERS: &[(&str, &str)] = &[];
 
 /// A provider whose conversational requests are at least this fraction
@@ -445,13 +419,10 @@ fn recorded_conversations_do_not_move_their_cache_prefix() {
 
 /// Per-provider census of what the prefix check actually looked at.
 ///
-/// The check this guards used to fail open. `canonical_prefix_blocks` returns
-/// `None` for any endpoint it does not model, the pair was skipped silently, and
-/// the only global guard was `compared_pairs > 0` **across the entire corpus** —
-/// so one well-covered provider kept the suite green while every other
-/// provider's traffic went unexamined.
+/// A corpus-wide pair count would let one well-covered provider keep the suite
+/// green while another's traffic went unexamined.
 ///
-/// A request is now classified three ways rather than two (see
+/// A request is classified three ways (see
 /// `cache_prefix::classify_endpoint`): modeled, non-conversational (embeddings,
 /// image generation, audio, model listings — nothing with a prompt prefix to
 /// protect), or *unmodeled*, which means a conversational endpoint the table
@@ -623,8 +594,7 @@ fn a_moved_block_is_reported_and_an_appended_turn_is_not() {
 
 #[test]
 fn bedrock_converse_models_tools_system_and_messages_in_cache_order() {
-    // Bedrock's Converse body was 100% unmodeled before this check was
-    // hardened, so pin the shape rather than trusting the table by inspection.
+    // Pin the shape rather than trusting the table by inspection.
     // `toolChoice` must stay *out*: it is a per-turn control, and folding it in
     // would report a legitimate tool-choice change as a prefix move.
     let body = serde_json::json!({
@@ -694,7 +664,7 @@ fn an_unknown_conversational_endpoint_is_a_finding_not_a_skip() {
 // asserting on a hand-built JSON literal: it builds the provider's own client
 // against a recording HTTP transport, calls `completion`, and reads the bytes
 // that were actually put on the wire. A literal would only prove that
-// `serde_json` is deterministic, which was never in doubt.
+// `serde_json` is deterministic.
 
 use rig::completion::{CompletionRequest, ToolDefinition};
 use rig::message::{Message, UserContent};
@@ -1005,12 +975,8 @@ fn a_moving_cache_control_marker_is_not_a_prefix_move() {
     // saying where to cache up to, not content being cached, and Anthropic's
     // prefix matching ignores it — measured: a probe whose marker moved exactly
     // this way still served over 80% of its grown turn from cache.
-    //
-    // Comparing raw bytes reported that correct behavior as a violation, and did
-    // so *silently*: with the marker on `messages[0]`, the two turns looked like
-    // two unrelated conversations and the pair was skipped entirely. Every
-    // multi-turn Anthropic conversation using manual prompt caching was
-    // invisible to this check.
+    // Comparing raw bytes would make the two turns look like unrelated
+    // conversations, and the pair would be skipped.
     let turn_two = serde_json::json!({
         "messages": [{
             "role": "user",
@@ -1122,9 +1088,8 @@ const NO_CACHE_SUITE: &[(&str, &str)] = &[
 /// Walks `tests/providers`, **not** `crates/rig-cassette/fixtures/cassettes`. Walking the cassette root
 /// would let a provider with no recorded fixtures at all escape entirely — which
 /// is the loudest possible form of "nobody has ever checked whether its prompt
-/// cache works", and exactly the silent gap this check exists to remove. Eleven
-/// provider suites have no cassettes; each is now an explicit, reason-carrying
-/// entry rather than an absence.
+/// cache works". A provider suite without cassettes is an explicit,
+/// reason-carrying entry rather than an absence.
 #[test]
 fn every_provider_suite_has_a_cache_suite() {
     for (provider, reason) in NO_CACHE_SUITE {

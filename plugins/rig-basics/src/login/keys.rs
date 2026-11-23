@@ -3,24 +3,32 @@
 //! replaced whole. A saved key connects its provider's models before the
 //! environment's: the provider is reached through [`SavedKey`], which reads
 //! the file each time a model connects, and with no file any more connects
-//! as the environment says. Saving or removing a key reconnects the idle
-//! agents on that provider's models.
+//! as the environment says; a file that cannot be read refuses the connect.
+//! Saving or removing a key reconnects the idle agents on that provider's
+//! models.
 
+use std::io::ErrorKind;
 use std::path::PathBuf;
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use rig_core::catalog::{Catalog, Connector, ModelSpec, Provide, Transport};
-use rig_core::providers::chatgpt::auth::{FileTokenStore, TokenStore};
+use rig_core::catalog::{Catalog, Connector, ModelSpec, ModelStatus, Provide, Transport};
+use rig_core::providers::auth::{FileTokenStore, TokenStore};
 use rig_core::providers::registry::{ConnectError, ConnectOptions, ProviderId};
 use rig_core::serve::ErasedHandler;
 use rig_ecs::agent::{ActiveTurn, Agent, Notice};
-use rig_ecs::model::{Connection, ModelChoice, Models};
-use rig_harness::commands::RunCommand;
+use rig_ecs::model::{ChoiceKind, Connection, ModelChoice, Models, SetModel};
+use rig_harness::commands::run_chosen;
 use rig_harness::harness_protocol::Home;
+use rig_harness::host::launcher::Invoked;
 use rig_harness::pick::{PickItem, Picked, Picker};
 use rig_harness::services::RigHome;
 use serde::{Deserialize, Serialize};
+
+use crate::models::FirstPick;
+
+/// What the error of a saved key file that cannot be read starts with.
+const UNREADABLE: &str = "cannot read the saved API key";
 
 /// What `/logout` says when `/login` stored nothing.
 pub(super) const NOTHING_STORED: &str = "Nothing stored to remove. /logout removes only what \
@@ -31,10 +39,14 @@ pub(super) const NOTHING_STORED: &str = "Nothing stored to remove. /logout remov
 pub(super) fn add(app: &mut App) {
     let keys = Keys::at(&RigHome::of(app.world()));
     let models = &mut app.world_mut().get_resource_or_init::<Models>().0;
-    for vendor in keys.vendors() {
+    // An unlistable directory may still hold keys: each provider reads its own.
+    let listed = keys.vendors().map_err(|_| key_vendors(models));
+    let vendors = listed.unwrap_or_else(|all| all.into_iter().map(str::to_owned).collect());
+    for vendor in vendors {
         provide(models, &vendor, &keys);
     }
     app.insert_resource(keys)
+        .add_observer(say_key_passed_over)
         .add_observer(save_typed_key)
         .add_observer(remove_key);
 }
@@ -68,11 +80,29 @@ impl Keys {
         self.store.path(vendor)
     }
 
-    /// `vendor`'s saved key, if any.
-    pub(crate) fn load(&self, vendor: &str) -> Option<String> {
-        let record = std::fs::read_to_string(self.path(vendor)).ok()?;
-        let saved: Saved = serde_json::from_str(&record).ok()?;
-        Some(saved.key)
+    /// `vendor`'s saved key, `None` with no file; an error naming the file
+    /// when it exists but cannot be read or parsed, or the store refuses it
+    /// (a symlink, or too large).
+    pub(crate) fn load(&self, vendor: &str) -> Result<Option<String>, ConnectError> {
+        let path = self.path(vendor);
+        let unreadable = |why: &dyn std::fmt::Display| {
+            let path = path.display();
+            ConnectError::Provider(format!("{UNREADABLE} {path}: {why}"))
+        };
+        let record = match bevy_tasks::block_on(self.store.load(vendor)) {
+            Ok(Some(record)) => record,
+            Ok(None) => return Ok(None),
+            Err(why) => return Err(unreadable(&why)),
+        };
+        // serde's message may quote the file, which holds the key.
+        let saved: Saved = serde_json::from_str(&record).map_err(|why| {
+            unreadable(&format!(
+                "no key at line {}, column {}",
+                why.line(),
+                why.column()
+            ))
+        })?;
+        Ok(Some(saved.key))
     }
 
     /// Saves `key` as `vendor`'s, replacing the file whole. One file holds
@@ -91,14 +121,19 @@ impl Keys {
         Ok(had)
     }
 
-    /// The vendors with a saved key, sorted.
-    pub(crate) fn vendors(&self) -> Vec<String> {
-        let Ok(entries) = std::fs::read_dir(&self.dir) else {
-            return Vec::new();
+    /// The vendors with a saved key, sorted; an error when the directory
+    /// exists but cannot be listed, or reading one of its entries fails.
+    pub(crate) fn vendors(&self) -> std::io::Result<Vec<String>> {
+        let entries = match std::fs::read_dir(&self.dir) {
+            Err(why) if why.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
+            entries => entries?,
         };
-        let mut vendors: Vec<String> = entries
-            .filter_map(|entry| {
-                let path = entry.ok()?.path();
+        let paths = entries
+            .map(|entry| entry.map(|entry| entry.path()))
+            .collect::<std::io::Result<Vec<_>>>()?;
+        let mut vendors: Vec<String> = paths
+            .iter()
+            .filter_map(|path| {
                 let vendor = path.file_stem()?.to_str()?;
                 let json = path
                     .extension()
@@ -107,7 +142,7 @@ impl Keys {
             })
             .collect();
         vendors.sort();
-        vendors
+        Ok(vendors)
     }
 }
 
@@ -122,11 +157,49 @@ impl Provide for SavedKey {
         catalog: &Catalog,
         transport: &Transport,
     ) -> Result<ErasedHandler, ConnectError> {
-        let options = match self.0.load(spec.provider.vendor()) {
+        let options = match self.0.load(spec.provider.vendor())? {
             Some(key) => ConnectOptions::new().api_key(key),
             None => ConnectOptions::new(),
         };
         options.handler(spec, catalog, transport)
+    }
+}
+
+/// The error of a saved key file that cannot be read, when that is why
+/// `status` refuses its model.
+pub(crate) fn unreadable_key(status: &ModelStatus) -> Option<String> {
+    let ModelStatus::Unavailable(why) = status else {
+        return None;
+    };
+    why.starts_with(UNREADABLE).then(|| why.clone())
+}
+
+/// Says once per run, naming the file and the model, when a saved key
+/// for a model listed before an automatic first pick cannot be read.
+fn say_key_passed_over(
+    set: On<SetModel>,
+    (models, invoked): (Res<Models>, Option<Res<Invoked>>),
+    unchosen: Query<(), (With<Agent>, Without<ModelChoice>)>,
+    mut said: Local<bool>,
+    mut notices: MessageWriter<Notice>,
+) {
+    let named = invoked.is_some_and(|invoked| invoked.args.model.is_some());
+    let auto = !named && set.kind == ChoiceKind::ForThisRun && unchosen.contains(set.entity);
+    if *said || !auto || FirstPick::of(&models) != FirstPick::Model(set.model.clone()) {
+        return;
+    }
+    let specs = || models.0.catalog().iter();
+    // A local server is picked only after every model a key reaches.
+    let local = specs()
+        .find(|spec| spec.reference() == set.model)
+        .is_some_and(|spec| {
+            !models.0.is_provided(spec.provider) && !spec.provider.requires_credential()
+        });
+    let mut before = specs().take_while(|spec| local || spec.reference() != set.model);
+    if let Some(why) = before.find_map(|spec| unreadable_key(&models.0.status(spec))) {
+        *said = true;
+        let text = format!("Using {}: {why}.", set.model);
+        notices.write(Notice::warn(set.entity, text));
     }
 }
 
@@ -175,19 +248,11 @@ fn key_envs(vendor: &str) -> String {
 
 /// `/login`'s picker: the ChatGPT plan, then each provider a key reaches.
 pub(super) fn login_picker(agent: Entity, connector: &Connector) -> Picker {
-    let plan = PickItem {
-        label: "ChatGPT plan".to_owned(),
-        command: format!("login {}", super::PROVIDER),
-        detail: Some("sign in in the browser".to_owned()),
-        more: None,
-        checked: false,
-    };
-    let keys = key_vendors(connector).into_iter().map(|vendor| PickItem {
-        label: vendor.to_owned(),
-        command: format!("login {vendor}"),
-        detail: Some(format!("API key, used before {}", key_envs(vendor))),
-        more: None,
-        checked: false,
+    let plan = PickItem::new("ChatGPT plan", format!("login {}", super::PROVIDER))
+        .detail("sign in in the browser");
+    let keys = key_vendors(connector).into_iter().map(|vendor| {
+        PickItem::new(vendor, format!("login {vendor}"))
+            .detail(format!("API key, used before {}", key_envs(vendor)))
     });
     Picker {
         items: std::iter::once(plan).chain(keys).collect(),
@@ -239,15 +304,7 @@ fn save_typed_key(
     entries: Query<&KeyEntry>,
     keys: Res<Keys>,
     mut models: ResMut<Models>,
-    agents: Query<
-        (
-            Entity,
-            Option<&Connection>,
-            Option<&ModelChoice>,
-            Has<ActiveTurn>,
-        ),
-        With<Agent>,
-    >,
+    agents: KeyAgents<'_, '_>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -293,7 +350,7 @@ fn save_typed_key(
         found.is_ok_and(|found| found.spec.provider.vendor() == vendor)
     });
     if connected.is_none() && !chose_vendor {
-        commands.trigger(RunCommand::new(agent, "model".to_owned()));
+        commands.queue(run_chosen(agent, "model"));
     }
 }
 
@@ -312,15 +369,7 @@ fn remove_key(
     remove: On<RemoveKey>,
     keys: Res<Keys>,
     mut models: ResMut<Models>,
-    agents: Query<
-        (
-            Entity,
-            Option<&Connection>,
-            Option<&ModelChoice>,
-            Has<ActiveTurn>,
-        ),
-        With<Agent>,
-    >,
+    agents: KeyAgents<'_, '_>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -348,22 +397,23 @@ fn remove_key(
     });
 }
 
+/// The agents a saved or removed key may reconnect.
+type KeyAgents<'w, 's> = Query<
+    'w,
+    's,
+    (
+        Entity,
+        Option<&'static Connection>,
+        Option<&'static ModelChoice>,
+        Has<ActiveTurn>,
+    ),
+    With<Agent>,
+>;
+
 /// Drops the connections of the idle agents on `vendor`'s models, which
 /// the kernel connects again once [`Models`] changed, with the key now
 /// saved or none.
-fn reconnect(
-    vendor: &str,
-    agents: &Query<
-        (
-            Entity,
-            Option<&Connection>,
-            Option<&ModelChoice>,
-            Has<ActiveTurn>,
-        ),
-        With<Agent>,
-    >,
-    commands: &mut Commands,
-) {
+fn reconnect(vendor: &str, agents: &KeyAgents<'_, '_>, commands: &mut Commands) {
     for (agent, connection, _, busy) in agents {
         if !busy && connection.is_some_and(|connection| connection.spec.provider.vendor() == vendor)
         {
@@ -379,19 +429,14 @@ pub(super) fn logout_picker(
     signed_in: Option<(&str, &str)>,
     keys: &Keys,
 ) -> Option<Picker> {
-    let plan = signed_in.map(|(title, provider)| PickItem {
-        label: format!("{title} sign-in"),
-        command: format!("logout {provider}"),
-        detail: Some("revoked, then deleted".to_owned()),
-        more: None,
-        checked: false,
+    let plan = signed_in.map(|(title, provider)| {
+        PickItem::new(format!("{title} sign-in"), format!("logout {provider}"))
+            .detail("revoked, then deleted")
     });
-    let saved = keys.vendors().into_iter().map(|vendor| PickItem {
-        label: format!("API key for {vendor}"),
-        command: format!("logout {vendor}"),
-        detail: Some(keys.path(&vendor).display().to_string()),
-        more: None,
-        checked: false,
+    let saved = keys.vendors().unwrap_or_default();
+    let saved = saved.into_iter().map(|vendor| {
+        PickItem::new(format!("API key for {vendor}"), format!("logout {vendor}"))
+            .detail(keys.path(&vendor).display().to_string())
     });
     let items: Vec<PickItem> = plan.into_iter().chain(saved).collect();
     (!items.is_empty()).then(|| Picker {

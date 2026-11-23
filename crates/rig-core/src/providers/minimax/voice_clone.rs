@@ -97,16 +97,12 @@ pub struct UploadedFile {
     /// The id a clone request names the file by.
     pub file_id: i64,
     /// Size in bytes.
-    #[serde(default)]
     pub bytes: Option<u64>,
     /// Unix time of the upload, in seconds.
-    #[serde(default)]
     pub created_at: Option<u64>,
     /// The uploaded file name.
-    #[serde(default)]
     pub filename: Option<String>,
     /// The `purpose` it was uploaded for.
-    #[serde(default)]
     pub purpose: Option<String>,
 }
 
@@ -217,10 +213,8 @@ pub enum VoiceCloneRequest {
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct VoiceCloneReply {
     /// The stored file.
-    #[serde(default)]
     pub file: Option<UploadedFile>,
     /// A URL of the preview audio, empty when none was asked for.
-    #[serde(default)]
     pub demo_audio: Option<String>,
     /// The preview's length, size and billed characters.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -305,7 +299,7 @@ impl Wire for VoiceClones {
                 let additional_params = clone.additional_params.take();
                 let mut body = serde_json::to_value(clone)?;
                 if let Some(additional_params) = additional_params {
-                    crate::json_utils::merge_inplace(&mut body, additional_params);
+                    body = crate::json_utils::merge(body, additional_params);
                 }
                 crate::providers::openai::wire::json_post(provider, VOICE_CLONE_PATH, None, &body)
             }
@@ -324,10 +318,7 @@ impl<'id> Decoder<'id, VoiceCloning> for VoiceClonesDecoder {
     type Event = Vec<u8>;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        WireEvent::Known(match frame {
-            WireFrame::Text(text) => text.into_bytes(),
-            WireFrame::Bytes(bytes) => bytes,
-        })
+        WireEvent::Known(frame.into_bytes())
     }
 
     fn decode(

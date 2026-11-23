@@ -1,48 +1,20 @@
 //! Matrix for raw provider response capture on the streaming path:
 //! `CompletionResponse::raw` beside the normalized terminal fields.
 //!
-//! # The feature
+//! Capture is always on. The wire's reassembler rebuilds the `Message` a unary
+//! reply would have been from the stream's frames, and the driver records it
+//! as the terminal `CompletionResponse::raw`. So `raw` is the unary document,
+//! not the frames: `message_start.message` with each content block placed at
+//! its index, the deltas applied, and the closing `message_delta`
+//! (`stop_reason`, `stop_sequence`, usage) folded over it. The transport
+//! `request-id` header is stamped on the normalized terminal, never on `raw`.
+//! `raw` is `Value::Null` only on a `CompletionResponse` built by hand.
 //!
-//! Capture is always on. The wire's reassembler rebuilds the `Message` a
-//! unary reply would have been from the stream's frames, and the driver
-//! records it as the terminal `CompletionResponse::raw`. So `raw` is the
-//! **unary document**, not the frames: `message_start.message` with each
-//! content block placed at its index, the deltas applied, and the closing
-//! `message_delta` (`stop_reason`, `stop_sequence`, usage) folded over it.
-//! The transport `request-id` header is stamped on the normalized terminal,
-//! never on `raw`. `raw` is `Value::Null` only on a `CompletionResponse`
-//! built by hand; `Value::Null` never means "not requested". Cells 1–3 pin
-//! the document's shape, a terminal-only field, and normalized/raw agreement
-//! on text streams; cells 4 and 5 repeat the round trip on an
-//! extended-thinking stream and a forced tool-call stream, whose blocks the
-//! document carries as their unary twins in `raw_capture_matrix.rs` do.
-//!
-//! # Matrix
-//!
-//! | # | Cell | Dimension | expected | Status |
-//! |---|------|-----------|----------|--------|
-//! | 1 | `terminal_raw_round_trips_into_provider_type` | plain text request | terminal `raw` populated; exactly the unary `Message` keys, the streamed text as its one `text` block, no frame keys | recorded |
-//! | 2 | `raw_exposes_stop_sequence` | streamed twin of the `stop_sequences: ["alpha"]` request | `raw["stop_sequence"] == "alpha"`, `raw["stop_reason"] == "stop_sequence"` (verbatim spelling) | recorded |
-//! | 3 | `normalized_terminal_matches_raw_renormalized` | plain text request | reading `raw` back into `StreamingCompletionResponse` reproduces `identity()`, `finish_reason`, `model`, `usage` | recorded |
-//! | 4 | `terminal_raw_round_trips_for_thinking_stream` | streamed twin of the `thinking.enabled` request | terminal `raw` round-trips; `raw["content"][0]` is the `thinking` block with the streamed text and signature; `raw["usage"]["output_tokens_details"]["thinking_tokens"]` is the terminal `message_delta`'s, verbatim; normalized terminal folds it into `reasoning_tokens` and never spells `thinking`; the stream yielded the `thinking` block as `Reasoning` | recorded |
-//! | 5 | `terminal_raw_round_trips_for_tool_use_stream` | streamed twin of the forced tool call | terminal `raw` round-trips; `raw["content"][0]` is the `tool_use` block with the assembled `input` object; `raw["stop_reason"] == "tool_use"` verbatim; normalized terminal `finish_reason == ToolCalls`; the stream yielded the `tool_use` block as a `ToolCall` whose provider id is the frame's | recorded |
-//!
-//! Every recorded cell re-derives its premise from its own SSE frames: the
-//! stream opens with a `message_start` naming a `msg_…` id, closes with a
-//! `message_delta` carrying `usage`, and the response carries a `request-id`
-//! header. Cell 3 is not cell 1 restated: cell 1 proves `raw` is lossless
-//! against the *provider* terminal type; cell 3 proves rig's own mapping of
-//! that value agrees with the normalized terminal delivered beside it — the
-//! single-stream form of the parity contract `raw_completion_parity_matrix.rs`
-//! records across two exchanges. Cells 4 and 5 take the terminal round trip
-//! off the text-only path, with the request shapes their blocking twins in
-//! `raw_capture_matrix.rs` use (the `thinking.enabled` request from
-//! `reasoning_usage_matrix.rs`; the `weather_tool` + `tool_choice` pattern
-//! from `empty_stop_sequence_matrix.rs`). Each cell premise-asserts its
-//! frames carry the block (`content_block_start` of `type: "thinking"` with
-//! a `signature_delta`; `content_block_start` of `type: "tool_use"`), and
-//! pins that `raw` carries the block rebuilt from them beside the usage
-//! bucket and the verbatim `stop_reason`.
+//! The cells pin the document's shape, a terminal-only field, and that reading
+//! `raw` back reproduces the normalized terminal delivered beside it, on text,
+//! extended-thinking and forced tool-call streams. Every cell re-derives its
+//! premise from its own SSE frames, so a recording that lost the block or
+//! terminal it reads fails the cell.
 
 use rig::completion::CompletionResponse;
 use rig::message::AssistantContent;

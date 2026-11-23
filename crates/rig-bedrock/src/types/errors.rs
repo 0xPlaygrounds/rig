@@ -22,11 +22,13 @@ pub(crate) fn sdk_error<E: ProvideErrorMetadata>(
         .message()
         .map(str::to_owned)
         .or_else(|| raw.and_then(raw_body));
-    // Timeout and dispatch failures are retry hints; delivery is not guaranteed.
-    let transient = matches!(
-        error,
-        SdkError::TimeoutError(_) | SdkError::DispatchFailure(_)
-    )
+    // Timeout and dispatch failures are retry hints, less a dispatch failure
+    // the SDK blames on the request; delivery is not guaranteed.
+    let transient = match &error {
+        SdkError::TimeoutError(_) => true,
+        SdkError::DispatchFailure(failure) => !failure.is_user(),
+        _ => false,
+    }
     .then_some(true);
     let code = error.code().map(str::to_owned);
     reply(message, code, status, transient, UNEXPECTED)
@@ -74,9 +76,7 @@ fn reply(
             None => fallback.to_owned(),
         };
         return if transient == Some(true) {
-            ProviderError::Http(
-                rig_core::http_client::Error::instance(std::io::Error::other(fallback)).into(),
-            )
+            ProviderError::Http(rig_core::http_client::Error::transient(fallback).into())
         } else {
             ProviderError::Provider(fallback)
         };

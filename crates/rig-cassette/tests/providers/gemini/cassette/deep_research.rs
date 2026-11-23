@@ -10,7 +10,7 @@ use rig::providers::gemini::extension::{
 use rig::providers::gemini::interactions_api::DEEP_RESEARCH_PREVIEW_04_2026;
 use rig::providers::gemini::interactions_api::streaming::StreamCursor;
 
-use super::super::support::{recorded_request_bodies, with_gemini_interactions_cassette};
+use super::super::support::{recorded_request_bodies, with_gemini_cassette};
 
 /// With collaborative planning, the agent answers with a plan. The stream
 /// names its interaction as it is created, is dropped at its first resume
@@ -19,7 +19,7 @@ use super::super::support::{recorded_request_bodies, with_gemini_interactions_ca
 #[tokio::test]
 async fn a_planning_stream_resumes_after_its_cursor() {
     const SCENARIO: &str = "deep_research/planning_stream_resumed";
-    with_gemini_interactions_cassette(
+    with_gemini_cassette(
         "deep_research/planning_stream_resumed",
         |client| async move {
             let agent = InteractionsOptions::new()

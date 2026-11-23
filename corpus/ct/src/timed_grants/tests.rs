@@ -7,8 +7,8 @@ use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::ask::AskPlugin;
 use rig_harness::clock::ClockPlugin;
 use rig_harness_test_support::{
-    Collected, Ended, MemoryStore, ToolOutputs, app_on, calls, collect, connect, first_agent,
-    log_ended, log_tool_outputs, pass_wall_clock, reply, run_until,
+    Collected, Ended, MemoryStore, ToolOutputs, app_on, calls, collect, connect, deliver,
+    first_agent, log_ended, log_tool_outputs, pass_wall_clock, reply, scratch_dir,
 };
 use serde_json::json;
 
@@ -46,9 +46,7 @@ fn protect(mut calls: Query<(&Footprint, &mut Decision), (ReadyToStart, ToolCall
 }
 
 fn project(name: &str) -> PathBuf {
-    let exe = std::env::current_exe().unwrap_or_default();
-    let dir = exe.with_file_name(format!("timed-grants-{name}-{}", std::process::id()));
-    std::fs::remove_dir_all(&dir).ok();
+    let dir = scratch_dir(&format!("timed-grants-{name}-{}", std::process::id()));
     for sub in ["src/locked", "docs"] {
         std::fs::create_dir_all(dir.join(sub)).ok();
     }
@@ -93,12 +91,7 @@ fn start(
 }
 
 fn turn(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str) {
-    let ended = app.world().resource::<Ended>().0.len();
-    app.world_mut()
-        .trigger(Deliver::new(agent, text, DeliveryMode::Queue));
-    run_until(app, wakes, |world| {
-        world.resource::<Ended>().0.len() > ended
-    });
+    deliver(app, wakes, Deliver::new(agent, text, DeliveryMode::Queue));
 }
 
 fn command(app: &mut App, agent: Entity, line: &str) {
@@ -252,7 +245,4 @@ fn resume_keeps_turns_left_and_drops_passed_time() {
     );
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(TimedGrantsPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(TimedGrantsPlugin);

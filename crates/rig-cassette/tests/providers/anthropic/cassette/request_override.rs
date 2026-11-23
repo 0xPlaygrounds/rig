@@ -137,17 +137,10 @@ impl AgentHook for ForceWeatherOnlyOnFirstTurn {
 /// wire: only `get_weather` is advertised (not `get_time`) and a non-auto tool
 /// choice is set.
 fn assert_first_request_was_overridden(scenario: &str) {
-    let cassette_path = crate::cassettes::cassette_path("anthropic", scenario);
-    let contents = std::fs::read_to_string(&cassette_path).unwrap_or_else(|e| {
-        panic!(
-            "cassette {} should be readable: {e}",
-            cassette_path.display()
-        )
-    });
-
-    let first_request_body = serde_yaml::Deserializer::from_str(&contents)
-        .filter_map(|doc| Interaction::deserialize(doc).ok())
-        .find_map(|i| i.when.body)
+    let first_request_body = crate::cassettes::recorded_interaction_bodies("anthropic", scenario)
+        .into_iter()
+        .map(|(request, _)| request)
+        .find(|request| !request.is_empty())
         .and_then(|body| serde_json::from_str::<Value>(&body).ok())
         .expect("cassette should contain a first request with a JSON body");
 
@@ -177,16 +170,6 @@ fn assert_first_request_was_overridden(scenario: &str) {
         "tool_choice override must set a non-auto choice, saw {:?}",
         first_request_body.get("tool_choice")
     );
-}
-
-#[derive(Deserialize)]
-struct Interaction {
-    when: RecordedRequest,
-}
-
-#[derive(Deserialize)]
-struct RecordedRequest {
-    body: Option<String>,
 }
 
 #[tokio::test]

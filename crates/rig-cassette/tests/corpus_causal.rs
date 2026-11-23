@@ -1,59 +1,18 @@
 //! Matrix Q: causal dispatch.
 //!
-//! A handler's way back into its handler table is the table it is served
-//! with (`Handlers::serving`): every dispatch made through it carries the served dispatch's id as its
-//! parent, and the record names it. The `lookup` tool of these cells
-//! dispatches from inside its own service — a completion on the agent's
-//! model key, a host note, its own key, the host's relay (which nests once
-//! more), the host's never-answering handler — and both interpreters
-//! register the same tool and host handlers (program, not record): the
-//! replayers answer only the leaves. The rule read off the chain: a cancel
-//! reaches it, so a child in flight is cancelled with its parent.
+//! A handler's way back into its handler table is the table it is served with
+//! (`Handlers::serving`): every dispatch made through it carries the served
+//! dispatch's id as its parent, and the record names it. The `lookup` tool of
+//! these cells dispatches from inside its own service: a completion on the
+//! agent's model key, a host note, its own key, the host's relay (which nests
+//! once more) and the host's never-answering handler. Both interpreters
+//! register the same tool and host handlers (program, not record), and the
+//! replayers answer only the leaves.
 //!
-//! # Dimensions
-//!
-//! | axis | values recorded |
-//! |---|---|
-//! | nesting depth | 1 · 2 |
-//! | where the nested dispatch is made | inside a tool's `Serve` · inside a detached sink's resolver |
-//! | target key | another key (the model · a host note · the host's relay · the host's `never`) · the same key |
-//! | parent fate | answered · cancelled while the child is in flight |
-//! | medium | unary · streamed with events |
-//!
-//! Full cross-product: 2 × 3 × 5 × 3 × 2 = 180. Recorded: the 9 cells
-//! below; the `serial` and `concurrent` pairs were recorded under the
-//! deleted bus's two serving policies and now replay the same program.
-//! Pruned: a layer's `before` as the nesting site (Matrix P, after
-//! L7); depth 2 under every axis but the answered relay (the chain is the
-//! claim; one cell shows three ids); the cancelled fates on the answered
-//! children (only `never` can be reached and held); the streamed medium on every
-//! cell but the completion child (the medium changes the run's
-//! completions, not where the tool's dispatch lands); the model child on
-//! the mock wire (recorded live: the wire is what the cell shows).
-//!
-//! # Cells
-//!
-//! | golden | producer | policy | shape |
-//! |---|---|---|---|
-//! | `anthropic_causal_completion_serial` | anthropic `corpus_causal.rs` `completion_serial_…` | serial | `[Completion, Tool, Completion←1, Completion]` |
-//! | `anthropic_causal_completion_concurrent` | `completion_concurrent_…` | concurrent | the same |
-//! | `anthropic_causal_completion_streamed` | `completion_streamed_…` | concurrent, events kept | the same; the nested completion unary |
-//! | `mock_causal_note_serial` | `tests/core/golden_causal.rs` `note_serial_…` | serial | `[Completion, Tool, Custom←1, Completion]` |
-//! | `mock_causal_note_concurrent` | `note_concurrent_…` | concurrent | the same |
-//! | `mock_causal_depth_two` | `depth_two_…` | concurrent | `[Completion, Tool, Custom←1, Custom←2, Completion]` |
-//! | `mock_causal_same_key_concurrent_served` | `same_key_concurrent_served_…` | concurrent | `[Completion, Tool, Tool←1, Completion]` |
-//! | `mock_causal_parent_cancelled_child_in_flight` | `parent_cancelled_child_in_flight_…` | concurrent | `[Completion, Tool✗, Custom✗←1]` |
-//! | `mock_causal_detached_resolver` | `detached_resolver_…` | concurrent | `[Completion, Tool, Custom←1, Completion]`, the parent from the detached sink |
-//!
-//! `←n`: the record's parent is record `n`; `✗`: `Cancelled`. The
-//! depth-two cell is also interpreted by the resumed engine (the parent
-//! ids survive the resumption).
-//!
-//! # What the matrix found
-//!
-//! - A tool had no way back to the handlers it was served by without
-//!   holding a dispatcher of its own. The serving table
-//!   (`Handlers::serving`) is the way back; the chain is the rule.
+//! A cancel reaches the chain, so a child in flight is cancelled with its
+//! parent. The `serial` and `concurrent` pairs were recorded under two serving
+//! policies and replay the same program. The depth-two cell is also
+//! interpreted by the resumed engine, so the parent ids survive resumption.
 
 use crate::corpus;
 

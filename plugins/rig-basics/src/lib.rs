@@ -1,26 +1,26 @@
 //! The basic slash commands ([`BasicCommandsPlugin`]): `/help` and `/quit`.
 //!
-//! Every module holds one group of rig's plugins, each listed in
-//! `plugins.toml` by the path of the module that defines it, its only
+//! Every module holds one group of rig's plugins, each named in
+//! `settings.toml` by the path of the module that defines it, its only
 //! path: [`prompt`], [`agents_md`], [`skills`], [`models`], [`login`],
-//! [`sessions`], [`compaction`], [`telemetry`], [`activity`],
-//! [`coding_tools`], [`reload`], [`print`](mod@print), [`helpers`], [`subagents`] and
-//! [`welcome`].
-//! [`approval`], [`preview`], [`checkpoint`] and [`session_picker`] are the
-//! services only some plugins add.
+//! [`sessions`], [`agent_picker`], [`compaction`], [`telemetry`],
+//! [`activity`], [`coding_tools`], [`redact`], [`approval`], [`preview`],
+//! [`reload`], [`print`](mod@print), [`helpers`], [`budget`], [`subagents`]
+//! and [`welcome`]. [`session_picker`] is a service only some plugins add.
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 
 use rig_ecs::agent::Notice;
-use rig_harness::commands::{AppCommandsExt, CommandArgs, SlashCommand};
+use rig_harness::commands::{AppCommandsExt, NoArgs, SlashCommand};
 use rig_harness::host::exit::{Exit, ExitReason};
 use unicode_width::UnicodeWidthStr;
 
 pub mod activity;
+pub mod agent_picker;
 pub mod agents_md;
 pub mod approval;
-pub mod checkpoint;
+pub mod budget;
 pub mod coding_tools;
 pub mod compaction;
 pub mod helpers;
@@ -29,6 +29,7 @@ pub mod models;
 pub mod preview;
 pub mod print;
 pub mod prompt;
+pub mod redact;
 pub mod reload;
 pub mod session_picker;
 pub mod sessions;
@@ -48,10 +49,10 @@ impl Plugin for BasicCommandsPlugin {
     }
 }
 
-/// `/help`: every command with its help, the helps in one column after the
-/// widest name.
+/// `/help`: every command with its help, the helps in one column two
+/// spaces after the widest name, which a wrapped help keeps.
 fn help(
-    In(args): In<CommandArgs>,
+    In(args): In<NoArgs>,
     commands: Query<(&Name, &SlashCommand)>,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -64,14 +65,14 @@ fn help(
         .iter()
         .map(|(name, command)| {
             let pad = column.saturating_sub(name.as_str().width());
-            format!("{}{:pad$} {}", name.as_str(), "", command.help)
+            format!("{}{:pad$}  {}", name.as_str(), "", command.help)
         })
         .collect();
     lines.sort();
     notices.write(Notice::info(args.agent, lines.join("\n")));
 }
 
-fn quit(In(_): In<CommandArgs>, mut commands: Commands) {
+fn quit(In(_): In<NoArgs>, mut commands: Commands) {
     commands.trigger(Exit(ExitReason::Quit));
 }
 

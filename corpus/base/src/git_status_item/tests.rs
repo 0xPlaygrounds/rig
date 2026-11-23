@@ -101,3 +101,21 @@ fn the_item_shows_the_branch_then_the_file_the_agent_wrote() {
     );
     fs::remove_dir_all(&dir).ok();
 }
+
+#[test]
+fn a_bad_table_refuses_a_run_the_terminal_view_does_not_take() {
+    // No front takes the run, as while `rig plugin check --build` describes
+    // the build: the table is still read, and refused as a start refuses it.
+    let mut app = App::new();
+    app.insert_resource(Settings::from_toml("[git_status]\norder = \"bad\"\n"))
+        .add_plugins(GitStatusItemPlugin);
+    app.finish();
+    app.cleanup();
+    let problems = app.world().resource::<Settings>().problems();
+    assert!(
+        problems
+            .iter()
+            .any(|problem| problem.contains("[git_status]")),
+        "{problems:?}"
+    );
+}

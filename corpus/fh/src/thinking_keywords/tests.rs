@@ -28,13 +28,14 @@ fn app(models: Models, model: &str) -> (App, std::sync::mpsc::Receiver<()>, Enti
     };
     app.add_open_tool("read", "Read a file.", ToolOptions::default(), read);
     collect::<Notice>(&mut app);
-    let agent = app.world_mut().spawn(Agent).id();
+    let agent = spawn_root(app.world_mut(), ()).id();
     app.finish();
     app.update();
     let model = model.to_owned();
     app.world_mut().trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     app.update();
     (app, wakes, agent)
@@ -145,7 +146,4 @@ fn a_model_without_reasoning_ignores_keywords_with_one_notice() {
     );
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(ThinkingKeywordsPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(ThinkingKeywordsPlugin);

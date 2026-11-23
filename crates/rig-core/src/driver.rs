@@ -2,8 +2,7 @@
 //! the reply) with a [`Transport`] (how the payload travels). Its `stream`
 //! yields any operation's events as a [`Streamed`], and its `call` is that
 //! stream, finished: one decoder, one fold and one response constructor for
-//! both. The `_observed` twins take the observation context a recorder
-//! records under.
+//! both.
 //!
 //! ```no_run
 //! use rig_core::completion::CompletionRequest;
@@ -20,7 +19,6 @@
 
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 use std::time::Duration;
@@ -29,7 +27,7 @@ use futures::StreamExt;
 use tracing::Instrument;
 
 use crate::error::ProviderError;
-use crate::observe::{AdapterContext, AdapterSlot};
+use crate::lock;
 use crate::streaming::{Item, Streamed};
 use crate::wasm_compat::{WasmBoxedFuture, WasmBoxedStream, WasmCompatSend, WasmCompatSync};
 use crate::wire::document::Reassemble;
@@ -59,15 +57,16 @@ pub struct Model<W, T = crate::http_client::DynHttpClient> {
     pub transport: T,
     /// What preparing the last request leaves for the next.
     prepared: crate::wire::Prepared,
-    /// How long a streamed reply may send nothing before it fails.
+    /// How long a streamed reply may send no frame before it fails.
     idle_timeout: Option<Duration>,
 }
 
-/// How long a streamed reply may send nothing, before its first frame or
-/// between two, before it fails as [`ProviderError::Stalled`]: five minutes.
-/// Every frame restarts it, and so do bytes that are no frame, such as an
-/// event stream's comments, so a model that thinks at length while its
-/// provider pings is not cut off.
+/// How long a streamed reply may send no frame, from when it was sent to its
+/// first frame or between two, before it fails as
+/// [`ProviderError::Stalled`]: five minutes. Only a frame restarts it: any
+/// event the wire reads, a provider's ping event included. Bytes that are no
+/// frame, such as an event stream's comments, never do. A model that thinks
+/// at length is cut only if its provider sends no event for that long.
 pub const STREAM_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
 
 impl<W: Default, T: Default> Default for Model<W, T> {
@@ -78,7 +77,7 @@ impl<W: Default, T: Default> Default for Model<W, T> {
 
 impl<W, T> Model<W, T> {
     /// Pair `wire` with the `transport` that sends it. A streamed reply
-    /// that sends nothing for [`STREAM_IDLE_TIMEOUT`] fails.
+    /// that sends no frame for [`STREAM_IDLE_TIMEOUT`] fails.
     pub fn new(wire: W, transport: T) -> Self {
         Self {
             wire,
@@ -89,9 +88,10 @@ impl<W, T> Model<W, T> {
     }
 
     /// This model with a streamed reply failing as
-    /// [`ProviderError::Stalled`] once it sends nothing for `timeout`, before
-    /// its first frame or between two; `None`, or a timeout longer than a
-    /// browser's timer takes (about 24.8 days), waits indefinitely. A unary reply is never
+    /// [`ProviderError::Stalled`] once it sends no frame for `timeout`, from
+    /// when it was sent to its first frame or between two, whatever other
+    /// bytes arrive; `None`, or a timeout longer than a browser's timer
+    /// takes (about 24.8 days), waits indefinitely. A unary reply is never
     /// timed: it sends nothing until it is whole.
     pub fn with_idle_timeout(mut self, timeout: Option<Duration>) -> Self {
         self.idle_timeout = timeout;
@@ -223,37 +223,21 @@ pub trait Transport<W: Wire>: Clone + WasmCompatSend + WasmCompatSync + 'static 
 pub struct Exchange {
     /// How the reply is read.
     pub mode: Mode,
-    /// The observation an observing transport records the send under.
-    pub(crate) observation: Option<AdapterContext>,
     /// What the HTTP transport puts in the request's extensions, such as
     /// the [`Serving`](crate::serve::Serving) of a dispatched effect.
     pub(crate) extensions: http::Extensions,
 }
 
-/// What a caller adds to one send besides the request: the observation to
-/// record it under, and the HTTP request's extensions.
+/// What a caller adds to one send besides the request: the HTTP request's
+/// extensions.
 #[derive(Default)]
 pub(crate) struct Sending {
-    pub(crate) observation: Option<AdapterContext>,
     pub(crate) extensions: http::Extensions,
-}
-
-impl Sending {
-    /// A send observed under `observation`.
-    pub(crate) fn observed(observation: AdapterContext) -> Self {
-        Self {
-            observation: Some(observation),
-            extensions: http::Extensions::new(),
-        }
-    }
 }
 
 /// One reply, opened when first polled.
 pub struct Opening<F> {
     open: WasmBoxedFuture<'static, Result<Opened<F>, ProviderError>>,
-    /// The attempt the transport records while opening, which a reply that
-    /// stalls before it opened ends.
-    slot: Option<AdapterSlot>,
 }
 
 impl<F: WasmCompatSend + 'static> Opening<F> {
@@ -263,14 +247,7 @@ impl<F: WasmCompatSend + 'static> Opening<F> {
     ) -> Self {
         Self {
             open: Box::pin(open),
-            slot: None,
         }
-    }
-
-    /// This opening recording its attempt in `slot`.
-    pub(crate) fn with_slot(mut self, slot: Option<AdapterSlot>) -> Self {
-        self.slot = slot;
-        self
     }
 
     /// A reply that is already open.
@@ -301,11 +278,6 @@ pub struct Opened<F> {
     pub(crate) headers: Option<http::HeaderMap>,
     pub(crate) route: Option<String>,
     pub(crate) document: Option<serde_json::Value>,
-    pub(crate) slot: Option<AdapterSlot>,
-    pub(crate) analysis_only: Option<fn(&F) -> bool>,
-    /// When the transport last received bytes, frames or not, such as an
-    /// event stream's comments, which keep a reply from stalling.
-    pub(crate) received: Option<Arc<Received>>,
 }
 
 impl<F: WasmCompatSend + 'static> Opened<F> {
@@ -320,9 +292,6 @@ impl<F: WasmCompatSend + 'static> Opened<F> {
             headers: None,
             route: None,
             document: None,
-            slot: None,
-            analysis_only: None,
-            received: None,
         }
     }
 
@@ -404,15 +373,6 @@ where
         self.finished(request.into(), Sending::default())
     }
 
-    /// [`Self::call`], with the attempt observed under `observation`.
-    pub fn call_observed(
-        &self,
-        request: impl Into<Request<W>>,
-        observation: AdapterContext,
-    ) -> impl Future<Output = Result<Response<W>, ProviderError>> + WasmCompatSend + 'static {
-        self.finished(request.into(), Sending::observed(observation))
-    }
-
     /// The call opens when first polled, so its span is created under the
     /// caller's instrumented context.
     fn finished(
@@ -429,19 +389,6 @@ where
     /// until the stream is first polled.
     pub fn stream(&self, request: impl Into<Request<W>>) -> Result<Streamed<W::Op>, ProviderError> {
         self.open(request.into(), Mode::Streaming, Sending::default())
-    }
-
-    /// [`Self::stream`], with the attempt observed under `observation`.
-    pub fn stream_observed(
-        &self,
-        request: impl Into<Request<W>>,
-        observation: AdapterContext,
-    ) -> Result<Streamed<W::Op>, ProviderError> {
-        self.open(
-            request.into(),
-            Mode::Streaming,
-            Sending::observed(observation),
-        )
     }
 
     /// [`Self::call`], with a failure paired with the request path of the
@@ -487,14 +434,9 @@ where
         let fold = <W::Op as Operation>::fold(&request, &mut call);
         let span = call.span;
         let payload = self.wire.encode(request, mode)?;
-        let Sending {
-            observation,
-            extensions,
-        } = sending;
         let exchange = Exchange {
             mode,
-            observation,
-            extensions,
+            extensions: sending.extensions,
         };
         let opening = self.transport.send(payload, exchange);
         let shared = Arc::new(Mutex::new(Shared::new(fold)));
@@ -534,11 +476,13 @@ fn read<W: Wire>(
     let decoding = span.clone();
     let reading = async_stream::stream! {
         let reply: &Mutex<Shared<W::Op>> = &shared;
-        let opening_slot = opening.slot.clone();
+        // Timed from the send and restarted only by a frame, so opening the
+        // reply and its first frame share one wait.
+        let mut last_frame = web_time::Instant::now();
         // A unary call sends under the call's span; a stream reads under it.
         let opened = match mode {
             Mode::Unary => opening.instrument(span.clone()).await,
-            Mode::Streaming => idle_within(idle, None, opening)
+            Mode::Streaming => idle_within(idle, last_frame, opening)
                 .await
                 .and_then(|opened| opened),
         };
@@ -549,13 +493,10 @@ fn read<W: Wire>(
             headers,
             route,
             document,
-            slot,
-            analysis_only,
-            received,
         } = match opened {
             Ok(opened) => opened,
             Err(error) => {
-                fail(reply, opening_slot.as_ref(), error);
+                fail(reply, error);
                 return;
             }
         };
@@ -576,54 +517,38 @@ fn read<W: Wire>(
             Mode::Streaming => error,
         };
         let mut decoder = wire.decoder();
-        let mut tally = slot.as_ref().map(|slot| Tally {
-            slot,
-            analysis_only,
-            counted: 0,
-        });
         loop {
-            let next = match idle_within(idle, received.as_deref(), frames.next()).await {
-                Ok(next) => next,
+            let next = match idle_within(idle, last_frame, frames.next()).await {
+                Ok(next) => {
+                    last_frame = web_time::Instant::now();
+                    next
+                }
                 Err(stalled) => {
                     record(reply, reassembler.map(|document| document.finish()));
-                    fail(reply, slot.as_ref(), stalled);
+                    fail(reply, stalled);
                     return;
                 }
             };
             let flow = match next {
-                Some(Ok(frame)) => step(
-                    &mut decoder,
-                    reassembler.as_mut(),
-                    reply,
-                    frame,
-                    tally.as_mut(),
-                ),
+                Some(Ok(frame)) => step(&mut decoder, reassembler.as_mut(), reply, frame),
                 Some(Err(error)) => {
                     record(reply, reassembler.map(|document| document.finish()));
-                    fail(reply, slot.as_ref(), error);
+                    fail(reply, error);
                     return;
                 }
-                None => eof(&mut decoder, reply, tally.as_ref()),
+                None => eof(&mut decoder, reply),
             };
             match flow {
                 Ok(Flow::More) => yield (),
                 Ok(Flow::Ended(_)) => break,
                 Err(error) => {
                     record(reply, reassembler.map(|document| document.finish()));
-                    fail(reply, slot.as_ref(), enrich(error));
+                    fail(reply, enrich(error));
                     return;
                 }
             }
         }
         record(reply, reassembler.map(|document| document.finish()));
-        if let Some(slot) = &slot {
-            let usage = lock(reply)
-                .end
-                .as_ref()
-                .and_then(W::Op::observed_usage)
-                .cloned();
-            slot.terminal(usage.as_ref());
-        }
         {
             let state = lock(reply);
             if let Some(document) = state.raw.as_ref().or(state.document.as_ref()) {
@@ -651,58 +576,21 @@ fn read<W: Wire>(
 /// timer fires at once. A longer idle timeout waits indefinitely.
 const LONGEST_TIMER: Duration = Duration::from_millis(2_147_483_647);
 
-/// When a reply's transport last received bytes.
-pub(crate) struct Received {
-    opened: web_time::Instant,
-    /// Milliseconds from `opened` to the last bytes.
-    last: AtomicU64,
-}
-
-impl Received {
-    pub(crate) fn new() -> Self {
-        Self {
-            opened: web_time::Instant::now(),
-            last: AtomicU64::new(0),
-        }
-    }
-
-    /// Notes that bytes arrived now.
-    pub(crate) fn mark(&self) {
-        let millis = u64::try_from(self.opened.elapsed().as_millis()).unwrap_or(u64::MAX);
-        self.last.store(millis, Ordering::Relaxed);
-    }
-
-    /// How long ago the last bytes arrived, or the reply opened.
-    fn since(&self) -> Duration {
-        let last = Duration::from_millis(self.last.load(Ordering::Relaxed));
-        self.opened.elapsed().saturating_sub(last)
-    }
-}
-
-/// `next` awaited until `idle` passes with nothing from it and no bytes
-/// `received`, or for as long as it takes without `idle`: past it, the
-/// reply stalled.
-async fn idle_within<F: Future + Unpin>(
+/// `next` awaited until `idle` has passed since `since`, or for as long as
+/// it takes without `idle`: past it, the reply stalled. Timed from `since`,
+/// not from this wait, so a reader that paused between frames does not move
+/// the stall; a frame already in hand still comes.
+pub(crate) async fn idle_within<F: Future>(
     idle: Option<Duration>,
-    received: Option<&Received>,
-    mut next: F,
+    since: web_time::Instant,
+    next: F,
 ) -> Result<F::Output, ProviderError> {
     let Some(idle) = idle.filter(|idle| *idle <= LONGEST_TIMER) else {
         return Ok(next.await);
     };
-    // Timed from the last bytes, not from this wait: frames read earlier
-    // may have waited on the reader. A frame already in hand still comes.
-    let mut wait = idle.saturating_sub(received.map_or(Duration::ZERO, Received::since));
-    loop {
-        if let Ok(output) = crate::wasm_compat::timeout(wait, &mut next).await {
-            return Ok(output);
-        }
-        let since = received.map_or(idle, Received::since);
-        if since >= idle {
-            return Err(ProviderError::Stalled(idle));
-        }
-        wait = idle.saturating_sub(since);
-    }
+    crate::wasm_compat::timeout(idle.saturating_sub(since.elapsed()), next)
+        .await
+        .map_err(|_| ProviderError::Stalled(idle))
 }
 
 /// A reply decoded from frames already in hand: its items, then its
@@ -712,15 +600,6 @@ pub(crate) struct Decoded<Op: Operation> {
     #[cfg(any(test, feature = "test-utils"))]
     pub(crate) items: Vec<Result<crate::streaming::Item<Op::Event>, ProviderError>>,
     pub(crate) outcome: Result<Op::Response, ProviderError>,
-}
-
-/// Observation's count of one observed reply's frames, for its EOF and
-/// corruption positions.
-pub(crate) struct Tally<'a, F> {
-    slot: &'a AdapterSlot,
-    /// Frames observation does not count, unless they are corrupt.
-    analysis_only: Option<fn(&F) -> bool>,
-    counted: usize,
 }
 
 /// What the driver does with a classified frame: a known event is decoded,
@@ -739,36 +618,19 @@ pub(crate) fn triage<E>(event: WireEvent<E>) -> Result<Item<E>, ProviderError> {
 }
 
 /// Classify one frame and decode it into `reply`, handing a known event to
-/// `reassembler` first, and count the frame in `tally` when the reply is
-/// observed.
+/// `reassembler` first.
 pub(crate) fn step<'id, Op, F, D, R>(
     decoder: &mut D,
     reassembler: Option<&mut R>,
     reply: &'id Mutex<Shared<Op>>,
     frame: F,
-    tally: Option<&mut Tally<'_, F>>,
 ) -> Result<Flow, ProviderError>
 where
     Op: Operation,
     D: Decoder<'id, Op, F>,
     R: Reassemble<D::Event>,
 {
-    let exempt = tally
-        .as_ref()
-        .and_then(|tally| tally.analysis_only)
-        .is_some_and(|analysis_only| analysis_only(&frame));
-    let classified = decoder.classify(frame);
-    if let Some(tally) = tally {
-        // A corrupt frame is never exempt, whatever its shape.
-        let corrupt = matches!(classified, WireEvent::Corrupt(_));
-        if corrupt || !exempt {
-            tally.counted += 1;
-        }
-        if corrupt {
-            tally.slot.corrupt(tally.counted);
-        }
-    }
-    match triage(classified)? {
+    match triage(decoder.classify(frame))? {
         Item::Event(event) => {
             if let Some(reassembler) = reassembler {
                 reassembler.absorb(&event);
@@ -784,25 +646,12 @@ where
 
 /// The frames ran out: a decoder that saw the provider's end ends the reply
 /// here; otherwise it is [`ProviderError::Truncated`].
-fn eof<'id, Op, F, D>(
-    decoder: &mut D,
-    reply: &'id Mutex<Shared<Op>>,
-    tally: Option<&Tally<'_, F>>,
-) -> Result<Flow, ProviderError>
+fn eof<'id, Op, F, D>(decoder: &mut D, reply: &'id Mutex<Shared<Op>>) -> Result<Flow, ProviderError>
 where
     Op: Operation,
     D: Decoder<'id, Op, F>,
 {
-    if let Some(tally) = tally {
-        tally.slot.transport_eof(tally.counted);
-    }
-    let step = decoder.eof(Out::new(reply));
-    if !matches!(step, Ok(Flow::Ended(_)))
-        && let Some(tally) = tally
-    {
-        tally.slot.eof(tally.counted);
-    }
-    match step {
+    match decoder.eof(Out::new(reply)) {
         Ok(Flow::More) => Err(ProviderError::Truncated),
         step => step,
     }
@@ -822,28 +671,17 @@ where
     D: Decoder<'id, Op, F>,
     R: Reassemble<D::Event>,
 {
-    let fed = feed_until_end(decoder, reassembler.as_mut(), reply, frames);
+    let feed_frames = || {
+        for frame in frames {
+            if let Flow::Ended(_) = step(decoder, reassembler.as_mut(), reply, frame)? {
+                return Ok(());
+            }
+        }
+        eof(decoder, reply).map(drop)
+    };
+    let fed = feed_frames();
     record(reply, reassembler.map(|document| document.finish()));
     fed
-}
-
-fn feed_until_end<'id, Op, F, D, R>(
-    decoder: &mut D,
-    mut reassembler: Option<&mut R>,
-    reply: &'id Mutex<Shared<Op>>,
-    frames: impl IntoIterator<Item = F>,
-) -> Result<(), ProviderError>
-where
-    Op: Operation,
-    D: Decoder<'id, Op, F>,
-    R: Reassemble<D::Event>,
-{
-    for frame in frames {
-        if let Flow::Ended(_) = step(decoder, reassembler.as_deref_mut(), reply, frame, None)? {
-            return Ok(());
-        }
-    }
-    eof(decoder, reply, None).map(drop)
 }
 
 /// Record `document`, what a reassembler rebuilt, as the reply's `raw`. A
@@ -1112,21 +950,8 @@ pub(crate) fn decode_with<Op: Operation>(
 }
 
 /// The reply failed: the error is its last item.
-fn fail<Op: Operation>(
-    reply: &Mutex<Shared<Op>>,
-    slot: Option<&AdapterSlot>,
-    error: ProviderError,
-) {
-    if let Some(slot) = slot {
-        slot.fail(&error);
-    }
+fn fail<Op: Operation>(reply: &Mutex<Shared<Op>>, error: ProviderError) {
     lock(reply).items.push_back(Err(error));
-}
-
-pub(crate) fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
-    mutex
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 /// Read pages until one names no cursor, names the cursor it was asked
@@ -1179,33 +1004,9 @@ where
 pub fn warn_unmodeled(kind: &str, payload: &impl serde::Serialize) {
     tracing::warn!(
         kind,
-        payload_bytes = unknown_payload_bytes(payload),
+        payload_bytes = crate::json_utils::json_len(payload),
         "skipping unmodeled wire payload"
     );
-}
-
-/// Serialized byte size of an unknown frame's payload, for the structural
-/// warn log (the log never carries the payload itself).
-fn unknown_payload_bytes(value: &impl serde::Serialize) -> u64 {
-    /// Counter sink: measures how many bytes serialization would write
-    /// without buffering them.
-    struct CountingWriter(u64);
-
-    impl std::io::Write for CountingWriter {
-        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-            self.0 += buf.len() as u64;
-            Ok(buf.len())
-        }
-
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
-        }
-    }
-
-    let mut counter = CountingWriter(0);
-    // A `Value` cannot fail to serialize; degrade to 0 rather than panic.
-    let _ = serde_json::to_writer(&mut counter, value);
-    counter.0
 }
 
 /// Page count after which a listing's cursors are ignored, preventing

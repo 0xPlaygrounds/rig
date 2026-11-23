@@ -1,3 +1,6 @@
+#![allow(clippy::disallowed_methods, reason = "test fixtures")]
+
+use crate::workspace::Root;
 use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
 use std::io::{self, ErrorKind};
@@ -8,17 +11,20 @@ use rig_core::tool::{
     ChangeKind, ContentHash, FilesChanged, Tool, ToolContext, ToolOutput, content_hash,
 };
 
-use super::{Contents, Listing, Stat, Workspace};
+use super::{Contents, Listed, Listing, Stat, Workspace};
 use crate::process::{Launcher, Process, Spawn};
 use crate::{
-    Delete, DeleteArgs, Edit, EditArgs, Move, MoveArgs, Read, ReadArgs, Replacement, Search,
-    SearchArgs, Write, WriteArgs,
+    Delete, DeleteArgs, Edit, EditArgs, Read, ReadArgs, Replacement, Search, SearchArgs, Write,
+    WriteArgs,
 };
 
 /// Files held in memory, by absolute path: a workspace that is not this
-/// machine's disk.
+/// machine's disk. While its flag is set, listing its files fails.
 #[derive(Debug, Default)]
-pub(crate) struct Memory(Mutex<BTreeMap<PathBuf, Vec<u8>>>);
+pub(crate) struct Memory(
+    Mutex<BTreeMap<PathBuf, Vec<u8>>>,
+    pub(crate) std::sync::atomic::AtomicBool,
+);
 
 impl Memory {
     pub(crate) fn files(&self) -> std::sync::MutexGuard<'_, BTreeMap<PathBuf, Vec<u8>>> {
@@ -86,15 +92,22 @@ impl Workspace for Memory {
         out
     }
 
-    fn files(&self, root: &Path, glob: Option<&str>, _: Listing) -> io::Result<Vec<PathBuf>> {
+    fn files(&self, root: &Path, glob: Option<&str>, _: Listing) -> io::Result<Listed> {
+        if self.1.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(io::Error::other("the listing failed"));
+        }
         let suffix = glob.map(|glob| glob.trim_start_matches('*'));
-        Ok(self
+        let files = self
             .files()
             .keys()
             .filter(|path| path.starts_with(root))
             .filter(|path| suffix.is_none_or(|suffix| path.to_string_lossy().ends_with(suffix)))
             .cloned()
-            .collect())
+            .collect();
+        Ok(Listed {
+            files,
+            failed: Vec::new(),
+        })
     }
 
     fn spawn(
@@ -141,48 +154,32 @@ fn befores(context: &ToolContext) -> Vec<Option<ContentHash>> {
 }
 
 /// Every file tool acts on its workspace, here files in memory: what one
-/// writes the next reads, edits, finds, moves and deletes, each change
+/// writes the next reads, edits, finds and deletes, each change
 /// naming the content it was made to, and nothing reaches this machine's
 /// disk.
 #[test]
 fn every_file_tool_goes_through_its_workspace() {
     let memory = Arc::new(Memory::default());
-    let workspace: Arc<dyn Workspace> = memory.clone();
-    let base = Some(PathBuf::from("/project"));
-    let (read, write, edit, search, delete, moved) = (
+    let root = Root {
+        workspace: memory.clone(),
+        base: Some(PathBuf::from("/project")),
+        confine: true,
+    };
+    let (read, write, edit, search, delete) = (
         Read {
-            workspace: workspace.clone(),
-            base: base.clone(),
-            confine: true,
+            root: root.clone(),
             seen: crate::Seen::default(),
         },
         Write {
-            workspace: workspace.clone(),
-            base: base.clone(),
-            confine: true,
+            root: root.clone(),
             seen: Default::default(),
         },
         Edit {
-            workspace: workspace.clone(),
-            base: base.clone(),
-            confine: true,
+            root: root.clone(),
             seen: crate::Seen::default(),
         },
-        Search {
-            workspace: workspace.clone(),
-            base: base.clone(),
-            confine: true,
-        },
-        Delete {
-            workspace: workspace.clone(),
-            base: base.clone(),
-            confine: true,
-        },
-        Move {
-            workspace,
-            base,
-            confine: true,
-        },
+        Search { root: root.clone() },
+        Delete { root },
     );
 
     let (written, context) = call(&write, WriteArgs::new("src/a.rs", "fn one() {}\n"));
@@ -207,27 +204,12 @@ fn every_file_tool_goes_through_its_workspace() {
     let (found, _) = call(&search, SearchArgs::new("two").glob("*.rs"));
     assert_eq!(found.ok().as_deref(), Some("src/a.rs:1: fn two() {}"));
 
-    let (refused, _) = call(&moved, MoveArgs::new("src/a.rs", "../b.rs"));
-    assert!(refused.is_err());
-    let (renamed, context) = call(&moved, MoveArgs::new("src/a.rs", "src/b.rs"));
-    assert!(renamed.is_ok(), "{renamed:?}");
-    assert_eq!(
-        changes(&context),
-        [
-            ("/project/src/a.rs".to_owned(), ChangeKind::Deleted),
-            ("/project/src/b.rs".to_owned(), ChangeKind::Created)
-        ]
-    );
-    assert_eq!(
-        befores(&context),
-        [Some(content_hash(b"fn two() {}\n")), None]
-    );
-    let (deleted, context) = call(&delete, DeleteArgs::new("src/b.rs"));
+    let (deleted, context) = call(&delete, DeleteArgs::new("src/a.rs"));
     assert!(deleted.is_ok(), "{deleted:?}");
     assert_eq!(befores(&context), [Some(content_hash(b"fn two() {}\n"))]);
     assert_eq!(
         changes(&context),
-        [("/project/src/b.rs".to_owned(), ChangeKind::Deleted)]
+        [("/project/src/a.rs".to_owned(), ChangeKind::Deleted)]
     );
     assert!(memory.files().is_empty());
 }
@@ -293,11 +275,17 @@ fn tilde_is_the_home_directory() {
     let project = home.with_file_name("project");
     let base = Some(project.clone());
     let write = Write {
-        base: base.clone(),
+        root: Root {
+            base: base.clone(),
+            ..Root::default()
+        },
         ..Write::default()
     };
     let read = Read {
-        base: base.clone(),
+        root: Root {
+            base: base.clone(),
+            ..Root::default()
+        },
         ..Read::default()
     };
     let text = |shown: ToolOutput| shown.as_text().unwrap_or_default().to_owned();
@@ -319,8 +307,10 @@ fn tilde_is_the_home_directory() {
     let (found, _) = call(&Search::default(), everywhere);
     // From a base the home is under, a `~` path is still shown whole.
     let above = Search {
-        base: home.parent().map(Path::to_path_buf),
-        ..Search::default()
+        root: Root {
+            base: home.parent().map(Path::to_path_buf),
+            ..Root::default()
+        },
     };
     let mut from_above = SearchArgs::new("home");
     from_above.path = Some("~/notes".into());
@@ -333,7 +323,10 @@ fn tilde_is_the_home_directory() {
     }
 
     let confined = Write {
-        confine: true,
+        root: Root {
+            confine: true,
+            ..Root::default()
+        },
         ..write.clone()
     };
     let (refused, _) = call(&confined, WriteArgs::new("~/b.txt", "no\n"));
@@ -342,14 +335,18 @@ fn tilde_is_the_home_directory() {
     let (own, _) = call(&write, WriteArgs::new("./~/own.txt", "own\n"));
     assert!(own.is_ok() && project.join("~/own.txt").is_file());
     let list = crate::List {
-        workspace: Arc::new(super::Local),
-        base: base.clone(),
-        confine: true,
+        root: Root {
+            workspace: Arc::new(super::Local),
+            base: base.clone(),
+            confine: true,
+        },
     };
     let (listed, _) = call(&list, crate::ListArgs::new("."));
     let search = Search {
-        base: base.clone(),
-        ..Search::default()
+        root: Root {
+            base: base.clone(),
+            ..Root::default()
+        },
     };
     let (found, _) = call(&search, SearchArgs::new("own"));
     // Without a base, from the project as this process's directory.
@@ -378,4 +375,27 @@ fn tilde_is_the_home_directory() {
     let (ran, _) = call(&shell, crate::ShellArgs::new("pwd -P").in_dir("~"));
     let ran = ran.unwrap_or_default();
     assert_eq!(ran.lines().next(), home.to_str(), "{ran}");
+}
+
+/// The `target` rule of [`Listing::Visible`] takes only a directory: a file
+/// named `target` is listed, the files in a `target` directory are not.
+#[test]
+fn a_file_named_target_is_listed() {
+    let dir = std::env::temp_dir().join(format!("rig-tools-target-{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+    std::fs::create_dir_all(dir.join("docs/target")).ok();
+    std::fs::write(dir.join("target"), "a plain file\n").ok();
+    std::fs::write(dir.join("docs/target/built.md"), "built\n").ok();
+    std::fs::write(dir.join("kept.txt"), "kept\n").ok();
+    let listed = super::Local.files(&dir, None, Listing::Visible);
+    let mut names: Vec<String> = listed
+        .map(|listed| listed.files)
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|path| path.strip_prefix(&dir).ok())
+        .map(|path| path.display().to_string())
+        .collect();
+    names.sort();
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(names, ["kept.txt", "target"]);
 }

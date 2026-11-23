@@ -58,7 +58,7 @@ fn the_context_label_is_the_main_agents() {
         }))
     };
     let world = app.world_mut();
-    world.spawn((Agent, AgentId("b".to_owned()), context(4_700)));
+    spawn_root(world, (AgentId("b".to_owned()), context(4_700)));
     app.update();
     let label = |app: &mut App| {
         let world = app.world_mut();
@@ -68,23 +68,21 @@ fn the_context_label_is_the_main_agents() {
     };
     assert_eq!(label(&mut app), "ctx 4.7k");
     let world = app.world_mut();
-    let main = world
-        .spawn((Agent, AgentId("a".to_owned()), context(12_000)))
-        .id();
+    let main = spawn_root(world, (AgentId("a".to_owned()), context(12_000))).id();
     app.update();
     assert_eq!(label(&mut app), "ctx 12k");
     // Showing another agent leaves it.
     let world = app.world_mut();
-    let other = world
-        .spawn((Agent, AgentId("c".to_owned()), context(900)))
-        .id();
+    let other = spawn_root(world, (AgentId("c".to_owned()), context(900))).id();
     app.update();
     assert_eq!(label(&mut app), "ctx 12k");
     app.insert_resource(ShownAgent(Some(other)));
     app.update();
     assert_eq!(label(&mut app), "ctx 12k");
     // After a compaction the figure is stale until a reply reports one.
-    app.world_mut().entity_mut(main).insert(ContextStale {});
+    app.world_mut()
+        .entity_mut(main)
+        .insert(ContextStale::default());
     app.update();
     assert_eq!(label(&mut app), "ctx ?");
     app.world_mut().entity_mut(main).remove::<ContextStale>();

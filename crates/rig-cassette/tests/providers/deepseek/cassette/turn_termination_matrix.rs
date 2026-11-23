@@ -1,4 +1,4 @@
-//! The model-turn termination metadata a hook sees (rig#2184), against the
+//! The model-turn termination metadata a hook sees, against the
 //! real DeepSeek wire: a turn the provider cut short at the cap reaches the
 //! hook as `FinishReason::Length` with the cap that attempt ran under, on
 //! both surfaces. Each cell re-reads its own fixture and fails if the
@@ -11,7 +11,6 @@
 //! `crates/rig-core/src/completion/request.rs` (`truncated_output_*`).
 
 use rig::completion::FinishReason;
-use serde::Deserialize;
 use serde_json::Value;
 
 use crate::cassettes;
@@ -37,38 +36,12 @@ crate::matrix::case_matrix! {
 // claims, or the cell passes while covering nothing.
 // ---------------------------------------------------------------------------
 
-fn recorded_interactions(scenario: &str) -> Vec<serde_yaml::Value> {
-    {
-        let path = cassettes::cassette_path("deepseek", scenario);
-        let contents = std::fs::read_to_string(&path).unwrap_or_else(|error| {
-            {
-                panic!(
-                    "provider cassette {} should be readable after recording: {error}",
-                    path.display()
-                )
-            }
-        });
-        serde_yaml::Deserializer::from_str(&contents)
-            .map(|document| serde_yaml::Value::deserialize(document).expect("cassette interaction"))
-            .collect()
-    }
-}
-
 fn interaction_bodies(scenario: &str, side: &str) -> Vec<String> {
-    {
-        recorded_interactions(scenario)
-            .iter()
-            .filter_map(|interaction| {
-                {
-                    interaction
-                        .get(side)
-                        .and_then(|side| side.get("body"))
-                        .and_then(serde_yaml::Value::as_str)
-                        .map(ToOwned::to_owned)
-                }
-            })
-            .collect()
-    }
+    cassettes::recorded_interaction_bodies("deepseek", scenario)
+        .into_iter()
+        .map(|(request, response)| if side == "when" { request } else { response })
+        .filter(|body| !body.is_empty())
+        .collect()
 }
 
 /// Every JSON object in a recorded body. A blocking response is one object; a

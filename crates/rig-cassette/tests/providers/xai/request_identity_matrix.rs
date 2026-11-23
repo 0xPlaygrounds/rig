@@ -15,7 +15,7 @@ async fn responses() {
             cell,
             client.completion(xai::GROK_3_MINI),
             client.completion(xai::GROK_3_MINI),
-            None,
+            Some(serde_json::json!({ "store": false })),
             // xAI's unknown-model error quotes the account's team id.
             |request| request.temperature(7.0),
         )

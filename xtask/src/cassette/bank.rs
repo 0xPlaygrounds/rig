@@ -2,31 +2,22 @@
 //! shape the corpus records, per provider and encoder, it keeps one real
 //! recorded reply under `crates/rig-cassette/fixtures/bank/<provider>.yaml`,
 //! so the runtime scenarios can run once against real replies instead of
-//! once per provider's cassette.
+//! once per provider's cassette. `--check` fails when the committed bank
+//! differs from the one a rewrite would write.
 //!
-//! A reply shape is the one `shapes.rs` reads: the status, the framing and
-//! the body skeleton with discriminators kept. The bank adds
-//! the names of the tools a reply calls to its key, because the runtime
-//! dispatches by name: two replies of one shape that call different tools
-//! drive different runs. Of the replies with one key the bank keeps the
-//! smallest, then the first in path order, and records where it came from.
-//! An entry whose source fixture no longer exists stays a candidate, so a
-//! pruned cassette does not take its reply out of the bank. A fixture whose
-//! owning test marks it hand-derived (`skip_when_recording`) holds bytes no
-//! provider returned and gives the bank nothing.
+//! A bank key is the reply shape `shapes.rs` reads plus the names of the tools
+//! the reply calls, because the runtime dispatches by name. Of the replies with
+//! one key the bank keeps the smallest, then the first in path order, and
+//! records where it came from. An entry or script whose source fixture no
+//! longer exists stays, so a pruned cassette keeps its replies. A fixture whose
+//! owning test marks it hand-derived (`skip_when_recording`) gives the bank
+//! nothing.
 //!
-//! Beside the replies, `scripts.tsv` keeps every fixture's reply sequence as
-//! bank keys, so a scenario can be served the replies of the shapes it
-//! recorded after its own cassette is gone. A script whose fixture no longer
-//! exists is kept too.
-//!
-//! A scenario whose assertions read what a reply says, not only its shape
-//! (an answer that must end in a marker, reasoning that must be non-empty),
-//! is listed in `pinned.txt` with its reason, and the bank keeps that
-//! fixture's replies verbatim in `pinned.yaml`.
-//!
-//! `--check` fails when the committed bank differs from the one a rewrite
-//! would write.
+//! `scripts.tsv` keeps every fixture's reply sequence as bank keys, so a
+//! scenario can be served its recorded shapes after its cassette is gone. A
+//! scenario whose assertions read what a reply says, not only its shape, is
+//! listed in `pinned.txt` with its reason, and the bank keeps that fixture's
+//! replies verbatim in `pinned.yaml`.
 
 #[cfg(test)]
 mod tests;

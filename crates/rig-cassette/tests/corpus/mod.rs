@@ -1,49 +1,17 @@
 //! The effect corpus's two interpreters and the program table they share.
 //!
-//! Every golden effect log under `fixtures/effects/*.effects.json` is one row of
-//! one matrix: a [`Program`] the producing root test built verbatim,
-//! replayed here by the bus-driven engine and by a hand driver of
-//! `AgentRun` with **no provider, no tool and no index behind
-//! any key**. The oracle is the record as data — kind, outcome and, for a
-//! stream recorded with its events, the event sequence — position by
-//! position. See `golden_replay.rs` for the original corpus and the
-//! `corpus_*.rs` modules for the matrices.
+//! Every golden effect log under `fixtures/effects/*.effects.json` is one
+//! row of one matrix: a [`Program`] the producing root test built verbatim,
+//! replayed here by the bus-driven engine and by a hand driver of `AgentRun`
+//! with no provider, no tool and no index behind any key. The oracle is the
+//! record as data, position by position: kind, outcome and, for a stream
+//! recorded with its events, the event sequence.
 //!
-//! # The dimensions of an effect trace
-//!
-//! What an agent program can ask the bus, and how it is served. Every
-//! matrix module prunes this table and says why.
-//!
-//! | axis | values |
-//! |---|---|
-//! | completion transport | unary · streamed, events dropped · streamed, events kept · streamed on a delta wire (tool names and arguments as deltas) |
-//! | tool shape | none · one call then answer · two calls in one turn · two turns · zero-arg tool · a tool that errors |
-//! | tool id wire | provider id (anthropic) · id-less, tagged generated tool identities (gemini) · dual `call_id`/`item_id` (openai) |
-//! | serving | `serial_per_handler` false · true; `tool_concurrency` 1 · 2; capacities default · 1 |
-//! | retrieval | none · `dynamic_context(n, index)` (`TopN`) · `retrieved_tools(n, index, toolset)` (`TopNIds`) · both |
-//! | embedding, rerank, custom | never dispatched by the agent itself: an index embeds its query inside the handler (`RetrieveAdapter`), and nothing in `rig-agent` reranks; a hook dispatches `Embed`, `Rerank` (a mock reranker: no keyed cassette suite) and a host's `Custom<E>` over the host's bus (Matrices I, N, O) |
-//! | hooks | none · observe-only · `on_dispatch` → `Patch` · `Deny` · `on_outcome` → `Replace` · `on_invalid_tool_call` → `Retry` · `Repair` · `Skip` · `on_completion_call` → request patch · a hook that dispatches through `HookContext` · a stop at every point (`on_run_start`, `on_model_select`, `on_completion_call`, `on_dispatch`, `on_outcome`, `on_model_turn`, a delta) |
-//! | model routing | one model · `model_route` with `on_model_select` choosing the other |
-//! | output | text · `output_schema` under `Native` · `Tool` (the output tool's call, reprompted when missing or incomplete) · `Prompted` |
-//! | bus ownership | own bus · a host's bus via `over_bus` |
-//! | run continuation | one run · serialize after the first tool turn, resume on the same replay bus (every kind of program: hooks, a committed output tool, a route, an ignored call, a streamed head) |
-//! | per-turn shaping | none · a request patch on one turn (`tool_choice`, `extra_context`, `preamble`, `max_tokens`, `additional_params`, `active_tools`, `history`) · patches merged from several hooks · a route on the first turn · a route registered after build |
-//! | hook identity | the type name · a name the hook gives itself (`AgentHook::name`) |
-//! | causality | a consumer's own dispatch · nested from a tool's `Serve` through its sink's dispatcher (depth 1 · 2) · from a task holding a detached sink · from a spawned thread; the target another key · the same key (refused under serial serving, served under concurrent); the parent answered · cancelled with the child in flight · cancelled with the child queued (Matrix Q) |
-//! | interpreters | the bus engine · the hand driver · the resumed engine |
-//! | outcome kind | success · `Cancelled` · handler error (`ErrorReport`) · a divergence (refused) |
-//! | invalid call | none · unary, resolved by a hook · streamed, resolved mid-stream · unresolved under `Fail` · under `Ignore` |
-//!
-//! # What the original nine goldens cover
-//!
-//! Unary completion; a streamed turn with events
-//! and one tool; two tools in one turn under serial serving; two tool-call
-//! turns on id-less and on dual-id wires; an invalid call retried by a
-//! hook; a consumer cancel. They do not cover retrieval, a hook that
-//! patches, denies or replaces, model routing, structured output, a host's
-//! bus, a resumed run, a handler error, `tool_choice`, `max_tokens`,
-//! `additional_params`, static context, an appended or absent preamble, or
-//! a prior history. Those are the matrices.
+//! `golden_replay.rs` holds the original corpus, and each `corpus_*.rs`
+//! module holds one matrix over a dimension of an effect trace: transport,
+//! tool shape and id wire, serving, retrieval, hooks, routing, output,
+//! bus ownership, continuation, per-turn shaping, causality and invalid
+//! calls.
 
 pub mod fixtures;
 
@@ -75,18 +43,13 @@ use rig_agent::{
 use rig_cassette::effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer, RequestCheck};
 use rig_core::{
     completion::{CompletionRequest, Document},
-    effect::{EffectFamily, EffectRecord, HandlerKey},
+    effect::{EffectFamily, EffectRecord, HandlerKey, Key, family},
     error::{ErrorKind, ErrorReport},
     message::ToolChoice,
-    message::{AssistantContent, AssistantMessage, Message},
+    message::{AssistantContent, Message},
     streaming::{Item, StreamEvent},
     tool::{ToolContext, ToolOutput},
 };
-
-/// The text parts of a choice, concatenated.
-fn choice_text(choice: &[AssistantContent]) -> String {
-    AssistantMessage::new(choice.to_vec()).text()
-}
 
 /// A hook the producer added, by type: the header names hooks by their
 /// type's last path segment, so the replay's hook is a type of the same
@@ -202,7 +165,6 @@ pub const SKIP_REASON: &str = "no such tool; skipped";
 /// The builder's `output_mode`, as data.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Output {
-    Native,
     Tool,
     Prompted,
 }
@@ -210,7 +172,6 @@ pub enum Output {
 impl Output {
     pub fn mode(self) -> OutputMode {
         match self {
-            Self::Native => OutputMode::Native,
             Self::Tool => OutputMode::Tool,
             Self::Prompted => OutputMode::Prompted,
         }
@@ -271,6 +232,15 @@ pub enum Ending {
     /// `PromptError::Report` (or a stream's `Report` item) of this kind: a
     /// layer denied or replaced what the run needed (Matrices P and T).
     Failed(ErrorKind),
+    /// The run refused a final answer that misses its output schema, once
+    /// its output-retry budget was spent ([`run_misses_schema`]).
+    MissesSchema,
+}
+
+/// Whether `error` is a run's refusal of a final answer that misses its
+/// output schema.
+fn run_misses_schema(error: &PromptError) -> bool {
+    matches!(error, PromptError::OutputSchemaMismatch { .. })
 }
 
 /// The producer's tool choice, as data.
@@ -662,7 +632,7 @@ impl AgentHook for DemandDone {
         _ctx: &HookContext,
         event: ModelTurnFinished<'_>,
     ) -> ModelTurnAction {
-        if choice_text(event.content).contains("DONE") {
+        if AssistantContent::concat_text(event.content).contains("DONE") {
             ModelTurnAction::continue_run()
         } else {
             ModelTurnAction::retry_with_feedback(DONE_FEEDBACK)
@@ -675,7 +645,9 @@ struct LookupBeforeRun;
 impl AgentHook for LookupBeforeRun {
     async fn on_run_start(&self, ctx: &HookContext, _event: RunStart<'_>) -> RunStartAction {
         let tool = ctx
-            .tool(&HandlerKey::from(LOOKUP_KEY))
+            .bind(&Key::<family::Tool>::new_unchecked(HandlerKey::from(
+                LOOKUP_KEY,
+            )))
             .expect("the run's bus serves add");
         let answer = tool
             .dispatch(rig_core::effect::ToolCallRequest {
@@ -1133,14 +1105,6 @@ impl rig_core::serve::Intercept for DenyAddLayer {
             rig_core::serve::BeforeServe::Proceed
         }
     }
-    async fn after(
-        &self,
-        _id: rig_core::effect::EffectId,
-        _kind: &rig_core::effect::EffectKind,
-        _outcome: &Result<rig_core::effect::Answered, rig_core::error::ErrorReport>,
-    ) -> rig_core::serve::AfterServe {
-        rig_core::serve::AfterServe::Keep
-    }
 }
 
 /// The hook `PatchAddArgs`, as a layer.
@@ -1156,14 +1120,6 @@ impl rig_core::serve::Intercept for PatchAddArgsLayer {
         kind: &rig_core::effect::EffectKind,
     ) -> rig_core::serve::BeforeServe {
         patch_add(kind, PATCHED_ARGS)
-    }
-    async fn after(
-        &self,
-        _id: rig_core::effect::EffectId,
-        _kind: &rig_core::effect::EffectKind,
-        _outcome: &Result<rig_core::effect::Answered, rig_core::error::ErrorReport>,
-    ) -> rig_core::serve::AfterServe {
-        rig_core::serve::AfterServe::Keep
     }
 }
 
@@ -1181,14 +1137,6 @@ impl rig_core::serve::Intercept for PatchAgainLayer {
     ) -> rig_core::serve::BeforeServe {
         patch_add(kind, PATCHED_AGAIN_ARGS)
     }
-    async fn after(
-        &self,
-        _id: rig_core::effect::EffectId,
-        _kind: &rig_core::effect::EffectKind,
-        _outcome: &Result<rig_core::effect::Answered, rig_core::error::ErrorReport>,
-    ) -> rig_core::serve::AfterServe {
-        rig_core::serve::AfterServe::Keep
-    }
 }
 
 /// The hook `ReplaceAddResult`, as a layer.
@@ -1197,13 +1145,6 @@ pub struct ReplaceAddResultLayer;
 impl rig_core::serve::Intercept for ReplaceAddResultLayer {
     fn name(&self) -> String {
         "ReplaceAddResultLayer".to_owned()
-    }
-    async fn before(
-        &self,
-        _id: rig_core::effect::EffectId,
-        _kind: &rig_core::effect::EffectKind,
-    ) -> rig_core::serve::BeforeServe {
-        rig_core::serve::BeforeServe::Proceed
     }
     async fn after(
         &self,
@@ -1253,14 +1194,6 @@ impl rig_core::serve::Intercept for ApprovalLayer {
             }
         }
     }
-    async fn after(
-        &self,
-        _id: rig_core::effect::EffectId,
-        _kind: &rig_core::effect::EffectKind,
-        _outcome: &Result<rig_core::effect::Answered, rig_core::error::ErrorReport>,
-    ) -> rig_core::serve::AfterServe {
-        rig_core::serve::AfterServe::Keep
-    }
 }
 
 /// A patch of another family: never a dispatch.
@@ -1284,14 +1217,6 @@ impl rig_core::serve::Intercept for WrongFamilyLayer {
             rig_core::serve::BeforeServe::Proceed
         }
     }
-    async fn after(
-        &self,
-        _id: rig_core::effect::EffectId,
-        _kind: &rig_core::effect::EffectKind,
-        _outcome: &Result<rig_core::effect::Answered, rig_core::error::ErrorReport>,
-    ) -> rig_core::serve::AfterServe {
-        rig_core::serve::AfterServe::Keep
-    }
 }
 
 /// `after` on a completion → the answer is cancelled.
@@ -1300,13 +1225,6 @@ pub struct CancelStreamLayer;
 impl rig_core::serve::Intercept for CancelStreamLayer {
     fn name(&self) -> String {
         "CancelStreamLayer".to_owned()
-    }
-    async fn before(
-        &self,
-        _id: rig_core::effect::EffectId,
-        _kind: &rig_core::effect::EffectKind,
-    ) -> rig_core::serve::BeforeServe {
-        rig_core::serve::BeforeServe::Proceed
     }
     async fn after(
         &self,
@@ -1334,14 +1252,6 @@ impl rig_core::serve::Intercept for DenyAllLayer {
         _kind: &rig_core::effect::EffectKind,
     ) -> rig_core::serve::BeforeServe {
         rig_core::serve::BeforeServe::deny(HOST_DENY_REASON)
-    }
-    async fn after(
-        &self,
-        _id: rig_core::effect::EffectId,
-        _kind: &rig_core::effect::EffectKind,
-        _outcome: &Result<rig_core::effect::Answered, rig_core::error::ErrorReport>,
-    ) -> rig_core::serve::AfterServe {
-        rig_core::serve::AfterServe::Keep
     }
 }
 
@@ -2573,6 +2483,11 @@ pub async fn bus_engine_reproduces(program: &Program) {
                     Err(PromptError::Provider(_)) if program.ending == Ending::ProviderError => {
                         failed_as_expected = true;
                     }
+                    Err(error)
+                        if program.ending == Ending::MissesSchema && run_misses_schema(&error) =>
+                    {
+                        failed_as_expected = true;
+                    }
                     Err(error) => {
                         panic!("the replayer answered every request it recognised: {error:?}")
                     }
@@ -2633,6 +2548,7 @@ pub async fn bus_engine_reproduces(program: &Program) {
                 (Err(PromptError::Report(report)), Ending::Failed(kind)) if report.kind == kind => {
                     None
                 }
+                (Err(error), Ending::MissesSchema) if run_misses_schema(&error) => None,
                 (Err(PromptError::Cancelled { reason, .. }), Ending::Cancelled(expected))
                     if reason == expected =>
                 {
@@ -2719,7 +2635,7 @@ pub async fn call_tools(
             call.arguments().to_string()
         };
         // The bus's answer, mapped as the engine maps it: a layer's denial
-        // is the skipped result the model sees, a cancel stops the run, any
+        // is the refused result the model sees, a cancel stops the run, any
         // other failure is a failed result the model sees.
         let answer = match within(handle.call(name.clone(), args, ToolContext::new())).await {
             Ok(answer) => answer,
@@ -2727,7 +2643,7 @@ pub async fn call_tools(
                 return Err(CANCEL_ADD_DISPATCH);
             }
             Err(report) if report.kind == ErrorKind::Denied => {
-                return Ok(call.answer(rig_core::tool::ToolResult::skipped(report.message)));
+                return Ok(call.answer(rig_core::tool::ToolResult::failed(report.refused().into())));
             }
             Err(report) => {
                 return Ok(call.answer(rig_core::tool::ToolResult::failed(
@@ -3029,6 +2945,7 @@ async fn resumed_tail(
         (Ok(response), Ending::Answer) => Ok(Some(response)),
         (Err(PromptError::MaxTurns { .. }), Ending::MaxTurns)
         | (Err(PromptError::UnknownToolCall { .. }), Ending::UnknownToolCall) => Ok(None),
+        (Err(error), Ending::MissesSchema) if run_misses_schema(&error) => Ok(None),
         (Err(PromptError::Cancelled { reason, .. }), Ending::Cancelled(expected))
             if reason == expected =>
         {
@@ -3288,6 +3205,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
         let step = match (run.next_step(), program.ending) {
             (Ok(step), _) => step,
             (Err(PromptError::MaxTurns { .. }), Ending::MaxTurns) => break None,
+            (Err(error), Ending::MissesSchema) if run_misses_schema(&error) => break None,
             (Err(error), _) => panic!("a step: {error:?}"),
         };
         match step {
@@ -3364,6 +3282,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
                 let prepared = prepare_request(
                     &spec,
                     &model.capabilities(),
+                    prompt,
                     &history,
                     definitions,
                     run.output_tool_name(),
@@ -3375,8 +3294,8 @@ async fn hand_drive(program: &Program, resume: Resume) {
                 // preparation failure leaves it unchanged — so a resumed
                 // engine's selection hook sees it.
                 run.set_previous_model(rig_core::completion::ModelRef::new(label));
-                run.advertise_tools(turn, prepared.tools.clone());
-                let request = prepared.clone().apply(CompletionRequest::new(prompt));
+                run.advertise_tools(turn, prepared.request.tools.clone());
+                let request = prepared.request.clone();
                 // The completion-call hook's dispatch, before the completion.
                 if program.hooks.contains(&Hook::NoteAtCompletionCall) {
                     note("completion_call").await;
@@ -3581,7 +3500,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
                             panic!("the replayer recognised the request: {report:?}")
                         }
                     };
-                    ModelTurn::from_response(&response, &prepared)
+                    ModelTurn::from_policy(&response, prepared.policy.clone())
                 };
                 let choice = turn.choice.clone();
                 let mut outcome = run.model_response(turn).expect("a model turn");
@@ -3656,7 +3575,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
                 }
                 if program.hooks.contains(&Hook::DemandDone)
                     && !has_tool_calls
-                    && !choice_text(&choice).contains("DONE")
+                    && !AssistantContent::concat_text(&choice).contains("DONE")
                 {
                     run.retry_model_turn(RetryRequest::Feedback(DONE_FEEDBACK.to_owned()))
                         .expect("a text turn is retryable");

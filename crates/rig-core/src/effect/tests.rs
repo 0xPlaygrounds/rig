@@ -376,11 +376,9 @@ fn a_custom_effect_travels_as_its_declared_kind_and_answer() {
         report.message
     );
 
-    // The marker is `Copy` for any `E` and names its kind.
-    let marker = family::Custom::<AskUser>::new();
-    let copied = marker;
-    assert_eq!(marker, copied);
-    assert_eq!(format!("{marker:?}"), "Custom<test:ask_user>");
+    // The marker is `Copy` for any `E`.
+    fn copy<T: Copy>() {}
+    copy::<family::Custom<AskUser>>();
 }
 
 /// A custom effect whose `Serialize` fails.

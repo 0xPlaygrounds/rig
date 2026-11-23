@@ -6,7 +6,7 @@
 use serde_json::{Value, json};
 
 use super::Chat;
-use crate::completion::{CompletionRequest, Message};
+use crate::completion::{CompletionRequest, FinishReason, Message};
 use crate::message::{
     AssistantContent, AssistantMessage, CallId, DocumentSourceKind, Image, ImageMediaType, Origin,
     StopReason, ToolCall, ToolFunction, ToolName, ToolResultContent, UserContent,
@@ -165,7 +165,7 @@ fn mistral_thinking_parts_are_reasoning() {
     }
 }
 
-/// chatA NEW-3, chatB NEW (custom calls): a custom call is a call whose
+/// A custom call is a call whose
 /// arguments are its `{"input"}`, and an edited sibling leaves it a custom
 /// call in the message's `tool_calls`.
 #[test]
@@ -227,7 +227,7 @@ fn response_only_fields_never_go_back() {
     );
 }
 
-/// chatA NEW-6: Perplexity takes no tools, so the adapter renders a call and
+/// Perplexity takes no tools, so the adapter renders a call and
 /// its result as text the model still reads, rather than dropping them.
 #[test]
 fn perplexity_reads_a_tool_exchange_as_text() {
@@ -296,6 +296,82 @@ fn only_a_complete_item_becomes_a_native() {
         whole.tool_calls().all(|call| call.native.is_some()),
         "{:?}",
         whole.choice
+    );
+}
+
+/// A streamed reply the output limit cut inside a call, or before any of
+/// its arguments: the decoder closes the call as never stated complete, so
+/// the reply lists it among its unfinished calls. A finished call, with or
+/// without arguments, is not listed.
+#[test]
+fn a_call_the_limit_cut_is_an_unfinished_call() {
+    let wire = wire(&DEEPSEEK, "deepseek-v4-flash");
+    let reply = |arguments: &str, finish: &str| {
+        let frames = vec![
+            chunk(
+                json!({"role": "assistant", "tool_calls": [{"index": 0, "id": "call_1",
+                    "type": "function", "function": {"name": "write_file", "arguments": arguments}}]}),
+                Some(finish),
+            ),
+            WireFrame::Text("[DONE]".to_owned()),
+        ];
+        decode(&wire, Mode::Streaming, frames).expect("the reply decodes")
+    };
+    for arguments in [r#"{"path": "a.rs", "content": "fn ma"#, ""] {
+        let cut = reply(arguments, "length");
+        assert_eq!(cut.finish_reason(), Some(FinishReason::Length));
+        let ids: Vec<Option<&str>> = cut
+            .unfinished_calls()
+            .map(|call| call.id.provider().map(|id| id.as_str()))
+            .collect();
+        assert_eq!(ids, [Some("call_1")], "{arguments:?}: {:?}", cut.choice);
+    }
+    for arguments in [r#"{"path": "a.rs", "content": "fn main() {}"}"#, ""] {
+        let whole = reply(arguments, "tool_calls");
+        let unfinished = whole.unfinished_calls().count();
+        assert_eq!(unfinished, 0, "{arguments:?}: {:?}", whole.choice);
+    }
+}
+
+/// A call whose stream index another call takes over before its arguments
+/// are whole, in a reply that ends with `tool_calls`: no limit cut it, so
+/// it is not unfinished and the turn goes on. It keeps what its arguments
+/// state, and the call that took the index is whole.
+#[test]
+fn a_call_taken_over_in_a_finished_reply_is_not_unfinished() {
+    let wire = wire(&DEEPSEEK, "deepseek-v4-flash");
+    let frames = vec![
+        chunk(
+            json!({"role": "assistant", "tool_calls": [{"index": 0, "id": "call_1",
+                "type": "function", "function": {"name": "write_file",
+                    "arguments": "{\"path\":\"a.txt\",\"con"}}]}),
+            None,
+        ),
+        chunk(
+            json!({"tool_calls": [{"index": 0, "id": "call_2", "type": "function",
+                "function": {"name": "count", "arguments": "{\"n\":2}"}}]}),
+            None,
+        ),
+        chunk(json!({}), Some("tool_calls")),
+        WireFrame::Text("[DONE]".to_owned()),
+    ];
+    let reply = decode(&wire, Mode::Streaming, frames).expect("the reply decodes");
+    assert_eq!(reply.unfinished_calls().count(), 0, "{:?}", reply.choice);
+    assert!(!reply.stop().is_failure(), "{:?}", reply.stop());
+    let calls: Vec<(String, bool)> = reply
+        .tool_calls()
+        .map(|call| {
+            (
+                call.function.name.to_string(),
+                call.function.invalid_arguments.is_some(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        calls,
+        [("write_file".to_owned(), true), ("count".to_owned(), false)],
+        "{:?}",
+        reply.choice
     );
 }
 
@@ -431,7 +507,7 @@ fn an_answers_audio_transcript_is_text() {
     }
 }
 
-/// chat NEW-5, chat_new NEW-7, #1266, #1333: an edited same-model reasoning
+/// An edited same-model reasoning
 /// block goes back under the field it arrived in, as pi keeps
 /// `thinkingSignature`: DeepSeek and Kimi read their reasoning back on a
 /// tool-call turn.
@@ -472,7 +548,7 @@ fn an_edited_reasoning_block_keeps_its_field() {
     }
 }
 
-/// chat NEW-8, chat_new NEW-8: a custom call stays custom when its input is
+/// A custom call stays custom when its input is
 /// edited (its kind survives as identity) and when another model replays it
 /// to a request that declares the custom tool (pi decides by the declared
 /// tools).
@@ -762,6 +838,69 @@ fn reasoning_details_fold_alike_whole_and_streamed_wherever_they_arrive() {
                 "{replayed}"
             );
         }
+    }
+}
+
+/// A LiteLLM proxy in front of Anthropic returns a thinking model's
+/// signed reasoning as `thinking_blocks`, which Anthropic needs back within
+/// a tool loop. Whole or streamed, where a signature closes the `thinking`
+/// pieces before it and a redacted block comes whole, the blocks are kept
+/// on the reasoning block, whose blob is the signature, and go back on the
+/// assistant message; the stream's rebuilt reply holds them too. Not a
+/// cassette test: rig has no LiteLLM target to record.
+#[test]
+fn litellm_thinking_blocks_are_kept_and_go_back() {
+    let wire = wire(&OPENAI, "claude-sonnet");
+    let thinking = |text: &str| json!({"type": "thinking", "thinking": text});
+    let redacted = json!({"type": "redacted_thinking", "data": "cmVkYWN0ZWQ="});
+    let blocks = json!([{"type": "thinking", "thinking": "Weighing it", "signature": "c2ln"},
+        redacted]);
+    let call = json!({"id": "toolu_01", "type": "function",
+        "function": {"name": "check_answer", "arguments": "{}"}});
+    let message = json!({"role": "assistant", "content": "4", "reasoning_content": "Weighing it",
+        "thinking_blocks": blocks, "tool_calls": [call]});
+    let mut streamed_call = call.clone();
+    streamed_call["index"] = json!(0);
+    let mut frames: Vec<WireFrame> = [
+        json!({"role": "assistant", "reasoning_content": "Weigh",
+            "thinking_blocks": [thinking("Weigh")]}),
+        json!({"reasoning_content": "ing it", "thinking_blocks": [thinking("ing it")]}),
+        json!({"thinking_blocks": [{"type": "thinking", "thinking": "", "signature": "c2ln"}]}),
+        json!({"thinking_blocks": [redacted]}),
+        json!({"content": "4"}),
+        json!({"tool_calls": [streamed_call]}),
+    ]
+    .into_iter()
+    .map(|delta| chunk(delta, None))
+    .collect();
+    frames.push(chunk(json!({}), Some("tool_calls")));
+    frames.push(WireFrame::Text("[DONE]".to_owned()));
+    let document =
+        crate::wire::document::rebuild(&wire.decoder(), wire.reassembler(), frames.clone());
+    assert_eq!(
+        document.pointer("/choices/0/message/thinking_blocks"),
+        Some(&blocks)
+    );
+    let replies = [
+        decode(&wire, Mode::Unary, vec![whole(message, "tool_calls")]),
+        decode(&wire, Mode::Streaming, frames),
+    ];
+    for reply in replies {
+        let reply = reply.expect("the reply decodes");
+        let blob = reply.choice.iter().find_map(|block| match block {
+            AssistantContent::Reasoning(block) => block.native.as_ref()?.reasoning_blob(),
+            _ => None,
+        });
+        assert_eq!(blob.map(|blob| blob.value), Some("c2ln"));
+        let body = sent(
+            &wire,
+            vec![
+                Message::user("q"),
+                Message::Assistant(turn_of(&reply)),
+                Message::tool_result(CallId::from_wire("toolu_01"), name("check_answer"), "ok"),
+            ],
+        );
+        assert_eq!(body["messages"][1]["thinking_blocks"], blocks, "{body}");
     }
 }
 

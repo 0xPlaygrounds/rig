@@ -6,6 +6,147 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.47.0](https://github.com/0xPlaygrounds/rig/compare/rig-basics-v0.46.0...rig-basics-v0.47.0) - 2026-11-20
+
+### Added
+
+- *(rig-basics, rig-memory, rig-ecs, rig-core)* [**breaking**] minimal compaction on the kernel's turns, queue and retries ([#3436](https://github.com/0xPlaygrounds/rig/pull/3436)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-memory, rig-basics, rig-ecs)* [**breaking**] compact the way pi does ([#3434](https://github.com/0xPlaygrounds/rig/pull/3434)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-basics, rig-tui, rig-harness, rig-harness-protocol, rig-cli, rig-steel, rig-ecs)* [**breaking**] plugin tree, forks off by default, one first-model rule, and release fixes ([#3425](https://github.com/0xPlaygrounds/rig/pull/3425)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-basics)* [**breaking**] /update is its own plugin, apart from /reload ([#3406](https://github.com/0xPlaygrounds/rig/pull/3406)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-harness-protocol, rig-cli, rig-basics)* [**breaking**] plugins say what they add and what they work only with ([#3405](https://github.com/0xPlaygrounds/rig/pull/3405)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-harness-protocol, rig-cli, rig-basics)* [**breaking**] plugin tree areas and branch switches in [plugins] off ([#3404](https://github.com/0xPlaygrounds/rig/pull/3404)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-core, rig-basics)* a fresh ChatGPT sign-in starts on GPT-6.2 Sol ([#3409](https://github.com/0xPlaygrounds/rig/pull/3409)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-ecs)* [**breaking**] spawn_root takes the agent's bundle, so Add<Agent> observers see it ([#3399](https://github.com/0xPlaygrounds/rig/pull/3399)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-cli)* rig plugin add and remove write [[plugins.extra]] ([#3398](https://github.com/0xPlaygrounds/rig/pull/3398)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-ecs)* ToolAccess::only builds an allow-list ([#3400](https://github.com/0xPlaygrounds/rig/pull/3400)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-basics)* the rig mark pulses while the agent works ([#3379](https://github.com/0xPlaygrounds/rig/pull/3379)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-basics, rig-tui, rig-harness)* [**breaking**] /plugins ticks with Enter and asks to reload now or later on Esc ([#3382](https://github.com/0xPlaygrounds/rig/pull/3382)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-basics)* the status line shows how long the agent has been working ([#3377](https://github.com/0xPlaygrounds/rig/pull/3377)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-basics, rig-agent)* [login] app_name names the app on the ChatGPT sign-in pages; document live tool items after a sibling fails ([#3317](https://github.com/0xPlaygrounds/rig/pull/3317)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-ecs)* [**breaking**] the kernel owns the last save and the persistence barrier ([#3268](https://github.com/0xPlaygrounds/rig/pull/3268)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-ecs)* [**breaking**] write a reply that did not stream as stream deltas ([#3264](https://github.com/0xPlaygrounds/rig/pull/3264)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-cli)* [**breaking**] rig update reinstalls rig and /update restarts the session on it ([#3224](https://github.com/0xPlaygrounds/rig/pull/3224)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(print)* [**breaking**] rig -p draws and word-wraps its answer on a terminal ([#3226](https://github.com/0xPlaygrounds/rig/pull/3226)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(tools,basics)* [**breaking**] remove the unused move tool and the checkpoint plugin ([#3048](https://github.com/0xPlaygrounds/rig/pull/3048)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(harness,cli,mcp-client)* [**breaking**] one settings file, plugins from the home list, full trust in projects, and the launcher in its own crate ([#3005](https://github.com/0xPlaygrounds/rig/pull/3005)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(usage,helpers,budget)* [**breaking**] one agent tree's spend is counted, and an opt-in budget holds ([#2994](https://github.com/0xPlaygrounds/rig/pull/2994)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Fixed
+
+- *(rig-tui, rig-cli, rig-basics, rig-harness-protocol)* a pasted /plugins filter, the upgrade warning, the Bevy refusal and /compact's notice tell the truth ([#3438](https://github.com/0xPlaygrounds/rig/pull/3438)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-core, rig-memory, rig-basics, rig-acp)* [**breaking**] a compaction is one entry, a cut is a checked index, one count fits a request ([#3437](https://github.com/0xPlaygrounds/rig/pull/3437)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-ecs, rig-basics, rig-harness, rig-harness-protocol, rig-cli, rig-tui)* [**breaking**] right wording for missing keys, /plugins branches and plugin refusals ([#3432](https://github.com/0xPlaygrounds/rig/pull/3432)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-cli)* a plugin on another Bevy gets the advice before anything compiles ([#3431](https://github.com/0xPlaygrounds/rig/pull/3431)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-basics, rig-cli, rig-harness-protocol)* /reload's notice carries the cause rig build explains ([#3429](https://github.com/0xPlaygrounds/rig/pull/3429)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-core)* read the catalog and effect logs under serde_json/arbitrary_precision ([#3414](https://github.com/0xPlaygrounds/rig/pull/3414)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-basics, rig-tui)* report a thread that fails to start instead of panicking ([#3387](https://github.com/0xPlaygrounds/rig/pull/3387)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-cli, rig)* [**breaking**] the rig package alone owns the `rig` binary, and `rig update` installs it ([#3389](https://github.com/0xPlaygrounds/rig/pull/3389)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-basics, rig-steel)* neutral, minimal delegation tool wording ([#3375](https://github.com/0xPlaygrounds/rig/pull/3375)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-ecs, rig-harness, rig-basics, rig-memory, rig-tui)* [**breaking**] twelve kernel, harness and plugin bugs ([#3361](https://github.com/0xPlaygrounds/rig/pull/3361)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- minor bugs before the release: background jobs ended silently, refused lines after Ctrl+C, path prompts, @file notes to the model, Bevy-pin error ([#3332](https://github.com/0xPlaygrounds/rig/pull/3332)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #3332
+- *(rig-tools)* write no longer overwrites a file changed since the model read it ([#3331](https://github.com/0xPlaygrounds/rig/pull/3331)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- release blockers from the v0.46.0 upgrade test: /mcp approve recall, /fork context, Bevy pins, 0.46 home warnings, restore notice ([#3330](https://github.com/0xPlaygrounds/rig/pull/3330)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #3330
+- *(rig-core)* a tool call the provider's stream closed unfinished is one of the reply's unfinished calls ([#3298](https://github.com/0xPlaygrounds/rig/pull/3298)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-memory, corpus)* one estimate of the tokens a request sends, tools included ([#3295](https://github.com/0xPlaygrounds/rig/pull/3295)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-core, rig-ecs, rig-basics)* [**breaking**] one reader and printer for a reasoning setting as text, so [model] effort = "high" works on budget-only models ([#3291](https://github.com/0xPlaygrounds/rig/pull/3291)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-core, rig-basics)* FileTokenStore refuses a credential file behind a symlink and narrows one readable by others ([#3284](https://github.com/0xPlaygrounds/rig/pull/3284)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-ecs, rig-basics)* a reasoning effort the model can't take is reset out loud, budgets included ([#3277](https://github.com/0xPlaygrounds/rig/pull/3277)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-harness)* [**breaking**] a shell registered per call starts its commands as Processes say ([#3269](https://github.com/0xPlaygrounds/rig/pull/3269)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-basics)* each rig -p stream wraps to its own terminal's width ([#3257](https://github.com/0xPlaygrounds/rig/pull/3257)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-basics)* a queued /update says update in its status, refusals and cancel ([#3249](https://github.com/0xPlaygrounds/rig/pull/3249)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-cli)* the version names its commit, the lock follows the checkout, and a source mismatch is refused ([#3221](https://github.com/0xPlaygrounds/rig/pull/3221)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(tui)* wrap the input at spaces, end a cut key-hint row in …, hang read and /help rows under their text ([#3231](https://github.com/0xPlaygrounds/rig/pull/3231)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(print)* rig --json writes ready before answering a request already waiting ([#3216](https://github.com/0xPlaygrounds/rig/pull/3216)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(basics)* settle a helper's count with try_update, which Rust 1.99 does not deprecate ([#3215](https://github.com/0xPlaygrounds/rig/pull/3215)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(ecs)* notes written beside cleared tool outputs stay with their results ([#3169](https://github.com/0xPlaygrounds/rig/pull/3169)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(basics)* a first pick names a saved key file it cannot read ([#3168](https://github.com/0xPlaygrounds/rig/pull/3168)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(basics)* count a summary call a stop removes before it settles ([#3167](https://github.com/0xPlaygrounds/rig/pull/3167)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(basics)* a helper timeout too long for a deadline is refused ([#3141](https://github.com/0xPlaygrounds/rig/pull/3141)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(basics)* a saved /login key that can't be read refuses the connect ([#3136](https://github.com/0xPlaygrounds/rig/pull/3136)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-harness,rig-basics,rig-acp)* one answer rule for every front, and the JSON front refuses a lost answer ([#3140](https://github.com/0xPlaygrounds/rig/pull/3140)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(usage,budget)* [**breaking**] model calls ended by a stop count toward spend and the budget ([#3003](https://github.com/0xPlaygrounds/rig/pull/3003)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(tools,memory)* [**breaking**] a confined write never leaves its base, and a stale session save is refused ([#2999](https://github.com/0xPlaygrounds/rig/pull/2999)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] every limit on asked work is a settings.toml key with a sensible default, and rig says what it changes ([#2995](https://github.com/0xPlaygrounds/rig/pull/2995)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2995
+- *(redact)* a notice is redacted between the stages, before any front reads it ([#2993](https://github.com/0xPlaygrounds/rig/pull/2993)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(ecs)* [**breaking**] one spawn path for agents, with no depth limit, and requests owned by what made them ([#2991](https://github.com/0xPlaygrounds/rig/pull/2991)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(print,acp)* [**breaking**] --json names a call by its place (protocol v 3 by this release); ACP shows a result the same live and loaded ([#2988](https://github.com/0xPlaygrounds/rig/pull/2988)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(ecs)* [**breaking**] a call is known by its reply and place; every stop goes through one owner ([#2985](https://github.com/0xPlaygrounds/rig/pull/2985)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(models)* [**breaking**] /model lists only models you can use now; a model that doesn't connect is refused and the current one stays ([#2983](https://github.com/0xPlaygrounds/rig/pull/2983)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(tools)* [**breaking**] --tools limits only the run it is given to ([#2984](https://github.com/0xPlaygrounds/rig/pull/2984)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(driver)* [**breaking**] a streamed reply that sends only keep-alive bytes stalls ([#2982](https://github.com/0xPlaygrounds/rig/pull/2982)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(io)* [**breaking**] input and output are bounded; a stop is never blocked by output ([#2974](https://github.com/0xPlaygrounds/rig/pull/2974)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(models)* [**breaking**] only an explicit choice becomes the default; /model offers only models that answer ([#2973](https://github.com/0xPlaygrounds/rig/pull/2973)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(tools)* [**breaking**] every child process has one owner, enforced by a lint ([#2970](https://github.com/0xPlaygrounds/rig/pull/2970)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(compaction)* [**breaking**] rewrite the summary, and never clear an output without notes or a same-bytes re-read ([#2975](https://github.com/0xPlaygrounds/rig/pull/2975)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(harness)* [**breaking**] one run contract for every front; unknown input is refused out loud ([#2972](https://github.com/0xPlaygrounds/rig/pull/2972)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(tools)* [**breaking**] an @ reference attaches exactly the file that was picked ([#2962](https://github.com/0xPlaygrounds/rig/pull/2962)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(session)* [**breaking**] resume draws what live drew; an empty session is not kept ([#2964](https://github.com/0xPlaygrounds/rig/pull/2964)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(harness)* [**breaking**] one current agent per session; a fork says what it copies ([#2967](https://github.com/0xPlaygrounds/rig/pull/2967)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(http)* [**breaking**] an error keeps its retry class from where it was made ([#2969](https://github.com/0xPlaygrounds/rig/pull/2969)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(tools)* [**breaking**] tool results show what they found ([#2965](https://github.com/0xPlaygrounds/rig/pull/2965)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(ecs)* [**breaking**] a stopped turn keeps what streamed, and a stop is never an error ([#2966](https://github.com/0xPlaygrounds/rig/pull/2966)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(tests)* test apps reach only scripted models; verify --affected builds only what it tests ([#2963](https://github.com/0xPlaygrounds/rig/pull/2963)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Other
+
+- *(rig-harness, rig-ecs, rig-tui)* a short, generic plugin guide that points at examples ([#3401](https://github.com/0xPlaygrounds/rig/pull/3401)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-tui, rig-basics, rig-core)* [**breaking**] less TUI and rig-basics surface, and one tool-result accessor ([#3366](https://github.com/0xPlaygrounds/rig/pull/3366)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] callers use the existing helpers (R8) ([#3362](https://github.com/0xPlaygrounds/rig/pull/3362)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #3362
+- *(rig-ecs, rig-harness, rig-basics, rig-tools, rig-cli)* [**breaking**] one copy of each kernel and harness rule, and the shell's forwarding wrapper goes ([#3369](https://github.com/0xPlaygrounds/rig/pull/3369)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-core)* [**breaking**] one public path for the shared sign-in types ([#3356](https://github.com/0xPlaygrounds/rig/pull/3356)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-basics, rig-harness, rig-core)* [**breaking**] dedup the harness and rig-basics helpers ([#3347](https://github.com/0xPlaygrounds/rig/pull/3347)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-tui)* [**breaking**] one type per render input; TranscriptSlot loses its unused Ord ([#3345](https://github.com/0xPlaygrounds/rig/pull/3345)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-ecs, rig-tui, rig-basics)* [**breaking**] NoticeLevel derives serde and Hash; kernel errors derive thiserror; DroppedOptions goes ([#3336](https://github.com/0xPlaygrounds/rig/pull/3336)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] remove harness, memory and cassette surface only tests used, and merge rig-memory's repeated rules ([#3337](https://github.com/0xPlaygrounds/rig/pull/3337)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #3337
+- *(rig-http)* [**breaking**] HttpClientExt takes and returns Bytes; dead rig-http and rig-core surface ([#3341](https://github.com/0xPlaygrounds/rig/pull/3341)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-core)* content accessors, to_text, json_in_text and Aside::read replace about 45 copies ([#3335](https://github.com/0xPlaygrounds/rig/pull/3335)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-core, rig-memory)* [**breaking**] the output limit is a catalog fact and the room left is rig-memory's ([#3306](https://github.com/0xPlaygrounds/rig/pull/3306)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-core, rig-basics)* the caller supplies the ChatGPT sign-in's browser opener ([#3294](https://github.com/0xPlaygrounds/rig/pull/3294)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-harness-protocol)* [**breaking**] file errors name the path and step; only NotFound is absent ([#3275](https://github.com/0xPlaygrounds/rig/pull/3275)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-harness-protocol)* [**breaking**] one AgentEnd record says how the agent ended ([#3274](https://github.com/0xPlaygrounds/rig/pull/3274)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(core)* [**breaking**] rename message::Document to DocumentContent ([#3242](https://github.com/0xPlaygrounds/rig/pull/3242)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] remove duplicated tests, dead code and doc bloat across the workspace ([#3202](https://github.com/0xPlaygrounds/rig/pull/3202)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #3202
+- *(harness)* [**breaking**] one project root for settings, MCP, AGENTS.md, skills and plugin data ([#3000](https://github.com/0xPlaygrounds/rig/pull/3000)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(redact)* [**breaking**] redaction is one optional plugin; secrets become placeholders a tool call can still use ([#2990](https://github.com/0xPlaygrounds/rig/pull/2990)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
+## [0.46.0](https://github.com/0xPlaygrounds/rig/compare/v0.45.0...v0.46.0) - 2026-10-31
+
+### Added
+
+- *(acp)* rig acp, an ACP v1 front with a rig process per session, on rig-mcp-client ([#2948](https://github.com/0xPlaygrounds/rig/pull/2948)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(mcp-client)* ship the MCP client as a rig plugin, off by default ([#2938](https://github.com/0xPlaygrounds/rig/pull/2938)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(harness)* add claude-cloak and harden Anthropic handling ([#2875](https://github.com/0xPlaygrounds/rig/pull/2875)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-tools)* [**breaking**] shell commands run to their end, and a remote command stops with its call ([#2874](https://github.com/0xPlaygrounds/rig/pull/2874)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-basics)* [**breaking**] AGENTS.md and skills as plugins, /login with API keys ([#2873](https://github.com/0xPlaygrounds/rig/pull/2873)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Fixed
+
+- *(agent)* [**breaking**] quitting mid-turn is a stop, and a restart carries nothing on by itself ([#2943](https://github.com/0xPlaygrounds/rig/pull/2943)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(agent)* [**breaking**] headless runs hear SIGTERM in any setup, stop when nobody reads, and leave no tool processes behind ([#2942](https://github.com/0xPlaygrounds/rig/pull/2942)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-tools)* [**breaking**] a tool path starting with ~ is in the home directory ([#2940](https://github.com/0xPlaygrounds/rig/pull/2940)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-basics)* the system prompt lets the user's request set the answer ([#2939](https://github.com/0xPlaygrounds/rig/pull/2939)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(core)* [**breaking**] stop forcing serde_json features ([#2934](https://github.com/0xPlaygrounds/rig/pull/2934)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(tui)* [**breaking**] fix picker layout, status text, edit diffs and paging ([#2917](https://github.com/0xPlaygrounds/rig/pull/2917)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(agent)* [**breaking**] headless runs close what an exit cuts off, refuse unknown --tools, fail empty answers ([#2915](https://github.com/0xPlaygrounds/rig/pull/2915)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(agent)* [**breaking**] Esc keeps the partial reply, /compact keeps history, accurate summaries, ctx ? after compaction ([#2918](https://github.com/0xPlaygrounds/rig/pull/2918)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(agent)* [**breaking**] no self-extension prompt, a resume hint on exit, a session migration chain ([#2899](https://github.com/0xPlaygrounds/rig/pull/2899)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(agent)* [**breaking**] a failed message goes back into the input ([#2895](https://github.com/0xPlaygrounds/rig/pull/2895)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(agent)* a 64k output budget, unknown-tool feedback, honest failed summaries, ordered headless JSON ([#2894](https://github.com/0xPlaygrounds/rig/pull/2894)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(catalog, compaction)* fit models' input limits with simpler overflow recovery ([#2880](https://github.com/0xPlaygrounds/rig/pull/2880)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Other
+
+- *(tui)* [**breaking**] resume and big streamed tool calls are fast: code is colored only on screen ([#2952](https://github.com/0xPlaygrounds/rig/pull/2952)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(agent)* [**breaking**] extension points as ECS data and systems ([#2900](https://github.com/0xPlaygrounds/rig/pull/2900)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- provider knowledge out of generic code, typed lookups ([#2897](https://github.com/0xPlaygrounds/rig/pull/2897)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2897
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 ## [0.45.0](https://github.com/0xPlaygrounds/rig/compare/rig-basics-v0.44.0...rig-basics-v0.45.0) - 2026-10-19
 
 ### Added

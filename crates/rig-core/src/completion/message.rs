@@ -1,7 +1,5 @@
-use crate::error::ProviderError;
 use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, str::FromStr};
-use thiserror::Error;
 
 /// A provider-agnostic chat message.
 ///
@@ -107,21 +105,14 @@ impl AssistantMessage {
 
     /// The tool calls, in order.
     pub fn tool_calls(&self) -> impl Iterator<Item = &ToolCall> {
-        self.content.iter().filter_map(|part| match part {
-            AssistantContent::ToolCall(call) => Some(call),
-            _ => None,
-        })
+        self.content
+            .iter()
+            .filter_map(AssistantContent::as_tool_call)
     }
 
     /// The text parts, concatenated.
     pub fn text(&self) -> String {
-        self.content
-            .iter()
-            .filter_map(|part| match part {
-                AssistantContent::Text(text) => Some(text.text.as_str()),
-                _ => None,
-            })
-            .collect()
+        AssistantContent::concat_text(&self.content)
     }
 
     /// Whether this generated turn is empty: every part is blank
@@ -195,7 +186,7 @@ pub enum UserContent {
     /// Video content.
     Video(Video),
     /// Document content.
-    Document(Document),
+    Document(DocumentContent),
 }
 
 /// One block of an assistant turn: one provider output item.
@@ -217,6 +208,27 @@ pub enum AssistantContent {
 }
 
 impl AssistantContent {
+    /// Borrow the text of a text block.
+    pub fn as_text(&self) -> Option<&str> {
+        match self {
+            Self::Text(text) => Some(&text.text),
+            _ => None,
+        }
+    }
+
+    /// Borrow the call of a tool-call block.
+    pub fn as_tool_call(&self) -> Option<&ToolCall> {
+        match self {
+            Self::ToolCall(call) => Some(call),
+            _ => None,
+        }
+    }
+
+    /// The text blocks of `parts`, concatenated in order.
+    pub fn concat_text(parts: &[Self]) -> String {
+        parts.iter().filter_map(Self::as_text).collect()
+    }
+
     /// This block without its provider item: what a different provider can
     /// use, and what its fingerprint covers. The item is not copied.
     pub fn canonical(&self) -> Self {
@@ -375,13 +387,13 @@ pub struct Reasoning {
     /// The reasoning text, summaries included.
     pub text: String,
     /// Whether the provider withheld the text.
-    #[serde(default, skip_serializing_if = "crate::json_utils::is_false")]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub redacted: bool,
     /// The provider item this block was decoded from.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
-        deserialize_with = "native::lenient"
+        deserialize_with = "lenient"
     )]
     pub native: Option<Native>,
 }
@@ -411,7 +423,7 @@ pub struct ToolResult {
     pub content: Vec<ToolResultContent>,
     /// Whether the tool failed, was refused, or never ran: `content` then
     /// says why.
-    #[serde(default, skip_serializing_if = "crate::json_utils::is_false")]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub is_error: bool,
 }
 
@@ -447,6 +459,16 @@ impl ToolResultContent {
         }
     }
 
+    /// The content as text: literal text, JSON as its compact text, and an
+    /// image as `image`.
+    pub fn to_text(&self, image: &str) -> String {
+        match self {
+            Self::Text(text) => text.text.clone(),
+            Self::Json { value } => value.to_string(),
+            Self::Image(_) => image.to_owned(),
+        }
+    }
+
     /// Decodes the content as `T`: structured JSON directly, and text parsed
     /// as JSON, since many tools return JSON as text. An image, or text that
     /// is not `T`'s JSON, is an error. The content itself is unchanged.
@@ -467,7 +489,7 @@ impl ToolResultContent {
         T: serde::de::DeserializeOwned,
     {
         match self {
-            Self::Json { value } => T::deserialize(value),
+            Self::Json { value } => crate::json_utils::from_value(value),
             Self::Text(text) => serde_json::from_str(&text.text),
             Self::Image(_) => Err(<serde_json::Error as serde::de::Error>::custom(
                 "an image tool result is not JSON",
@@ -488,21 +510,26 @@ pub struct ToolCall {
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
-        deserialize_with = "native::lenient"
+        deserialize_with = "lenient"
     )]
     pub native: Option<Native>,
 }
 
 impl ToolCall {
-    fn fingerprint(&self) -> Fingerprint {
-        let id = match &self.id {
+    /// The id the fingerprint and the projection see: every local id is one
+    /// placeholder.
+    fn fingerprint_id(&self) -> &str {
+        match &self.id {
             CallId::Provider(id) => id.as_str(),
             CallId::Local(_) => "~local",
-        };
+        }
+    }
+
+    fn fingerprint(&self) -> Fingerprint {
         Fingerprint::of_canonical(&(
             "v1",
             "call",
-            id,
+            self.fingerprint_id(),
             self.function.name.as_str(),
             native::Canonical(&self.function.arguments),
             &self.function.invalid_arguments,
@@ -534,14 +561,10 @@ impl ToolCall {
     }
 
     fn projection(&self) -> serde_json::Value {
-        let id = match &self.id {
-            CallId::Provider(id) => id.as_str(),
-            CallId::Local(_) => "~local",
-        };
         serde_json::json!([
             "v1",
             "call",
-            id,
+            self.fingerprint_id(),
             self.function.name.as_str(),
             self.function.arguments,
             self.function.invalid_arguments,
@@ -757,9 +780,19 @@ pub struct Text {
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
-        deserialize_with = "native::lenient"
+        deserialize_with = "lenient"
     )]
     pub native: Option<Native>,
+}
+
+/// A stored field, or `None` when it cannot be read, such as a `native`
+/// fingerprinted by an earlier projection: the item then loads with its
+/// canonical fields and replays from them.
+fn lenient<'de, D: serde::Deserializer<'de>, T: serde::de::DeserializeOwned>(
+    deserializer: D,
+) -> Result<Option<T>, D::Error> {
+    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+    Ok(value.and_then(|value| crate::json_utils::from_value(&value).ok()))
 }
 
 /// A stored [`Text`], read leniently: unreadable citations or native load
@@ -767,9 +800,9 @@ pub struct Text {
 #[derive(Deserialize)]
 struct TextRepr {
     text: String,
-    #[serde(default, deserialize_with = "citation::lenient")]
+    #[serde(default, deserialize_with = "lenient")]
     citations: Option<citation::Citations>,
-    #[serde(default, deserialize_with = "native::lenient")]
+    #[serde(default, deserialize_with = "lenient")]
     native: Option<Native>,
 }
 
@@ -828,7 +861,7 @@ pub struct Image {
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
-        deserialize_with = "native::lenient"
+        deserialize_with = "lenient"
     )]
     pub native: Option<Native>,
 }
@@ -930,7 +963,7 @@ impl From<DocumentSourceKind> for DocumentData {
 
 /// Document content containing document data and metadata about it.
 #[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
-pub struct Document {
+pub struct DocumentContent {
     /// Document content.
     pub data: DocumentData,
     /// Document media type, if known.
@@ -940,15 +973,6 @@ pub struct Document {
     /// `title`, `context` and `citations`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub additional_params: Option<serde_json::Value>,
-}
-
-/// Helper enum that tracks the media type of the content.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-pub enum MediaType {
-    Image(ImageMediaType),
-    Audio(AudioMediaType),
-    Document(DocumentMediaType),
-    Video(VideoMediaType),
 }
 
 /// Describes the image media type of the content. Not every provider supports every media type.
@@ -1144,6 +1168,16 @@ impl Message {
         }
     }
 
+    /// The tool results a user message carries, in order; none for other
+    /// roles.
+    pub fn results(&self) -> impl Iterator<Item = &ToolResult> {
+        let content = match self {
+            Message::User { content } => content.as_slice(),
+            _ => &[],
+        };
+        content.iter().filter_map(UserContent::as_tool_result)
+    }
+
     /// The images of this message, in order: a user message's own and
     /// those of its tool results, or an assistant turn's.
     pub fn images(&self) -> impl Iterator<Item = &Image> {
@@ -1221,12 +1255,12 @@ macro_rules! media_ctors {
         media_ctors! { $($rest)* }
     };
     (
-        $(#[$meta:meta])* $name:ident => $variant:ident(params $mt:ty, $kind:path: $data:ty);
+        $(#[$meta:meta])* $name:ident => $variant:ident($content:ident, params $mt:ty, $kind:path: $data:ty);
         $($rest:tt)*
     ) => {
         $(#[$meta])*
         pub fn $name(data: impl Into<$data>, media_type: Option<$mt>) -> Self {
-            Self::$variant($variant {
+            Self::$variant($content {
                 data: $kind(data.into()).into(),
                 media_type,
                 additional_params: None,
@@ -1250,6 +1284,22 @@ macro_rules! media_ctors {
 }
 
 impl UserContent {
+    /// Borrow the text of a text block.
+    pub fn as_text(&self) -> Option<&str> {
+        match self {
+            Self::Text(text) => Some(&text.text),
+            _ => None,
+        }
+    }
+
+    /// Borrow the result of a tool-result block.
+    pub fn as_tool_result(&self) -> Option<&ToolResult> {
+        match self {
+            Self::ToolResult(result) => Some(result),
+            _ => None,
+        }
+    }
+
     /// Creates user text content.
     pub fn text(text: impl Into<String>) -> Self {
         UserContent::Text(text.into().into())
@@ -1269,21 +1319,21 @@ impl UserContent {
         /// Creates user audio content referencing a URL.
         audio_url => Audio(AudioMediaType, Url: String);
         /// Creates user video content from base64-encoded data.
-        video_base64 => Video(params VideoMediaType, DocumentSourceKind::Base64: String);
+        video_base64 => Video(Video, params VideoMediaType, DocumentSourceKind::Base64: String);
         /// Creates user video content from unencoded bytes.
-        video_raw => Video(params VideoMediaType, DocumentSourceKind::Raw: Vec<u8>);
+        video_raw => Video(Video, params VideoMediaType, DocumentSourceKind::Raw: Vec<u8>);
         /// Creates user video content referencing a URL.
-        video_url => Video(params VideoMediaType, DocumentSourceKind::Url: String);
+        video_url => Video(Video, params VideoMediaType, DocumentSourceKind::Url: String);
         /// Creates user document content from base64-encoded data.
-        document_base64 => Document(params DocumentMediaType, DocumentSourceKind::Base64: String);
+        document_base64 => Document(DocumentContent, params DocumentMediaType, DocumentSourceKind::Base64: String);
         /// Creates user document content from unencoded bytes.
-        document_raw => Document(params DocumentMediaType, DocumentSourceKind::Raw: Vec<u8>);
+        document_raw => Document(DocumentContent, params DocumentMediaType, DocumentSourceKind::Raw: Vec<u8>);
         /// Creates user document content referencing a URL.
-        document_url => Document(params DocumentMediaType, DocumentSourceKind::Url: String);
+        document_url => Document(DocumentContent, params DocumentMediaType, DocumentSourceKind::Url: String);
         /// Creates user document content from literal text, such as a plain
         /// text or Markdown file. Binary formats belong in
         /// [`Self::document_base64`] or [`Self::document_raw`].
-        document_text => Document(params DocumentMediaType, DocumentData::Text: String);
+        document_text => Document(DocumentContent, params DocumentMediaType, DocumentData::Text: String);
     }
 
     /// Creates a tool result answering the call `call` to the tool `name`.
@@ -1347,25 +1397,6 @@ pub trait MimeType {
     where
         Self: Sized;
     fn to_mime_type(&self) -> &'static str;
-}
-
-impl MimeType for MediaType {
-    fn from_mime_type(mime_type: &str) -> Option<Self> {
-        ImageMediaType::from_mime_type(mime_type)
-            .map(MediaType::Image)
-            .or_else(|| DocumentMediaType::from_mime_type(mime_type).map(MediaType::Document))
-            .or_else(|| AudioMediaType::from_mime_type(mime_type).map(MediaType::Audio))
-            .or_else(|| VideoMediaType::from_mime_type(mime_type).map(MediaType::Video))
-    }
-
-    fn to_mime_type(&self) -> &'static str {
-        match self {
-            MediaType::Image(media_type) => media_type.to_mime_type(),
-            MediaType::Audio(media_type) => media_type.to_mime_type(),
-            MediaType::Document(media_type) => media_type.to_mime_type(),
-            MediaType::Video(media_type) => media_type.to_mime_type(),
-        }
-    }
 }
 
 // Emits both directions of a [`MimeType`] impl from a single pair list, so a
@@ -1490,7 +1521,7 @@ single_content_message_from!(User {
     Text => Text,
     Image => Image,
     Audio => Audio,
-    Document => Document,
+    DocumentContent => Document,
     ToolResult => ToolResult,
 });
 
@@ -1568,19 +1599,6 @@ pub enum ToolChoice {
         /// The tools' names.
         function_names: Vec<ToolName>,
     },
-}
-
-/// Error type to represent issues with converting messages to and from specific provider messages.
-#[derive(Debug, Error)]
-pub enum MessageError {
-    #[error("Message conversion error: {0}")]
-    ConversionError(String),
-}
-
-impl From<MessageError> for ProviderError {
-    fn from(error: MessageError) -> Self {
-        ProviderError::request(error)
-    }
 }
 
 #[cfg(test)]

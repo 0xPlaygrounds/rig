@@ -1,38 +1,16 @@
 //! OpenRouter terminal metadata and primary-choice matrix.
 //!
-//! Live recordings showed that the native blocking response erased
-//! OpenRouter's routed `provider` and `service_tier`, while the shared raw
-//! stream terminal erased the same top-level chunk fields. This matrix locks
-//! down those fields together with primary-choice selection, terminal mapping,
-//! response identity, and usage.
+//! The native blocking response and the shared raw stream terminal must keep
+//! OpenRouter's routed `provider`, `service_tier` and other top-level chunk
+//! fields. The matrix pins those fields together with primary-choice
+//! selection, terminal mapping, response identity, and usage. Each cell proves
+//! its request and terminal premise from the fixture, then compares the native
+//! raw response or terminal metadata with those exact bytes.
 //!
-//! The complete input space exercised here is a 2 × 2 × 2 × 3 cross-product:
-//!
-//! | dimension | values |
-//! |---|---|
-//! | transport | blocking control, raw streaming regression |
-//! | model | `openai/gpt-4o-mini`, `openai/gpt-4.1-mini` |
-//! | output budget | roomy, constrained (`1` text token / `48` tool tokens) |
-//! | response shape | one text candidate, requested `n = 2`, forced tool |
-//!
-//! That is 24 cells, of which the six below are tests. Each cell proves its
-//! request and terminal premise from the fixture, then compares the native raw
-//! response/terminal metadata with those exact bytes. OpenRouter currently
-//! accepts `n = 2` but emits only candidate zero; those cells deliberately
-//! preserve that observed gateway contract instead of assuming direct OpenAI
-//! behavior.
-//!
-//! Each test maps to
-//! `crates/rig-cassette/fixtures/cassettes/openrouter/terminal_metadata_matrix/<test-name>.yaml`.
-//! The two inexpensive mini routes are pinned to OpenAI with fallbacks disabled
-//! for stable provider attribution. Each test asserts the routed request and
-//! native terminal; together they cover provider, tier, ids, model, finish
-//! reason, usage, primary-choice behavior, fingerprint, and unmodeled top-level
-//! streaming metadata.
-//!
-//! | recorded cells | exact fixture set |
-//! |---|---|
-//! | 6 of 24 | `crates/rig-cassette/fixtures/cassettes/openrouter/terminal_metadata_matrix/{blocking_gpt_4_1_mini_tiny_plain_two,blocking_gpt_4_1_mini_tiny_tool,blocking_gpt_4o_mini_tiny_plain_one,streaming_gpt_4_1_mini_tiny_plain_two,streaming_gpt_4_1_mini_tiny_tool,streaming_gpt_4o_mini_tiny_plain_one}.yaml` |
+//! OpenRouter accepts `n = 2` but emits only candidate zero, and those cells
+//! pin that observed gateway contract instead of assuming direct OpenAI
+//! behavior. The routes are pinned to OpenAI with fallbacks disabled for
+//! stable provider attribution.
 
 use rig_test_support::cassette_models::OpenAiModels;
 use std::sync::{Arc, Mutex};
@@ -41,7 +19,7 @@ use anyhow::{Context, Result};
 use futures::StreamExt as _;
 use serde_json::{Value, json};
 
-use super::super::support::with_openrouter_terminal_metadata_cassette_result;
+use super::super::support::with_openrouter_cassette_result;
 use crate::support::assert_matches_recorded_document;
 use rig::completion::CompletionRequest;
 
@@ -402,7 +380,7 @@ fn cell(transport: Transport, model: ModelVariant, limit: Limit, shape: Shape) -
 // matching streaming half traverses the shared compatible stream adapter.
 
 crate::matrix::case_matrix! {
-    wrapper: with_openrouter_terminal_metadata_cassette_result, family: terminal_metadata_matrix_case;
+    wrapper: with_openrouter_cassette_result, family: terminal_metadata_matrix_case;
     # [tokio :: test]
     blocking_gpt_4o_mini_tiny_plain_one: ("terminal_metadata_matrix/blocking_gpt_4o_mini_tiny_plain_one", configured, cell (Transport :: Blocking , ModelVariant :: Gpt4oMini , Limit :: Tiny , Shape :: PlainOne ,));
     # [tokio :: test]

@@ -13,8 +13,9 @@ use std::time::{Duration, SystemTime};
 use base64::Engine as _;
 use futures::StreamExt;
 use rig_agent::prelude::*;
+use rig_core::catalog::{Catalog, ReasoningSupport, UnknownReasoning};
 use rig_core::completion::{
-    AssistantContent, CompletionRequest, Effort, FinishReason, GenerationOptions, Reasoning, Usage,
+    AssistantContent, CompletionRequest, FinishReason, GenerationOptions, Reasoning, Usage,
 };
 use rig_core::embeddings::{EmbedError, TextEmbedder};
 use rig_core::error::ErrorReport;
@@ -25,45 +26,29 @@ use rig_core::streaming::{Item, StreamEvent};
 use rig_core::tool::{ToolContext, ToolExecutionError};
 use rig_core::vector_store::in_memory_store::InMemoryVectorIndex;
 use rig_gemini_grpc::GeminiGrpc;
+use rig_gemini_grpc::completion::PROVIDER_NAME;
 use rig_gemini_grpc::extension::{GeminiGrpcExt, GeminiGrpcOptions};
 use serde::{Deserialize, Serialize};
 
-/// How much a request thinks: off, a token budget, or a level.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Thinking {
-    /// No thinking, where the model can turn it off.
-    Off,
-    /// At most this many thinking tokens (Gemini 2.5).
-    Budget(u32),
-    /// A thinking level such as low or high (Gemini 3).
-    Level(Effort),
-}
-
-impl Thinking {
-    /// Read `off`, a number (a budget) or a level word (`minimal`, `low`,
-    /// `medium`, `high`).
-    pub fn parse(text: &str) -> Option<Self> {
-        if let Ok(tokens) = text.parse() {
-            return Some(Self::Budget(tokens));
-        }
-        Some(match text {
-            "off" => Self::Off,
-            "minimal" => Self::Level(Effort::Minimal),
-            "low" => Self::Level(Effort::Low),
-            "medium" => Self::Level(Effort::Medium),
-            "high" => Self::Level(Effort::High),
-            _ => return None,
-        })
-    }
-}
-
-impl From<Thinking> for Reasoning {
-    fn from(thinking: Thinking) -> Self {
-        match thinking {
-            Thinking::Off => Self::Off,
-            Thinking::Budget(tokens) => Self::Budget { tokens },
-            Thinking::Level(effort) => Self::Effort(effort),
-        }
+/// The reasoning `text` asks of `model`, `None` for the provider default:
+/// what [`ReasoningSupport::parse`] reads for the model as the built-in
+/// catalog lists it over gRPC (`off`, a level's word, `<n> tokens`, or a
+/// level's name for a budget on Gemini 2.5), or a bare number of tokens.
+/// A model the catalog does not list takes any of those settings.
+///
+/// # Errors
+///
+/// [`UnknownReasoning`], with the settings there are, when the model takes
+/// no setting named `text`.
+pub fn thinking(model: &str, text: &str) -> Result<Option<Reasoning>, UnknownReasoning> {
+    let text = text.trim();
+    let text = match text.parse::<u32>() {
+        Ok(tokens) => format!("{tokens} tokens"),
+        Err(_) => text.to_owned(),
+    };
+    match Catalog::builtin().resolve(&format!("{PROVIDER_NAME}/{model}")) {
+        Ok(resolved) => resolved.spec.reasoning.parse(&text),
+        Err(_) => ReasoningSupport::Unknown { default: None }.parse(&text),
     }
 }
 
@@ -281,17 +266,19 @@ impl Gem {
         store: impl rig_memory::AsyncStore + Send + Sync + 'static,
         notes: Option<Notes>,
     ) -> Chat {
+        let mut options = GenerationOptions::new();
+        options.reasoning = settings.thinking;
         let mut builder = AgentBuilder::new(self.transport.completion(settings.model))
             .preamble(
                 "You are a research assistant. Use search_notes to look things up in the \
                  user's notes before answering questions about them.",
             )
-            .options(GenerationOptions::new().reasoning(settings.thinking))
+            .options(options)
             .default_max_turns(8)
             .memory(store)
             .conversation(settings.conversation)
             .tool(SearchNotes { notes });
-        if settings.thinking != Thinking::Off {
+        if settings.thinking != Some(Reasoning::Off) {
             builder = builder.provider_option(GeminiGrpcOptions::from(
                 GeminiOptions::new().include_thoughts(true),
             ));
@@ -307,14 +294,14 @@ impl Gem {
         &self,
         model: &str,
         prompt: &str,
-        thinking: Option<Thinking>,
+        thinking: Option<Reasoning>,
     ) -> Result<Drawing, GemError> {
         let mut options = GeminiOptions::new()
             .response_modalities([ResponseModality::Text, ResponseModality::Image]);
         let mut request = CompletionRequest::new(prompt);
         if let Some(thinking) = thinking {
             request = request.reasoning(thinking);
-            options = options.include_thoughts(thinking != Thinking::Off);
+            options = options.include_thoughts(thinking != Reasoning::Off);
         }
         let request = request.provider_option(GeminiGrpcOptions::from(options));
         let response = self
@@ -430,8 +417,8 @@ impl Gem {
 pub struct ChatSettings {
     /// The model name, such as `gemini-2.5-pro`.
     pub model: String,
-    /// The thinking every turn asks for.
-    pub thinking: Thinking,
+    /// The thinking every turn asks for, `None` for the model's default.
+    pub thinking: Option<Reasoning>,
     /// The conversation's name in the store.
     pub conversation: String,
 }

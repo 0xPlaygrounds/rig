@@ -16,7 +16,7 @@ use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig_cassette::agent::AgentReplayExt;
 use rig_test_support::cassette_models::AnthropicModels;
 
-use super::super::support::{with_anthropic_cassette, with_anthropic_corpus_endings_cassette};
+use super::super::support::with_anthropic_cassette;
 use crate::goldens::{
     CANCEL_ADD_DISPATCH, CANCEL_ADD_OUTCOME, CANCEL_ANSWER, CancelAddDispatch, CancelAddOutcome,
     CancelAnswer, RecordSettled, STOP_AFTER_TURN, STOP_AT_ANSWER, STOP_ON_TEXT_DELTA,
@@ -183,7 +183,7 @@ pub(super) fn last_outcome_kind(log: &rig::cassette::effect_log::EffectLog) -> O
 /// never reaches the bus, the run stops.
 #[tokio::test]
 async fn tool_dispatch_cancelled_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_endings_cassette(
+    with_anthropic_cassette(
         "corpus_endings/tool_dispatch_cancelled",
         |client| async move {
             let log = unary_tool_run(
@@ -204,7 +204,7 @@ async fn tool_dispatch_cancelled_effect_log_is_the_golden_fixture() {
 /// ran and its record holds the real result; the run stops after it.
 #[tokio::test]
 async fn tool_outcome_cancelled_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_endings_cassette(
+    with_anthropic_cassette(
         "corpus_endings/tool_outcome_cancelled",
         |client| async move {
             let log = unary_tool_run(
@@ -228,7 +228,7 @@ async fn tool_outcome_cancelled_effect_log_is_the_golden_fixture() {
 /// `on_outcome` → `Replace(Err(Cancelled))` on a text answer.
 #[tokio::test]
 async fn answer_outcome_cancelled_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_endings_cassette(
+    with_anthropic_cassette(
         "corpus_endings/answer_outcome_cancelled",
         |client| async move {
             let settled = RecordSettled::default();
@@ -262,20 +262,17 @@ async fn answer_outcome_cancelled_effect_log_is_the_golden_fixture() {
 /// `on_model_turn_finished` → `Stop` on the first turn.
 #[tokio::test]
 async fn turn_finished_stop_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_endings_cassette(
-        "corpus_endings/turn_finished_stop",
-        |client| async move {
-            let log = unary_tool_run(
-                client,
-                StopAfterTurn,
-                STOP_AFTER_TURN,
-                &[EffectFamily::Completion],
-                false,
-            )
-            .await;
-            crate::goldens::golden_effects("anthropic_endings_turn_finished_stop", &log);
-        },
-    )
+    with_anthropic_cassette("corpus_endings/turn_finished_stop", |client| async move {
+        let log = unary_tool_run(
+            client,
+            StopAfterTurn,
+            STOP_AFTER_TURN,
+            &[EffectFamily::Completion],
+            false,
+        )
+        .await;
+        crate::goldens::golden_effects("anthropic_endings_turn_finished_stop", &log);
+    })
     .await;
 }
 
@@ -283,24 +280,21 @@ async fn turn_finished_stop_effect_log_is_the_golden_fixture() {
 /// the tool turn's records precede the stop.
 #[tokio::test]
 async fn answer_turn_stop_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_endings_cassette(
-        "corpus_endings/answer_turn_stop",
-        |client| async move {
-            let log = unary_tool_run(
-                client,
-                StopAtAnswer,
-                STOP_AT_ANSWER,
-                &[
-                    EffectFamily::Completion,
-                    EffectFamily::Tool,
-                    EffectFamily::Completion,
-                ],
-                false,
-            )
-            .await;
-            crate::goldens::golden_effects("anthropic_endings_answer_turn_stop", &log);
-        },
-    )
+    with_anthropic_cassette("corpus_endings/answer_turn_stop", |client| async move {
+        let log = unary_tool_run(
+            client,
+            StopAtAnswer,
+            STOP_AT_ANSWER,
+            &[
+                EffectFamily::Completion,
+                EffectFamily::Tool,
+                EffectFamily::Completion,
+            ],
+            false,
+        )
+        .await;
+        crate::goldens::golden_effects("anthropic_endings_answer_turn_stop", &log);
+    })
     .await;
 }
 
@@ -330,26 +324,23 @@ async fn text_delta_stop_effect_log_is_the_golden_fixture() {
 /// `on_tool_call_delta` → `Stop`.
 #[tokio::test]
 async fn tool_call_delta_stop_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_endings_cassette(
-        "corpus_endings/tool_call_delta_stop",
-        |client| async move {
-            let log = streamed_run(
-                client,
-                StopOnToolCallDelta,
-                STOP_ON_TOOL_CALL_DELTA,
-                Streamed::Note,
-            )
-            .await;
-            assert_eq!(families(&log), [EffectFamily::Completion]);
-            assert_eq!(
-                last_outcome_kind(&log),
-                Some(ErrorKind::Cancelled),
-                "{:?}",
-                log.records[0].outcome
-            );
-            crate::goldens::golden_effects("anthropic_endings_tool_call_delta_stop", &log);
-        },
-    )
+    with_anthropic_cassette("corpus_endings/tool_call_delta_stop", |client| async move {
+        let log = streamed_run(
+            client,
+            StopOnToolCallDelta,
+            STOP_ON_TOOL_CALL_DELTA,
+            Streamed::Note,
+        )
+        .await;
+        assert_eq!(families(&log), [EffectFamily::Completion]);
+        assert_eq!(
+            last_outcome_kind(&log),
+            Some(ErrorKind::Cancelled),
+            "{:?}",
+            log.records[0].outcome
+        );
+        crate::goldens::golden_effects("anthropic_endings_tool_call_delta_stop", &log);
+    })
     .await;
 }
 
@@ -357,7 +348,7 @@ async fn tool_call_delta_stop_effect_log_is_the_golden_fixture() {
 /// completed and is recorded whole; the tool never reaches the bus.
 #[tokio::test]
 async fn tool_dispatch_cancelled_streamed_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_endings_cassette(
+    with_anthropic_cassette(
         "corpus_endings/tool_dispatch_cancelled_streamed",
         |client| async move {
             let log = streamed_run(
@@ -385,7 +376,7 @@ async fn tool_dispatch_cancelled_streamed_effect_log_is_the_golden_fixture() {
 /// `on_model_turn_finished` → `Stop`, streamed with events.
 #[tokio::test]
 async fn turn_finished_stop_streamed_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_endings_cassette(
+    with_anthropic_cassette(
         "corpus_endings/turn_finished_stop_streamed",
         |client| async move {
             let log = streamed_run(client, StopAfterTurn, STOP_AFTER_TURN, Streamed::Tools).await;
@@ -400,7 +391,7 @@ async fn turn_finished_stop_streamed_effect_log_is_the_golden_fixture() {
 /// `on_outcome` → `Replace(Err(Cancelled))` on the tool, streamed.
 #[tokio::test]
 async fn tool_outcome_cancelled_streamed_effect_log_is_the_golden_fixture() {
-    with_anthropic_corpus_endings_cassette(
+    with_anthropic_cassette(
         "corpus_endings/tool_outcome_cancelled_streamed",
         |client| async move {
             let log = streamed_run(

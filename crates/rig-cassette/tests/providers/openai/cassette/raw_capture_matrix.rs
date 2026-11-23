@@ -1,52 +1,22 @@
 //! Raw provider response capture on OpenAI's unary seams
 //! (`CompletionResponse::raw`).
 //!
-//! # What this pins
-//!
 //! Every `completion()` on either OpenAI route carries `raw`: the provider's
-//! verbatim reply document, parsed as JSON. There is no switch behind it;
-//! `raw` is `Value::Null` only on a response constructed without a provider
-//! response behind it, never on one that came off the wire. Because capture
-//! is unconditional it must be an escape hatch, not a second source of
-//! truth: every field rig normalizes is the field `raw` carries under the
-//! provider's own name, so `raw` and the normalized response are two views
-//! of one reply produced by one decoder. Both routes are covered because
-//! their reply documents differ: a Chat Completions body and a Responses
-//! response object are shaped differently, so each needs its own evidence
-//! that `raw` is the document its decoder read.
+//! verbatim reply document, parsed as JSON. `raw` is `Value::Null` only on a
+//! response constructed without a provider response behind it. Capture is
+//! unconditional, so it must be an escape hatch, not a second source of truth:
+//! every field rig normalizes is the field `raw` carries under the provider's
+//! own name. Both routes are covered because a Chat Completions body and a
+//! Responses object are shaped differently.
 //!
-//! `raw` being the whole document rather than a re-serialization of the
-//! parse is what makes it an escape hatch at all: the provider-specific
-//! field cells read something rig does not normalize — Chat `service_tier`
-//! (and `system_fingerprint`), Responses `service_tier` and `store` — off
-//! `raw`, equal to the fixture body, and prove the normalized response has
-//! no such key.
-//!
-//! Text turns are the easy case. The wire shapes most likely to break the
-//! reading are the ones the routes rewrite on the way in: a Chat tool call
-//! (whose `function.arguments` is a JSON *string* on the wire and stays one on
-//! `raw`, while the normalized `finish_reason()` is `ToolCalls` and the raw
-//! spelling is OpenAI's own `"tool_calls"`), and a Chat structured-output
-//! turn (`response_format: json_schema`, whose message carries a `refusal`
-//! sibling and whose body carries `system_fingerprint`). Cells 6 and 7 record
-//! each of those and hold the same two-views bar.
-//!
-//! # Matrix
-//!
-//! | # | Cell | Dimension | expected | Status |
-//! |---|------|-----------|----------|--------|
-//! | 1 | `chat_raw_round_trips_typed` | chat, unary | `raw` is the chat reply document; its fields ≡ the normalized response's | recorded |
-//! | 4 | `responses_raw_exposes_service_tier_and_store` | Responses, provider-only fields | `raw["service_tier"]`, `raw["store"]` = fixture | recorded |
-//! | 6 | `chat_tool_call_raw_round_trips_typed` | chat, forced tool call (`tool_choice: required`) | `raw` is the reply document; `tool_calls[0].function.arguments` is a JSON string = fixture; `finish_reason() == ToolCalls` while `raw` spells `"tool_calls"` | recorded |
-//! | 7 | `chat_structured_output_raw_exposes_system_fingerprint` | chat, `response_format: json_schema` | `raw` is the reply document; `raw["system_fingerprint"]` = fixture; message carries `refusal`; content parses under the schema | recorded |
-//!
-//! Every cell is recorded; none is unit-only. Each cell re-derives its premise
-//! from its own fixture after the wrapper returns: the recorded response is a
-//! completed turn whose body carries the field the cell reads: for cell 6 a
-//! `tool_calls` entry with
-//! `finish_reason: "tool_calls"`, for cell 7 a request carrying
-//! `response_format.type == "json_schema"` and a body with a string
-//! `system_fingerprint`.
+//! The provider-specific field cells read fields rig does not normalize (Chat
+//! `service_tier` and `system_fingerprint`, Responses `service_tier` and
+//! `store`) off `raw` and prove the normalized response has no such key. The
+//! tool-call and structured-output cells cover the shapes the route rewrites
+//! on the way in: `function.arguments` stays a JSON string on `raw`, and the
+//! raw `finish_reason` keeps OpenAI's own spelling. Each cell re-derives its
+//! premise from its own fixture after the wrapper returns, so a recording
+//! that lost the field it reads fails the cell.
 
 use rig::completion::{
     AssistantContent, CompletionRequest, CompletionResponse, FinishReason, ToolDefinition,

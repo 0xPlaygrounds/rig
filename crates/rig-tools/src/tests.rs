@@ -1,3 +1,4 @@
+use crate::workspace::Root;
 use unicode_width::UnicodeWidthStr as _;
 
 use std::path::PathBuf;
@@ -6,7 +7,7 @@ use rig_core::tool::{Scope, Tool, Touches};
 
 use super::{
     Edit, EditArgs, OutputLimit, Read, ReadArgs, Search, SearchArgs, Shell, ShellArgs, Write,
-    WriteArgs, shorten,
+    WriteArgs, excerpt, shorten,
 };
 
 /// A cut keeps whole lines from the end, within both limits, and says how
@@ -58,26 +59,21 @@ fn shorten_fits_the_width() {
 fn each_call_names_what_it_touches() {
     let base = PathBuf::from("/nowhere/work");
     let at = |path: &str| Scope::Paths(vec![base.join(path)]);
+    let root = Root {
+        base: Some(base.clone()),
+        ..Root::default()
+    };
     let read = Read {
-        base: Some(base.clone()),
-        confine: false,
+        root: root.clone(),
         seen: crate::Seen::default(),
-        ..Default::default()
     };
-    let search = Search {
-        base: Some(base.clone()),
-        confine: false,
-        ..Default::default()
-    };
+    let search = Search { root: root.clone() };
     let edit = Edit {
-        base: Some(base.clone()),
-        confine: false,
+        root: root.clone(),
         seen: crate::Seen::default(),
-        ..Default::default()
     };
     let write = Write {
-        base: Some(base.clone()),
-        confine: false,
+        root,
         ..Default::default()
     };
     assert_eq!(
@@ -103,5 +99,29 @@ fn each_call_names_what_it_touches() {
     assert_eq!(
         Shell::default().footprint(&ShellArgs::new("ls")),
         Touches::Writes(Scope::Anything)
+    );
+}
+
+/// A cut line whose span the cut left out says where it is: a deleted end
+/// after a byte, and a span far into a long line with a command whose
+/// window starts about 5,000 bytes before it.
+#[test]
+fn a_cut_names_a_span_it_left_out() {
+    let line = "0".repeat(20_000);
+    let deleted = excerpt(&line, Some(4000..4000), 300);
+    assert_eq!(
+        deleted.mark("the change", None),
+        " [… cut at byte 300 of 20000; the change is after byte 4000]"
+    );
+    let far = excerpt(&line, Some(19_000..19_006), 300);
+    let source = super::Source {
+        path: "'/a.txt'",
+        line: 7,
+    };
+    assert_eq!(
+        far.mark("the match", Some(source)),
+        " [… cut at byte 300 of 20000; the match is at bytes 19001-19006: in `shell`, `sed -n \
+         '7p;7q' '/a.txt' | cut -b 14001-20000 | LC_ALL=C fold -b -w 2000` shows bytes \
+         14001-20000]"
     );
 }

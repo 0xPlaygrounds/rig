@@ -2,9 +2,10 @@
 
 `rig` is a terminal coding agent. It is a Bevy app built on the
 [`rig-harness`](../crates/rig-harness) crate, and every part of it but the
-harness is a plugin, listed in `plugins.toml` and built from a plugin crate.
-The `rig` command is its launcher: it generates a small Cargo project for the
-agent with those plugins, builds it, and runs it.
+harness is a plugin, built from a plugin crate and turned on or off in
+`settings.toml`. The `rig` command (the `rig` crate's binary) is its launcher: it
+generates a small Cargo project for the agent with the plugins you turned on,
+builds it, and runs it.
 
 The agent's coding tools come from the [`rig-tools`](../crates/rig-tools)
 crate, usable by any rig agent, and its kernel (agents, turns and tool calls
@@ -12,10 +13,13 @@ as Bevy entities, one recorded effect path, session logs) is the
 [`rig-ecs`](../crates/rig-ecs) crate, for building your own harness.
 
 - [Install and run](#install-and-run)
+- [Update](#update)
+- [What is per home and what is per project](#what-is-per-home-and-what-is-per-project)
 - [Models and sign-in](#models-and-sign-in)
 - [The terminal view](#the-terminal-view)
 - [Sessions](#sessions)
 - [Context, compaction and retries](#context-compaction-and-retries)
+- [If rig seems stuck](#if-rig-seems-stuck)
 - [Tools](#tools)
 - [Subagents](#subagents)
 - [Without the terminal view](#without-the-terminal-view)
@@ -26,23 +30,140 @@ as Bevy entities, one recorded effect path, session logs) is the
 
 ## Install and run
 
+`cargo install rig` installs the launcher, the `rig` command, at the latest
+release. This guide describes the branch or tag you read it on, and `main`
+can be ahead of the release. Each release's guide is on its tag, such as
+[0.47.0's guide](https://github.com/0xPlaygrounds/rig/blob/v0.47.0/docs/agent.md).
+To install `main`, build the launcher from a checkout
+(`--force` replaces a `rig` installed by another crate or source):
+
 ```bash
-cargo install rig
-export OPENAI_API_KEY=...   # or any other provider key in the model catalog
-rig                         # builds the agent (later starts rebuild what changed), then opens it
+git clone https://github.com/0xPlaygrounds/rig && cd rig
+cargo install --locked --force --path .
 ```
 
+Then:
+
+1. `rig` builds the agent, which takes several minutes the first time, and
+   opens it. Later starts rebuild only what changed.
+2. `/login` signs in with a ChatGPT plan or saves a provider's API key
+   ([Models and sign-in](#models-and-sign-in)). Or export a key, such as
+   `OPENAI_API_KEY`, before starting `rig`.
+3. `/model` picks a model.
+4. Type a prompt and press Enter. `/help` lists the commands.
+5. `rig -p "fix the failing test"` answers one prompt without the terminal
+   view ([Without the terminal view](#without-the-terminal-view)).
+
 The agent builds from rig's crates on crates.io, at the launcher's version,
-or from a rig checkout ([Running from a checkout](#running-from-a-checkout)).
-It needs Rust 1.97.1 or newer and runs on Linux and macOS; Windows is not
-supported yet.
+or from the rig checkout the launcher was installed from
+([Running from a checkout](#running-from-a-checkout)). It needs Rust 1.97.1 or
+newer and runs on Linux and macOS. Windows is not supported.
+
+## Update
+
+`rig update` reinstalls the launcher where it is installed (`--root` is the
+directory above the running `rig`'s `bin`), then builds the agent with the
+new one, which takes 2-3 minutes after a change. It prints the command
+before running it. cargo runs in the checkout, or for crates.io in the
+install root, not in the directory rig was started in, so a
+`rust-toolchain.toml` there pinning an older Rust does not apply:
+
+- From crates.io: `cd <root> && cargo install --force --locked rig --root
+  <root>`. 0.46.0 has no `rig update`: reinstall it by hand as in
+  [Install and run](#install-and-run). `--force` replaces a `rig` that another
+  crate, such as an older `rig-cli`, installed.
+- From a checkout: `cd <checkout> && cargo install --force --locked --path
+  <checkout> --root <root>`, with the checkout's own Rust. It rebuilds the
+  checkout as it is: `git pull` first is yours.
+
+A failed install, such as one offline, leaves the installed rig as it was and
+exits 1. In the agent, `/update` runs it, showing its lines and cargo's latest
+one, and then restarts (`rig_basics::reload::update::UpdatePlugin`, on by
+default, adds `/update`; with it off, `rig update` in a shell still works): the launcher, whose own file was replaced, starts the
+new one on the same session. Unlike `/reload`, the restart ends the background
+jobs the agent started, and asks again for the keys you typed at the terminal.
+Installing by hand works too: the next start, or the next `/reload`, `/new` or
+`/resume`, runs the new launcher. A `-p` or `--json` run whose launcher was
+replaced, by its `/update` or from outside, does not reload: it says so and
+goes on with its build, a `-p` run ending as usual with its exit line, and the
+next run starts the new version. `RIG_HOME/target` keeps the old version's
+build too.
+
+Sessions resume while their format is the same. A session in another format
+is refused, unchanged, with `this session was made by another version of rig;
+start a new session`.
+
+Coming from 0.46.0: it kept the plugin list in `RIG_HOME/plugins.toml` and the
+saved model in `RIG_HOME/defaults.json`. This version reads neither. Its
+start warns once and prints the `rig plugin` commands and `[model]` lines
+that move them into `settings.toml` ([Plugins](#plugins)). The
+[0.46 → 0.47 migration guide](../MIGRATING.md#046--047) lists every step.
+
+## What is per home and what is per project
+
+`RIG_HOME` (default `~/.rig`) is the home. The project is the directory found
+as [Context, compaction and retries](#context-compaction-and-retries)
+describes.
+
+| What | Home | Project |
+| --- | --- | --- |
+| Plugins (`[plugins]`) | `RIG_HOME/settings.toml` | no |
+| Model and reasoning (`[model]`) and other settings | `RIG_HOME/settings.toml` | no: a project has no settings |
+| Instructions | `RIG_HOME/AGENTS.md` | `AGENTS.md` from the working directory up to the project root |
+| Skills | `RIG_HOME/skills`, `~/.agents/skills` | `.rig/skills` and `.agents/skills` from the working directory up to the project root |
+| MCP servers, with the optional `rig-mcp-client` plugin | `RIG_HOME/mcp.json` | `.rig/mcp.json` |
+| Sign-in, sessions, builds | `auth/`, `sessions/`, `target/` | no |
+
+Plugins are compiled into one agent per home, so a repository you clone
+cannot name crates for rig to build. To use other plugins for a project, give
+it its own home. A second home has its own sign-in, sessions and build (a few
+gigabytes). With [direnv](https://direnv.net), an `.envrc` in the project sets
+it whenever you enter the directory:
+
+```bash
+# .envrc
+export RIG_HOME="$HOME/.rig-homes/myproject"
+```
+
+Keep the home outside the repository, so the build is not in your working
+tree. Run `direnv allow` once, then `rig plugin enable <type>` there changes
+only that home. An exported provider key works in every home; a `/login` is
+per home.
 
 ## Models and sign-in
 
-`/model` picks a model (providers that need no key, such as a local Ollama,
-are listed last), and `/effort` its reasoning setting. `-m vendor/model` picks
-one on the command line; otherwise a session starts with the last model and
-reasoning chosen, else the first model with a key.
+`/model` picks a model, and `/effort` its reasoning setting: one the model
+lists, such as `high`, or a budget it takes, such as `/effort 4096 tokens`.
+On a model that takes a budget and no levels, `low`, `medium` and `high` are
+budgets. `/model` lists the
+models you can use now: those of a provider whose key is exported or saved
+with `/login`, those of a sign-in, and those of a local server that needs no
+key (Ollama, llama.cpp) once `OLLAMA_API_BASE_URL` or `LLAMACPP_API_BASE_URL`
+names it or its key variable is set, listed last; the picker opens on the current model, which it always
+lists. With none to list it says how to get one. `/model vendor/model` names
+any catalog model, such as a local one at its default address; one that does
+not connect, such as one with no key, is refused and the current model stays.
+A new session starts with the model and reasoning you last picked with
+`/model` and `/effort`, saved once that model has answered (an `/effort` is
+saved with a model you picked with `/model` or saved before). They are saved
+as `[model]` in `RIG_HOME/settings.toml`, `default = "vendor/model"` and
+`effort = "high"` (`default`, `off`, a level, or `"1024 tokens"`), which you
+may also set by hand; rig rewrites only those two keys and keeps your
+comments. `effort` is read as the model it starts on reads `/effort`, and one
+that model does not take is reset to its default with a warning. A project's `[model]` is not read. `-m
+vendor/model` picks one on the command line for that run only, with the saved
+reasoning setting when that model takes it, and none when it does not
+connect (a headless run then exits 2); an editor's
+choice over ACP and an automatic pick are never saved either. With nothing
+saved or named, the terminal view, a headless run and an editor's new session
+all start on the same automatic pick: the ChatGPT plan's latest frontier model
+when you are signed in and your account offers it, else the first model a key
+or a sign-in reaches, in catalog order, else a local server's. The sign-in goes
+first because you signed in within rig, while an exported key may be there for
+other tools. The pick lands once the start is over, after MCP servers start
+and ChatGPT says which models your account may use, and a model you pick
+meanwhile stays. With none to reach, the terminal
+view shows "no model: /model picks one".
 
 `/login` without arguments lets you pick the ChatGPT plan or a provider that
 takes an API key. `/login <provider>`, such as `/login anthropic`, asks for
@@ -63,10 +184,20 @@ over SSH, or when both ports are taken, it shows a code to enter at
 `https://auth.openai.com/codex/device` instead, as `/login chatgpt --device`
 does. Print mode prints the URL or code, and `rig -p "/login chatgpt"` signs in
 without the terminal view. Esc or a second `/login` cancels a sign-in that waits.
+The pages the browser lands on tell you to return to rig; an app built on
+rig's harness names itself there with `[login] app_name = "..."` in
+`settings.toml` (an empty or blank name is refused).
 
 Once signed in, `/model` lists the plan's models as `chatgpt/...`, marked
-"(ChatGPT plan)", and a successful sign-in switches the agent to the plan's
-latest frontier model. The credential is kept in `RIG_HOME/auth/chatgpt.json`,
+"(ChatGPT plan)": those ChatGPT says your account may use, asked once per run
+when first needed (and once more if it refuses a model it listed). Until it
+answers they are marked as being checked; a timeout or an
+unavailable backend is retried as a model call is. If it still cannot be
+asked, the plan's models are refused with the reason; the next request asks
+again (after any wait ChatGPT asked for), and so does `/model` 10 s later.
+Only a failed sign-in asks you to sign in again. A
+successful sign-in switches the agent to the plan's latest frontier model for
+that session. The credential is kept in `RIG_HOME/auth/chatgpt.json`,
 readable by you alone, and refreshed before a request when it has expired, so
 a long session keeps working (rig processes running at once take turns
 refreshing it). `/logout chatgpt` asks OpenAI to revoke it, then deletes it.
@@ -86,65 +217,201 @@ While an earlier prompt is shown unchanged, Up and Down keep walking the
 prompts, slash commands included, and no completion list opens until you
 type or press Tab (while a turn runs, Tab queues it). Text you drop
 without sending (Ctrl+C, sending an earlier prompt in its place) goes into
-the history, secrets redacted, so Up brings it back. Ctrl+P and Ctrl+N move
-the same way, even with a completion list open, but Ctrl+P goes to the
+the history, so Up brings it back. While redaction is on (below), every
+prompt Up brings back, sent or not, shows its secrets and placeholders as
+`[REDACTED]`, and sending it again sends `[REDACTED]`. Ctrl+P and Ctrl+N
+move the same way, even with a completion list open, but Ctrl+P goes to the
 history from anywhere on the first line. The usual emacs keys edit
 (Ctrl+A/E/K/U/W, Alt+B/F/D); Ctrl+C clears the input, and Ctrl+D on an
 empty input quits. A leading `/` completes command names and `@` completes
-the project's paths (skipping what `.gitignore` leaves out); Tab or Enter
-takes the selected one. A command that is unknown or refused comes back in
-the input with the reason, and Enter then sends it to the model as it is.
+the paths of the shown agent's working directory (skipping what
+`.gitignore` leaves out); Tab or Enter takes the selected one. A paste
+opens no list on its last word unless that word already names the
+selected item, so Enter sends it as pasted (or only closes its quote). A `/`
+followed by a space, or a first word with another `/` in it (a path such as
+`/etc/hosts: what is this?`, or `//x`), is no command: it goes to the model
+as typed. A path a
+space or trailing punctuation would cut is inserted quoted,
+`@"my notes.md"`, which is also how to type one by hand. A command typed
+that is unknown or refused comes back in the input with the reason, and
+Enter on it unchanged sends it to the model as it is; changed or cleared
+(Ctrl+C) and typed again, it is a command again. One picked from a list or
+run by a key only shows the reason.
 `/help` lists the commands.
 
 While an earlier prompt is shown, the input's top row says "An earlier
-prompt · Down back to your draft" (or "to an empty input"). While nothing is typed, the top row shows
-the keys and the bottom row the status line: the model, the reasoning
-setting, what the agent is doing, the session's tokens (uncached input,
+prompt · Down back to your draft" (or "to an empty input"). While nothing is
+typed, the top row shows the keys and the bottom row the status line: the
+model, the reasoning setting, what the agent is doing (and for how long, see
+[If rig seems stuck](#if-rig-seems-stuck)), the session's tokens (uncached input,
 output, cache reads and writes), its cost (the provider's figure, else the
 catalog's list price; `+` when some calls had no price) and the context in
-use against the model's window. `/usage` breaks them down.
+use against the model's window, or `?` after a compaction, until the next
+reply measures it (`ctx ?/1.0M`). `/usage` breaks them down. Key hints
+(`rig_tui::hints::KeyHintsPlugin`) lists those keys; disabled, that row is
+empty, but a question's keys and a panel's "Esc gives them back" still show.
+Sticky prompt (`rig_tui::sticky::StickyPromptPlugin`, on by default) pins your
+most recent user message over the top row of the transcript whenever it has
+scrolled off screen, and hides it again once that message is visible.
+While the agent works, a
+small wave of six bars moves before what it is doing, and rig's mark in the
+welcome at the top of the transcript pulses with it;
+`[activity] animate = false` in `settings.toml` keeps both still. They are the
+working animation, `rig_basics::activity::animation::WorkingAnimationPlugin`;
+with it off (`rig plugin disable` with that path) the status has no bars, still
+says `thinking… 12s`, and the mark stays still. With the optional
+`rig_basics::budget::BudgetPlugin` (`rig plugin enable
+rig_basics::budget::BudgetPlugin`), `/budget 2.00` or `/budget 500000 tokens`
+bounds what the session spends, helpers included: at the limit the running
+turns stop and new model calls are refused, naming `/budget`; a model call
+in flight then is cancelled, and what its provider bills for it is not
+counted, so the bill can pass the limit. `RIG_BUDGET_USD` and
+`RIG_BUDGET_TOKENS`, which a helper gets from its parent, hold a run the same
+way, and their refusal names them. `[budget] usd`
+and `tokens` in `settings.toml` set it for new sessions. Dollars count only
+priced calls: a subscription model's, such as a `chatgpt/*` one, has no
+price, so bound those by tokens.
 
-Typing while the agent works is fine. Enter steers the running turn (the
-message goes to the model with its next call, after the tool results it waits
-for) and Tab queues a follow-up that is sent when the turn would end. Both
-wait under the transcript. Esc stops the turn and puts them back in the input
+The status line is its own plugin, `rig_tui::status::StatusLinePlugin`, on
+by default. `rig plugin disable rig_tui::status::StatusLinePlugin` leaves
+the input's bottom row empty, which also takes away the model's name and
+what the agent is doing. `[status] hide` in `settings.toml` leaves single
+parts out by name. A hand edit applies at the next start; `/plugins` shows
+and hides them at once:
+
+```toml
+[status]
+hide = ["cost", "cache"]
+```
+
+The parts rig draws: `session`, `title` (a subagent's name), `model`,
+`reasoning`, `status` (what the agent is doing), `subagents`, `others` (other
+agents at work), `turn` (what the running turn spent), `reload`, `copied`,
+`tokens`, `cache`, `cost`, `budget` and `context`. Another plugin's parts
+are hidden by their names in the same way, and a name nothing draws does
+nothing. Hidden parts are only not drawn: plugins still read them. With no
+agent, the line says `no agent`, which is no part.
+
+While the status line is on, `/plugins` ends with a "Status line parts"
+branch: rig's parts by a short label (such as "Cost" or "Context used"),
+drawn yet or not, and another plugin's parts by name once they are drawn.
+They are settings, not plugins: each shows "shown" or "hidden", and Enter on
+one writes `[status] hide` and changes the line at once, with no question
+when you leave. Unticking the branch hides them all. When `settings.toml`
+cannot be written, a notice says why and the row goes back.
+`/plugins defaults` shows every part again at once. Without a terminal it
+writes nothing and names the `hide` line to delete.
+
+Typing while the agent works is fine. Enter steers the running turn:
+already-running tool calls finish, unstarted tool calls in the same reply are
+skipped (unless a plugin is holding them), and the message goes to the model
+on its next call. Tab queues a follow-up that is sent when the turn would end.
+Both wait under the transcript; Up on an empty input pulls the last waiting
+message back to edit or cancel. Esc stops the turn and puts them back in the input
 (a plugin may keep them for the next turn instead); what the reply had
-streamed stays in the transcript, saved as stopped, and is not sent to the
-model again. Messages still waiting when the agent exits come back when the
-session is resumed.
+streamed stays in the transcript, saved as stopped. A tool call cut while its
+arguments streamed stays as a row that says it never ran; the model later
+reads the reply's text and a note that the call never ran, never the call.
+Messages still waiting when the agent exits come back when the session is
+resumed.
 
-`@path` to a PNG, JPEG, GIF or WebP file attaches the image when the model
-reads images. Ctrl+V pastes the clipboard's image (through `wl-paste`, `xclip`
-or `pngpaste`) as such a path, and a dropped image file becomes one too.
+`@path` attaches the file: its text, or, for a PNG, JPEG, GIF or WebP file,
+the image when the model reads images. It resolves as the tools resolve a
+path, so `@bench:~/notes.md` is the host `bench`'s file. A reference that
+looks like a path (it has a `/` or an extension) with no file there, or one
+that cannot be read, is warned about with the reason, and the model's
+message says the same, so the model knows it got no file. A message waiting for
+files on another machine holds back those sent after it, and Esc meanwhile
+puts them all back in the input. Ctrl+V pastes the clipboard's image, a
+PNG, JPEG or WebP (through `wl-paste`, `xclip` or `pngpaste`), as such a
+path, or its text when it holds no image, and each image file dropped
+becomes one too, also as a `file://` URL. When it cannot, it says why: the
+program that is not installed, no clipboard reachable from this machine
+(over SSH, say), or a program that did not answer within 5 seconds.
 
 Answers are drawn as markdown, edits as diffs, and each built-in tool's call
-in its own way, always whole: every call's arguments and result, every diff
-and every note, nothing cut or folded. A call's row is tinted by where it
-stands (waiting, running, done, failed). Code is highlighted in the terminal's
-own palette, so it follows the terminal's theme. PageUp, PageDown and
-Shift+Up/Down scroll the transcript. With `NO_COLOR` set, nothing is drawn in
-color. A plugin draws its tools' calls with ordinary systems in
+in its own way. By default every call is drawn whole: its arguments and
+result, every diff and every note, nothing cut or folded. The optional
+[`rig_fold::FoldPlugin`](../plugins/rig-fold) (off by default, `rig plugin
+enable rig_fold::FoldPlugin`) instead folds each finished call to its header,
+its first and last lines, and a line counting those left out. Ctrl+O (`[fold]
+key`) shows the call selected with Alt+Up whole, or every call when none is
+selected, and folds them again. A failed, stopped or running call stays whole,
+and the model, the session log, `--json`, ACP and exports still get every
+line. A diff is drawn from what the session keeps of it, so with redaction on
+(below) a secret in it shows as a placeholder and an edit whose diff holds a
+private key block shows its reply instead, as one whose diff passes 256 KiB
+always does. A call's row is tinted by where it stands (waiting, running,
+done, failed). Code is highlighted in the terminal's own palette, so it
+follows the terminal's theme.
+Dragging over the screen with the mouse copies what it covers when the
+button comes up, and the status line says `Copied 3 lines` until the next
+key or click. The copy goes to the terminal (OSC 52) and to `wl-copy`,
+`xclip` or `pbcopy`; when the clipboard program is not installed, the first
+copy says so. Shift and a drag
+reach the terminal's own selection instead. Inside tmux, OSC 52 needs
+`set -g set-clipboard on`.
+PageUp, PageDown and Shift+Up/Down scroll the transcript. With `NO_COLOR` set,
+nothing is drawn in color. A plugin draws its tools' calls with ordinary systems in
 `rig_tui::TranscriptRender`, selecting inputs through
 `rig_tui::RenderBatch::tools_mut` and writing their output lines.
 
 ## Sessions
 
 Each `rig` starts a new session. `/quit` ends it, `/new` starts a new one and
-`/name` names it. A session is kept once it has a user or assistant message; one
-that only changed settings is removed when it ends, and `/resume` never
-lists it. `/resume` lists the earlier sessions (name or first message, what
-it spent, its main agent's context, the end of its directory and its age; →
-shows the whole directory) and resumes the one picked, in its own
-directory; `rig --resume <id or name>` (or `/resume <id or name>`) resumes a
-given one, such as after a crash.
+`/name` names it. A session is listed while it has a user or assistant
+message. One that logged nothing is removed when it ends. One that only
+changed settings, or whose only message failed and came back to the input (a
+model that refuses it, say), stays on disk when it ends, but offers no `rig
+--resume`, and `/resume` never lists it. `/resume` lists the earlier
+sessions (name or first message, what it spent, its main agent's context, the
+end of its directory and its age; → shows the whole directory) and resumes
+the one picked, in its own directory; `rig --resume <id or name>` (or
+`/resume <id or name>`) resumes a given one, such as after a crash.
+
+Forks are off by default. `rig plugin enable
+rig_basics::sessions::forks::ForksPlugin` (or `/plugins`) turns them on:
+`/fork` makes a new agent from the shown one and shows it, through the end
+of its conversation, through a message you name (`/fork m4`) or through one
+you pick (`/fork at`). Rewind is a fork too: select an earlier message of
+yours with Alt+Up and press Enter, and the shown agent forks just before it,
+with the message back in the input. `/agents` comes with forks and shows the
+other agents. A resumed session shows the agent that was shown last, or the
+top-level agent above it when that was a subagent, with forks on or off.
+
+Rig redacts nothing unless you turn redaction on with `rig plugin enable
+rig_basics::redact::RedactPlugin` (then `/reload`, or the next start). With it,
+API keys, tokens, private keys and the values of secret-named variables
+(`GITHUB_TOKEN=…`) become placeholders, `‹SECRET_1›`, one per distinct
+secret, where they come in: in the model's reply as it streams, in each
+tool's output and result, and in your messages and the files they name. The
+model, the session's logs, the terminal view, `--json`, ACP, subagents and a
+resumed session see only the placeholders, so an image or audio link that
+holds a key, such as a presigned URL, reaches the model with its
+placeholder and no longer fetches. A tool call that names one runs
+with the real value, so the model can still put your key in a file or a
+command without seeing it. A shell command naming one whose value the shell
+would read as code, such as a quote, a space or `$`, is refused. The values
+are kept in memory for the run only: after a restart, `/reload` or
+`/resume` a call naming an old placeholder is refused, and you give the
+value again. A file that already holds text such as `‹SECRET_1›` is not
+told apart: a call that writes it gets this run's first secret, or is
+refused. What a session saved while redaction was off stays as it was, and
+one saved while it was on keeps its placeholders after you turn it off,
+where a tool call writes them as they are; resuming it then notes that no
+plugin saves `rig_basics::redact::Issued`, the count of placeholders handed
+out, which is kept for when you turn redaction on again.
 
 The session is written as it happens. Each agent, subagents included, has a
-log, `sessions/<id>/logs/<agent-id>.jsonl`, of its messages, settings, usage
-and compactions, appended to as it runs and rewritten only through
-rig-memory (a plugin's redaction, say, keeps each record's place and time).
-Images are stored once in `files/blobs/`, and `files/meta.json` caches what
-`/resume` lists. An older session format is resumed and written on in its
-own; one from before `rig-session/2` is refused, unchanged.
+log, `sessions/<id>/logs/<agent-id>.jsonl`, of its messages (each tool result
+with what its call published for its row, such as an edit's diff, a read's
+lines and a command's exit status, so a resumed session draws its calls as
+they were drawn), settings, usage and compactions, appended to as it runs and
+rewritten only through rig-memory (a plugin's redaction, say, keeps each
+record's place and time). Images are stored once in `files/blobs/`, and
+`files/meta.json` caches what `/resume` lists. A session in another format,
+written by another version of rig, is refused, unchanged
+([Update](#update)).
 
 Quitting mid-turn (Ctrl+D, `/quit`, closing the terminal, or a signal to a
 headless run) stops the turn as Esc does: the reply so far is kept, each
@@ -169,69 +436,168 @@ tool rules in it, and each tool says in its own description when to pick it.
 Models whose catalog entry lists a prompt cache get it, with the agent's id
 as the cache key where the provider takes one.
 
+The project is the working directory or the nearest directory above it
+that holds `.git` or a `.rig` directory, below your home directory: rig
+started anywhere inside one reads the same `.rig/mcp.json`, `AGENTS.md`
+files, skills and per-project data. A project has no settings: rig never
+reads a `.rig/settings.toml`. Your home directory is not a project: started
+there, rig reads only `RIG_HOME`'s MCP servers. Commands still start in the
+working directory.
+
 Two default plugins add to it when the agent starts. `AgentsMdPlugin` adds
 the `AGENTS.md` files of the working directory and of each directory above
-it up to the repository root (the nearest holding `.git`), nearest last,
-after your own `RIG_HOME/AGENTS.md`. `CLAUDE.md` is not read; a repository
+it up to the project's root, nearest last, after your own
+`RIG_HOME/AGENTS.md`. `CLAUDE.md` is not read; a repository
 that has only one can link `AGENTS.md` to it. `SkillsPlugin` lists your
 skills: each directory with a `SKILL.md` (the Agent Skills format, a `name`
 and a `description` in its frontmatter) under `.rig/skills` or
 `.agents/skills` of those same directories, `RIG_HOME/skills` or
-`~/.agents/skills`. The model reads a skill's file when a task matches its
-description, and `/skill:<name> [text]` sends one with your message. A skill
-with `disable-model-invocation: true` is left out of the list and only sent
-by hand. Both are read once, so an edit takes effect on `/reload` or `/new`.
+`~/.agents/skills`; each directory is searched once, and a link that leads
+back to one being searched is named once. The model reads a skill's file
+when a task matches its description, and `/skill:<name> [text]` sends one
+with your message. A skill with `disable-model-invocation: true` is left
+out of the list and only sent by hand. Both are read once, so an edit takes
+effect on `/reload` or `/new`.
 
-When the conversation comes within 16k tokens of the model's window, older
-tool outputs are cleared and, if that is not enough, the older messages are
-summarized by the model into a structured checkpoint (goal, progress,
-decisions, next steps, files read and changed) that requests send in their
-place; the newest 20k tokens stay as they are. When the conversation outgrows
-the window anyway, older tool outputs are cleared and the call is sent again.
-`/compact` compacts now, and `/compact <focus>` says what the summary should
-keep. The summarized messages stay in the transcript, under a line that shows
-the summary; a resumed session starts from the messages the summary kept.
+Compaction works as in the [pi coding agent](https://github.com/badlogic/pi-mono).
+It counts each request as it is sent: the tokens the provider reported for the
+last reply, plus an estimate of the messages after it (3.5 characters a token),
+or, when no usage was reported, an estimate of the system prompt, the tools and
+the messages. It compacts when that leaves less than `reserve_tokens` (16384)
+of the model's input limit free (its context window, or the smaller input limit
+some models have). The same count fits the request's output limit to the room
+left in the window. It checks before each request of a turn that sends the
+agent's conversation, against the model that request goes to: before a prompt
+is sent (the prompt is counted, where pi leaves it out, and is never
+summarized), and after tool results. So a large paste that takes the request
+over the limit is compacted for before it is sent, not refused first. It does
+not compact right after an answer, where pi does: the next prompt compacts
+first, and waits for the summary. The
+request waits while the summary is written, and is built again once it is in.
+The older messages are then summarized by the model, in a
+separate call, into a structured checkpoint (goal, constraints, progress,
+decisions, next steps, critical context) that requests send in their place,
+followed by the files read and changed. About `keep_recent_tokens` (20000) of
+the newest messages stay as they are, a prompt about to be sent counted among
+them, never cut between a tool call and its result; when the cut falls inside a turn, that turn's earlier part gets a
+summary of its own. A later compaction updates the previous summary with the
+new messages. When the provider refuses a request as too long, or the window
+cuts a reply short (it stopped at a limit having written less than the request
+asked for), rig drops that attempt, runs none of its tool calls, compacts and
+sends the request once more; when there is nothing to compact, or that summary
+fails or is cancelled, the turn stops there with a notice, and the user's
+prompt and its attachments stay in the conversation; a reply cut short that is
+left out stays in the saved session, where no request sends it. One request is
+recovered once: a second refusal fails the turn, until a message of yours goes
+into the turn or a whole reply comes. A summary that fails, is cut short or is
+blank replaces nothing, and so does one whose messages changed while it was
+written; a notice says why. A summary call that fails is retried as a turn's
+own model calls are, by `[retry]` and after the wait the provider asks for,
+each summary call on a count of its own. A message sent while `/compact`
+writes its summary goes on once it ends, as after any reply: a steering one
+first, queued ones after, in the order they were sent, attachments and all.
+Stopping the turn (Esc) cancels a summary
+being written, and with it the turn; a message waiting behind it
+comes back to the input as its text only, without its attachments. As in pi,
+compaction summarizes only what lies before the newest `keep_recent_tokens`: a
+small window near its limit compacts again whenever something lies before
+them, and a conversation that
+fits inside them (very dense content, or a keep larger than the window leaves)
+has nothing to summarize; a single tool result bigger than the window stays
+with its call, so recovery can summarize only what came before it and the
+request is refused again; and a summary request bigger than the model, such as
+after a switch to a smaller one, fails with the provider's reason. `/compact`
+compacts now, and `/compact <instructions>` says what the summary should focus
+on; with nothing to summarize it says, as pi does, "Compaction failed: Already
+compacted" right after a compaction, else, as no failure, "Nothing to compact
+yet: the session fits in what `[compaction] keep_recent_tokens` keeps".
+`[compaction]` in `RIG_HOME/settings.toml` takes `enabled`
+(every automatic compaction, on by default; `/compact` works either way),
+`reserve_tokens` and `keep_recent_tokens`. The summarized messages stay in the
+transcript, under a line that shows the summary; a resumed session starts from
+the messages the summary kept. The summary's entry is the compaction's only
+record: what it replaced is read from the session's log, so once a plugin puts
+a whole other conversation in the agent's place, the messages summarized
+before that are no longer shown, in the terminal or to an ACP client. After a
+compaction the status line shows the context as unknown (`ctx ?`) until the
+next reply reports it, as pi does.
 
 A model call that fails on a rate limit, an overloaded provider or a dropped
-connection is retried up to four times, waiting as long as the provider's
-`Retry-After` asks (or 2, 4, 8, 16 seconds). If it still fails, your message
-goes back into the input: press Enter to send it again, or switch models
-first.
+connection is retried up to four times. It waits as long as the provider's
+`Retry-After` asks, up to 60 seconds; a longer requested wait ends retries.
+Without a retry delay, it waits 2, 4, 8, then 16 seconds, and 30 seconds for
+any retry after that, each shortened at random by up to a quarter. `[retry]`
+in `RIG_HOME/settings.toml` changes both, with no upper bound: `max_retries`
+and `max_wait_secs`. A model that calls a
+tool it does not have three times in a turn fails the turn;
+`[tools] max_unavailable_calls` changes that. When the turn fails, your
+message goes back into the input: press Enter to send it again, or switch
+models first.
+
+## If rig seems stuck
+
+The status line says what the agent is doing. Once a step has lasted 5
+seconds it also says for how long, such as `thinking… 1m12s` or
+`running tools… 4m03s`. The clock starts again when the step changes, so
+`thinking… 4m10s` means the model has written no answer or tool call for
+that long; it may still be reasoning.
+
+Esc stops the turn at any time. What the reply had streamed stays.
+
+A model call whose provider streams no event for 5 minutes fails and is retried
+like a dropped connection (above), showing `retry 1/4 in 2s…`. With the
+default four retries, a provider that never answers takes about 25 minutes
+(5 tries of 5 minutes) to end in an error. The status line's clock starts
+again after each retry, so it climbs to about `5m00s`, shows `retry n/4`,
+then starts over. Only an event the provider streams restarts the 5
+minutes, a ping event included; an event stream's comment lines do not.
+
+To see what happened, read the session's log, `RIG_HOME/sessions/<id>/agent.log`.
+A session that was never saved is removed when rig exits; when that run
+failed, its log is kept in `RIG_HOME/run/<pid>/agent.log`. `RIG_HOME/build.log`
+holds the last build's output. Start rig with `RUST_LOG=debug` for a more
+detailed log.
 
 ## Tools
 
 The default tools are `read`, `edit`, `write` and `shell`, each its own
-plugin. A `shell` call runs until its command ends, unless the model sets
+plugin. The `rig-tools` library also provides `search`, `list` and
+`delete`; the stock agent leaves those operations to `shell`.
+A `shell` call runs until its command ends, unless the model sets
 `timeout_secs` or you interrupt it; either stops the command, on a remote
-host too. The whole output
-of a `shell` call that was cut is kept in `RIG_HOME/spill/`, and the model
-reads it by the path the cut output names.
-
-With `rig_basics::checkpoint::CheckpointPlugin` enabled (it is listed
-disabled by default), every `shell` call, and any other call that may write
-anywhere, reports the files it changed, from snapshots of the project before
-and after it kept in the session's scratch directory, never in the
-repository's `.git`. `[checkpoints] enabled = false` in
-`RIG_HOME/settings.toml` turns that off.
+host too. A job the command leaves running on this machine in the
+background with its output elsewhere (`server > log 2>&1 &`) keeps running
+between calls and through an interrupt of a later one, and ends when rig
+exits; a job that still holds the call's output open is ended with the call, and
+the result says so; `setsid server > log 2>&1 &` keeps it running after rig (on macOS,
+which has no `setsid` command, `perl -MPOSIX -e 'POSIX::setsid(); exec
+@ARGV' server > log 2>&1 &`). On a remote
+host such a job keeps running after the call. A command finds no editor
+and no pager: `git commit` without `-m` fails at once, saying to pass `-m`
+or `--no-edit`. The whole output
+of a `shell` call that was cut is kept in `RIG_HOME/sessions/<id>/spill/`,
+and the model reads it by the path the cut output names.
 
 With `[remote.hosts]` in `RIG_HOME/settings.toml`, such as
 `bench = ["koh", "exec", "bench", "--sh"]` or `box = ["ssh", "dev@box"]`, a
 path written `HOST:PATH` (`bench:~/app/src/lib.rs`) is that host's for every
-tool: `read`, `edit`, `write` and `search` act on the file there, and `shell`
+default coding tool: `read`, `edit` and `write` act on the file there, and `shell`
 with `cwd: "box:~/app"` runs the command there, through the host's command,
 while other paths stay on this machine
 ([rig-basics](../plugins/rig-basics/README.md)).
 
 ## Subagents
 
-With `rig_basics::subagents::SubagentsPlugin` enabled (it is listed disabled
-by default; `/plugins` or `rig plugin enable
+With `rig_basics::subagents::SubagentsPlugin` enabled (it is off by
+default; `/plugins` or `rig plugin enable
 rig_basics::subagents::SubagentsPlugin` enables it), the model can hand work
 to subagents with the `task` tool. Each is a new agent in the same process,
 with its own conversation and, if the call asks, another model, reasoning
-setting or a subset of the tools. `task` returns the subagent's id at once,
-and `message` sends one of the model's own subagents a follow-up, which it
-reads with its conversation kept.
+setting or a subset of the tools; a call that names no model or tools gets
+`[subagents] model` and `tools` from `settings.toml` when they are set, else
+the parent's, and `task`'s description says which. `task` returns the
+subagent's id at once, and `message` sends one of the model's own subagents a
+follow-up, which it reads with its conversation kept.
 
 Each `task` or `message` call is a request, and exactly one report for it
 (done, failed or stopped) arrives later as a message to the agent that asked,
@@ -246,21 +612,41 @@ is answered.
 
 Esc stops the shown agent's turn and the turns of every subagent below it,
 even when the shown agent is idle: stopping follows who started whom.
-`/agents` (`rig_basics::sessions::agents::AgentsPlugin`) lists every agent
-with its model and state, and shows the one picked: its transcript, and what
-you type then goes to it. A subagent can start subagents of its own, one
-level deep. Subagents started with `peers` can also send each other requests
-with `message` and `wait` for each other; a request or `wait` that would make
-agents wait on each other is refused. In the effect log, a subagent's model
-calls name the call that gave it its work as their parent.
+`/agents` (the Agent picker in `/plugins`, which subagents and forks add)
+lists every agent with its model, state and what it and the agents below it
+spent, and shows the one picked: its transcript, and what you type then
+goes to it. A subagent can start subagents of its own, as deep as they go. Subagents started with `peers` can also send each other
+requests with `message` and `wait` for each other; a request or `wait` that
+would make agents wait on each other is refused. In the effect log, a
+subagent's model calls name the call that gave it its work as their parent.
 
 ## Without the terminal view
 
 `rig -p "fix the failing test"` answers one prompt and exits: the answer goes
 to stdout, failures to stderr, and the exit code is 0 when the turn ended with
-an answer, 2 for a refused slash command. Text piped in follows the prompt
-(`git diff | rig -p "review this"`), and piped in without `-p` it is the
-prompt: `rig` runs the terminal view only on an interactive terminal.
+an answer, 1 when it failed or a plugin such as the budget stopped its work
+(answer or not), or when the agent did not start because
+`RIG_HOME/settings.toml` cannot be read, is not TOML or has a `[plugins]`
+table that does not read (stderr says why), 2 for a refused slash command (a
+prompt that starts with a path, `//` or a `/` and a space is none, and goes
+to the model), a
+plugin's settings table that does not read, or piped input that is over
+64 MiB, fails to read or is not UTF-8. Piped input is read until stdin closes; give `</dev/null` for none. A
+command that would open a list to pick from, such as `/model`, `/effort`,
+`/resume`, `/login` or `/fork at`, is refused there with the commands to
+type instead (`/model chatgpt/gpt-6.2-sol`), as is text after a command
+that takes none (`/new hello`). Text piped in follows the prompt (`git diff
+| rig -p "review this"`), and piped in without `-p` it is the prompt: `rig`
+runs the terminal view only on an interactive terminal.
+
+When stdout is a terminal, `rig -p` draws the answer's markdown,
+word-wrapped to that terminal's width (`COLUMNS`, else its size) with code
+lines kept whole. Piped or redirected, stdout gets the answer's raw
+markdown, unchanged. When stderr is a terminal, whatever stdout is, each tool
+call shows there dim, after the narration before it, fit to the width of
+the terminal stderr is: a shell call's command one line per command line,
+wrapped, `read`, `write` and `edit` their path, any other tool its name, each
+on one row. `NO_COLOR` leaves out the colors.
 
 `-r <id or name>` resumes a given session instead of starting a new one; it
 goes wherever an option goes, but not among a command's words or after `--`,
@@ -277,12 +663,21 @@ line that carries the final answer, and `rig --json` stays up, one request
 per line on stdin and one event per line on stdout, until stdin closes.
 `rig help-agents` is the whole protocol, with a Python driver. The optional
 `rig_basics::helpers::HelpersPlugin` gives the model the `helper` tool, which
-hands tasks to such one-shot rig children (one, up to eight side by side, or a
-chain) and returns their final answers.
+hands tasks to such one-shot rig children and returns their final answers.
+What a child spends, its own helpers included, is the caller's as it reports
+it: `/usage` shows it live as purpose `helper`, beside what each agent and
+the agents below it spent.
+A call's tasks run four at a time while the rest wait their turn, or in
+order as a chain, each for at most 600 s unless the call gives its own
+`timeout`. `[helpers] at_once` and `timeout_secs` change both, with no upper
+bound.
 
 ## Reload and builds
 
-`/reload` rebuilds the agent and restarts it on the same session. Typed while
+`/reload` rebuilds the agent when the plugins `settings.toml` turns on or a
+plugin crate changed, and restarts it on the same session. The agent holds
+only the plugins on, so turning one on or off rebuilds it: only the generated
+crate compiles again, and a plugin's own crate the first time it is on. Typed while
 a turn runs, it waits until no turn runs (`/reload cancel` drops it), and a
 turn started during the build delays the restart until it ends. It shows
 cargo's latest line, keeps the current build running if the new one does not
@@ -300,62 +695,228 @@ its conversation as a message from the `build` plugin, which starts no turn
 when the agent is idle and is saved with the session. Ask it why the build
 failed and it can read the log and fix the cause; `/reload` then tries again.
 
+Safe mode: when a plugin keeps rig from building or starting, `rig --safe`
+starts a build of rig's default plugins alone. `--safe` counts only as the
+first word, before any option, so `rig --safe -r <id>` works and a prompt or
+an option value that reads `--safe` stays the agent's. It ignores `[plugins]`
+in `settings.toml`, `off` included; the rest of the file, such as the model
+and sign-in, still applies. That build is kept in `RIG_HOME/bin/safe` with
+its own log, `RIG_HOME/safe-build.log`, so `build.log` keeps the failed
+build's output.
+With rig from crates.io, the next `rig --safe` starts it without running cargo
+while the launcher is the same and the build still describes itself; from a
+rig checkout (`RIG_SOURCE`, or a launcher installed from one), every
+`rig --safe` runs cargo, which rebuilds only what changed in the checkout. The
+agent says it is in safe mode. Fix the cause, for example with `/plugins`,
+then `/reload` builds and starts your own plugins again, rolling back to the
+safe build if that build crashes during startup, also when the reload restarts
+on a newly installed launcher. Quitting and running `rig` works too; that
+first plain start rebuilds your plugins and tries the result once as a new
+build, even one that stopped during startup before.
+
 `rig build` regenerates and builds the agent without starting it.
 `CARGO_BUILD_JOBS` sets cargo's `-j` for these builds, as for any cargo build.
 
-## Plugins
+### Faster builds
 
-Plugins are Bevy plugins, listed in `$RIG_HOME/plugins.toml`. Everything but
-the harness (the session and the launcher protocol) is an entry in that list:
-the project context, models, sign-in, sessions, compaction, usage, activity,
-each tool, `@path` attachments, `/reload`, `/plugins`, the commands,
-`--print` and the terminal view, each from a plugin crate in
-[`plugins/`](../plugins), most from [`rig-basics`](../plugins/rig-basics), so
-any of them can be removed or replaced
-([`crates/rig-harness`](../crates/rig-harness/README.md) lists them):
+The agent's dependencies build once, optimized and with no debug info, which
+keeps `RIG_HOME/target` smaller and links shorter. The crates `/reload`
+rebuilds (rig's own from a checkout, plugins by path or git, and the path
+dependencies of plugins by path) keep line tables, so their backtraces show
+file and line.
+
+cargo runs in `RIG_HOME/project` and keeps your environment, so
+`RUSTC_WRAPPER`, `RUSTFLAGS` and most cargo variables apply to these builds.
+rig ignores `CARGO_TARGET_DIR`, and the build target and target directory must
+stay unset, since rig starts the build it finds in `RIG_HOME/target/debug`.
+cargo also reads `RIG_HOME/.cargo/config.toml`, which applies to builds under
+`RIG_HOME` and nothing else. For example, to cache compiled crates with
+[sccache](https://github.com/mozilla/sccache) and link with
+[mold](https://github.com/rui314/mold):
 
 ```toml
-[[plugin]]
-crate = "rig-basics"              # one of rig's own plugin crates: no source
-plugin = "rig_basics::coding_tools::ReadTool"
+# RIG_HOME/.cargo/config.toml
+[build]
+rustc-wrapper = "sccache"
 
-[[plugin]]
-crate = "rig-tui"
-plugin = "rig_tui::TuiPlugin"
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+```
 
-[[plugin]]
+A `RUSTFLAGS` variable replaces the `rustflags` there. On x86_64 Linux Rust
+already links with `rust-lld`, so another linker gains less. A `[profile.dev]`
+table in that file overrides the generated one: set
+`[profile.dev.package."*"] debug = "line-tables-only"` to get dependency
+backtraces back.
+
+A `rust-toolchain.toml` in `RIG_HOME` picks the toolchain for these builds,
+unless `RUSTUP_TOOLCHAIN` is set. It must be at least rig's minimum Rust
+version. The Cranelift backend can compile debug builds faster, but it needs
+nightly and is experimental. To try it, add the
+`rustc-codegen-cranelift-preview` component and set `[unstable]
+codegen-backend = true` and `[profile.dev] codegen-backend = "cranelift"` in
+the config file. Changing the toolchain or the flags rebuilds everything once.
+
+## Plugins
+
+Plugins are Bevy plugins. Everything but the harness (the session and the
+launcher protocol) is one: the project context, models, sign-in, sessions,
+compaction, usage, activity, each tool, `@path` attachments, `/reload`,
+`/update`, `/plugins`, the commands, `--print` and the terminal view, each from a plugin
+crate in [`plugins/`](../plugins), most from
+[`rig-basics`](../plugins/rig-basics), so any of them can be turned off or
+replaced ([`crates/rig-harness`](../crates/rig-harness/README.md) lists them).
+The agent is built with exactly the plugins on, which it adds as one Bevy
+`PluginGroup`.
+
+`$RIG_HOME/settings.toml` is the one file you edit. Its `[plugins]` table holds
+only your changes to rig's built-in list, so a plugin rig adds to its defaults
+later reaches you without a change:
+
+```toml
+[plugins]
+enable  = ["rig_basics::budget::BudgetPlugin"]
+disable = ["rig_basics::skills::SkillsPlugin"]
+off     = ["rig-basics/sessions"]  # branches: a crate, or one of its areas
+
+[[plugins.extra]]                 # a crate that is not rig's
 crate = "hello"                   # the package name
-path = "plugins/hello"            # relative to plugins.toml; or git = "..." (branch, rev), or version = "..."
+path = "plugins/hello"            # relative to RIG_HOME; or git = "..." (branch, rev), or version = "..."
 plugin = "hello::HelloPlugin"     # implements Plugin + Default
 ```
 
-`rig plugin new hello` makes that crate in `$RIG_HOME/plugins/hello`, outside
-any workspace, and adds its entry; `rig plugin add <type> --path <dir>` (or
-`--git`, `--version`) adds an entry for an existing crate; `rig plugin add
-<type>` with no source adds one for a plugin rig ships, at the launcher's
-version; and `rig plugin remove <type>` takes one out (its crate stays), each
-checked before `plugins.toml` is written. A commented-out entry is a disabled
-plugin: the template lists every plugin rig ships, the ones not on by default
-commented out. `rig plugin list` shows each entry, `on` or `off`, with its
-crate and the comment above it, and `rig plugin enable <type>` and `disable
-<type>` uncomment and comment out an entry, keeping every other line. In the
-agent, `/plugins` is a picker of the same list: tick and untick plugins, press
-Enter, and the agent rebuilds and restarts at once (without a terminal it
-prints the list).
+The plugins form a tree. Each crate is a branch, such as `rig-tui`, and so
+is each area in it: the module under the crate's root in a plugin's type
+path, so `rig_basics::sessions::forks::ForksPlugin` is in
+`rig-basics/sessions`. A plugin at a crate's root, such as
+`rig_basics::BasicCommandsPlugin`, is in no area. A plugin runs when its own
+choice (rig's default, then `disable`, then `enable`) is on and no branch
+in `off` holds it. Turning a branch back on takes it out of `off`, so each
+of its plugins comes back as you left it, and a plugin rig adds to an off
+branch later stays off. Moving a plugin to another module changes its area.
+A plugin another adds in its own `build` runs whatever its choice:
+Subagents adds Approvals, and Budget and Helpers add Usage. Folded output,
+the status line, Key hints and the terminal title do nothing without the
+terminal view, the working animation nothing without Activity and the
+terminal view, nor MCP approval without MCP servers. With the terminal view
+off, rig builds none of the plugins of `rig-tui`, such as the status line,
+Key hints and the terminal title.
+
+A mistake in this file (a plugin or branch rig does not know, a branch in
+`enable` or `disable`, a plugin in `off`, an `extra` path that holds no
+crate, a file that is not TOML) or a `RIG_SOURCE` that is not a rig checkout
+is refused, naming it, and `rig` starts no agent until it is fixed: a build
+from before was built from other settings. `rig plugin disable <name>` takes
+the name out of each list that cannot hold it and changes nothing else. A
+build that cargo cannot resolve or compile instead starts the previous build,
+whose conversation is told why, except under `rig -p`, which refuses on
+stderr with rig's explanation (such as a plugin's Bevy pin, by file and
+line), else cargo's errors, and the path of the build log.
+
+Turning a plugin on or off, or changing an `extra` crate, rebuilds the agent
+at the next start or `/reload`: only the generated crate compiles again, and
+a plugin's own crate the first time it is on. Only your `settings.toml` says
+which plugins run. A helper, `/reload`
+and anything else a session starts run the same home's build.
+
+`rig plugin list` shows the tree: each crate, in it each area of more than
+one plugin or in `off`, and each plugin, `on` or `off`, with what it adds; a
+branch in `off` says so, and a plugin it keeps off says "off with its
+branch". It shows what the settings choose: plugins can turn on others while
+rig runs, and `/plugins`, while it is on, shows what runs. `rig plugin enable
+<type>` and `disable <type>` change `[plugins]`, keeping every comment; given
+a branch, such as `rig-basics/sessions`, they take it out of or put it in
+`off`. Turning off a branch that holds an essential plugin warns, and turning
+on a plugin a branch keeps off names that branch. `rig plugin new hello` makes
+that crate in `$RIG_HOME/plugins/hello`, outside any workspace, and adds its
+`[[plugins.extra]]`, checked before `settings.toml` is written.
+
+`rig plugin add` adds another crate's plugin as its `[[plugins.extra]]`
+table, keeping every comment, and `rig plugin remove` takes it out again:
+
+```sh
+rig plugin add my_save::SavePlugin --path ./save          # a local crate
+rig plugin add my_save::SavePlugin --git https://example.com/save.git --branch main
+rig plugin add my_save::SavePlugin --version 0.2          # from crates.io
+rig plugin remove my_save::SavePlugin
+```
+
+`--git` takes `--branch` or `--rev`. A relative `--path` is read against the
+directory you run it in and written as its full resolved path, since
+`settings.toml` reads relative paths against `RIG_HOME`. The package is the one
+at `--path`, else the type path's first segment (`my_save`); `--crate
+my-save` names a git or crates.io package whose name has a `-`. A plugin type
+the file has already, a second source, or a path that holds no crate is
+refused and the file stays as it was. `remove` takes the comment lines right
+above the table with it, but not those past a blank line. It also takes the
+type out of `enable` and `disable`, and leaves the crate's files where they
+are, also for a crate `rig plugin new` made.
+
+In the agent, `/plugins` reads `settings.toml` itself and opens at once as
+a folded tree: the crates at the top, rig-basics' areas under it (such as
+`sessions` and `coding_tools`), and each plugin by a short name, such as
+"Terminal view", your extras last by crate. A crate or an area of one
+plugin is that plugin's row, unless `off` names it. → opens the highlighted
+branch and ← closes it, or goes up from a plugin to its branch. A plugin's
+tick is its own choice, and a branch's tick says it is out of `off`; a
+branch with some of its plugins on shows `[~]`. Each plugin shows its state:
+on, off, "off with its branch" when a branch in `off` holds it, or any of these
+with "next reload" while the running agent differs. A plugin another
+running plugin added shows "on, added by" that one, such as "on, added by
+Subagents". The pane beside the list shows the highlighted
+plugin's area, crate, type path (what `settings.toml` and `rig plugin
+enable` take), default, state in `settings.toml`, whether it runs now, what
+an essential one takes away when off, and what it adds; for a branch, the
+state its tick box shows, what Enter does there, an unticked branch above it,
+and then which plugins it holds. Typing finds plugins in folded branches too and
+shows them under their branch, by name or type path.
+
+Enter on a plugin ticks and unticks its own choice, so on a plugin of an
+off branch it changes only that plugin. Enter on a branch that is `[x]` or
+`[~]` puts it into `off`, each plugin keeping its own choice. On an unticked
+branch it ticks the branch again, which takes it out of `off`, and on a
+ticked `[ ]` branch, whose plugins are all unticked or held off by a branch,
+it ticks everything under it. A row that differs from `settings.toml` shows
+`+ on` or `- off`, also a plugin that goes or comes with its branch, and the
+list counts the changes. Esc leaves. With changes it first names what turns on
+and off (a plugin turned on under an off branch "stays off with its
+branch"), the plugins that go with a branch, what an essential plugin such as `/plugins` itself takes away with every
+`rig plugin enable` command that brings it back, and the plugins ticked on
+that this machine cannot build, which stay off. Then it asks:
+"Reload now" (offered only when the Reload plugin is on and the `rig`
+launcher started rig; otherwise it says which is missing), "Later, at the
+next start", "Keep editing" (Esc too), which goes back to the list with
+the ticks, or "Leave without writing". Either of the first two writes
+every change into `settings.toml` in one edit, or none when one is refused; a reload rebuilds and restarts
+once no turn runs, and a failed build keeps the running one. `/plugins
+defaults` asks the same about going back to rig's defaults, every branch of
+`off` turned back on, and "Keep editing" keeps those branches for when you
+leave; without a terminal it asks nothing and prints the `rig plugin
+enable` and `rig plugin disable` commands that do it from a shell. Without
+a terminal `/plugins` prints each plugin's name, type path and state. When
+`settings.toml` does not read, `/plugins` names the
+file, the error and its fix instead of opening.
 
 `rig plugin check` checks the list. With `--build` it also builds the agent
 with its plugins in `$RIG_HOME/target` without staging it, and names the
 plugins whose systems in one agent-loop stage use the same data with no order
-between them; a debug build of the agent warns of those at start.
+between them; a debug build of the agent warns of those at start. It fails on
+a settings table the built plugins would refuse at start, such as a key no
+plugin reads any more, and says which key to delete.
 
 A plugin crate depends on `rig-harness`, and on another plugin crate whose
 types it uses (such as `rig-tui` for a terminal panel), and registers tools,
 slash commands, transcript render systems, terminal panels or a window the way
 the built-in ones do, never by editing rig's crates.
 [`crates/rig-harness/PLUGINS.md`](../crates/rig-harness/PLUGINS.md) is the
-plugin guide, with a copy-ready example of each kind, its names from
-`rig_harness::prelude` and the plugin crates, and the `src/lib.rs` that `rig
+plugin guide: the basics, with links to a working example of each kind. The `src/lib.rs` that `rig
 plugin new` writes is a working, commented slash command.
+
+When rig sets up a new home, at its first build, it writes the
+`writing-rig-plugins` skill to `$RIG_HOME/skills/writing-rig-plugins/SKILL.md`
+unless a file is there, so the agent finds it (`/skill:writing-rig-plugins`).
+It names `rig plugin new`, the plugin guide and the plugin examples. Rig never
+writes it again: an edited or deleted skill stays that way.
 
 The default [`rig-traffic`](../plugins/rig-traffic) plugin optionally records
 provider HTTP exchanges in the session's `traffic.jsonl`. Its README covers
@@ -367,39 +928,59 @@ tool, with which the agent reads its own Bevy world, read-only.
 
 The optional [`rig-mcp-client`](../plugins/rig-mcp-client) plugin offers the
 tools of MCP servers, stdio or streamable HTTP, named in `$RIG_HOME/mcp.json`
-and, once you approve each, in the project's `.rig/mcp.json`: `rig plugin
-enable rig_mcp_client::McpPlugin`. Its README covers the file format, approval,
-`/mcp` and headless `--tools`.
+and in the project's `.rig/mcp.json`, which start with no question: `rig
+plugin enable rig_mcp_client::McpPlugin`. Its README covers the file format,
+`/mcp`, `--tools`, which can name an MCP server's tools in every front, and
+`approval::McpApprovalPlugin`, which asks before a project's server starts.
 
 The optional [`rig-acp`](../plugins/rig-acp) plugin adds `rig acp`, which
 serves the Agent Client Protocol on stdin and stdout, so an editor such as Zed
 uses rig's models, tools, sessions and slash commands: `rig plugin enable
 rig_acp::AcpPlugin`. Its README has the editor's settings.
 
-The optional [`rig-claude-cloak`](../plugins/rig-claude-cloak) plugin adds
-`claude-cloak/*` models signed in with a Claude subscription instead of an API
-key, on Linux and macOS: `rig plugin add rig_claude_cloak::ClaudeCloakPlugin`.
+The optional [`rig-bridge`](../plugins/rig-bridge) plugin adds `claude-code/*`,
+`grok-build/*`, `antigravity/*`, `codex/*`, `muse/*` and `copilot-cli/*` models,
+answered by the Claude Code, Grok Build, Antigravity, Codex, Meta AI Muse and
+GitHub Copilot programs with the sign-ins those programs already have:
+`rig plugin enable rig_bridge::BridgePlugin`. Each program is run for
+inference alone, without its own tools, instructions or memory, and calls
+rig's tools, which rig runs. Its README says what each program is left with.
 
 Code mode is the optional [`rig-steel`](../plugins/rig-steel) plugin: a
 `run_steel` tool whose [Steel](https://github.com/mattwparas/steel) (Scheme)
-program spawns agents, messages them and calls tools, in a sandbox. Enable it
-with:
+program calls the model's tools, loops and branches on what they return, in a
+sandbox. Enable it with `rig plugin enable rig_steel::SteelPlugin`, or:
 
 ```toml
-[[plugin]]
-crate = "rig-steel"
-plugin = "rig_steel::SteelPlugin"
+[plugins]
+enable = ["rig_steel::SteelPlugin"]
 ```
 
-A fan-out that asks three agents at once and keeps the shortest answer:
+A program that reads three files and gathers their first lines:
 
 ```scheme
-(define agents (map (lambda (i) (spawn-agent (string-append "solver-" (number->string i)))) (range 0 3)))
-(define requests (map (lambda (agent) (send agent "How does src/lib.rs load plugins? Three sentences.")) agents))
-(define answers (map reply requests))
-(foldl (lambda (answer best) (if (< (string-length answer) (string-length best)) answer best))
-       (car answers) (cdr answers))
+(define paths (list "crates/a/src/lib.rs" "crates/b/src/lib.rs" "crates/c/src/lib.rs"))
+(string-join (map (lambda (path) (call-tool "read" (hash 'path path 'limit 1))) paths) "\n")
 ```
+
+With Subagents on as well (`rig plugin enable
+rig_basics::subagents::SubagentsPlugin`), a program also spawns agents
+(`spawn-agent`), sends them requests (`send`) and waits for their answers
+(`reply`), and `/agents` shows them. Without Subagents those functions refuse
+and the tool's description leaves them out. A fan-out that reviews three
+directories at once and gathers the findings:
+
+```scheme
+(define dirs (list "crates/a" "crates/b" "crates/c"))
+(define requests (map (lambda (dir) (send (spawn-agent "reviewer") (string-append "Review the error handling in " dir ". List each finding as file:line and one sentence."))) dirs))
+(string-join (map reply requests) "\n\n")
+```
+
+A program runs for at most 60 seconds of execution (waits on agents and
+tools not counted) and 1000 calls to agents and tools, and keeps 64 KiB of
+what it prints and returns; Esc stops it sooner. `[steel]` in
+`RIG_HOME/settings.toml` changes them, with no upper bound: `max_seconds`,
+`max_calls` and `max_output_bytes`.
 
 ## Files
 
@@ -408,18 +989,45 @@ processes can share one:
 
 | Path | What it holds |
 | --- | --- |
-| `plugins.toml` | The plugin list. |
-| `settings.toml` | Settings, such as `[shell]`, `[checkpoints]`, `[remote.hosts]` and `[traffic]`. |
+| `names.lock` | Held while a rig checks and writes a session's name, so two never take one. |
+| `settings.toml` | The one file you edit: which plugins run (`[plugins]`), the model a new session starts with (`[model]`), and settings, such as `[remote.hosts]`, `[traffic]` and `[activity]`. A file that cannot be read or is not TOML, or a table that does not read, such as one with a misspelled key, refuses the start and names the key. A table no enabled plugin reads gets a notice at startup, an error when it looks like a misspelling of one (`[trafic]`). |
+| `AGENTS.md`, `skills/` | Your own instructions and skills, read in every project. A new home gets the `writing-rig-plugins` skill once. |
+| `plugins/` | The plugin crates `rig plugin new` makes. |
 | `auth/` | `/login`'s credentials: `chatgpt.json` and the API keys in `keys/`. |
-| `project/`, `target/`, `bin/` | The generated agent project, cargo's build of it (a few gigabytes), and the builds. |
+| `project/` | The generated agent project, regenerated before each build. |
+| `kept-locks/` | The project's lock files while a `rig --safe` build runs, and after one was stopped, until the next build puts them back. |
+| `target/` | cargo's build of the agent project, a few gigabytes. |
+| `bin/` | The builds. `good` is the last one that started. `staged` is a new build waiting for the next start, and `staged-<session>` one made for one session's `rig` by its start or its `/reload`. `rejected` is the stamp of a build that stopped before it was ready, which starts skip until it changes. `described/` holds what each build reported about itself, and `lock` is the build lock. `safe` is the build `rig --safe` starts, and `safe.version` the launcher version and source it was built by. |
 | `build.log` | The last build's whole output. |
-| `mcp.json` | The MCP servers of the optional `rig-mcp-client` plugin, in every project. |
-| `defaults.json` | The last chosen model and reasoning, which a new session starts with. |
+| `safe-build.log` | The last `rig --safe` build's whole output. |
+| `mcp.json` | The MCP servers of the optional `rig-mcp-client` plugin, in every project, with its locks `mcp.lock` and `mcp-approvals.lock`. |
 | `data/` | Plugins' data across sessions and projects. |
 | `projects/` | Plugins' data per project, such as the prompt history `projects/<name>-<key>/tui/history.jsonl`. |
-| `sessions/<id>/` | A session: the agent logs in `logs/`, the name `/name` gave it in `name`, and `files/` (`meta.json`, the images in `blobs/`, the effect log `effects.jsonl` with `EffectLogPlugin`, opt-in `traffic.jsonl` with `TrafficPlugin`, plugins' files). |
-| `spill/` | The whole output of a `shell` call that was cut. |
-| `agent.log` | The agent's log. |
+| `run/<pid>/` | One per running `rig`, named by its process id: its lock, the process groups its agent started, the builds it holds, and `agent.log` when a run with no saved session failed. |
+| `sessions/<id>/` | A session: the agent logs in `logs/`, the name `/name` gave it in `name`, its working directory in `directory`, and `files/` (`meta.json`, the images in `blobs/`, the effect log `effects.jsonl` with `EffectLogPlugin`, opt-in `traffic.jsonl` with `TrafficPlugin`, plugins' files). |
+| `sessions/<id>/spill/` | The whole output of a `shell` call that was cut. |
+| `sessions/<id>/images/` | The images pasted into the input. |
+| `sessions/<id>/agent.log` | The session's agent log. |
+
+Rig cleans up after itself in these places only. `project/` is rewritten by
+every build, `build.log` by every build of your plugins, and `safe-build.log`
+by every safe build that runs (with rig from crates.io a current safe build is
+started as it is), which rewrites `bin/safe` and `safe.version` when it
+succeeds. A `rig` removes its `run/<pid>/` when it exits,
+and the next start removes those of a `rig` that was killed. A failed run's
+`run/<pid>/agent.log` is kept until you delete it, unless the `rig` went back
+to another session and said why there. The next start after a session's `rig`
+is gone removes its `staged-<session>`, and `described/` keeps only the
+reports of builds in `bin/` or held by a running `rig`. A session that logged
+nothing is removed when it ends, with its `spill/` and `images/`; its
+`agent.log` moves to `run/<pid>/` if the run failed. Nothing else is removed
+on its own: `target/` keeps the builds of earlier versions, and saved
+sessions, `data/` and `projects/` stay. A plugin can delete a saved session
+for you; a delete a crash cut short finishes at the next start. Remove a
+session's directory only when no `rig` runs it. `du -sh ~/.rig/*` (or your
+`RIG_HOME`) shows what each takes. Deleting `target/` while no `rig` is
+building frees most of the space; the next start then builds the agent from
+scratch, which takes minutes.
 
 Set `RIG_HOME` to put everything elsewhere, for example under a cache
 directory.

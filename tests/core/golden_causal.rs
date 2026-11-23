@@ -15,11 +15,11 @@ use rig_cassette::agent::AgentReplayExt;
 use std::time::Duration;
 
 use rig::agent::AgentBuilder;
-use rig::agent::tool::server::ToolServer;
 use rig::effect::{EffectFamily, EffectKind, HandlerKey};
 use rig::handlers::Handlers;
 use rig::test_utils::{MockCompletionModel, MockTurn};
 use rig::tool::RegisteredTool;
+use rig::tool::server::ToolServer;
 use rig_cassette::effect_log::{EffectLog, EffectLogRecorder};
 use serde_json::json;
 

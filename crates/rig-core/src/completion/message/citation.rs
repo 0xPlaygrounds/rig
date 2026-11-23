@@ -195,14 +195,6 @@ pub(super) struct Citations {
     list: Vec<Citation>,
 }
 
-/// A stored `citations` value, or `None` when it cannot be read.
-pub(super) fn lenient<'de, D: serde::Deserializer<'de>>(
-    deserializer: D,
-) -> Result<Option<Citations>, D::Error> {
-    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
-    Ok(value.and_then(|value| Citations::deserialize(value).ok()))
-}
-
 fn fingerprint(text: &str) -> Fingerprint {
     Fingerprint::of(&text)
 }

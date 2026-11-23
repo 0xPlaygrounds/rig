@@ -1,10 +1,11 @@
+use bevy_app::PluginGroupBuilder;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 
 use bevy_reflect::prelude::*;
 use rig_ecs::session_log::ReflectSaved;
 
-use super::{AppKeepsExt, Keeps, PluginEntity, PluginSource, ProvidedBy, load};
+use super::{AppKeepsExt, Keeps, Loaded, PluginEntity, PluginSource, ProvidedBy, load};
 
 /// Spawns a named entity in `build`, one in `finish`, and one at startup
 /// that it attributes itself.
@@ -70,6 +71,119 @@ fn what_a_plugin_spawns_in_build_and_finish_is_its_own() {
     assert_eq!(by("later"), Some(spawner));
     assert_eq!(by("other's"), Some(other));
     assert_eq!(by("unattributed"), None);
+}
+
+/// Spawns and adds a system before and after loading `Nested` in the
+/// middle of its build, then adds `Helper`, and spawns in its `finish` and
+/// `cleanup`.
+#[derive(Default)]
+struct Host;
+
+fn host_before() {}
+fn host_after() {}
+fn nested_system() {}
+
+impl Plugin for Host {
+    fn build(&self, app: &mut App) {
+        app.world_mut().spawn(Name::new("host before"));
+        app.add_systems(Update, host_before);
+        load::<Nested>(app, "nested", "version 1");
+        app.world_mut().spawn(Name::new("host after"));
+        app.add_systems(Update, host_after);
+        app.add_plugins(Helper);
+    }
+
+    fn finish(&self, app: &mut App) {
+        app.world_mut().spawn(Name::new("host finished"));
+    }
+
+    fn cleanup(&self, app: &mut App) {
+        app.world_mut().spawn(Name::new("host cleaned up"));
+    }
+}
+
+/// Spawns in its `finish` and `cleanup`, added by `Host` after its nested
+/// load.
+struct Helper;
+
+impl Plugin for Helper {
+    fn build(&self, _app: &mut App) {}
+
+    fn finish(&self, app: &mut App) {
+        app.world_mut().spawn(Name::new("helper finished"));
+    }
+
+    fn cleanup(&self, app: &mut App) {
+        app.world_mut().spawn(Name::new("helper cleaned up"));
+    }
+}
+
+/// Spawns and adds a system in its build, and spawns in its `finish` and
+/// `cleanup`, loaded by `Host`.
+#[derive(Default)]
+struct Nested;
+
+impl Plugin for Nested {
+    fn build(&self, app: &mut App) {
+        app.world_mut().spawn(Name::new("nested"));
+        app.add_systems(Update, nested_system);
+    }
+
+    fn finish(&self, app: &mut App) {
+        app.world_mut().spawn(Name::new("nested finished"));
+    }
+
+    fn cleanup(&self, app: &mut App) {
+        app.world_mut().spawn(Name::new("nested cleaned up"));
+    }
+}
+
+/// Each of two nested plugins owns what it spawned and added, before,
+/// inside and after the nested load, in build, `finish` and `cleanup`
+/// (including through a plugin the outer adds after it), and nothing
+/// spawned once the app runs is either's. The outer provides the nested
+/// plugin's entity.
+#[test]
+fn a_plugin_loaded_in_another_build_is_attributed_and_the_outer_carries_on() {
+    let mut app = App::new();
+    load::<Host>(&mut app, "host", "version 1");
+    app.finish();
+    app.cleanup();
+    app.update();
+    let world = app.world_mut();
+    world.spawn(Name::new("running"));
+    world.flush();
+    let host = world.resource::<PluginEntity<Host>>().entity();
+    let nested = world.resource::<PluginEntity<Nested>>().entity();
+    let mut named = world.query::<(&Name, Option<&ProvidedBy>)>();
+    let mut by = |name: &str| {
+        named
+            .iter(world)
+            .find(|(named, _)| named.as_str() == name)
+            .and_then(|(_, by)| by.map(|by| by.0))
+    };
+    assert_eq!(by("host before"), Some(host));
+    assert_eq!(by("nested"), Some(nested));
+    assert_eq!(by("host after"), Some(host));
+    assert_eq!(by("host finished"), Some(host));
+    assert_eq!(by("nested finished"), Some(nested));
+    assert_eq!(by("host cleaned up"), Some(host));
+    assert_eq!(by("nested cleaned up"), Some(nested));
+    assert_eq!(by("helper finished"), Some(host));
+    assert_eq!(by("helper cleaned up"), Some(host));
+    assert_eq!(by("running"), None);
+    // The plugin that loaded another provides its entity.
+    assert_eq!(world.get::<ProvidedBy>(nested).map(|by| by.0), Some(host));
+    assert_eq!(world.get::<ProvidedBy>(host).map(|by| by.0), None);
+    let systems = world.resource::<super::PluginSystems>();
+    let of = |name: &str| {
+        (systems.0.iter())
+            .find(|((system, _), _)| system.contains(name))
+            .and_then(|(_, plugin)| *plugin)
+    };
+    assert_eq!(of("host_before"), Some(host));
+    assert_eq!(of("nested_system"), Some(nested));
+    assert_eq!(of("host_after"), Some(host));
 }
 
 /// A saved agent component under a stable key.
@@ -197,14 +311,55 @@ fn plugin_systems_list_each_system_with_its_plugin() {
     load::<Counter>(&mut app, "counter", "path plugins/counter");
     let counter = app.world().resource::<PluginEntity<Counter>>().entity();
     let systems = app.world().resource::<super::PluginSystems>();
-    let listed: Vec<_> = systems
-        .iter()
-        .filter(|(.., plugin)| *plugin == Some(counter))
+    let listed: Vec<_> = (systems.0.iter())
+        .filter(|(_, plugin)| **plugin == Some(counter))
         .collect();
     assert!(!listed.is_empty());
     assert!(
-        listed
-            .iter()
-            .all(|&(system, schedule, plugin)| systems.plugin(system, schedule) == plugin)
+        (listed.iter())
+            .all(|((system, schedule), plugin)| systems.plugin(system, schedule) == **plugin)
     );
+}
+
+/// The plugins a generated program turns on, as its group adds them.
+struct Chosen;
+
+impl PluginGroup for Chosen {
+    fn build(self) -> PluginGroupBuilder {
+        PluginGroupBuilder::start::<Self>()
+            .add(Loaded::<Spawner>::new("spawner", "path plugins/spawner"))
+            .add(Loaded::<Other>::new("other", "version 1"))
+    }
+}
+
+#[test]
+fn a_plugin_group_adds_each_plugin_with_its_entity_and_source() {
+    let mut app = App::new();
+    app.add_plugins(Chosen);
+    app.finish();
+    app.cleanup();
+    app.update();
+    let world = app.world_mut();
+    let spawner = world.resource::<PluginEntity<Spawner>>().entity();
+    let other = world.resource::<PluginEntity<Other>>().entity();
+    let source = |entity: Entity| {
+        let source = world.get::<PluginSource>(entity);
+        source.map(|source| (source.package.clone(), source.source.clone()))
+    };
+    assert_eq!(
+        source(spawner),
+        Some(("spawner".to_owned(), "path plugins/spawner".to_owned()))
+    );
+    assert_eq!(
+        source(other),
+        Some(("other".to_owned(), "version 1".to_owned()))
+    );
+    let mut named = world.query::<(&Name, &ProvidedBy)>();
+    let mut by = |name: &str| {
+        (named.iter(world))
+            .find(|(named, _)| named.as_str() == name)
+            .map(|(_, by)| by.0)
+    };
+    assert_eq!(by("finished"), Some(spawner));
+    assert_eq!(by("other's"), Some(other));
 }

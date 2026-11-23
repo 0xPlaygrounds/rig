@@ -1,9 +1,6 @@
-//! Response identity on Groq (rig#2265): Groq reports its transport request
-//! id on `x-request-id` — the same header OpenAI and xAI use — verified live
-//! and now captured via the dialect's own `GROQ.request_id_header`. An earlier revision of
-//! this suite recorded the header arriving while the compat-default contract
-//! ignored it; #2265's acceptance criterion ("providers that expose these
-//! populate them") makes capture, not documentation, the fix.
+//! Response identity on Groq: Groq reports its transport request id on
+//! `x-request-id`, verified live and captured via the dialect's own
+//! `GROQ.request_id_header`.
 
 use anyhow::Result;
 
@@ -45,7 +42,7 @@ async fn streaming_terminal_carries_identity() -> Result<()> {
     .await
 }
 
-/// 401 auth rejection (rig#2314 error matrix): Groq's auth tier carries the
+/// 401 auth rejection for the error matrix: Groq's auth tier carries the
 /// id its 4xx errors do (recorded).
 #[tokio::test]
 async fn auth_rejection_classifies_with_contract() -> Result<()> {

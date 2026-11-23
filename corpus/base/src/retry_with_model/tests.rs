@@ -134,7 +134,4 @@ fn a_retried_turn_answers_on_another_model_and_the_old_answer_can_be_picked() {
     assert!(listed.contains("test/b: answer B"), "{listed}");
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(RetryWithModelPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(RetryWithModelPlugin);

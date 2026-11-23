@@ -237,6 +237,7 @@ fn choose(app: &mut App, agent: Entity, model: &str) {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     app.update();
 }
@@ -474,6 +475,7 @@ fn logged(home: &Home, id: &SessionId, server: &Server) -> (App, Receiver<()>) {
             commands.trigger(SetModel {
                 entity: agent.entity,
                 model,
+                kind: ChoiceKind::ForThisRun,
             });
         });
     (app, wakes)
@@ -535,7 +537,4 @@ fn a_chained_session_replays_from_its_record() {
     fs::remove_dir_all(home.root()).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(ServerSideStatePlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(ServerSideStatePlugin);

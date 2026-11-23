@@ -17,10 +17,7 @@ use crate::run::{AgentRun, OutputMode};
 use crate::{
     completion::{CompletionRequest, Message, PromptError, ToolDefinition},
     run::response::PromptResponse,
-    tool::{
-        ToolCatalog,
-        server::{ToolServerError, ToolServerHandle},
-    },
+    tool::{ToolCatalog, server::ToolServerHandle},
 };
 use rig_core::completion::ModelRef;
 use rig_core::effect::{HandlerDescriptor, HandlerKey, Key, family};
@@ -37,20 +34,23 @@ use super::UNKNOWN_AGENT_NAME;
 /// What a completion request was prepared with, including the executable Rig
 /// tool names advertised to the provider for this turn.
 pub(crate) struct PreparedCompletionRequest {
-    /// The messages telemetry records for this attempt.
-    pub(crate) telemetry_messages: Vec<Arc<Message>>,
     /// The typed view the request is dispatched to.
     pub(crate) model: ModelHandle,
     /// Exact implementations behind this turn's provider definitions.
     pub(crate) tool_snapshot: Arc<ToolCatalog>,
-    /// The definitions the request carries (executable tools plus, in Tool
-    /// output mode, the synthetic output tool), for the run's `TurnTools`.
-    pub(crate) advertised_tools: Vec<Arc<ToolDefinition>>,
     /// The turn's tool policy, fed back to the run with the response.
     pub(crate) policy: crate::run::TurnPolicy,
     /// Effective structured output-token cap after runner overrides and request
     /// patches. Does not interpret caps passed through additional parameters.
     pub(crate) max_tokens: Option<u64>,
+}
+
+/// The text a retrieval searches with: the prompt's, else the latest history
+/// message's.
+pub(crate) fn retrieval_query(prompt: &Message, history: &[Arc<Message>]) -> Option<String> {
+    prompt
+        .rag_text()
+        .or_else(|| history.iter().rev().find_map(|message| message.rag_text()))
 }
 
 /// Retrieve tools and prepare a request from runner defaults and per-turn inputs.
@@ -65,15 +65,9 @@ pub(crate) async fn build_prepared_completion_request(
     committed_output_tool: Option<&str>,
     request_patch: Option<&RequestPatch>,
 ) -> Result<(CompletionRequest, PreparedCompletionRequest), ProviderError> {
-    let record_telemetry_content = runner.config.record_telemetry_content;
     let tool_server_handle = &runner.tool_server_handle;
 
-    let retrieval_query = prompt.rag_text().or_else(|| {
-        chat_history
-            .iter()
-            .rev()
-            .find_map(|message| message.rag_text())
-    });
+    let retrieval_query = retrieval_query(&prompt, chat_history);
 
     // Tool retrieval is a `Retrieve` dispatch at the boundary (observe-only
     // for hooks unless one opts in), recorded like every other effect.
@@ -81,12 +75,7 @@ pub(crate) async fn build_prepared_completion_request(
     for (key, kind) in tool_server_handle.retrieval_effects(retrieval_query) {
         let ids = crate::agent::engine::dispatch_effect(runner, ctx, &key, kind)
             .await
-            .and_then(|outcome| match outcome {
-                rig_core::effect::Answered::Documents(
-                    rig_core::effect::RetrievedDocuments::Ids(ids),
-                ) => Ok(ids.into_iter().map(|(_, id)| id).collect::<Vec<String>>()),
-                other => Err(crate::agent::engine::wrong_outcome("retrieved ids", &other)),
-            })
+            .and_then(crate::tool::server::retrieved_ids)
             .map_err(|report| {
                 ProviderError::request(format!("Failed to get tool definitions: {report}"))
             })?;
@@ -102,9 +91,12 @@ pub(crate) async fn build_prepared_completion_request(
         None => (&*runner.config.spec, committed_output_tool),
     };
 
-    let prepared = crate::run::prepare::prepare_request(
+    let crate::run::PreparedRequest {
+        request, policy, ..
+    } = crate::run::prepare::prepare_request(
         spec,
         &capabilities,
+        prompt,
         chat_history,
         tool_snapshot.take_definitions(),
         committed_output_tool,
@@ -114,26 +106,13 @@ pub(crate) async fn build_prepared_completion_request(
     // Narrow dispatch to the tools actually advertised this turn (a per-turn
     // `active_tools` allow-list), so the implementation behind every definition
     // the provider received is the one that runs.
-    tool_snapshot.retain_names(prepared.policy.executable());
+    tool_snapshot.retain_names(policy.executable());
 
-    let advertised_tools = prepared.tools.clone();
-    let policy = prepared.policy.clone();
-    let max_tokens = prepared.max_tokens;
-    // The agent records the input itself, so the request the provider sees
-    // carries the telemetry flag off: one span, no double recording.
-    let request = prepared.apply(CompletionRequest::new(prompt));
-    let telemetry_messages = if record_telemetry_content {
-        request.messages_for_telemetry()
-    } else {
-        Vec::new()
-    };
     let prepared = PreparedCompletionRequest {
-        telemetry_messages,
         model: model.clone(),
         tool_snapshot: Arc::new(tool_snapshot),
-        advertised_tools,
         policy,
-        max_tokens,
+        max_tokens: request.max_tokens,
     };
     Ok((request, prepared))
 }
@@ -327,12 +306,11 @@ impl AgentConfig {
     /// The default model's label as registered now (the key's tail when
     /// nothing serves it).
     pub(crate) fn model_label(&self) -> ModelRef {
-        match self
-            .handlers
-            .descriptor(self.model_key.raw())
-            .map(|descriptor| descriptor.family)
-        {
-            Some(rig_core::effect::FamilyDescriptor::Completion { model, .. }) => model,
+        match self.handlers.descriptor(self.model_key.raw()) {
+            Some(HandlerDescriptor {
+                family: rig_core::effect::FamilyDescriptor::Completion { model, .. },
+                ..
+            }) => model,
             _ => {
                 let key = self.model_key.as_str();
                 let label = key
@@ -439,24 +417,6 @@ impl Agent {
         &self.config.model_key
     }
 
-    /// The descriptor of this agent's default model, as registered now.
-    pub fn model_descriptor(&self) -> Option<HandlerDescriptor> {
-        self.config.handlers.descriptor(self.config.model_key.raw())
-    }
-
-    /// The label of this agent's default model, as registered now.
-    pub fn model_label(&self) -> Option<ModelRef> {
-        self.model_descriptor()
-            .and_then(|descriptor| match descriptor.family {
-                rig_core::effect::FamilyDescriptor::Completion { model, .. } => Some(model),
-                rig_core::effect::FamilyDescriptor::Tool { .. }
-                | rig_core::effect::FamilyDescriptor::Embed { .. }
-                | rig_core::effect::FamilyDescriptor::Retrieve {}
-                | rig_core::effect::FamilyDescriptor::Rerank { .. }
-                | rig_core::effect::FamilyDescriptor::Custom { .. } => None,
-            })
-    }
-
     /// Register `model` in this agent's table under `label` and return the
     /// label a run selects it by.
     pub fn register_model(
@@ -497,21 +457,6 @@ impl Agent {
     /// The handler table this agent dispatches through.
     pub fn handlers(&self) -> &Handlers {
         &self.config.handlers
-    }
-
-    /// [`Agent::set_model_label`] by value.
-    pub fn with_model_label(mut self, label: impl Into<ModelRef>) -> Self {
-        self.set_model_label(label);
-        self
-    }
-
-    /// [`Agent::set_model`] by value.
-    pub fn with_model(
-        mut self,
-        model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
-    ) -> Self {
-        self.set_model(model);
-        self
     }
 
     /// The effect row this program can dispatch to: its model, every tool
@@ -564,7 +509,7 @@ impl Agent {
     pub async fn tool_definitions(
         &self,
         prompt: Option<String>,
-    ) -> Result<Vec<Arc<ToolDefinition>>, ToolServerError> {
+    ) -> Result<Vec<Arc<ToolDefinition>>, ProviderError> {
         self.tool_server_handle.tool_defs(prompt).await
     }
 }

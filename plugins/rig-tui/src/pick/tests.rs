@@ -1,9 +1,9 @@
 use rig_harness::prelude::*;
 
 use super::*;
-use crate::tests::{press, type_text, view_app};
+use crate::tests::{line_of, press, push, type_text, view_app};
 use rig_harness::ask::Choice;
-use rig_harness::pick::{Chosen, Picked, Picker};
+use rig_harness::pick::{Chosen, PickItem, Picked, Picker};
 
 /// What the pickers reported, in order.
 #[derive(Resource, Default)]
@@ -92,12 +92,15 @@ fn tab_ticks_several_items_and_enter_picks_them_in_list_order() {
                 ran.0.push(args.args);
             },
         );
-    let picker = Picker::new("Delete which files?")
+    let ticked = PickItem {
+        checked: true,
+        ..PickItem::new("b.log", "note b")
+    };
+    let mut picker = Picker::new("Delete which files?")
         .multiple()
-        .item("a.tmp", "note a")
-        .item("b.log", "note b")
-        .checked(true)
-        .item("c.tmp", "note c");
+        .item("a.tmp", "note a");
+    picker.items.push(ticked);
+    let picker = picker.item("c.tmp", "note c");
     app.world_mut().spawn(picker);
     app.update();
     // b starts ticked: untick it, tick c, then go back up and tick a.
@@ -146,7 +149,7 @@ fn a_picker_filled_in_batches_keeps_what_is_typed_and_selected() {
     app.world_mut().entity_mut(picker).insert(more);
     app.update();
     let state = app.world().get::<PickerInput>(picker);
-    assert_eq!(state.map(PickerInput::filter), Some("rs"));
+    assert_eq!(state.map(|state| state.filter.as_str()), Some("rs"));
     assert_eq!(highlighted(&app), Some(Highlighted(2)));
     press(&mut app, "enter");
     assert_eq!(
@@ -261,6 +264,7 @@ fn a_long_detail_leaves_the_label_half_the_row() {
         ),
         checked: false,
         more: None,
+        parent: None,
     };
     let column = detail_column(std::slice::from_ref(&item), 60);
     let row = item.line(60, column).to_string();
@@ -282,6 +286,7 @@ fn a_long_label_is_shortened_beside_its_whole_detail() {
         detail: Some("$0.42 · 3h ago"),
         checked: false,
         more: None,
+        parent: None,
     };
     let column = detail_column(std::slice::from_ref(&item), 40);
     let row = item.line(40, column).to_string();
@@ -294,6 +299,7 @@ fn a_long_label_is_shortened_beside_its_whole_detail() {
         detail: None,
         checked: false,
         more: None,
+        parent: None,
     };
     assert_eq!(short.line(40, 0).to_string(), "main");
 }
@@ -308,6 +314,7 @@ fn details_start_at_one_column() {
         detail: Some(detail),
         checked: false,
         more: None,
+        parent: None,
     };
     let items = [
         item("main", "the default branch"),
@@ -827,5 +834,546 @@ fn a_narrow_keys_row_leaves_out_its_first_keys() {
         keys.trim(),
         "Shift+↑↓ scrolls, ← hides more, Enter picks, Esc closes",
         "{rows:#?}"
+    );
+}
+
+#[test]
+fn a_long_conversations_preview_lays_out_its_end_or_from_its_entry() {
+    use rig_core::completion::Message;
+    use rig_core::conversation::Conversation;
+    use rig_harness::pick::PickPreview;
+
+    use crate::TuiTestScreen;
+
+    let said = |n: usize| format!("start {n} {}end {n}.", "word ".repeat(800));
+    let whole = Conversation::from_messages((0..40).map(|n| match n % 2 {
+        0 => Message::user(said(n)),
+        _ => Message::assistant(said(n)),
+    }));
+    let ids: Vec<_> = whole.entries().map(|entry| entry.id).collect();
+    let last = ids.last().copied();
+    for (at, seen) in [
+        (None, "end 39."),
+        (ids.get(3).copied(), "start 3 "),
+        (last, "start 39 "),
+    ] {
+        let (mut app, _) = view_app();
+        app.insert_resource(TuiTestScreen::new(100, 30));
+        let picker = Picker::new("Sessions").item("a long session", "resume it");
+        let preview = PickPreview::Conversation {
+            conversation: whole.clone(),
+            at,
+        };
+        app.world_mut().spawn((picker, preview));
+        app.update();
+        app.update();
+        let world = app.world_mut();
+        let mut panes = world.query_filtered::<&TranscriptPane, With<PreviewPane>>();
+        let kept: Vec<_> = panes
+            .single(world)
+            .iter()
+            .filter_map(|pane| match &pane.source {
+                TranscriptSource::Value(shown) => Some(shown.entries().map(|entry| entry.id)),
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        // A run of the whole's entries, with their ids, and far from all.
+        assert!(!kept.is_empty() && kept.len() < ids.len() / 2, "{kept:?}");
+        assert!(ids.windows(kept.len()).any(|run| run == kept), "{kept:?}");
+        // From an early entry the budget goes to the entries below it;
+        // from the last, to those above it, which the pane shows too.
+        match at {
+            Some(at) if Some(at) == last => {
+                assert_eq!(kept.last(), Some(&at));
+                assert!(kept.len() > 1, "{kept:?}");
+            }
+            Some(at) => assert_eq!(kept.first(), Some(&at)),
+            None => assert_eq!(kept.last(), last.as_ref()),
+        }
+        let drawn = app.world().resource::<TuiTestScreen>().rows().join("\n");
+        assert!(drawn.contains(seen), "{drawn}");
+    }
+}
+
+#[test]
+fn a_previews_edges_keep_calls_with_their_results_and_stops() {
+    use rig_core::completion::{AssistantContent, Message};
+    use rig_core::conversation::{Aside, Author, Conversation, TurnEnd};
+    use rig_core::message::{AssistantMessage, CallId, ToolName};
+
+    let big = "word ".repeat(PREVIEW_BYTES / 4);
+    let shell = ToolName::new("shell").ok();
+    let call = |id: &str, args: &str| {
+        let call = shell.clone().map(|shell| {
+            AssistantContent::tool_call(id, shell, serde_json::json!({ "command": args }))
+        });
+        Message::Assistant(AssistantMessage::new(call.into_iter().collect()))
+    };
+    let result = |id: &str, text: &str| {
+        let result = shell
+            .clone()
+            .map(|shell| Message::tool_result(CallId::from_wire(id), shell, text));
+        result.unwrap_or_else(|| Message::user(text))
+    };
+    // An answered turn calls `c2` too, before the turn that is stopped.
+    let mut whole = Conversation::from_messages([
+        Message::user("earlier"),
+        call("c2", &big),
+        result("c2", "listed"),
+        Message::assistant("an earlier answer"),
+        Message::user("go"),
+    ]);
+    whole.open_turn();
+    whole.extend([
+        call("c1", &big),
+        result("c1", "listed"),
+        call("c2", "ls"),
+        result("c2", &big),
+        Message::user("the stop's own entry"),
+    ]);
+    let ids: Vec<_> = whole.entries().map(|entry| entry.id).collect();
+    let id = |at: usize| ids.get(at).copied();
+    let shown = |whole: &Conversation, at| {
+        let shown = window(whole, at);
+        let ids: Vec<_> = shown.entries().map(|entry| entry.id).collect();
+        (ids, shown)
+    };
+
+    // From a big call, the window ends past its result.
+    let (from_call, _) = shown(&whole, id(5));
+    assert_eq!(from_call, ids.get(5..7).unwrap_or_default());
+
+    // Once a stop drawn under a later entry answered the stopped turn's
+    // `c2`, a window holding that call ends past the stop; one without
+    // it does not, nor one holding the earlier turn's `c2`.
+    let stopped = TurnEnd::Stopped {
+        by: Some(StopCause::User),
+        at: id(9),
+        calls: id(7)
+            .map(|reply| CallRef { reply, index: 0 })
+            .into_iter()
+            .collect(),
+    };
+    assert!(whole.end_turn(stopped));
+    let (from_second, _) = shown(&whole, id(7));
+    assert_eq!(from_second, ids.get(7..10).unwrap_or_default());
+    let (from_call, _) = shown(&whole, id(5));
+    assert_eq!(from_call, ids.get(5..7).unwrap_or_default());
+    let (from_earlier, _) = shown(&whole, id(1));
+    assert_eq!(from_earlier, ids.get(1..3).unwrap_or_default());
+
+    // Back from the end, the big result takes the budget and its call
+    // comes with it. The mark above that call moves to the top, one
+    // further up is left out, and the turn's record stays.
+    let mark = |after| Aside::new("test.mark", Author::rig(), serde_json::Value::Null).after(after);
+    let gone = whole.add_aside(mark(id(0)));
+    let above = whole.add_aside(mark(id(6)));
+    let kept = whole.add_aside(mark(id(8)));
+    let (from_end, end) = shown(&whole, None);
+    assert_eq!(from_end, ids.get(7..).unwrap_or_default());
+    assert!(end.aside(gone).is_none());
+    assert_eq!(end.aside(above).map(|aside| aside.after), Some(None));
+    assert!(end.aside(kept).is_some());
+    assert_eq!(end.turns().count(), 1);
+
+    // An image and a system message draw a row or nothing, so their bytes
+    // leave the budget to what is drawn.
+    let image =
+        rig_core::message::UserContent::image_base64("A".repeat(4 * PREVIEW_BYTES), None, None);
+    let drawn = Conversation::from_messages([
+        Message::user("look at this"),
+        Message::User {
+            content: vec![image],
+        },
+        Message::assistant("a cat"),
+        Message::System { content: big },
+    ]);
+    let (all, _) = shown(&drawn, None);
+    assert_eq!(all.len(), 4, "{all:?}");
+}
+
+#[test]
+fn a_preview_counts_what_its_messages_draw() {
+    use rig_core::completion::{AssistantContent, Message};
+    use rig_core::message::{AssistantMessage, CallId, ToolName, ToolResultContent, UserContent};
+
+    let shell = ToolName::new("shell").ok();
+    let json = serde_json::json!({ "lines": ["one", "two"] });
+    let result = shell.clone().map(|shell| Message::User {
+        content: vec![UserContent::tool_result(
+            CallId::from_wire("c1"),
+            shell,
+            vec![
+                ToolResultContent::json(json.clone()),
+                ToolResultContent::text("done"),
+            ],
+        )],
+    });
+    let reply = Message::Assistant(AssistantMessage::new(vec![
+        AssistantContent::reasoning("why"),
+        AssistantContent::text("an answer"),
+    ]));
+    let image = Message::User {
+        content: vec![UserContent::image_base64("A".repeat(1000), None, None)],
+    };
+    let system = Message::System {
+        content: "a system prompt".into(),
+    };
+    let json_size = serde_json::to_string(&json).map_or(0, |json| json.len());
+    assert_eq!(
+        result.as_ref().map(drawn_size),
+        Some(json_size + "done".len())
+    );
+    assert_eq!(drawn_size(&reply), "why".len() + "an answer".len());
+    assert_eq!(drawn_size(&image), 0);
+    assert_eq!(drawn_size(&system), 0);
+}
+
+#[test]
+fn a_picker_filled_again_before_its_first_frame_keeps_the_item_it_opened_on() {
+    let (mut app, _) = view_app();
+    app.init_resource::<Reported>().add_observer(report);
+    let picker = |names: &[&str], selected: usize| Picker {
+        selected,
+        ..(names.iter()).fold(Picker::new("Model"), |picker, name| {
+            picker.item(*name, format!("note {name}"))
+        })
+    };
+    let entity = app.world_mut().spawn(picker(&["a", "b", "c"], 2)).id();
+    app.update();
+    // Its lines move, as the models' do once a sign-in's answer came.
+    app.world_mut()
+        .entity_mut(entity)
+        .insert(picker(&["c", "a", "b"], 1));
+    app.update();
+    press(&mut app, "enter");
+    assert_eq!(
+        app.world().resource::<Reported>().0,
+        [Some(Chosen::item(0))]
+    );
+}
+
+/// A picker that binds Enter to ticking: Enter ticks the highlighted row,
+/// also with a filter typed, and never closes it; the ticks are mirrored as
+/// [`Ticked`] and survive a filter that matches nothing; the keys row says
+/// what Enter and Esc do; Esc closes it without a choice.
+#[test]
+fn a_picker_whose_enter_ticks_mirrors_the_ticks_and_esc_closes_it() {
+    use rig_harness::pick::Ticked;
+
+    use crate::TuiTestScreen;
+
+    let (mut app, _) = view_app();
+    app.init_resource::<Reported>().add_observer(report);
+    app.insert_resource(TuiTestScreen::new(80, 24));
+    let picker = Picker::new("Plugins")
+        .multiple()
+        .item("Welcome", "")
+        .item("Folded output", "")
+        .item("Skills", "");
+    let keys = ChoiceKeys(vec![(KeyCode::Enter, ChoiceAction::Tick)]);
+    let entity = app.world_mut().spawn((picker, keys)).id();
+    app.update();
+    // Enter twice unticks; a third time ticks again.
+    press(&mut app, "enter enter enter");
+    type_text(&mut app, "fold");
+    press(&mut app, "enter");
+    type_text(&mut app, "zzz");
+    press(&mut app, "enter");
+    app.update();
+    let ticked = app.world().get::<Ticked>(entity).cloned();
+    assert_eq!(ticked, Some(Ticked(vec![0, 1])));
+    assert_eq!(shown(&mut app).as_deref(), Some("Plugins"));
+    let rows = app.world().resource::<TuiTestScreen>().rows();
+    assert!(
+        rows.iter()
+            .any(|row| row.contains("Enter ticks, Esc leaves"))
+            && !rows.iter().any(|row| row.contains("Enter picks")),
+        "{rows:#?}"
+    );
+    press(&mut app, "esc");
+    assert_eq!(shown(&mut app), None);
+    assert_eq!(app.world().resource::<Reported>().0, [None]);
+}
+
+/// A picker of several with a tree: `fruit` holding `apple` and `pear`,
+/// `apple` ticked, then `water` at the top, ticked; Enter ticks.
+fn tree() -> (Picker, ChoiceKeys) {
+    let item = |label: &str, parent: Option<usize>, checked: bool| PickItem {
+        parent,
+        checked,
+        ..PickItem::new(label, "")
+    };
+    let mut picker = Picker::new("Plugins").multiple();
+    picker.items = vec![
+        item("fruit", None, true),
+        item("apple", Some(0), true),
+        item("pear", Some(0), false),
+        item("water", None, true),
+    ];
+    (
+        picker,
+        ChoiceKeys(vec![(KeyCode::Enter, ChoiceAction::Tick)]),
+    )
+}
+
+/// The rows of the screen.
+fn screen_rows(app: &App) -> Vec<String> {
+    app.world()
+        .resource::<crate::TuiTestScreen>()
+        .rows()
+        .to_vec()
+}
+
+/// The screen row holding `text`, if one does.
+fn row_with(app: &App, text: &str) -> Option<String> {
+    screen_rows(app).into_iter().find(|row| row.contains(text))
+}
+
+#[test]
+fn a_tree_opens_and_closes_with_right_and_left_and_a_mixed_branch_shows_it() {
+    use crate::TuiTestScreen;
+
+    let (mut app, _) = view_app();
+    app.insert_resource(TuiTestScreen::new(80, 24));
+    app.world_mut().spawn(tree());
+    app.update();
+    // Branches start folded; a branch with some of its items ticked is mixed.
+    assert!(
+        row_with(&app, "apple").is_none(),
+        "{:#?}",
+        screen_rows(&app)
+    );
+    let fruit = row_with(&app, "fruit").unwrap_or_default();
+    assert!(fruit.contains("[~]"), "{fruit}");
+    assert!(
+        row_with(&app, "→ opens").is_some(),
+        "{:#?}",
+        screen_rows(&app)
+    );
+
+    press(&mut app, "right");
+    let apple = row_with(&app, "apple").unwrap_or_default();
+    let pear = row_with(&app, "pear").unwrap_or_default();
+    assert!(
+        apple.contains("[x]") && pear.contains("[ ]"),
+        "{apple}\n{pear}"
+    );
+    // Left on an item goes up to its branch; on an open branch it closes it.
+    press(&mut app, "down down left left");
+    assert!(row_with(&app, "pear").is_none(), "{:#?}", screen_rows(&app));
+    assert!(row_with(&app, "water").is_some());
+    press(&mut app, "down right");
+    assert!(
+        row_with(&app, "pear").is_none(),
+        "a leaf has nothing to open"
+    );
+}
+
+#[test]
+fn enter_on_a_branch_switches_it_over_its_items() {
+    use rig_harness::pick::Ticked;
+
+    let (mut app, _) = view_app();
+    let entity = app.world_mut().spawn(tree()).id();
+    app.update();
+    let ticked = |app: &App| app.world().get::<Ticked>(entity).cloned();
+    // Mixed: Enter turns the branch off and leaves its items' own ticks.
+    press(&mut app, "enter");
+    assert_eq!(ticked(&app), Some(Ticked(vec![1, 3])));
+    // Off: Enter turns it back on, with its items as they were.
+    press(&mut app, "enter");
+    assert_eq!(ticked(&app), Some(Ticked(vec![0, 1, 3])));
+    // On with none of its items on: Enter turns every item on.
+    press(&mut app, "right down enter up enter");
+    assert_eq!(ticked(&app), Some(Ticked(vec![0, 1, 2, 3])));
+    // All on: Enter turns the branch off.
+    press(&mut app, "enter");
+    assert_eq!(ticked(&app), Some(Ticked(vec![1, 2, 3])));
+    // An item under a branch that is off changes only itself.
+    press(&mut app, "down down enter");
+    assert_eq!(ticked(&app), Some(Ticked(vec![1, 3])));
+}
+
+#[test]
+fn typing_finds_items_in_folded_branches_and_shows_them_under_their_branch() {
+    use crate::TuiTestScreen;
+
+    let (mut app, _) = view_app();
+    app.insert_resource(TuiTestScreen::new(80, 24));
+    let entity = app.world_mut().spawn(tree()).id();
+    app.update();
+    type_text(&mut app, "pear");
+    let rows = screen_rows(&app);
+    let fruit = line_of(&rows, "fruit");
+    let pear = line_of(&rows, "[ ] pear");
+    assert!(
+        fruit.is_some() && pear > fruit && line_of(&rows, "apple").is_none(),
+        "{rows:#?}"
+    );
+    // The found item is the one selected and ticked.
+    press(&mut app, "down enter");
+    let ticked = app
+        .world()
+        .get::<rig_harness::pick::Ticked>(entity)
+        .cloned();
+    assert_eq!(ticked, Some(rig_harness::pick::Ticked(vec![0, 1, 2, 3])));
+}
+
+#[test]
+fn right_and_left_show_and_hide_more_in_a_picker_without_a_tree() {
+    use crate::TuiTestScreen;
+
+    let (mut app, _) = view_app();
+    app.insert_resource(TuiTestScreen::new(80, 24));
+    let mut picker = Picker::new("Model").item("gpt", "model gpt");
+    if let Some(item) = picker.items.last_mut() {
+        item.more = Some("a model of the provider openai".to_owned());
+    }
+    app.world_mut().spawn(picker);
+    app.update();
+    assert!(row_with(&app, "openai").is_none());
+    press(&mut app, "right");
+    assert!(
+        row_with(&app, "openai").is_some(),
+        "{:#?}",
+        screen_rows(&app)
+    );
+    press(&mut app, "left");
+    assert!(
+        row_with(&app, "openai").is_none(),
+        "{:#?}",
+        screen_rows(&app)
+    );
+}
+
+#[test]
+fn an_unticked_branch_runs_none_of_its_items_commands_and_keeps_their_ticks() {
+    let (mut app, _) = view_app();
+    app.init_resource::<Reported>()
+        .init_resource::<Ran>()
+        .add_observer(report)
+        .add_command(
+            "note",
+            "Notes its arguments",
+            |In(args): In<CommandArgs>, mut ran: ResMut<Ran>| {
+                ran.0.push(args.args);
+            },
+        );
+    let (mut picker, _) = tree();
+    for item in &mut picker.items {
+        item.command = format!("note {}", item.label);
+    }
+    app.world_mut().spawn(picker);
+    app.update();
+    // Tab on the folded, mixed branch turns it off; Enter answers.
+    press(&mut app, "tab enter");
+    assert_eq!(
+        app.world().resource::<Reported>().0,
+        [Some(Chosen::items([1, 3]))]
+    );
+    assert_eq!(app.world().resource::<Ran>().0, ["water"]);
+}
+
+#[test]
+fn typing_or_pasting_selects_the_first_item_found_not_the_branch_above_it() {
+    use rig_harness::pick::Ticked;
+
+    for paste in [false, true] {
+        let (mut app, _) = view_app();
+        let entity = app.world_mut().spawn(tree()).id();
+        app.update();
+        // "r" finds the branch fruit and pear under it, and water: Enter ticks pear.
+        if paste {
+            let pasted = crossterm::event::Event::Paste("r".to_owned());
+            push(&mut app, crate::KeyInput::Event(pasted));
+            app.update();
+        } else {
+            type_text(&mut app, "r");
+        }
+        press(&mut app, "enter");
+        let ticked = app.world().get::<Ticked>(entity).cloned();
+        assert_eq!(ticked, Some(Ticked(vec![0, 1, 2, 3])), "pasted: {paste}");
+    }
+}
+
+/// A picker with a tree whose items run `note <label>`: `fruit` holding
+/// `apple`, none ticked, of several when `multiple`.
+fn noting_tree(app: &mut App, multiple: bool) {
+    app.init_resource::<Ran>().add_command(
+        "note",
+        "Notes its arguments",
+        |In(args): In<CommandArgs>, mut ran: ResMut<Ran>| {
+            ran.0.push(args.args);
+        },
+    );
+    let mut picker = Picker::new("Fruit");
+    if multiple {
+        picker = picker.multiple();
+    }
+    picker.items = vec![
+        PickItem::new("fruit", "note fruit"),
+        PickItem {
+            parent: Some(0),
+            ..PickItem::new("apple", "note apple")
+        },
+    ];
+    app.world_mut().spawn(picker);
+    app.update();
+}
+
+#[test]
+fn enter_on_an_item_under_a_branch_runs_its_command_in_a_picker_of_one() {
+    let (mut app, _) = view_app();
+    noting_tree(&mut app, false);
+    press(&mut app, "right down enter");
+    assert_eq!(app.world().resource::<Ran>().0, ["apple"]);
+}
+
+#[test]
+fn enter_on_an_item_under_a_branch_runs_its_command_with_nothing_ticked() {
+    let (mut app, _) = view_app();
+    noting_tree(&mut app, true);
+    press(&mut app, "right down enter");
+    assert_eq!(app.world().resource::<Ran>().0, ["apple"]);
+}
+
+#[test]
+fn a_picker_filled_again_keeps_the_row_selected_among_rows_of_one_label() {
+    use rig_harness::pick::Ticked;
+
+    let (mut app, _) = view_app();
+    let item = |parent: Option<usize>| PickItem {
+        parent,
+        checked: true,
+        ..PickItem::new("rig-foo", "")
+    };
+    let mut picker = Picker::new("Plugins").multiple();
+    picker.items = vec![item(None), item(Some(0)), item(None)];
+    let keys = ChoiceKeys(vec![(KeyCode::Enter, ChoiceAction::Tick)]);
+    let entity = app.world_mut().spawn((picker.clone(), keys)).id();
+    app.update();
+    let refill = |app: &mut App, detail: &str| {
+        let mut again = picker.clone();
+        for item in &mut again.items {
+            item.detail = Some(detail.to_owned());
+        }
+        app.world_mut().entity_mut(entity).insert(again);
+        app.update();
+    };
+    // The branch's plugin, of the branch's label, ticked and filled again
+    // as `/plugins` does, stays selected.
+    press(&mut app, "right down enter");
+    refill(&mut app, "- off");
+    press(&mut app, "enter");
+    refill(&mut app, "on");
+    let ticked = app.world().get::<Ticked>(entity).cloned();
+    assert_eq!(ticked, Some(Ticked(vec![0, 1, 2])));
+    assert_eq!(
+        app.world()
+            .get::<rig_harness::pick::Highlighted>(entity)
+            .copied(),
+        Some(rig_harness::pick::Highlighted(1))
     );
 }

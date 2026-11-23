@@ -230,3 +230,31 @@ fn the_wire_answers_from_the_facts_it_is_given() {
         Some(1_234)
     );
 }
+
+/// Vertex AI names its own API, and only it takes an image URL inside a
+/// function response; the Gemini API takes the same image elsewhere.
+#[test]
+fn vertex_names_its_api_and_takes_image_urls_in_function_responses() {
+    use rig_core::completion::{Media, Place, ReplayTarget};
+    use rig_core::message::{DocumentSourceKind, Image, ImageMediaType};
+
+    let vertex = GenerateContent::new(GEMINI_2_5_FLASH);
+    let rest = rig_core::providers::gemini::completion::GenerateContent::new(
+        rig_core::providers::gemini::GeminiConfig::new("key"),
+        GEMINI_2_5_FLASH,
+    );
+    assert_eq!(vertex.api().as_str(), "vertexai.generate_content");
+    assert_eq!(rest.api().as_str(), "gemini.generate_content");
+
+    let image = Image {
+        data: DocumentSourceKind::Url("https://example.com/a.png".to_owned()),
+        media_type: Some(ImageMediaType::PNG),
+        ..Image::default()
+    };
+    let in_response = Media::Image(&image, Place::ToolResult);
+    assert!(vertex.encodes(GEMINI_2_5_FLASH, in_response));
+    assert!(!rest.encodes(GEMINI_2_5_FLASH, in_response));
+    let in_user = Media::Image(&image, Place::User);
+    assert!(vertex.encodes(GEMINI_2_5_FLASH, in_user));
+    assert!(rest.encodes(GEMINI_2_5_FLASH, in_user));
+}

@@ -1,3 +1,6 @@
+#![allow(clippy::disallowed_methods, reason = "test fixtures")]
+
+use crate::workspace::Root;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -54,15 +57,16 @@ fn tools_reach_a_host_path_through_its_transport() {
     let home = dir.join("home");
     std::fs::write(home.join("strata/src/lib.rs"), "fn old() {}\n").ok();
     std::fs::write(dir.join("local/notes.txt"), "here\n").ok();
-    let bench = Remote::new("bench", transport(&home), Launcher::default());
-    let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
-    let base = Some(dir.join("local"));
+    let bench = Remote::new("bench", transport(&home), Launcher::default);
+    let root = Root {
+        workspace: Arc::new(Hosts::new(Arc::new(Local), bench)),
+        base: Some(dir.join("local")),
+        confine: false,
+    };
     let file = "bench:~/strata/src/lib.rs";
 
     let read = Read {
-        workspace: workspace.clone(),
-        base: base.clone(),
-        confine: false,
+        root: root.clone(),
         seen: crate::Seen::default(),
     };
     let (shown, context) = call(&read, ReadArgs::new("bench:~/strata/src/../src/lib.rs"));
@@ -89,9 +93,7 @@ fn tools_reach_a_host_path_through_its_transport() {
     );
 
     let edit = Edit {
-        workspace: workspace.clone(),
-        base: base.clone(),
-        confine: false,
+        root: root.clone(),
         seen: crate::Seen::default(),
     };
     let args = EditArgs::new(file, [Replacement::new("old", "new")]);
@@ -106,17 +108,13 @@ fn tools_reach_a_host_path_through_its_transport() {
     let changed: Vec<&str> = changed.0.iter().map(|it| it.path.as_str()).collect();
     assert_eq!(changed, [file]);
 
-    let search = Search {
-        workspace: workspace.clone(),
-        base: base.clone(),
-        confine: false,
-    };
+    let search = Search { root: root.clone() };
     let (found, _) = call(&search, SearchArgs::new("fn new").in_path("bench:~/strata"));
     let found = found.unwrap_or_default();
     assert_eq!(found, "bench:~/strata/src/lib.rs:1: fn new() {}");
 
     let shell = Shell {
-        workspace,
+        workspace: root.workspace,
         launcher: Launcher::default().in_dir(dir.join("local")),
         ..Shell::default()
     };
@@ -138,13 +136,11 @@ fn a_failed_transport_fails_the_call() {
     let down = Remote::new(
         "down",
         ["sh", "-c", "echo 'no route to host' >&2; exit 255"],
-        Launcher::default(),
+        Launcher::default,
     );
     let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), down));
     let read = Read {
-        workspace: workspace.clone(),
-        base: None,
-        confine: false,
+        root: Root::from(workspace.clone()),
         seen: crate::Seen::default(),
     };
     let (failed, _) = call(&read, ReadArgs::new("down:/etc/hostname"));
@@ -173,7 +169,7 @@ fn a_failed_transport_fails_the_call() {
 /// host its base is on. A confined call refuses another host's path.
 #[test]
 fn host_paths_fold_and_join_as_scp_reads_them() {
-    let bench = Remote::new("bench", ["true"], Launcher::default());
+    let bench = Remote::new("bench", ["true"], Launcher::default);
     let hosts: &dyn Workspace = &Hosts::new(Arc::new(Local), bench);
     let base = Path::new("/project");
     for (path, resolved) in [
@@ -192,7 +188,11 @@ fn host_paths_fold_and_join_as_scp_reads_them() {
     assert_eq!(joined, Path::new("bench:~/strata/src/lib.rs"));
     let home = hosts.resolve(Some(remote_base), "~/notes");
     assert_eq!(home, Path::new("bench:~/notes"));
-    let alone = Remote::new("solo", ["true"], Launcher::default()).map(|remote| {
+    // A `HOST:` path is the host's, so it is read off a thread that must
+    // not wait; any other is this machine's.
+    assert_eq!(hosts.host_for(&home), Some("bench"));
+    assert_eq!(hosts.host_for(Path::new("/project/other:~/x")), None);
+    let alone = Remote::new("solo", ["true"], Launcher::default).map(|remote| {
         let remote: &dyn Workspace = &remote;
         remote.resolve(Some(Path::new("/srv")), "~/x")
     });
@@ -204,8 +204,8 @@ fn host_paths_fold_and_join_as_scp_reads_them() {
         .is_ok();
     let escaped = hosts.place(Some(remote_base), true, "../lib.rs").is_err();
     assert!(refused && kept && escaped, "{refused} {kept} {escaped}");
-    assert!(Remote::new("a:b", ["ssh"], Launcher::default()).is_err());
-    assert!(Remote::new("a", Vec::<String>::new(), Launcher::default()).is_err());
+    assert!(Remote::new("a:b", ["ssh"], Launcher::default).is_err());
+    assert!(Remote::new("a", Vec::<String>::new(), Launcher::default).is_err());
 }
 
 /// [`transport`], first appending a line to `log` for each call.
@@ -238,32 +238,24 @@ fn each_file_operation_is_one_transport_call() {
     let home = dir.join("home");
     let log = dir.join("calls.log");
     std::fs::write(home.join("strata/src/lib.rs"), "fn old() {}\n").ok();
-    let bench = Remote::new("bench", counted(&home, &log), Launcher::default());
+    let bench = Remote::new("bench", counted(&home, &log), Launcher::default);
     let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
     let file = "bench:~/strata/src/lib.rs";
     let seen = crate::Seen::default();
     let read = Read {
-        workspace: workspace.clone(),
-        base: None,
-        confine: false,
+        root: Root::from(workspace.clone()),
         seen: seen.clone(),
     };
     let edit = Edit {
-        workspace: workspace.clone(),
-        base: None,
-        confine: false,
+        root: Root::from(workspace.clone()),
         seen: seen.clone(),
     };
     let write = crate::Write {
-        workspace: workspace.clone(),
-        base: None,
-        confine: false,
+        root: Root::from(workspace.clone()),
         seen,
     };
     let search = Search {
-        workspace,
-        base: None,
-        confine: false,
+        root: Root::from(workspace),
     };
     let (shown, _) = call(&read, ReadArgs::new(file));
     let read_calls = calls(&log);
@@ -321,6 +313,237 @@ fn each_file_operation_is_one_transport_call() {
     );
 }
 
+/// A write there over a file the model never read, or one changed since
+/// it read it, is refused in one transport call and leaves the file as it
+/// was; after a read, the write goes through.
+#[test]
+fn a_write_there_replaces_only_what_was_read() {
+    let dir = scratch("unseen");
+    let home = dir.join("home");
+    let log = dir.join("calls.log");
+    let on_disk = home.join("strata/src/lib.rs");
+    std::fs::write(&on_disk, "fn old() {}\n").ok();
+    let bench = Remote::new("bench", counted(&home, &log), Launcher::default);
+    let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
+    let seen = crate::Seen::default();
+    let read = Read {
+        root: Root::from(workspace.clone()),
+        seen: seen.clone(),
+    };
+    let write = crate::Write {
+        root: Root::from(workspace),
+        seen,
+    };
+    let file = "bench:~/strata/src/lib.rs";
+    let (unread, _) = call(&write, crate::WriteArgs::new(file, "fn new() {}\n"));
+    let unread_calls = calls(&log);
+    let unread_text = std::fs::read_to_string(&on_disk).ok();
+    let (shown, _) = call(&read, ReadArgs::new(file));
+    std::fs::write(&on_disk, "fn users() {}\n").ok();
+    calls(&log);
+    let (stale, _) = call(&write, crate::WriteArgs::new(file, "fn new() {}\n"));
+    let stale_calls = calls(&log);
+    let stale_text = std::fs::read_to_string(&on_disk).ok();
+    let (again, _) = call(&read, ReadArgs::new(file));
+    let (wrote, _) = call(&write, crate::WriteArgs::new(file, "fn new() {}\n"));
+    let wrote_text = std::fs::read_to_string(&on_disk).ok();
+    std::fs::remove_dir_all(&dir).ok();
+    let said = |result: Result<String, rig_core::tool::ToolExecutionError>| {
+        result.map_err(|error| error.to_string())
+    };
+    assert!(shown.is_ok() && again.is_ok());
+    assert!(
+        said(unread).is_err_and(|why| why.contains("has not been read by you")),
+        "an unread file was replaced"
+    );
+    assert!(
+        said(stale).is_err_and(|why| why.contains("changed since")),
+        "a changed file was replaced"
+    );
+    assert_eq!(
+        (unread_text.as_deref(), stale_text.as_deref()),
+        (Some("fn old() {}\n"), Some("fn users() {}\n"))
+    );
+    assert_eq!((unread_calls, stale_calls), (1, 1));
+    assert_eq!(
+        said(wrote).ok().as_deref(),
+        Some("Replaced bench:~/strata/src/lib.rs, which had 1 line.")
+    );
+    assert_eq!(wrote_text.as_deref(), Some("fn new() {}\n"));
+}
+
+/// A write there never replaces a file that changed between its check
+/// and the moment it is put in place: here `mktemp`, which runs between
+/// them for a write's temporary file, writes the user's text to
+/// `raced.rs` and makes a directory `dir.rs`. A new file is refused and
+/// the user's kept, as is a file read before; a name a directory took is
+/// refused, with nothing left in the directory.
+#[cfg(unix)]
+#[test]
+fn a_write_there_keeps_a_file_that_changed_meanwhile() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let dir = scratch("raced");
+    let home = dir.join("home");
+    let bin = home.join("bin");
+    std::fs::create_dir_all(&bin).ok();
+    let shim = bin.join("mktemp");
+    std::fs::write(
+        &shim,
+        "#!/bin/sh\ncase \"$1\" in *.rig-write.*) printf 'user\\n' > \"$HOME/strata/src/raced.rs\"; \
+         mkdir -p \"$HOME/strata/src/dir.rs\";; esac\n\
+         PATH=${PATH#*:} exec mktemp \"$@\"\n",
+    )
+    .ok();
+    std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755)).ok();
+    let racing = vec![
+        "sh".to_owned(),
+        "-c".to_owned(),
+        "cd \"$0\" && PATH=\"$0/bin:$PATH\" HOME=\"$0\" exec sh -c \"$1\"".to_owned(),
+        home.display().to_string(),
+    ];
+    let bench = Remote::new("bench", racing, Launcher::default);
+    let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
+    let seen = crate::Seen::default();
+    let read = Read {
+        root: Root::from(workspace.clone()),
+        seen: seen.clone(),
+    };
+    let write = crate::Write {
+        root: Root::from(workspace),
+        seen,
+    };
+    let (into_dir, _) = call(
+        &write,
+        crate::WriteArgs::new("bench:~/strata/src/dir.rs", "x\n"),
+    );
+    let in_dir = std::fs::read_dir(home.join("strata/src/dir.rs")).map_or(0, Iterator::count);
+    let file = "bench:~/strata/src/raced.rs";
+    let on_disk = home.join("strata/src/raced.rs");
+    let (created, _) = call(&write, crate::WriteArgs::new(file, "fn new() {}\n"));
+    let created_text = std::fs::read_to_string(&on_disk).ok();
+    std::fs::write(&on_disk, "fn old() {}\n").ok();
+    let (shown, _) = call(&read, ReadArgs::new(file));
+    let (replaced, _) = call(&write, crate::WriteArgs::new(file, "fn new() {}\n"));
+    let replaced_text = std::fs::read_to_string(&on_disk).ok();
+    std::fs::remove_dir_all(&dir).ok();
+    let said = |result: Result<String, rig_core::tool::ToolExecutionError>| {
+        result.map_err(|error| error.to_string())
+    };
+    assert!(shown.is_ok());
+    assert!(
+        said(into_dir).is_err(),
+        "a directory that appeared was written into"
+    );
+    assert_eq!(in_dir, 0, "the directory that appeared is left empty");
+    assert!(said(created).is_err(), "a file that appeared was replaced");
+    assert!(
+        said(replaced).is_err_and(|why| why.contains("changed since")),
+        "a file that changed was replaced"
+    );
+    assert_eq!(
+        (created_text.as_deref(), replaced_text.as_deref()),
+        (Some("user\n"), Some("user\n"))
+    );
+}
+
+/// Where `ln` cannot make a hard link, as on vfat or some network mounts,
+/// a new file is still created there, by a create that refuses a name a
+/// file has; one there is kept, and one the copy fails to fill is
+/// removed and the write fails.
+#[cfg(unix)]
+#[test]
+fn a_new_file_there_is_created_where_links_fail() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let dir = scratch("nolink");
+    let home = dir.join("home");
+    let bin = home.join("bin");
+    std::fs::create_dir_all(&bin).ok();
+    let shim = bin.join("ln");
+    std::fs::write(
+        &shim,
+        "#!/bin/sh\necho 'ln: Operation not permitted' >&2\nexit 1\n",
+    )
+    .ok();
+    std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755)).ok();
+    // Once `race` exists, a write's `mktemp` makes `kept.rs` first.
+    let shim = bin.join("mktemp");
+    std::fs::write(
+        &shim,
+        "#!/bin/sh\n[ -e \"$HOME/race\" ] && printf 'user\\n' > \"$HOME/strata/src/kept.rs\"\n\
+         PATH=${PATH#*:} exec mktemp \"$@\"\n",
+    )
+    .ok();
+    std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755)).ok();
+    // Once `copyfail` exists, copying a write's temporary file fails, as
+    // on a full disk.
+    let shim = bin.join("cat");
+    std::fs::write(
+        &shim,
+        "#!/bin/sh\ncase \"$*\" in *.rig-write.*) [ -e \"$HOME/copyfail\" ] && exit 1;; esac\n\
+         PATH=${PATH#*:} exec cat \"$@\"\n",
+    )
+    .ok();
+    std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755)).ok();
+    let linkless = vec![
+        "sh".to_owned(),
+        "-c".to_owned(),
+        "cd \"$0\" && PATH=\"$0/bin:$PATH\" HOME=\"$0\" exec sh -c \"$1\"".to_owned(),
+        home.display().to_string(),
+    ];
+    let bench = Remote::new("bench", linkless, Launcher::default);
+    let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
+    let write = crate::Write {
+        root: Root::from(workspace),
+        seen: crate::Seen::default(),
+    };
+    let (created, _) = call(
+        &write,
+        crate::WriteArgs::new("bench:~/strata/src/new.rs", "fn new() {}\n"),
+    );
+    let made = std::fs::read_to_string(home.join("strata/src/new.rs")).ok();
+    std::fs::write(home.join("race"), "").ok();
+    let (raced, _) = call(
+        &write,
+        crate::WriteArgs::new("bench:~/strata/src/kept.rs", "model\n"),
+    );
+    let kept = std::fs::read_to_string(home.join("strata/src/kept.rs")).ok();
+    std::fs::write(home.join("copyfail"), "").ok();
+    let (half, _) = call(
+        &write,
+        crate::WriteArgs::new("bench:~/strata/src/half.rs", "model\n"),
+    );
+    let half_left = home.join("strata/src/half.rs").exists();
+    let left = std::fs::read_dir(home.join("strata/src"))
+        .map(|entries| {
+            entries
+                .flatten()
+                .filter(|entry| {
+                    entry
+                        .file_name()
+                        .to_string_lossy()
+                        .starts_with(".rig-write")
+                })
+                .count()
+        })
+        .unwrap_or(0);
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(
+        created.map_err(|error| error.to_string()).as_deref(),
+        Ok("Created bench:~/strata/src/new.rs.")
+    );
+    assert_eq!(made.as_deref(), Some("fn new() {}\n"));
+    assert!(raced.is_err(), "a file that appeared was replaced");
+    let half = half.map_err(|error| error.to_string());
+    assert!(
+        half.as_ref()
+            .is_err_and(|why| !why.contains("has not been read")),
+        "a failed copy is a failed write: {half:?}"
+    );
+    assert!(!half_left, "a half-written file was left");
+    assert_eq!(kept.as_deref(), Some("user\n"));
+    assert_eq!(left, 0, "a temporary file was left");
+}
+
 /// [`transport`], first appending to `log` how many bytes each call sent
 /// back.
 fn metered(home: &Path, log: &Path) -> Vec<String> {
@@ -346,11 +569,9 @@ fn a_read_of_some_lines_is_sent_only_those() {
     let long: String = (1..=20_000).map(|n| format!("line {n}\n")).collect();
     std::fs::write(home.join("strata/long.log"), &long).ok();
     std::fs::write(home.join("strata/short.txt"), "one\ntwo").ok();
-    let bench = Remote::new("bench", metered(&home, &log), Launcher::default());
+    let bench = Remote::new("bench", metered(&home, &log), Launcher::default);
     let read = Read {
-        workspace: Arc::new(Hosts::new(Arc::new(Local), bench)),
-        base: None,
-        confine: false,
+        root: Root::from(Arc::new(Hosts::new(Arc::new(Local), bench)) as Arc<dyn Workspace>),
         seen: crate::Seen::default(),
     };
     let args = ReadArgs::new("bench:~/strata/long.log").lines(10_000, 2);
@@ -386,19 +607,15 @@ fn an_edit_after_a_read_of_some_lines_of_a_small_file_is_one_call() {
     let log = dir.join("calls.log");
     let small: String = (1..=400).map(|n| format!("let x{n} = {n};\n")).collect();
     std::fs::write(home.join("strata/src/lib.rs"), &small).ok();
-    let bench = Remote::new("bench", counted(&home, &log), Launcher::default());
+    let bench = Remote::new("bench", counted(&home, &log), Launcher::default);
     let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
     let seen = crate::Seen::default();
     let read = Read {
-        workspace: workspace.clone(),
-        base: None,
-        confine: false,
+        root: Root::from(workspace.clone()),
         seen: seen.clone(),
     };
     let edit = Edit {
-        workspace,
-        base: None,
-        confine: false,
+        root: Root::from(workspace),
         seen,
     };
     let file = "bench:~/strata/src/lib.rs";
@@ -442,12 +659,10 @@ fn a_host_runs_a_few_file_operations_at_once() {
         running.display().to_string(),
         seen.display().to_string(),
     ];
-    let bench = Remote::new("bench", transport, Launcher::default());
+    let bench = Remote::new("bench", transport, Launcher::default);
     let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
     let read = Read {
-        workspace,
-        base: None,
-        confine: false,
+        root: Root::from(workspace),
         seen: crate::Seen::default(),
     };
     let shown: Vec<Option<String>> = std::thread::scope(|scope| {
@@ -509,12 +724,10 @@ fn a_failed_transport_is_tried_again_for_a_read_only() {
             log.display().to_string(),
             failed.display().to_string(),
         ];
-        let bench = Remote::new("bench", flaky, Launcher::default());
+        let bench = Remote::new("bench", flaky, Launcher::default);
         let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
         let read = Read {
-            workspace,
-            base: None,
-            confine: false,
+            root: Root::from(workspace),
             seen: crate::Seen::default(),
         };
         let (read, _) = call(&read, ReadArgs::new("bench:~/strata/src/lib.rs"));
@@ -527,7 +740,7 @@ fn a_failed_transport_is_tried_again_for_a_read_only() {
         "echo call >> \"$0\"; echo 'closed by peer' >&2; exit 255".to_owned(),
         log.display().to_string(),
     ];
-    let wrote = Remote::new("bench", down, Launcher::default())
+    let wrote = Remote::new("bench", down, Launcher::default)
         .and_then(|bench| bench.write(Path::new("~/strata/src/lib.rs"), b"fn new() {}\n"));
     let write_calls = calls(&log);
     let on_disk = std::fs::read_to_string(home.join("strata/src/lib.rs"));
@@ -585,19 +798,15 @@ fn a_write_cut_off_mid_way_says_whether_it_happened() {
             log.display().to_string(),
             armed.display().to_string(),
         ];
-        let bench = Remote::new("bench", transport, Launcher::default());
+        let bench = Remote::new("bench", transport, Launcher::default);
         let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
         let seen = crate::Seen::default();
         let read = Read {
-            workspace: workspace.clone(),
-            base: None,
-            confine: false,
+            root: Root::from(workspace.clone()),
             seen: seen.clone(),
         };
         let edit = Edit {
-            workspace,
-            base: None,
-            confine: false,
+            root: Root::from(workspace),
             seen,
         };
         let file = "bench:~/strata/src/lib.rs";
@@ -626,8 +835,8 @@ fn a_write_cut_off_mid_way_says_whether_it_happened() {
          said nothing",
     ];
     let found = [
-        "it does not hold what this write sent, so the write did not happen; make the change \
-         again",
+        "it does not hold what this write sent, so the write may or may not have happened; \
+         read the file before going on",
         "it holds what this write sent, so the write happened",
     ];
     let wanted: Vec<String> = ended
@@ -675,7 +884,7 @@ fn a_command_there_stops_with_its_call() {
         (apart("sleep 1; kill -9 $$"), None),
     ] {
         std::fs::remove_file(&child).ok();
-        let bench = Remote::new("bench", transport, Launcher::default());
+        let bench = Remote::new("bench", transport, Launcher::default);
         let shell = Shell {
             workspace: Arc::new(Hosts::new(Arc::new(Local), bench)),
             ..Shell::default()
@@ -722,11 +931,9 @@ fn a_remote_home_file_is_listed_as_named() {
     let dir = scratch("list");
     let home = dir.join("home");
     std::fs::write(home.join("notes.txt"), "remote\n").ok();
-    let listed = Remote::new("solo", transport(&home), Launcher::default()).map(|remote| {
+    let listed = Remote::new("solo", transport(&home), Launcher::default).map(|remote| {
         let list = List {
-            workspace: Arc::new(remote),
-            base: None,
-            confine: false,
+            root: Root::from(Arc::new(remote) as Arc<dyn Workspace>),
         };
         call(&list, ListArgs::new("~/notes.txt")).0
     });
@@ -735,4 +942,359 @@ fn a_remote_home_file_is_listed_as_named() {
         listed.ok().and_then(Result::ok).as_deref(),
         Some("~/notes.txt\n")
     );
+}
+
+/// A failed batch read there names each file it was to read, so a search
+/// says what it could not read rather than "No matches."; a file under a
+/// directory there that may not be searched is not taken for missing.
+#[cfg(unix)]
+#[test]
+fn what_could_not_be_read_there_is_not_taken_for_absent() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let dir = scratch("unread");
+    let home = dir.join("home");
+    std::fs::write(home.join("strata/src/lib.rs"), "fn needle() {}\n").ok();
+    // Every script that copies files aside, as a batch read does, fails.
+    let mut refusing = vec![
+        "sh".to_owned(),
+        "-c".to_owned(),
+        "case \"$1\" in *mktemp*) echo 'reads refused' >&2; exit 1;; esac; \
+         cd \"$0\" && HOME=\"$0\" exec sh -c \"$1\""
+            .to_owned(),
+    ];
+    refusing.push(home.display().to_string());
+    let bench = Remote::new("bench", refusing, Launcher::default);
+    let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
+    let search = Search {
+        root: Root::from(workspace.clone()),
+    };
+    let (found, _) = call(&search, SearchArgs::new("needle").in_path("bench:~/strata"));
+    let found = found.unwrap_or_default();
+    assert!(
+        found.starts_with(
+            "No matches in the files read.\n[could not read 1 path, so it was not searched: \
+             bench:~/strata/src/lib.rs ("
+        ) && found.contains("reads refused"),
+        "{found}"
+    );
+    let locked = home.join("locked");
+    std::fs::create_dir_all(&locked).ok();
+    std::fs::write(locked.join("a.txt"), "a\n").ok();
+    let link = home.join("strata/link.txt");
+    std::os::unix::fs::symlink("../locked/a.txt", &link).ok();
+    std::fs::create_dir_all(locked.join("inner")).ok();
+    std::os::unix::fs::symlink("locked/inner", home.join("hidden")).ok();
+    // A link to a directory that may be searched hides nothing.
+    std::os::unix::fs::symlink("strata", home.join("alias")).ok();
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).ok();
+    let hidden = std::fs::read(locked.join("a.txt")).is_err();
+    let stat = workspace.stat(Path::new("bench:~/locked/a.txt"));
+    let linked = workspace.stat(Path::new("bench:~/strata/link.txt"));
+    let slashed = workspace.stat(Path::new("bench:~/hidden/"));
+    let gone = workspace.stat(Path::new("bench:~/strata/gone/a.txt"));
+    let aliased = workspace.stat(Path::new("bench:~/alias/gone.txt"));
+    let all = crate::workspace::Listing::All;
+    let listing = workspace.files(Path::new("bench:~/locked"), None, all);
+    let missing = workspace.files(Path::new("bench:~/strata/gone"), None, all);
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).ok();
+    std::fs::remove_dir_all(&dir).ok();
+    assert!(gone.is_ok_and(|gone| gone == crate::workspace::Stat::Missing));
+    assert!(aliased.is_ok_and(|gone| gone == crate::workspace::Stat::Missing));
+    let not_found = Some(std::io::ErrorKind::NotFound);
+    assert_eq!(missing.err().map(|error| error.kind()), not_found);
+    if hidden {
+        assert_eq!(
+            stat.err().map(|error| error.kind()),
+            Some(std::io::ErrorKind::PermissionDenied)
+        );
+        // Nor a link there whose target such a directory hides.
+        assert_eq!(
+            linked.err().map(|error| error.kind()),
+            Some(std::io::ErrorKind::PermissionDenied)
+        );
+        // Written with a trailing `/` too.
+        assert_eq!(
+            slashed.err().map(|error| error.kind()),
+            Some(std::io::ErrorKind::PermissionDenied)
+        );
+        // A directory there that may not be entered is no missing one.
+        let kind = listing.err().map(|error| error.kind());
+        assert!(kind.is_some() && kind != not_found, "{kind:?}");
+    }
+}
+
+/// A command that ran on a host, whose output is spilled on this machine,
+/// says where a cut failure word is but gives no command for the spill
+/// file, which a command there would not find.
+#[cfg(unix)]
+#[test]
+fn a_cut_line_of_a_command_there_gives_no_command_for_the_spill_here() {
+    let dir = scratch("spill");
+    let bench = Remote::new("bench", transport(&dir.join("home")), Launcher::default);
+    let shell = Shell {
+        workspace: Arc::new(Hosts::new(Arc::new(Local), bench)),
+        spill: Some(crate::Spill(dir.join("spill"))),
+        ..Shell::default()
+    };
+    let command = "seq 1 1500; head -c 3000 /dev/zero | tr '\\0' x; echo ' FAILED'; seq 1 1500";
+    let (ran, _) = call(&shell, ShellArgs::new(command).in_dir("bench:~"));
+    let ran = ran.unwrap_or_default();
+    std::fs::remove_dir_all(&dir).ok();
+    assert!(
+        ran.contains("[… cut at byte 300 of 3007; `FAILED` is at bytes 3002-3007]"),
+        "{ran:.600}"
+    );
+}
+
+/// Whether the process `pid` runs: there and not a zombie.
+#[cfg(target_os = "linux")]
+fn alive(pid: u32) -> bool {
+    std::fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|stat| {
+        !stat
+            .rsplit(')')
+            .next()
+            .unwrap_or_default()
+            .trim_start()
+            .starts_with('Z')
+    })
+}
+
+/// Polls `future` once, as an executor that starts it does.
+fn start<F: std::future::Future>(future: &mut std::pin::Pin<Box<F>>) -> bool {
+    let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+    future.as_mut().poll(&mut context).is_ready()
+}
+
+/// Waits at most five seconds for `done`; whether it came.
+fn soon(done: impl Fn() -> bool) -> bool {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !done() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    done()
+}
+
+/// A write stopped while its transport is still on its way there, as Esc
+/// stops a call, never lands, and its transport is gone.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_stopped_write_never_lands() {
+    let dir = scratch("stopped");
+    let home = dir.join("home");
+    let pid = dir.join("transport.pid");
+    let slow = vec![
+        "sh".to_owned(),
+        "-c".to_owned(),
+        "echo $$ > \"$1\"; sleep 3; cd \"$0\" && HOME=\"$0\" exec sh -c \"$2\"".to_owned(),
+        home.display().to_string(),
+        pid.display().to_string(),
+    ];
+    let bench = Remote::new("bench", slow, Launcher::default);
+    let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
+    let mut writing = Box::pin(crate::blocking(move || {
+        let late = Path::new("bench:~/late.txt");
+        workspace
+            .write(late, b"AFTER_STOP")
+            .map_err(|error| rig_core::tool::ToolExecutionError::other(error.to_string()))
+    }));
+    assert!(!start(&mut writing));
+    assert!(soon(|| pid.exists()));
+    drop(writing);
+    let transport = std::fs::read_to_string(&pid).ok();
+    let transport = transport.and_then(|pid| pid.trim().parse::<u32>().ok());
+    std::thread::sleep(std::time::Duration::from_secs(4));
+    let landed = home.join("late.txt").exists();
+    std::fs::remove_dir_all(&dir).ok();
+    assert!(!landed, "the stopped write landed");
+    assert!(transport.is_some_and(|pid| !alive(pid)));
+}
+
+/// Reads stopped while two run and a third waits for its turn on the
+/// host, as Esc stops parallel calls: the third never starts.
+#[cfg(unix)]
+#[test]
+fn a_read_queued_behind_a_stop_never_starts() {
+    let dir = scratch("queued");
+    let home = dir.join("home");
+    let log = dir.join("calls.log");
+    std::fs::write(home.join("strata/src/lib.rs"), "fn old() {}\n").ok();
+    let slow = vec![
+        "sh".to_owned(),
+        "-c".to_owned(),
+        "echo call >> \"$1\"; sleep 3; cd \"$0\" && HOME=\"$0\" exec sh -c \"$2\"".to_owned(),
+        home.display().to_string(),
+        log.display().to_string(),
+    ];
+    let bench = Remote::new("bench", slow, Launcher::default);
+    let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
+    let started = || std::fs::read_to_string(&log).map_or(0, |log| log.lines().count());
+    let read = || {
+        let workspace = workspace.clone();
+        Box::pin(crate::blocking(move || {
+            let file = Path::new("bench:~/strata/src/lib.rs");
+            workspace
+                .read(file, 4096)
+                .map_err(|error| rig_core::tool::ToolExecutionError::other(error.to_string()))
+        }))
+    };
+    // Two take the host's turns, then the third waits for one.
+    let mut running = [read(), read()];
+    assert!(running.iter_mut().all(|read| !start(read)));
+    assert!(soon(|| started() == super::CALLS_PER_HOST));
+    let mut queued = read();
+    assert!(!start(&mut queued));
+    // Stopped while it waits, before the turns are given back.
+    drop(queued);
+    drop(running);
+    std::thread::sleep(std::time::Duration::from_secs(4));
+    let count = started();
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(count, super::CALLS_PER_HOST);
+}
+
+/// A write whose input reaches the host cut short, as when its call is
+/// stopped or the link drops while it is sent, never lands half written.
+#[cfg(unix)]
+#[test]
+fn a_write_cut_short_never_lands() {
+    let dir = scratch("short");
+    let home = dir.join("home");
+    std::fs::write(home.join("strata/src/lib.rs"), "fn old() {}\n").ok();
+    let short = vec![
+        "sh".to_owned(),
+        "-c".to_owned(),
+        "head -c 3 | (cd \"$0\" && HOME=\"$0\" exec sh -c \"$1\")".to_owned(),
+        home.display().to_string(),
+    ];
+    let wrote = Remote::new("bench", short, Launcher::default)
+        .and_then(|bench| bench.write(Path::new("~/strata/src/lib.rs"), b"fn new() {}\n"));
+    let on_disk = std::fs::read_to_string(home.join("strata/src/lib.rs"));
+    std::fs::remove_dir_all(&dir).ok();
+    assert!(wrote.is_err());
+    assert_eq!(on_disk.ok().as_deref(), Some("fn old() {}\n"));
+}
+
+/// A host's transport starts under the policy of the moment, so one set
+/// after the host was made, such as a sandbox's, holds from the next
+/// operation on.
+#[cfg(unix)]
+#[test]
+fn a_policy_set_later_holds_from_the_next_operation() {
+    let dir = scratch("policy");
+    let home = dir.join("home");
+    let mark = dir.join("wrapped");
+    std::fs::write(home.join("strata/src/lib.rs"), "fn old() {}\n").ok();
+    let policy = Arc::new(std::sync::Mutex::new(Launcher::default()));
+    let current = policy.clone();
+    let bench = Remote::new("bench", transport(&home), move || {
+        current
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    });
+    let Ok(bench) = bench else {
+        return assert!(bench.is_ok());
+    };
+    let file = Path::new("~/strata/src/lib.rs");
+    let before = bench.read(file, 4096).is_ok() && !mark.exists();
+    let wrapper = ["sh", "-c", "touch \"$0\"; exec \"$@\""].map(String::from);
+    let wrapper = wrapper.into_iter().chain([mark.display().to_string()]);
+    *policy
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = Launcher::default().wrapped(wrapper);
+    let after = bench.read(file, 4096).is_ok() && mark.exists();
+    std::fs::remove_dir_all(&dir).ok();
+    assert!(before && after, "{before} {after}");
+}
+
+/// A write there, or an edit, of a link is refused, naming where it
+/// points, and leaves the link and its target as they were: a remote path
+/// is checked without following links, so following one would write where
+/// no check looked.
+#[cfg(unix)]
+#[test]
+fn a_write_there_to_a_link_is_refused() {
+    let dir = scratch("link");
+    let home = dir.join("home");
+    std::fs::write(home.join("strata/src/target.rs"), "fn old() {}\n").ok();
+    std::os::unix::fs::symlink("target.rs", home.join("strata/src/lib.rs")).ok();
+    let bench = Remote::new("bench", transport(&home), Launcher::default);
+    let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
+    let seen = crate::Seen::default();
+    let read = Read {
+        root: Root::from(workspace.clone()),
+        seen: seen.clone(),
+    };
+    let edit = Edit {
+        root: Root::from(workspace.clone()),
+        seen: seen.clone(),
+    };
+    let write = crate::Write {
+        root: Root::from(workspace),
+        seen,
+    };
+    let file = "bench:~/strata/src/lib.rs";
+    let pub_fn = || EditArgs::new(file, [Replacement::new("fn", "pub fn")]);
+    let (wrote, _) = call(&write, crate::WriteArgs::new(file, "fn new() {}\n"));
+    let (edited, _) = call(&edit, pub_fn());
+    let (shown, _) = call(&read, ReadArgs::new(file));
+    let (edited_after_read, _) = call(&edit, pub_fn());
+    let link = std::fs::symlink_metadata(home.join("strata/src/lib.rs"))
+        .is_ok_and(|meta| meta.file_type().is_symlink());
+    let target = std::fs::read_to_string(home.join("strata/src/target.rs")).ok();
+    std::fs::remove_dir_all(&dir).ok();
+    let said = [wrote.err(), edited.err(), edited_after_read.err()]
+        .map(|error| error.map(|error| error.to_string()));
+    assert!(link && shown.is_ok(), "the link was replaced: {said:?}");
+    assert_eq!(target.as_deref(), Some("fn old() {}\n"));
+    let refused = format!(
+        "{file}: it is a link there to `target.rs`, which a write there does not follow; \
+         write that file instead"
+    );
+    assert_eq!(
+        said,
+        [Some(refused.clone()), Some(refused.clone()), Some(refused)]
+    );
+}
+
+/// A listing there in a git work tree holds only regular files there, as
+/// one here does: not a file git still lists that was deleted, nor a
+/// link, nor a scratch file of its own when the temporary directory there
+/// is in the tree; and a listing git fails to give is an error, not an
+/// empty one.
+#[cfg(unix)]
+#[test]
+fn a_git_listing_there_holds_only_files_there() {
+    use crate::workspace::Listing;
+    let dir = scratch("git");
+    let root = dir.join("home/strata");
+    let git = |args: &[&str]| {
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(&root)
+            .args(args)
+            .output()
+            .is_ok_and(|out| out.status.success())
+    };
+    for name in ["kept.rs", "gone.rs"] {
+        std::fs::write(root.join(name), "fn f() {}\n").ok();
+    }
+    std::os::unix::fs::symlink("kept.rs", root.join("link.rs")).ok();
+    let indexed = git(&["init", "-q"]) && git(&["add", "."]);
+    std::fs::remove_file(root.join("gone.rs")).ok();
+    let mut inside = transport(&dir.join("home"));
+    if let Some(script) = inside.get_mut(2) {
+        *script = format!("export TMPDIR=\"$0/strata\"; {script}");
+    }
+    let there = || {
+        Remote::new("bench", inside.clone(), Launcher::default)
+            .and_then(|bench| bench.files(&root, None, Listing::Visible))
+    };
+    let listed = there().map(|listed| listed.files);
+    std::fs::write(root.join(".git/index"), b"broken").ok();
+    let broken = there();
+    std::fs::remove_dir_all(&dir).ok();
+    assert!(indexed);
+    assert_eq!(listed.ok(), Some(vec![root.join("kept.rs")]));
+    assert!(broken.is_err(), "{broken:?}");
 }

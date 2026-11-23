@@ -16,19 +16,6 @@
     clippy::unreachable
 )]
 
-use rig_test_support::cassettes;
-use rig_test_support::goldens;
-use rig_test_support::matrix;
-use rig_test_support::stream_faults;
-use rig_test_support::support;
-
-#[allow(
-    dead_code,
-    reason = "the runtime scenarios exercise a subset of the matrix's drivers"
-)]
-#[path = "common/corpus_matrix.rs"]
-mod corpus_matrix;
-
 #[path = "runtime/cells.rs"]
 mod cells;
 #[path = "runtime/decode.rs"]

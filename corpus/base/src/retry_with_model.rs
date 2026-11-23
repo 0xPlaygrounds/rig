@@ -1,16 +1,14 @@
-//! Plugin corpus: 17. Retry with another model (spec `17-retry-with-model.md`).
-//!
-//! `/retry-with [--force] <vendor/model>` rewinds the agent's conversation
-//! to the last turn's user message, keeps the answer it takes out as an
-//! alternative, and runs that turn again on the model named, for this turn
-//! only: the agent's own [`ModelChoice`] stays. `/alternatives` lists the
-//! kept answers and `/pick N` swaps the conversation to one of them. The
-//! conversation changes are splices by this plugin, so the session log
-//! keeps them, and the alternatives are saved with the session. The input completes
+//! Retry with another model. `/retry-with [--force] <vendor/model>` rewinds the agent's
+//! conversation to the last turn's user message, keeps the answer it takes out as an
+//! alternative, and runs that turn again on the model named, for this turn only: the agent's
+//! own [`ModelChoice`] stays. `/alternatives` lists the kept answers and `/pick N` swaps the
+//! conversation to one of them. The conversation changes are splices by this plugin, so the
+//! session log keeps them, and the alternatives are saved with the session. The input completes
 //! `/retry-with`'s argument to the models the agent can reach.
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::FilesChanged;
+use rig_harness::rig_tools::shorten;
 use rig_tui::CompletionSource;
 use serde::{Deserialize, Serialize};
 
@@ -110,11 +108,7 @@ impl Alternative {
             .split_whitespace()
             .collect::<Vec<_>>()
             .join(" ");
-        let mut excerpt: String = line.chars().take(EXCERPT).collect();
-        if line.chars().count() > EXCERPT {
-            excerpt.push('…');
-        }
-        excerpt
+        shorten(&line, EXCERPT + 1)
     }
 }
 
@@ -290,7 +284,10 @@ fn retry_with(
         notices.write(Notice::error(agent, format!("Cannot retry: {missed}")));
         return;
     }
-    let connection = match models.connect(model) {
+    let connection = match models
+        .connect(model)
+        .map_err(|why| Models::cannot_use(model, why))
+    {
         Ok(connection) => connection,
         Err(why) => {
             notices.write(Notice::error(agent, why));

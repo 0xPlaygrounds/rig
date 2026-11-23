@@ -1,5 +1,5 @@
-//! Response identity metadata (rig#2265): Gemini is the documented `None`
-//! provider — its live responses carry no request-id response header
+//! Response identity metadata: Gemini is the documented `None`
+//! provider. Its live responses carry no request-id response header
 //! (verified against `generativelanguage.googleapis.com`), so
 //! `provider_request_id` is `None` by design, never an error. These fixtures
 //! are the recorded proof of that absence, on both surfaces.
@@ -70,7 +70,7 @@ async fn streamed_agent_run_reports_none_identity() {
     .await;
 }
 
-/// 401/403 control cell (rig#2314 error matrix): the contract-less provider's
+/// 401/403 control cell of the error matrix: the contract-less provider's
 /// auth failure is the provider's response, id `None`.
 #[tokio::test]
 async fn auth_rejection_keeps_transport_shape() {

@@ -15,18 +15,15 @@ workspace = true
 default = []
 # `DirStore`: a session kept as files in a directory (std::fs).
 fs = []
-# `conformance`: the contract suite a store's own tests run against it;
-# `migration::testing`: a synthetic earlier format and the chain from it.
+# `conformance`: the contract suite a store's own tests run against it.
 test-utils = []
 
 [dependencies]
-rig-core = { path = "../rig-core", version = "0.46.0-rc.1", default-features = false }
+rig-core = { path = "../rig-core", version = "0.47.0", default-features = false }
 base64 = { workspace = true }
 memchr = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-# The names of the blobs a session stores images in.
-sha2 = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]

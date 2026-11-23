@@ -221,13 +221,7 @@ fn latest_user_text(messages: &[std::sync::Arc<Message>]) -> Option<String> {
         let Message::User { content } = &**message else {
             return None;
         };
-        let texts: Vec<&str> = content
-            .iter()
-            .filter_map(|part| match part {
-                UserContent::Text(text) => Some(text.text.as_str()),
-                _ => None,
-            })
-            .collect();
+        let texts: Vec<&str> = content.iter().filter_map(UserContent::as_text).collect();
         (!texts.is_empty()).then(|| texts.join("\n"))
     })
 }
@@ -275,7 +269,11 @@ fn reload(
     root: Res<ProjectRoot>,
     mut library: ResMut<Library>,
 ) {
-    if changes.read().any(|change| watches.contains(change.watch)) {
+    if (changes.read())
+        .filter(|change| watches.contains(change.watch) && change.event.names_files())
+        .count()
+        > 0
+    {
         *library = read_library(&examples_dir(&root));
     }
 }

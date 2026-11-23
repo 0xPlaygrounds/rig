@@ -293,7 +293,4 @@ fn free_text_from_the_judge_counts_as_ask() {
     assert!(refused.contains("The user denied this call."), "{refused}");
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(SafetyJudgePlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(SafetyJudgePlugin);

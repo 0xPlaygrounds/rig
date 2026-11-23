@@ -1,52 +1,19 @@
 //! Edge matrix for `additional_params` on OpenAI text-to-speech.
 //!
-//! **Bug.** `AudioGenerationRequestBuilder::additional_params` was never
-//! merged into the `/v1/audio/speech` body by the *default*
-//! `RawAudioGenerationProvider::audio_generation_request_body`, so it was
-//! silently inert for whoever inherited that default — OpenAI included. Every
-//! provider that overrides the body already merged it (xAI, OpenRouter,
-//! Venice), which is what makes this a defect rather than a design: three
-//! siblings honor the field and the default does not.
+//! `AudioGenerationRequestBuilder::additional_params` must reach the
+//! `/v1/audio/speech` body through the default
+//! `RawAudioGenerationProvider::audio_generation_request_body`, as it does for
+//! providers that override the body. The parameters change the response:
+//! `response_format` changes the returned container, and `instructions` steers
+//! delivery on the `gpt-4o-mini-tts` family. The harness matches the recorded
+//! request body, so a cell whose parameter is dropped is a mock miss.
 //!
-//! The parameters demonstrably change the response, so this is not cosmetic:
-//! `response_format: "wav"` returns a RIFF payload where the default returns
-//! MP3, and `instructions` steers delivery on the `gpt-4o-mini-tts` family.
-//!
-//! **How these cells fail on `origin/main`.** The harness matches the recorded
-//! request body, so every cell carrying a caller parameter is a mock miss on
-//! `main`, which omits it. The two cells that assert the returned *container*
-//! (`wav`, `flac`) would fail on the bytes as well.
-//!
-//! These scenarios record through the direct recorder rather than the httpmock
-//! proxy — the endpoint answers with raw audio, and the proxy exports bodies as
-//! strings, so a recorded speech response would replay as zero bytes. Inputs
-//! are one or two words so the recorded payloads stay small.
-//!
-//! | # | cell | model | params | asserts | status |
-//! |---|------|-------|--------|---------|--------|
-//! | 3 | `response_format_flac_changes_the_container` | tts-1 | response_format | fLaC magic | recorded |
-//! | 4 | `instructions_reach_the_tts_model` | gpt-4o-mini-tts | instructions | 200 + audio | recorded |
-//! | 7 | `non_object_additional_params_are_a_no_op` | tts-1 | `"not-an-object"` | MP3 magic | recorded |
-//!
-//! **Two cells were designed and dropped**, with reasons, rather than left as
-//! silent gaps:
-//!
-//! * *an invalid `response_format` rejected by the endpoint* — the natural way
-//!   to prove a parameter reached the wire, and the form the sibling image
-//!   matrix uses throughout. It cannot be recorded here: these scenarios need
-//!   the direct recorder (binary response bodies), and that path captures no
-//!   interaction for a non-success response, so the cassette comes out empty.
-//!   Cell 3 proves the same thing more strongly anyway: the returned
-//!   *container* changes — and the error path itself is covered beside the
-//!   provider by `audio_generation_non_success_preserves_status_and_body`.
-//! * *`instructions` rejected by a model that does not take it* — `tts-1`
-//!   accepts and silently ignores the field (verified live: `200`, MP3 body),
-//!   so there is no observable outcome to assert. Cell 4 covers the model that
-//!   does honor it.
-//!
-//! A unit cell beside the fix (`request_body_merges_additional_params_last`)
-//! covers the merge itself, including overriding each derived key and a
-//! non-object payload — shapes that need no network at all.
+//! These scenarios use the direct recorder rather than the httpmock proxy,
+//! because the endpoint answers with raw audio and the proxy exports bodies as
+//! strings. That recorder captures nothing for a non-success response, so an
+//! invalid `response_format` cannot be recorded; the container cell proves the
+//! parameter arrived instead. Inputs are one or two words so the payloads stay
+//! small. The merge itself is covered by a unit test beside the provider.
 
 use rig::providers::openai;
 use serde_json::json;
@@ -92,8 +59,8 @@ async fn response_format_flac_changes_the_container() {
 }
 
 /// `instructions` is the other parameter this endpoint takes, and only the
-/// `gpt-4o-mini-tts` family acts on it — `tts-1` accepts and ignores it, which
-/// is why the rejection cell it would have anchored was dropped (see above).
+/// `gpt-4o-mini-tts` family acts on it. `tts-1` accepts and ignores it, so a
+/// rejection has nothing to observe.
 #[tokio::test]
 async fn instructions_reach_the_tts_model() {
     with_openai_audio_cassette(

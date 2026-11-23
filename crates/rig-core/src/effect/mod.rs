@@ -429,42 +429,14 @@ pub mod family {
     /// [`EffectKind::Custom`] under `E::KIND` and answers `E::Answer`.
     pub struct Custom<E: CustomEffect>(PhantomData<fn() -> E>);
 
-    impl<E: CustomEffect> Custom<E> {
-        /// The marker.
-        pub const fn new() -> Self {
-            Self(PhantomData)
-        }
-    }
-
-    // Written by hand: a derive would demand `E: Clone` (and friends), and
-    // the marker must be `Copy` for every `E`.
+    // Written by hand: a derive would demand `E: Clone`, and the marker
+    // must be `Copy` for every `E`.
     impl<E: CustomEffect> Clone for Custom<E> {
         fn clone(&self) -> Self {
             *self
         }
     }
     impl<E: CustomEffect> Copy for Custom<E> {}
-    impl<E: CustomEffect> Default for Custom<E> {
-        fn default() -> Self {
-            Self::new()
-        }
-    }
-    impl<E: CustomEffect> std::fmt::Debug for Custom<E> {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(f, "Custom<{}>", E::KIND)
-        }
-    }
-    impl<E: CustomEffect> PartialEq for Custom<E> {
-        fn eq(&self, _: &Self) -> bool {
-            true
-        }
-    }
-    impl<E: CustomEffect> Eq for Custom<E> {}
-    impl<E: CustomEffect> std::hash::Hash for Custom<E> {
-        fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-            E::KIND.hash(state);
-        }
-    }
 
     impl<E: CustomEffect> Sealed for Custom<E> {}
 
@@ -491,8 +463,8 @@ pub mod family {
 
         fn unwrap(outcome: Answered) -> Result<E::Answer, ErrorReport> {
             match outcome {
-                Answered::Custom { payload: value } => {
-                    serde_json::from_value(value).map_err(|error| {
+                Answered::Custom { payload: value } => crate::json_utils::from_value(&value)
+                    .map_err(|error| {
                         ErrorReport::new(
                             ErrorKind::Internal,
                             format!(
@@ -500,8 +472,7 @@ pub mod family {
                                 E::KIND
                             ),
                         )
-                    })
-                }
+                    }),
                 other => Err(Self::mismatch(&other)),
             }
         }
@@ -759,7 +730,7 @@ pub enum RetrieveQuery {
     },
 }
 
-/// What a handler answered.
+/// What a handler answered, or what a decision gave in its place.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum Answered {
@@ -814,9 +785,12 @@ pub enum EmbedOutputs {
 #[serde(tag = "retrieved", content = "results", rename_all = "snake_case")]
 pub enum RetrievedDocuments {
     /// Scored documents: `(score, id, document)`.
-    Scored(Vec<(f64, String, serde_json::Value)>),
+    Scored(
+        #[serde(deserialize_with = "crate::json_utils::floats")]
+        Vec<(f64, String, serde_json::Value)>,
+    ),
     /// Scored ids: `(score, id)`.
-    Ids(Vec<(f64, String)>),
+    Ids(#[serde(deserialize_with = "crate::json_utils::floats")] Vec<(f64, String)>),
 }
 
 /// One recorded exchange: the effect, who served it, and the answer.
@@ -867,6 +841,9 @@ pub struct EffectRecord {
     /// turns or it belongs to none, such as a call made between turns.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub turn: Option<u64>,
+    /// The reply's call it is, for a tool call a reply asked for.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub call: Option<crate::conversation::CallRef>,
     /// When a handler started serving it, in milliseconds since the Unix
     /// epoch. `None` when no handler started it (it was answered before it
     /// started), or when the recorder keeps no times.
@@ -941,10 +918,10 @@ pub enum Disposition {
 
 impl EffectRecord {
     /// The record of effect `id`, `kind`, routed to `key` and answered with
-    /// `outcome`, and nothing else known: no parent, scope, purpose, turn, times,
-    /// tool output, kept items, review or decider, and [`Disposition::Ran`]. A host
-    /// that answers or cancels an effect itself builds its record from this
-    /// and sets what it knows.
+    /// `outcome`, and nothing else known: no parent, scope, purpose, turn,
+    /// call, times, tool output, kept items, review or decider, and
+    /// [`Disposition::Ran`]. A host that answers or cancels an effect itself
+    /// builds its record from this and sets what it knows.
     pub fn new(
         id: EffectId,
         key: HandlerKey,
@@ -963,6 +940,7 @@ impl EffectRecord {
             scope: None,
             purpose: None,
             turn: None,
+            call: None,
             started_ms: None,
             first_item_ms: None,
             finished_ms: None,

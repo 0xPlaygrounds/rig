@@ -111,3 +111,11 @@ fn unknown_tool_feedback_lists_exact_names_or_no_tools() {
         "There is no tool named `bash`. You have no tools available. Answer without calling tools."
     );
 }
+
+#[test]
+fn the_echo_counts_the_remaining_characters() {
+    let raw = "é".repeat(ECHOED_CHARS + 100);
+    let echo = echoed(&raw);
+    let tail: String = echo.chars().skip(ECHOED_CHARS).collect();
+    assert_eq!(tail, "… (100 more characters)");
+}

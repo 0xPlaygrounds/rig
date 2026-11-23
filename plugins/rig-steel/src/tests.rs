@@ -1,10 +1,14 @@
+use std::pin::pin;
 use std::sync::mpsc::Receiver;
+use std::time::Duration;
+
+use futures::FutureExt;
 
 use rig_core::catalog::{Catalog, Connector};
 use rig_core::effect::{Disposition, EffectKind, EffectRecord};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_ecs::prelude::*;
-use rig_harness_test_support::{MemoryStore, app_on, calls, connect, run_until, start_call};
+use rig_harness_test_support::{MemoryStore, app_on, calls, connect, reply, run_until, start_call};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::json;
@@ -55,6 +59,12 @@ fn gate(calls: Query<(Entity, &ToolRequest), ReadyToStart>, mut commands: Comman
 /// An app with code mode, `look`, `touch` and `poke`, its gate, and an agent
 /// answered by `model`.
 fn app(model: &MockCompletionModel) -> (App, Receiver<()>, Entity) {
+    app_with(model, false)
+}
+
+/// [`app`], with [`Subagents`] when `agents`, marked after code mode is
+/// added, as a plugin added later would.
+fn app_with(model: &MockCompletionModel, agents: bool) -> (App, Receiver<()>, Entity) {
     let (mut app, wakes) = app_on(&MemoryStore::default());
     let options = |footprint| ToolOptions {
         footprint: Some(footprint),
@@ -82,13 +92,16 @@ fn app(model: &MockCompletionModel) -> (App, Receiver<()>, Entity) {
         .init_resource::<Kept>()
         .add_systems(Last, keep)
         .add_systems(AgentPass, gate.in_set(Stage::Gate));
-    let agent = app.world_mut().spawn(Agent).id();
-    if let Some(connection) = connect(model) {
-        let choice = ModelChoice(connection.spec.reference());
-        app.world_mut()
-            .entity_mut(agent)
-            .insert((connection, choice));
+    if agents {
+        app.init_resource::<Subagents>();
     }
+    let agent = match connect(model) {
+        Some(connection) => {
+            let choice = ModelChoice(connection.spec.reference());
+            spawn_root(app.world_mut(), (connection, choice)).id()
+        }
+        None => spawn_root(app.world_mut(), ()).id(),
+    };
     app.finish();
     app.update();
     (app, wakes, agent)
@@ -110,6 +123,42 @@ fn held_touches(world: &World) -> usize {
         .iter(world)
         .filter(|request| request.call.function.name.as_str() == "touch")
         .count()
+}
+
+/// Runs frames of `app` until `asked` answers, or gives up.
+fn answered<T>(app: &mut App, wakes: &Receiver<()>, asked: impl Future<Output = T>) -> Option<T> {
+    let mut asked = pin!(asked);
+    for _ in 0..100 {
+        if let Some(answer) = asked.as_mut().now_or_never() {
+            return Some(answer);
+        }
+        app.update();
+        wakes.recv_timeout(Duration::from_millis(100)).ok();
+    }
+    None
+}
+
+/// Whether `agent`'s conversation holds `text`.
+fn heard(world: &World, agent: Entity, text: &str) -> bool {
+    let messages = world.get::<Conversation>(agent).map(|said| said.messages());
+    format!("{messages:?}").contains(text)
+}
+
+/// With Subagents the description offers the agent functions as well as
+/// `call-tool`.
+#[test]
+fn with_subagents_the_description_offers_the_agent_functions() {
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let (mut app, _, _) = app_with(&model, true);
+    let said = description(&mut app);
+    for function in [
+        "(spawn-agent name [options])",
+        "(send agent text)",
+        "(reply request)",
+    ] {
+        assert!(said.contains(function), "{said}");
+    }
+    assert!(said.contains("(call-tool name [args])"), "{said}");
 }
 
 #[test]
@@ -192,4 +241,326 @@ fn an_interrupt_ends_a_held_tool_call_of_a_program_and_its_hold() {
         steel.first().map(|record| record.disposition),
         Some(Disposition::Cancelled)
     );
+}
+
+#[test]
+fn a_program_never_gives_an_agent_a_tool_its_parent_lacks() {
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let (mut app, wakes, agent) = app_with(&model, true);
+    // As the drive test's intermediary: allowed `run_steel` and `look` only.
+    let access = ToolAccess::only([RUN_STEEL, "look"]);
+    app.world_mut().entity_mut(agent).insert(access);
+    let run = |app: &mut App, id: &str, tools: &str| {
+        let code = format!(r#"(spawn-agent "leaf" (hash 'tools (list {tools})))"#);
+        let call = start_call(
+            app.world_mut(),
+            agent,
+            (RUN_STEEL, id),
+            json!({ "code": code }),
+        );
+        let call = call.unwrap_or(Entity::PLACEHOLDER);
+        run_until(app, &wakes, |world| world.get::<Outcome>(call).is_some());
+        let result = app.world().get::<Outcome>(call).map(Outcome::tool_result);
+        result
+            .map(|result| result.output().render())
+            .unwrap_or_default()
+    };
+    let refused = run(&mut app, "s1", r#""poke""#);
+    assert!(
+        refused.contains("`poke` is not one of your tools (look, run_steel)"),
+        "{refused}"
+    );
+    let granted = run(&mut app, "s2", r#""look""#);
+    assert!(!granted.contains("not one of your tools"), "{granted}");
+    let world = app.world_mut();
+    let leaves: Vec<Option<Vec<String>>> = world
+        .query_filtered::<&ToolAccess, With<SpawnedBy>>()
+        .iter(world)
+        .map(|access| access.names().map(<[String]>::to_vec))
+        .collect();
+    assert_eq!(leaves, [Some(vec!["look".to_owned()])]);
+}
+
+/// A program's agent on its parent's model shares its parent's
+/// connection: the catalog here connects nothing, so it has no other.
+#[test]
+fn a_programs_agent_shares_its_parents_connection() {
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let (mut app, wakes, agent) = app_with(&model, true);
+    let code = json!({ "code": r#"(spawn-agent "leaf")"# });
+    let call = start_call(app.world_mut(), agent, (RUN_STEEL, "s1"), code);
+    let call = call.unwrap_or(Entity::PLACEHOLDER);
+    run_until(&mut app, &wakes, |world| {
+        world.get::<Outcome>(call).is_some()
+    });
+    let world = app.world_mut();
+    let leaves: Vec<bool> = world
+        .query_filtered::<Has<rig_ecs::model::Connection>, With<SpawnedBy>>()
+        .iter(world)
+        .collect();
+    assert_eq!(leaves, [true]);
+}
+
+#[test]
+fn a_queued_job_whose_call_was_stopped_does_nothing() {
+    let model = MockCompletionModel::from_stream_turns([calls("t1", "touch", json!({}))]);
+    let (mut app, wakes, agent) = app(&model);
+    app.world_mut()
+        .trigger(Deliver::new(agent, "Touch it.", DeliveryMode::Queue));
+    run_until(&mut app, &wakes, |world| held_touches(world) > 0);
+    let world = app.world_mut();
+    let call = world
+        .query_filtered::<Entity, (With<ToolRequest>, With<Holds>)>()
+        .iter(world)
+        .next()
+        .unwrap_or(Entity::PLACEHOLDER);
+    let id = world.get::<AgentId>(agent).cloned().unwrap_or_default();
+    let harness = world.resource::<Harness>().within(call);
+    let author = Author::agent(id.0.clone(), None);
+    let before = harness.send(id.clone(), "Sent before.".to_owned(), author.clone());
+    let before = answered(&mut app, &wakes, before).and_then(Result::ok);
+    let text = "Sent for a stopped call.";
+    let mut sent = pin!(harness.send(id, text.to_owned(), author));
+    assert!(
+        sent.as_mut().now_or_never().is_none(),
+        "answered before its frame"
+    );
+
+    app.world_mut().trigger(StopTurn::new(agent));
+    app.world_mut().flush();
+    let sent = answered(&mut app, &wakes, sent);
+    assert!(matches!(sent, Some(Err(_))), "{sent:?}");
+    app.update();
+    assert!(!heard(app.world(), agent, text));
+    // The receipt of what it sent before went with the call.
+    assert!(before.is_some());
+    let unbound = app.world().resource::<Harness>().clone();
+    let reply = unbound.reply(before.unwrap_or(RequestId(String::new())));
+    let reply = answered(&mut app, &wakes, reply);
+    let gone = matches!(&reply, Some(Err(why)) if why.starts_with("no request"));
+    assert!(gone, "{reply:?}");
+}
+
+#[test]
+fn a_reply_read_after_a_compaction_still_arrives_and_only_once() {
+    let model = MockCompletionModel::from_stream_turns([reply("Done.")]);
+    let (mut app, wakes, agent) = app(&model);
+    let id = app
+        .world()
+        .get::<AgentId>(agent)
+        .cloned()
+        .unwrap_or_default();
+    let harness = app.world().resource::<Harness>().clone();
+    let author = Author::agent(id.0.clone(), None);
+    let sent = answered(
+        &mut app,
+        &wakes,
+        harness.send(id, "Do it.".to_owned(), author),
+    );
+    let request = sent
+        .and_then(Result::ok)
+        .unwrap_or(RequestId(String::new()));
+    run_until(&mut app, &wakes, |world| heard(world, agent, "Done."));
+    run_until(&mut app, &wakes, |world| {
+        world.get::<ActiveTurn>(agent).is_none()
+    });
+
+    // A compaction the user asked for is a turn of its own, which a plugin
+    // ends.
+    app.world_mut()
+        .spawn((Name::new("compaction"), TurnOf(agent)));
+    app.world_mut()
+        .trigger(StopTurn::plugin_alone(agent, "compaction", "compacted"));
+    app.world_mut().flush();
+    run_until(&mut app, &wakes, |world| {
+        world.get::<ActiveTurn>(agent).is_none()
+    });
+
+    let first = answered(&mut app, &wakes, harness.reply(request.clone()));
+    let text = match &first {
+        Some(Ok(TurnOutcome::Answered(message))) => message.final_answer(),
+        _ => None,
+    };
+    assert_eq!(text.as_deref(), Some("Done."), "{first:?}");
+    let again = answered(&mut app, &wakes, harness.reply(request));
+    assert!(matches!(again, Some(Err(_))), "{again:?}");
+}
+
+/// The output of the program `code` run with `limits` by a fresh app's
+/// agent, once it has one.
+fn ran_with(limits: crate::Limits, code: &str) -> String {
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let (mut app, wakes, agent) = app(&model);
+    app.insert_resource(limits);
+    ran_in(&mut app, &wakes, (agent, "s1"), code)
+}
+
+/// What the program `code` returned, run by `agent` as its call `id` in
+/// `app`.
+fn ran_in(app: &mut App, wakes: &Receiver<()>, (agent, id): (Entity, &str), code: &str) -> String {
+    let call = start_call(
+        app.world_mut(),
+        agent,
+        (RUN_STEEL, id),
+        json!({ "code": code }),
+    );
+    let call = call.unwrap_or(Entity::PLACEHOLDER);
+    run_until(app, wakes, |world| world.get::<Outcome>(call).is_some());
+    let result = app.world().get::<Outcome>(call).map(Outcome::tool_result);
+    result
+        .map(|result| result.output().render())
+        .unwrap_or_default()
+}
+
+/// A program's calls are limited by `[steel] max_calls`, and the refusal
+/// at it names the key.
+#[test]
+fn a_programs_calls_are_limited_by_its_setting() {
+    let code = r#"(call-tool "look") (call-tool "look") (call-tool "look") "done""#;
+    assert_eq!(ran_with(crate::Limits::default(), code), "done");
+    let two = crate::Limits {
+        max_calls: 2,
+        ..crate::Limits::default()
+    };
+    let said = ran_with(two, code);
+    assert!(
+        said.contains("too many host function calls: 2 at most (`[steel] max_calls`)"),
+        "{said}"
+    );
+}
+
+/// What a program printed is cut at `[steel] max_output_bytes`, and how it
+/// ended still follows, however much it printed.
+#[test]
+fn a_programs_failure_is_kept_past_what_it_printed() {
+    let small = crate::Limits {
+        max_output_bytes: 1024,
+        ..crate::Limits::default()
+    };
+    let said = ran_with(
+        small,
+        r#"(display (make-string 5000 #\a)) (error "it broke")"#,
+    );
+    assert!(
+        said.contains("[printed output cut at 1024 bytes (`[steel] max_output_bytes`)]")
+            && said.contains("it broke"),
+        "{said}"
+    );
+}
+
+/// Printed output cut inside a character ends at the last whole character,
+/// not in a replacement character.
+#[test]
+fn printed_output_is_cut_between_characters() {
+    let small = crate::Limits {
+        max_output_bytes: 1024,
+        ..crate::Limits::default()
+    };
+    let said = ran_with(small, r#"(display "a") (display (make-string 600 #\é))"#);
+    assert!(
+        !said.contains('\u{FFFD}') && said.contains(&format!("a{}\n", "é".repeat(511))),
+        "{said}"
+    );
+}
+
+/// A program may make 1000 host calls by default, and as many as
+/// `[steel] max_calls` says; the call past them is refused naming the key.
+#[test]
+fn a_programs_calls_are_a_thousand_unless_set() {
+    let default = crate::Limits::default();
+    assert_eq!(default.call(999), Ok(()));
+    assert!(
+        default
+            .call(1000)
+            .is_err_and(|why| why.contains("1000 at most"))
+    );
+    let more = crate::Limits {
+        max_calls: 1_000_000,
+        ..crate::Limits::default()
+    };
+    assert_eq!(more.call(999_999), Ok(()));
+    let two = crate::Limits {
+        max_calls: 2,
+        ..crate::Limits::default()
+    };
+    assert_eq!(two.call(1), Ok(()));
+    assert!(
+        two.call(2)
+            .is_err_and(|why| why.contains("`[steel] max_calls`"))
+    );
+}
+
+/// A program runs past `[steel] max_seconds` of execution only as long as
+/// it takes the watchdog to look, then stops, naming the key.
+#[test]
+fn a_program_stops_at_its_time_setting() {
+    let one = crate::Limits {
+        max_seconds: std::num::NonZeroU64::MIN,
+        ..crate::Limits::default()
+    };
+    let said = ran_with(one, "(define (spin n) (spin (+ n 1))) (spin 0)");
+    assert!(
+        said.contains("it ran for more than 1 s") && said.contains("`[steel] max_seconds`"),
+        "{said}"
+    );
+}
+
+/// `[steel]` in the user's settings sets the limits.
+#[test]
+fn the_steel_table_sets_the_limits() {
+    let (mut app, _) = app_on(&MemoryStore::default());
+    app.insert_resource(rig_harness::settings::Settings::from_toml(
+        "[steel]\nmax_seconds = 5\nmax_calls = 2\n",
+    ))
+    .add_plugins((AgentPlugin, SessionLogPlugin, SteelPlugin));
+    let limits = *app.world().resource::<crate::Limits>();
+    assert_eq!((limits.max_seconds.get(), limits.max_calls), (5, 2));
+    let default = crate::Limits::default();
+    assert_eq!((default.max_seconds.get(), default.max_calls), (60, 1000));
+    assert_eq!(
+        limits.max_output_bytes,
+        crate::Limits::default().max_output_bytes
+    );
+}
+
+/// The description `run_steel` has in `app`.
+fn description(app: &mut App) -> String {
+    let world = app.world_mut();
+    let mut tools = world.query::<&ToolDef>();
+    let steel = tools.iter(world).find(|def| def.0.name == RUN_STEEL);
+    steel
+        .map(|def| def.0.description.clone())
+        .unwrap_or_default()
+}
+
+/// Without Subagents a program calls tools, loops and returns a value; its
+/// agent functions are refused with how to turn Subagents on, and the
+/// description offers only `call-tool`.
+#[test]
+fn without_subagents_a_program_only_calls_tools() {
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let (mut app, wakes, agent) = app(&model);
+    let code = r#"(define (looks n) (if (= n 0) '() (cons (call-tool "look") (looks (- n 1)))))
+        (string-join (looks 2) ",")"#;
+    assert_eq!(ran_in(&mut app, &wakes, (agent, "s1"), code), "seen,seen");
+    for (id, code) in [
+        ("s2", r#"(call-tool "look") (spawn-agent "leaf")"#),
+        ("s3", r#"(send "agent" "Hi.")"#),
+        ("s4", r#"(reply "request")"#),
+    ] {
+        let refused = ran_in(&mut app, &wakes, (agent, id), code);
+        assert!(
+            refused.contains("rig plugin enable rig_basics::subagents::SubagentsPlugin"),
+            "{refused}"
+        );
+    }
+    let said = description(&mut app);
+    assert!(said.contains("(call-tool name [args])"), "{said}");
+    assert!(!said.contains("(spawn-agent name [options])"), "{said}");
+    let world = app.world_mut();
+    let agents = world
+        .query_filtered::<(), With<SpawnedBy>>()
+        .iter(world)
+        .count();
+    assert_eq!(agents, 0);
 }

@@ -59,10 +59,8 @@ pub struct CopilotExtras {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
 pub struct CopilotUsage {
     /// The tokens billed, by kind.
-    #[serde(default)]
     pub token_details: Option<Vec<TokenDetail>>,
     /// The total, in billionths of an AI unit.
-    #[serde(default)]
     pub total_nano_aiu: Option<u64>,
 }
 
@@ -71,16 +69,12 @@ pub struct CopilotUsage {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
 pub struct TokenDetail {
     /// The kind, such as `input`, `output` or `cache_read`.
-    #[serde(default)]
     pub token_type: Option<String>,
     /// How many tokens.
-    #[serde(default)]
     pub token_count: Option<u64>,
     /// The tokens one price applies to.
-    #[serde(default)]
     pub batch_size: Option<u64>,
     /// The price per batch, in billionths of an AI unit.
-    #[serde(default)]
     pub cost_per_batch: Option<u64>,
 }
 

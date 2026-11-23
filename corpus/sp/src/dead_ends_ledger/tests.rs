@@ -31,8 +31,10 @@ fn start(
 ) -> Option<(App, Receiver<()>, Entity)> {
     let (mut app, wakes) = app_in(home, id);
     if new {
-        app.world_mut()
-            .spawn((Name::new("agent"), Agent, AgentId("main".to_owned())));
+        spawn_root(
+            app.world_mut(),
+            (Name::new("agent"), AgentId("main".to_owned())),
+        );
     }
     app.insert_resource(ProjectRoot(project.to_path_buf()))
         .insert_resource(Models(Connector::new(Catalog::default())))
@@ -50,18 +52,18 @@ fn start(
         .add_observer(log_tool_outputs);
     app.finish();
     app.update();
+    // `/compact` summarizes all but the newest message of a short conversation.
+    app.world_mut()
+        .resource_mut::<rig_basics::compaction::CompactionDefault>()
+        .0
+        .keep_recent_tokens = 1;
     let agent = first_agent(app.world_mut())?;
     Some((app, wakes, agent))
 }
 
 /// The user says `text`; the turn runs to its end.
 fn say(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str) {
-    let ended = app.world().resource::<Ended>().0.len();
-    app.world_mut()
-        .trigger(Deliver::new(agent, text, DeliveryMode::Steer));
-    run_until(app, wakes, |world| {
-        world.resource::<Ended>().0.len() > ended
-    });
+    rig_harness_test_support::say(app, wakes, agent, text);
     app.update();
 }
 
@@ -130,6 +132,8 @@ fn dead_ends_are_recorded_warned_kept_through_compaction_and_resumed() {
         calls("6", DEAD_END, pin),
         reply("Recorded."),
         reply("## Goal\nMake the tests pass."),
+        // The compaction's cut splits the last turn: its earlier part is summarized apart.
+        reply("## Original Request\nTry pinning libfoo."),
         reply("I will try another route."),
     ]);
     let id: SessionId = match "1000-4".parse() {
@@ -214,7 +218,7 @@ fn dead_ends_are_recorded_warned_kept_through_compaction_and_resumed() {
     });
     say(&mut app, &wakes, agent, "What next?");
     let requests = model.requests();
-    assert_eq!(requests.len(), 13, "every scripted request was made");
+    assert_eq!(requests.len(), 14, "every scripted request was made");
     let (system, messages) = parts(requests.last());
     for text in [
         "make test",
@@ -262,7 +266,4 @@ fn dead_ends_are_recorded_warned_kept_through_compaction_and_resumed() {
     fs::remove_dir_all(&project).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(DeadEndsLedgerPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(DeadEndsLedgerPlugin);

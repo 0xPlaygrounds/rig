@@ -7,7 +7,6 @@ use std::sync::Arc;
 
 use super::{Model, Sending, Transport};
 use crate::error::ProviderError;
-use crate::observe::AdapterContext;
 use crate::streaming::Streamed;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::wire::{Capabilities, Descriptor, Mode, Operation, Wire};
@@ -157,15 +156,6 @@ impl<Op: Operation> DynModel<Op> {
         self.finished(request.into(), Sending::default())
     }
 
-    /// [`Self::call`], with the attempt observed under `observation`.
-    pub fn call_observed(
-        &self,
-        request: impl Into<Op::Request>,
-        observation: AdapterContext,
-    ) -> impl Future<Output = Result<Op::Response, ProviderError>> + WasmCompatSend + 'static {
-        self.finished(request.into(), Sending::observed(observation))
-    }
-
     /// The call opens when first polled, as [`Model::call`] does.
     pub(crate) fn finished(
         &self,
@@ -179,15 +169,6 @@ impl<Op: Operation> DynModel<Op> {
     /// Open a streamed reply; [`Model::stream`] with the model erased.
     pub fn stream(&self, request: impl Into<Op::Request>) -> Result<Streamed<Op>, ProviderError> {
         self.opened(request.into(), Sending::default())
-    }
-
-    /// [`Self::stream`], with the attempt observed under `observation`.
-    pub fn stream_observed(
-        &self,
-        request: impl Into<Op::Request>,
-        observation: AdapterContext,
-    ) -> Result<Streamed<Op>, ProviderError> {
-        self.opened(request.into(), Sending::observed(observation))
     }
 
     /// Open a streamed reply, sent as `sending` says.

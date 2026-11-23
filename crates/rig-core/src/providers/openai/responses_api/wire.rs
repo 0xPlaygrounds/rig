@@ -1,4 +1,4 @@
-//! Responses endpoint encoding and observation for configured OpenAI dialects.
+//! Responses endpoint encoding for configured OpenAI dialects.
 //!
 //! ```
 //! use rig_core::providers::openai::OpenAI;
@@ -9,13 +9,10 @@ use crate::catalog::ModelFacts;
 use crate::completion::{self, ProviderCapabilities};
 use crate::error::EncodeError;
 use crate::json_utils::Lenient;
-use crate::observe::ObservedError;
 use crate::operation::Completion;
 use crate::providers::openai::wire::OpenAIConfig;
 pub(crate) use crate::providers::openai::wire::ResponsesContract;
-use crate::wire::{
-    AdapterVerdict, Capabilities, Descriptor, Encoded, Framing, Mode, ObservationSink, Wire,
-};
+use crate::wire::{Capabilities, Descriptor, Encoded, Framing, Mode, Wire};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -33,6 +30,10 @@ pub struct Responses {
     pub tools: Vec<ResponsesToolDefinition>,
     /// Whether Rig-generated tools request OpenAI's strict validation.
     pub strict_tools: bool,
+    /// The `store` every request from this wire sends unless the request
+    /// sets its own. `None` sends none, so the provider's default applies.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub store: Option<bool>,
     /// Where this wire puts Rig's system instructions. Defaults to the
     /// dialect's placement.
     pub system_instructions: SystemInstructionsPlacement,
@@ -51,6 +52,7 @@ impl Responses {
             provider,
             model: model.into(),
             tools: Vec::new(),
+            store: None,
             facts: ModelFacts::default(),
         }
     }
@@ -65,6 +67,15 @@ impl Responses {
     /// Sanitize function schemas for strict mode and send `strict: true`.
     pub fn with_strict_tools(mut self) -> Self {
         self.strict_tools = true;
+        self
+    }
+
+    /// Send `store` on every request from this wire. A request that sets
+    /// `store` in its provider options or `additional_params` sends its own.
+    /// With `false`, every request replays prior reasoning by its ciphertext
+    /// rather than by stored item id.
+    pub fn with_store(mut self, store: bool) -> Self {
+        self.store = Some(store);
         self
     }
 
@@ -159,9 +170,7 @@ impl Wire for Responses {
             Framing::Whole
         };
         let encoded = Encoded::new(request, framing)
-            .with_request_id_header(self.provider.dialect.request_id_header)
-            .with_route(Some(self.provider.dialect.quirks.responses.path))
-            .with_projection(project_payload);
+            .with_request_id_header(self.provider.dialect.request_id_header);
         Ok(if codex {
             encoded.with_relaxed_content_type()
         } else {
@@ -242,14 +251,19 @@ impl crate::completion::ReplayTarget for Responses {
 
     /// Responses reads images in user input and in function outputs, never
     /// in assistant messages, and only on a model with vision input. Every
-    /// documented model calls tools except `o1-mini` and `o1-preview`.
+    /// documented model calls tools except `o1-mini` and `o1-preview`, past
+    /// a `vendor/` prefix.
     fn accepts(&self, model: &str) -> crate::completion::Accepts {
         let images = reads_images(
             &self.facts,
             self.provider.dialect.quirks.responses.contract,
             model,
         );
-        let model = model.to_ascii_lowercase();
+        let model = model
+            .rsplit('/')
+            .next()
+            .unwrap_or(model)
+            .to_ascii_lowercase();
         crate::completion::Accepts {
             user_images: images,
             assistant_images: false,
@@ -331,50 +345,6 @@ fn reads_images(facts: &ModelFacts, contract: ResponsesContract, model: &str) ->
             crate::providers::openai::reads_images,
         ),
     }
-}
-
-/// The facts a Responses payload carries before normalization discards
-/// them: the verdict, the model, the response id and any error envelope.
-///
-/// The unary reply is the response object itself; a stream event wraps that
-/// object under `response` (`response.created`, `.completed`, `.failed`,
-/// `.incomplete`) or, for `error`, carries the envelope's fields itself.
-pub(crate) fn project_payload(payload: &[u8], sink: &mut ObservationSink<'_>) {
-    let Ok(payload) = serde_json::from_slice::<Value>(payload) else {
-        return;
-    };
-    // An error event carries its envelope and nothing else.
-    if payload.str("type") != Some("error") {
-        project_verdict(&payload, sink);
-    }
-    if let Some(error) = ObservedError::of(&payload) {
-        error.emit(sink);
-    }
-}
-
-/// The verdict and response id a response object, or the stream event
-/// wrapping one, reports.
-fn project_verdict(payload: &Value, sink: &mut ObservationSink<'_>) {
-    let object = payload
-        .get("response")
-        .filter(|response| response.is_object())
-        .unwrap_or(payload);
-    // `status` is the provider's verdict; `in_progress` on a stream's
-    // opening event is not one yet, so it is left out of the projection.
-    let verdict = AdapterVerdict {
-        finish_reason: object
-            .str("status")
-            .filter(|status| *status != "in_progress" && *status != "queued")
-            .map(|value| sink.scrub(value)),
-        block_reason: None,
-        detail: object
-            .at("/incomplete_details/reason")
-            .and_then(Value::as_str)
-            .map(|value| sink.scrub(value)),
-        model: object.str("model").map(|value| sink.scrub(value)),
-    };
-    let response_id = object.str("id").map(|value| sink.scrub(value));
-    sink.provider(verdict, response_id);
 }
 
 #[cfg(test)]

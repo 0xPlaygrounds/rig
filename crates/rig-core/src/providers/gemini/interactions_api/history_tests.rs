@@ -299,7 +299,7 @@ fn results_continuing_a_stored_interaction_are_sent() {
     }
 }
 
-/// #2143, round 4 NEW-2: Gemini 2 reads no multimodal function results, so
+/// Gemini 2 reads no multimodal function results, so
 /// a result of several text parts (an MCP tool's), or of text and an image
 /// the adapter moves out, reaches it as one string, never as a list of
 /// content blocks the API refuses ("Multimodal function responses are not

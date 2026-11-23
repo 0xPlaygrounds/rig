@@ -22,14 +22,13 @@ use crate::message::{
     DocumentSourceKind as Source, Message, MimeType, ToolCall, ToolResult, ToolResultContent,
     UserContent,
 };
-use crate::observe::ObservedError;
 use crate::operation::{Block, CallFragment, Completion, Finish};
 use crate::providers::internal::object;
 use crate::providers::internal::wire::classify_chat_completions_frame;
 use crate::providers::internal::wire_ids::WireIds;
 use crate::wire::{
-    AdapterVerdict, Capabilities, Decoder, Descriptor, Encoded, Flow, Framing, Mode,
-    ObservationSink, Out, Wire, WireEvent, WireFrame,
+    Capabilities, Decoder, Descriptor, Encoded, Flow, Framing, Mode, Out, Wire, WireEvent,
+    WireFrame,
 };
 use finish::{finish_reason, native_finish_reason, provider_error_envelope};
 
@@ -241,11 +240,7 @@ impl Chat {
         input: &mut BaseInput<'_>,
     ) -> Result<Map<String, Value>, EncodeError> {
         let quirks = &self.provider.dialect.quirks;
-        let mut model = request.model.clone().unwrap_or_else(|| self.model.clone());
-        if quirks.rewrite == BodyRewrite::HuggingFaceRouter {
-            // Some sub-providers (Fireworks) address models by a qualified id.
-            model = self.provider.route().model_identifier(&model);
-        }
+        let model = request.model.clone().unwrap_or_else(|| self.model.clone());
         let passthrough = input.raw_tools()?;
         // A call to a custom tool the request declares is a custom call (pi).
         let custom: Vec<String> = passthrough
@@ -560,6 +555,28 @@ pub(crate) fn rewrite_body(
     Ok(())
 }
 
+/// Select `route` on the Hugging Face router by suffixing the merged body's
+/// `model` with `:slug`. A model already selecting another provider or
+/// policy is an error rather than a model with two suffixes.
+pub(crate) fn select_router_provider(
+    route: &super::SubRoute,
+    map: &mut Map<String, Value>,
+) -> Result<(), EncodeError> {
+    let Some(Value::String(model)) = map.get_mut("model") else {
+        return Ok(());
+    };
+    if let Some((_, selected)) = model.rsplit_once(':')
+        && selected != route.slug()
+    {
+        return Err(EncodeError::request(format!(
+            "the model `{model}` already selects `{selected}` on the Hugging Face router, \
+             which conflicts with the configured sub-provider `{route}`"
+        )));
+    }
+    *model = route.model_identifier(model);
+    Ok(())
+}
+
 /// `call` as the item the wire sends, from what replay hands the encoder:
 /// the current item, an edited one's kind, or nothing. A call is `custom`
 /// when its item or kept kind says so, or when it is rebuilt and the request
@@ -776,6 +793,11 @@ impl Wire for Chat {
             rewrites.push(Rewrite::Stream(true));
         }
         rewrites.push(Rewrite::ChatDialect(quirks.rewrite));
+        if quirks.rewrite == BodyRewrite::HuggingFaceRouter
+            && let Some(route) = &self.provider.sub_route
+        {
+            rewrites.push(Rewrite::RouterProvider(route.clone()));
+        }
         let raw_at = match quirks.rewrite {
             BodyRewrite::Mira => RawAt::Ignored(
                 "Additional parameters are not supported by Mira and will be ignored",
@@ -807,9 +829,7 @@ impl Wire for Chat {
             Mode::Unary => Framing::Whole,
         };
         Ok(Encoded::new(request, framing)
-            .with_request_id_header(self.provider.dialect.request_id_header)
-            .with_projection(ChatDecoder::project)
-            .with_route(Some(quirks.completion_path)))
+            .with_request_id_header(self.provider.dialect.request_id_header))
     }
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
@@ -870,16 +890,16 @@ impl crate::completion::ReplayTarget for Chat {
     /// typed data; audio as data; video as a URL or typed data, except to
     /// OpenAI, Azure and Mistral; a PDF as data, or as a URL OpenRouter or
     /// Mistral fetches; a file id where the dialect takes one; and a text
-    /// document as text. DeepSeek and Mira take text only; Perplexity and
+    /// document as text. Mira takes text only; DeepSeek, Perplexity and
     /// Cohere take no media but images, and Ollama only images as data.
     fn encodes(&self, _model: &str, media: crate::completion::Media<'_>) -> bool {
         use crate::completion::Media;
         let dialect = &self.provider.dialect;
         let rewrite = dialect.quirks.rewrite;
-        let parts = !matches!(rewrite, BodyRewrite::DeepSeek | BodyRewrite::Mira);
-        // Cohere and Ollama read images and text, and no other media.
+        let parts = rewrite != BodyRewrite::Mira;
+        // DeepSeek, Cohere and Ollama read images and text, and no other media.
         let files = parts
-            && rewrite != BodyRewrite::Perplexity
+            && !matches!(rewrite, BodyRewrite::Perplexity | BodyRewrite::DeepSeek)
             && ![super::dialects::COHERE.name, super::dialects::OLLAMA.name]
                 .contains(&dialect.name);
         let linked = |source: &Source, typed: bool| match source {
@@ -959,7 +979,8 @@ impl crate::completion::ReplayTarget for Chat {
 
     /// What an edited block keeps of its item: a custom call's kind and
     /// Mistral's thinking part (`type`), or the field reasoning arrived in.
-    /// Signed data such as `reasoning_details` never survives an edit.
+    /// Signed data such as `reasoning_details` or `thinking_blocks` never
+    /// survives an edit.
     fn identity(&self, item: &Value) -> Map<String, Value> {
         if let Some(kind @ ("custom" | "thinking")) = item.str("type") {
             return Map::from_iter([("type".to_owned(), Value::from(kind))]);
@@ -973,6 +994,11 @@ impl crate::completion::ReplayTarget for Chat {
 
     fn call_id_slot(&self) -> Option<&'static str> {
         Some("/id")
+    }
+
+    /// A `thinking_blocks` entry's signature, or a redacted entry's data.
+    fn blob_slots(&self) -> &'static [&'static str] {
+        &["/thinking_blocks/*/signature", "/thinking_blocks/*/data"]
     }
 
     fn later_system(&self, _model: &str) -> crate::completion::LaterSystem {
@@ -1014,14 +1040,15 @@ impl crate::completion::ReplayTarget for Chat {
 /// `vendor` is a dialect's name or the vendor an OpenRouter model id starts
 /// with. Groq reads images on its Llama 4 models; Mistral's Codestral and
 /// Devstral are text models; OpenAI (on Azure too), xAI, Cohere, Z.AI,
-/// Moonshot, MiniMax and MiMo apply the rules their other wires share; any
-/// other vendor's unlisted model reads them. `None` for DeepSeek's API,
-/// which takes text content only (it answers an image part with a 400), and
-/// Mira's gateway, which takes text, whatever the model.
+/// Moonshot, MiniMax and MiMo apply the rules their other wires share;
+/// DeepSeek's unlisted models do not read them, since its text models take
+/// an image part and ignore it; any other vendor's unlisted model reads
+/// them. `None` for Mira's gateway, which takes text, whatever the model.
 fn image_rule(vendor: &str) -> Option<(&str, fn(&str) -> bool)> {
     use crate::providers::{minimax, moonshot, xiaomimimo, zai};
     Some(match vendor {
-        "deepseek" | "mira" => return None,
+        "mira" => return None,
+        "deepseek" => ("deepseek", |_| false),
         "groq" => ("groq", |model| model.contains("llama-4")),
         "mistral" | "mistralai" => ("mistral", |model| {
             !(model.starts_with("codestral") || model.starts_with("devstral"))
@@ -1072,8 +1099,10 @@ pub enum ChatEvent {
 /// text under each, so the first that carries text is the one replayed.
 const REASONING_TEXT_KEYS: [&str; 3] = ["reasoning_content", "reasoning", "reasoning_text"];
 
-/// The structured reasoning key, kept verbatim with the reasoning text.
-const REASONING_DETAILS: &str = "reasoning_details";
+/// The keys an assistant message carries structured reasoning under, each
+/// kept verbatim with the reasoning text: `reasoning_details`, and the
+/// signed `thinking_blocks` a LiteLLM proxy returns for Claude.
+const REASONING_DETAIL_KEYS: [&str; 2] = ["reasoning_details", "thinking_blocks"];
 
 /// What one content part of a Chat message is. Every part becomes a block.
 #[derive(Debug, PartialEq)]
@@ -1169,7 +1198,7 @@ pub struct ChatDecoder {
     thinking_text: String,
     /// The writer index of the message's reasoning block while it is open,
     /// and its item as it will hold it: the field its text arrived in, its
-    /// text, and every `reasoning_details` entry in order.
+    /// text, and every structured reasoning entry in order, by key.
     reasoning: Option<usize>,
     reasoning_field: Option<&'static str>,
     reasoning_text: String,
@@ -1254,7 +1283,7 @@ impl ChatDecoder {
     }
 
     /// One delta of the assistant message: its reasoning text and
-    /// `reasoning_details` into the reasoning block, then the content,
+    /// structured reasoning into the reasoning block, then the content,
     /// images and calls.
     fn delta(
         &mut self,
@@ -1272,11 +1301,13 @@ impl ChatDecoder {
             self.reason(text, out)?;
             self.reasoning_field.get_or_insert(key);
         }
-        if let Some(Value::Array(details)) = delta.get(REASONING_DETAILS)
-            && !details.is_empty()
-        {
-            self.reason("", out)?;
-            merge_details(&mut self.reasoning_details, details.clone());
+        for key in REASONING_DETAIL_KEYS {
+            if let Some(Value::Array(details)) = delta.get(key)
+                && !details.is_empty()
+            {
+                self.reason("", out)?;
+                merge_details(&mut self.reasoning_details, key, details.clone());
+            }
         }
         let audio = delta.get("audio");
         if let Some(id) = audio.and_then(|audio| audio.at("/id")) {
@@ -1491,11 +1522,7 @@ impl ChatDecoder {
     /// item.
     fn call(&mut self, call: &Value, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
         self.close_writing(out)?;
-        let id = match call.get("id") {
-            Some(Value::String(id)) if !id.is_empty() && id != "null" => Some(id.clone()),
-            Some(id @ Value::Number(_)) => Some(id.to_string()),
-            _ => None,
-        };
+        let id = call.as_object().and_then(document::stated_id);
         let index = call
             .get("index")
             .and_then(Value::as_u64)
@@ -1571,8 +1598,8 @@ impl ChatDecoder {
     /// end (`all`), only those whose arguments are whole at a finish chunk,
     /// since a provider may still send fragments after it. A custom call's
     /// arguments are its `{"input"}`. A call the output budget cut before
-    /// its arguments were a whole object closes with no native: the
-    /// provider never stated it complete.
+    /// its arguments were a whole object, or before any came, closes with
+    /// no native: the provider never stated it complete.
     fn close_calls(
         &mut self,
         out: &mut Out<'_, Completion>,
@@ -1592,6 +1619,9 @@ impl ChatDecoder {
                     input = Some(custom.unwrap_or_else(|| Value::from("")));
                 }
                 complete = match item.at("/function/arguments") {
+                    // Blank text reads as `{}`, but under the limit it is a
+                    // call cut before its arguments.
+                    Some(Value::String(text)) if cut && text.trim().is_empty() => false,
                     Some(Value::String(text)) => matches!(
                         crate::json_utils::parse_tool_arguments(text),
                         Ok(Value::Object(_))
@@ -1619,7 +1649,14 @@ impl ChatDecoder {
 
     /// One `chat.completion.chunk`.
     fn chunk(&mut self, frame: &Value, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
-        let Some(choice) = self.absorb(frame) else {
+        let choice = self.absorb(frame);
+        if let Some(usage) = self.usage.as_ref() {
+            out.usage(
+                normalized_usage(usage, &self.quirks)
+                    .cost(reported::cost(self.usage.as_ref(), &self.reply_fields)),
+            );
+        }
+        let Some(choice) = choice else {
             return Ok(());
         };
         if let Some(delta) = choice.obj("delta") {
@@ -1717,10 +1754,6 @@ impl ChatDecoder {
     }
 }
 
-/// Append streamed reasoning details to the block's: a
-/// text or summary fragment continues the last entry of its type and
-/// index, appending its text and filling the fields that entry lacks, and an
-/// encrypted entry stays whole.
 /// `slot` holding `text` when it is given, allocating only when it changed.
 fn keep_text(slot: &mut Option<String>, text: Option<&str>) {
     if let Some(text) = text
@@ -1730,33 +1763,42 @@ fn keep_text(slot: &mut Option<String>, text: Option<&str>) {
     }
 }
 
-fn merge_details(block: &mut Map<String, Value>, details: Vec<Value>) {
-    let Value::Array(merged) = block
-        .entry(REASONING_DETAILS)
-        .or_insert_with(|| Value::Array(Vec::new()))
-    else {
+/// Append streamed structured reasoning under `key` to the block's. A text
+/// or summary fragment continues the last entry of its type and index, and
+/// a `thinking` fragment the last `thinking` entry not yet signed, so a
+/// signature closes its block; either appends its text and fills the
+/// fields that entry lacks. Any other entry, encrypted or redacted, stays
+/// whole.
+fn merge_details(block: &mut Map<String, Value>, key: &str, details: Vec<Value>) {
+    let Value::Array(merged) = block.entry(key).or_insert_with(|| Value::Array(Vec::new())) else {
         return;
     };
     for detail in details {
         let kind = detail.str("type");
-        let continues = matches!(kind, Some("reasoning.text" | "reasoning.summary"))
-            && merged.last().is_some_and(|last| {
-                last.str("type") == kind && last.get("index") == detail.get("index")
-            });
+        let continues = merged.last().is_some_and(|last| {
+            last.str("type") == kind
+                && match kind {
+                    Some("reasoning.text" | "reasoning.summary") => {
+                        last.get("index") == detail.get("index")
+                    }
+                    Some("thinking") => last.str("signature").is_none_or(str::is_empty),
+                    _ => false,
+                }
+        });
         match (continues, merged.last_mut(), detail) {
             (true, Some(Value::Object(last)), Value::Object(fields)) => {
-                for (key, value) in fields {
+                for (field, value) in fields {
                     let missing = last
-                        .get(&key)
+                        .get(&field)
                         .is_none_or(|existing| existing.is_null() || existing.as_str() == Some(""));
-                    match (last.get_mut(&key), value) {
+                    match (last.get_mut(&field), value) {
                         (Some(Value::String(text)), Value::String(more))
-                            if matches!(key.as_str(), "text" | "summary") =>
+                            if matches!(field.as_str(), "text" | "summary" | "thinking") =>
                         {
                             text.push_str(&more);
                         }
                         (_, value) if missing => {
-                            last.insert(key, value);
+                            last.insert(field, value);
                         }
                         _ => {}
                     }
@@ -1902,39 +1944,11 @@ impl ChatDecoder {
             ChatEvent::Chunk(frame)
         }
     }
-
-    /// Verdict, model, response id and error envelope, read off a raw
-    /// payload before normalization discards them. The driver calls it for
-    /// the unary reply and for every stream frame.
-    pub(crate) fn project(payload: &[u8], sink: &mut ObservationSink<'_>) {
-        let Ok(payload) = serde_json::from_slice::<Value>(payload) else {
-            return;
-        };
-        // Only the chunk that carries the finish reason is a verdict, so the
-        // model rides with it rather than on each delta.
-        let verdict = match payload
-            .at("/choices/0/finish_reason")
-            .and_then(Value::as_str)
-        {
-            Some(reason) => AdapterVerdict {
-                finish_reason: Some(sink.scrub(reason)),
-                block_reason: None,
-                detail: None,
-                model: payload.str("model").map(|value| sink.scrub(value)),
-            },
-            None => AdapterVerdict::default(),
-        };
-        let response_id = payload.str("id").map(|value| sink.scrub(value));
-        sink.provider(verdict, response_id);
-        if let Some(error) = ObservedError::of(&payload) {
-            error.emit(sink);
-        }
-    }
 }
 
 mod document;
 pub(crate) mod finish;
-mod reported;
+pub(in crate::providers::openai) mod reported;
 
 #[cfg(test)]
 mod tests;

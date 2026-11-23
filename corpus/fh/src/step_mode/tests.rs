@@ -6,7 +6,7 @@ use rig_core::completion::{CompletionRequest, Message as Chat};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
-    Ended, answer_open, app_on, connect, first_agent, log_ended, reply, run_until,
+    Ended, answer_open, app_on, connect, first_agent, log_ended, reply, run_until, scratch_dir,
 };
 use serde_json::json;
 
@@ -64,11 +64,7 @@ fn start(
 
 /// An empty directory under the test binary's target directory.
 fn workspace(name: &str) -> PathBuf {
-    let exe = std::env::current_exe().unwrap_or_default();
-    let dir = exe.with_file_name(format!("step-mode-{name}-{}", std::process::id()));
-    std::fs::remove_dir_all(&dir).ok();
-    std::fs::create_dir_all(&dir).ok();
-    dir
+    scratch_dir(&format!("step-mode-{name}-{}", std::process::id()))
 }
 
 /// Whether a question titled `title` whose body says `says` is open.
@@ -263,10 +259,7 @@ fn read_only_calls_of_a_reply_do_not_run_side_by_side() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(StepModePlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(StepModePlugin);
 
 /// When the editor fails, or its file can't be read, a notice says why and
 /// the question waits in the input.

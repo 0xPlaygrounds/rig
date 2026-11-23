@@ -13,7 +13,11 @@
 //! starts. A gate decides in the effect's [`Decision`] (the first decision
 //! wins), a reviewer edits the [`Outcome`] in place, and any entity
 //! [`HoldOf`] an effect keeps it where it is. A failing Prepare, Gate or
-//! Review system closes its stage for that pass. From a frame's second pass
+//! Review system closes its stage for that pass, a panic included: a failed
+//! Prepare system has what that pass admitted answered with an error, a
+//! failed Gate system starts nothing, a failed Review system settles
+//! nothing, and a [`Notice`] names the system once. The app's error handler
+//! still gets the error, so one that panics ends the app. From a frame's second pass
 //! on, Bevy's clocks advance by zero, so timers count each frame once.
 //!
 //! ```
@@ -44,9 +48,7 @@ use bevy_ecs::error::{BevyError, ErrorContext, ErrorHandler, FallbackErrorHandle
 use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::prelude::*;
 use bevy_ecs::query::QueryData;
-use bevy_ecs::schedule::{
-    InternedSystemSet, LogLevel, ScheduleBuildSettings, ScheduleLabel, SingleThreadedExecutor,
-};
+use bevy_ecs::schedule::{InternedSystemSet, LogLevel, ScheduleBuildSettings, ScheduleLabel};
 use bevy_ecs::world::DeferredWorld;
 use bevy_log::tracing::Instrument;
 use bevy_log::{info_span, warn};
@@ -55,29 +57,31 @@ use bevy_tasks::{AsyncComputeTaskPool, TaskPool};
 use bevy_time::{Real, Time, Virtual};
 use rig_core::completion::CompletionResponse;
 use rig_core::effect::{
-    self, Decider, Disposition, EffectId, EffectKind, EffectRecord, HandlerKey, tool_key,
+    self, Decider, Disposition, EffectId, EffectKind, EffectRecord, Family, HandlerKey, tool_key,
 };
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::serve::{DispatchContext, Recorder, Reply, cancelled};
-use rig_core::tool::{ToolExecutionError, ToolResult, ToolResultContext};
+use rig_core::tool::{ToolResult, ToolResultContext};
 use rig_core::{millis, now_ms};
 use web_time::SystemTime;
 
-use super::agent::{AgentId, CallOf, Conversation, Notice, Turn, TurnOutcome};
+use super::agent::{AgentId, CallOf, Calls, Conversation, Notice, Turn, TurnOf, TurnOutcome};
 use super::effects::{Effects, Handler, Ran};
-use super::inbox::{Incoming, accept, carry_on_accepted, message_kind, settle_unsent};
+use super::fork::{Forking, make_forks};
+use super::inbox::{Inboxes, Incoming, accept, carry_on_accepted, message_kind, settle_unsent};
+use super::requests::RequestOf;
 use super::restore::{Interrupted, answer_interrupted, mark_started, stop_restored};
 use super::session_log::{Drain, SessionLog, save_now};
-use super::tasks::{Running, Wake, arrive};
+use super::tasks::{Running, Wake, finish};
 use super::tools::{
-    CallHandler, Footprint, ToolRequest, ToolStart, ToolStarts, complete_calls, compute_footprints,
-    redact_results, refuse_calls,
+    CallHandler, Footprint, InReply, ToolRequest, ToolStart, ToolStarts, complete_calls,
+    compute_footprints, refuse_calls,
 };
 use super::turn::{
-    Adapted, DroppedOptions, ModelRequest, NO_MODEL, SentTo, StreamDelta, TurnCall, back_off,
-    build_requests, carry_on_called, commit_replies, commit_turn_calls, end_turns, feed,
-    judge_failures, keeps_settled, model_pool, route_calls, stop_calls, stream_partials,
-    stream_reply, wait_in_order,
+    Adapted, ModelRequest, NO_MODEL, ReplyCall, SentTo, StreamDelta, back_off, build_requests,
+    carry_on_called, commit_replies, commit_turn_calls, end_turns, feed, is_reply_call,
+    judge_failures, keeps_settled, model_pool, route_calls, skip_steered, stop_calls,
+    stream_partials, stream_reply, wait_in_order, write_unstreamed,
 };
 
 /// One pass over the stages. Plugins add their systems to it in a
@@ -85,15 +89,32 @@ use super::turn::{
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct AgentPass;
 
+/// Runs between each two stages of a pass, once it ends and at the end of
+/// [`AgentLoop`]: a system there reads what was written before it ahead of
+/// any later stage, an observer it triggers, or a reader after
+/// [`AgentLoop`], such as a [`Notice`] it rewrites.
+#[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct BetweenStages;
+
 /// The system in `Update` that runs [`AgentPass`] until nothing moves. Work
 /// done after it in a frame, such as an effect spawned in `PostUpdate`, waits
 /// for the next frame: a system that spawns, answers or releases effects
-/// runs `.before(AgentLoop)`.
+/// runs `.before(AgentLoop)`. A system that reacts to what the loop did in
+/// the frame, such as an agent it started or a call it settled, runs
+/// `.after(AgentLoop)`.
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct AgentLoop;
 
 /// The stages of a pass, run in this order. The kernel's own work in each
 /// is in the [module](self) doc and the plugin guide.
+///
+/// Every stage but Arrive runs only in a pass where something moved. The
+/// kernel's stages (Arrive, Commit, Admit and Start) take plugin systems
+/// too, in no order against the kernel's own, so such a system writes only
+/// its own data, never an [`Outcome`], a [`Decision`] or a request. Arrive
+/// suits following running work. In Commit, Admit and Start a plugin
+/// reacts to what the pass did in order with the other stage systems, such
+/// as by spawning a successor agent once a turn settled.
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Stage {
     /// Finished tasks become their effects' [`Outcome`]s, streamed text is
@@ -102,23 +123,23 @@ pub enum Stage {
     Arrive,
     /// Plugins read, edit in place or hold an [`Outcome`]
     /// ([`ReadyToSettle`]), and a turn's proposed [`TurnOutcome`], in the
-    /// [`ReviewSystems`] phases. Before them the kernel redacts every
-    /// secret in a tool call's answer ([`rig_core::redact`]).
+    /// [`ReviewSystems`] phases.
     Review,
     /// The kernel settles what is answered and unheld, writes its
     /// [`EffectRecorded`], commits replies and their tool results, and ends the
     /// turns nothing holds.
     Commit,
     /// The kernel admits what was spawned since the last pass, builds the
-    /// requests of [`TurnCall`]s and [`SideCall`](super::turn::SideCall)s,
-    /// and marks the calls that wait for an earlier one [`Waiting`].
+    /// requests of [`TurnCall`](super::turn::TurnCall)s and
+    /// [`SideCall`](super::turn::SideCall)s.
     Admit,
     /// Plugins edit the requests admitted this pass (`Added<Admitted>`), in
     /// the [`PrepareSystems`] phases.
     Prepare,
     /// Plugins hold ([`HoldOf`]) or decide ([`Decision`]) what is about to
     /// start ([`ReadyToStart`]), once the kernel answered the tool calls it
-    /// refuses ([`ToolRequest`]).
+    /// refuses ([`ToolRequest`]), gave each tool call its [`Footprint`] and
+    /// marked [`Waiting`] a call behind a conflicting one.
     Gate,
     /// The kernel applies the decisions made since the last pass as
     /// [`Outcome`]s, then starts what is admitted, unheld and unanswered: it
@@ -208,8 +229,9 @@ pub enum GateSystems {
     /// answered with an error, else releases its holds.
     After,
     /// The kernel's own answers once every plugin had its say, such as an
-    /// [`Interrupted`] call's or an [`Unsent`](super::inbox::Unsent)
-    /// message's. A default plugin's fallback goes between
+    /// [`Interrupted`] call's, an unstarted tool call skipped when the user
+    /// steers, or an [`Unsent`](super::inbox::Unsent) message's. A default
+    /// plugin's fallback goes between
     /// (`.after(GateSystems::After).before(GateSystems::Fallback)`), so it
     /// sees what every plugin decided or held and the kernel has not
     /// answered yet.
@@ -282,7 +304,10 @@ impl Effect {
 /// A plugin's rig-core effect: the kernel dispatches `kind` to `handler` at
 /// Start, recorded, and its answer becomes the [`Outcome`]. Without a
 /// handler it is open: Start marks it [`Started`], and it waits for any
-/// system to answer it.
+/// system to answer it. One that may change something carries a
+/// [`Footprint`] that says so, and then does not start once the session
+/// can no longer be saved; one without a `Footprint` changes nothing, so it
+/// still starts, as an exit or a question for the user must.
 #[derive(Component, Clone)]
 #[require(Effect)]
 pub struct EffectRequest {
@@ -347,14 +372,10 @@ impl Outcome {
     /// What a tool call answered this way returns to the model: its
     /// result, or the failure as an error result.
     pub fn tool_result(&self) -> ToolResult {
-        match &self.0 {
-            Ok(effect::Answered::ToolResult { result }) => result.clone(),
-            Ok(other) => ToolResult::failed(ToolExecutionError::other(format!(
-                "the tool answered with a {} outcome",
-                other.family()
-            ))),
-            Err(report) => ToolResult::failed(report.clone().into()),
-        }
+        self.0
+            .clone()
+            .and_then(effect::family::Tool::unwrap)
+            .unwrap_or_else(|report| ToolResult::failed(report.into()))
     }
 
     /// An answer of a kind of its own, rig-core's custom outcome with
@@ -437,10 +458,26 @@ pub struct IfStopped(pub Outcome);
 #[derive(Component, Clone, Debug)]
 pub struct Published(pub ToolResultContext);
 
+/// The most bytes of JSON a call's published values may take together to
+/// be kept with a conversation ([`Published::kept`]): room for the diff of
+/// a large edit, while a value past it, such as the diff of a rewritten
+/// generated file, is left out rather than grow the session by as much.
+const MAX_KEPT_FACTS_BYTES: usize = 256 * 1024;
+
+impl Published {
+    /// These values as a conversation keeps them with the call's result
+    /// ([`ToolResultContext::kept`]), in at most [`MAX_KEPT_FACTS_BYTES`]
+    /// of JSON.
+    pub(crate) fn kept(&self) -> ToolResultContext {
+        self.0.kept(MAX_KEPT_FACTS_BYTES)
+    }
+}
+
 /// Keeps the effect it names where it is: not started, or not settled. Any
 /// entity can be a hold; despawn it, or remove this, to release it. Holds
 /// add up: releasing one never releases another's, and every release wakes
-/// the loop.
+/// the loop. A hold's `Name` says why it holds, such as `waiting for lease
+/// on src/a.rs`, and the fronts show it.
 #[derive(Component, Reflect, Debug)]
 #[component(on_remove = moved::<HoldOf>)]
 #[reflect(Component)]
@@ -460,15 +497,16 @@ pub struct Holds(Vec<Entity>);
 /// settles at the next Commit, recorded as superseded. Any number of
 /// effects may name one successor: a retry is
 /// `commands.spawn(retry).add_related::<SupersededBy>(&[call])`, and each
-/// loser of a race gets `insert(SupersededBy(winner))`.
+/// loser of a race gets `insert(SupersededBy(winner))`. A successor without
+/// an [`InReply`] takes that of the call it supersedes, so it answers in
+/// the call's place. With several, it takes the first one's.
 #[derive(Component, Reflect, Debug)]
-#[component(on_add = moved::<SupersededBy>)]
+#[component(on_add = superseded)]
 #[reflect(Component)]
 #[relationship(relationship_target = Supersedes)]
 pub struct SupersededBy(pub Entity);
 
 impl SupersededBy {
-    /// The successor.
     pub fn successor(&self) -> Entity {
         self.0
     }
@@ -487,22 +525,25 @@ pub struct Supersedes(Vec<Entity>);
 #[reflect(Component, Default)]
 pub struct Settled;
 
-/// When an effect carrying `M` is superseded, moves `M`, and the hold the
-/// effect keeps ([`HoldOf`]), to the successor, so the plugin that owns the
-/// effect by `M` takes the successor's outcome. The successor's hold is
-/// inserted before the old one is removed, so the held effect is never
-/// unheld in between: `app.add_observer(follow_successor::<Summarizing>)`.
+/// When an effect carrying `M` is superseded, moves `M`, the hold the
+/// effect keeps ([`HoldOf`]) and the owner it is a request of
+/// ([`RequestOf`]) to the successor, so the plugin that owns the effect by
+/// `M` takes the successor's outcome. The successor's hold and link are
+/// inserted before the old ones are removed, so the held effect is never
+/// unheld in between, and the owner never lets go of the request:
+/// `app.add_observer(follow_successor::<Summarizing>)`.
 pub fn follow_successor<M: Component>(
     superseded: On<Add<SupersededBy>>,
-    owned: Query<(&SupersededBy, Option<&HoldOf>), With<M>>,
+    owned: Query<(&SupersededBy, Option<&HoldOf>, Option<&RequestOf>), With<M>>,
     mut commands: Commands,
 ) {
     let old = superseded.entity;
-    let Ok((by, hold)) = owned.get(old) else {
+    let Ok((by, hold, request)) = owned.get(old) else {
         return;
     };
     let new = by.successor();
     let held = hold.map(|&HoldOf(held)| held);
+    let owner = request.map(|&RequestOf(owner)| owner);
     commands.queue(move |world: &mut World| {
         let Ok(mut to) = world.get_entity_mut(new) else {
             return;
@@ -510,12 +551,18 @@ pub fn follow_successor<M: Component>(
         if let Some(held) = held {
             to.insert(HoldOf(held));
         }
+        if let Some(owner) = owner {
+            to.insert(RequestOf(owner));
+        }
         let Ok(mut from) = world.get_entity_mut(old) else {
             return;
         };
         let marker = from.take::<M>();
         if held.is_some() {
             from.remove::<HoldOf>();
+        }
+        if owner.is_some() {
+            from.remove::<RequestOf>();
         }
         if let (Some(marker), Ok(mut to)) = (marker, world.get_entity_mut(new)) {
             to.insert(marker);
@@ -542,6 +589,13 @@ pub fn despawn_open_children<M: Component>(
 /// The record of every effect that settled or was cancelled, in settle
 /// order, and of the dispatches nested in their handlers. Only effects of a
 /// kind the kernel knows, such as an [`EffectRequest`], have a record.
+///
+/// A record holds what its effect really carried, such as tool output and
+/// the request as sent, and a log writer in [`Persist`](crate::Persist)
+/// writes it as given. A plugin changes records before they are written
+/// with a `MessageMutator<EffectRecorded>` system in `Last`, after
+/// [`StopTurnsOnExit`](crate::StopTurnsOnExit) so it also sees the records
+/// of turns the exit stops.
 #[derive(Message, Clone, Debug)]
 pub struct EffectRecorded(pub EffectRecord);
 
@@ -639,8 +693,9 @@ pub(crate) fn build(app: &mut App) {
     app.init_resource::<Passes>()
         .add_message::<EffectRecorded>()
         .add_message::<StreamDelta>()
+        .edit_schedule(BetweenStages, super::single_threaded)
         .edit_schedule(AgentPass, |pass| {
-            pass.set_executor(SingleThreadedExecutor::new());
+            super::single_threaded(pass);
             if cfg!(debug_assertions) {
                 // Unordered systems writing the same data in one stage are
                 // reported, as their order is meaningless: two deciders, two
@@ -695,11 +750,15 @@ pub(crate) fn build(app: &mut App) {
         )
         .add_systems(
             AgentPass,
-            // After every reviewer and before anything is committed: no
-            // key reaches the model, the conversation or a log, and no
-            // plugin has to order itself against it. A plugin that swaps
-            // secrets for placeholders in Review leaves nothing to redact.
-            redact_results.in_set(Enter(Stage::Commit)),
+            super::tools::keep_within_parents.in_set(Enter(Stage::Admit)),
+        )
+        .add_systems(
+            AgentPass,
+            // Its own stage's systems see the forks it made.
+            make_forks
+                .run_if(any_with_component::<Forking>)
+                .after(Enter(Stage::Arrive))
+                .before(Stage::Arrive),
         )
         .configure_sets(
             AgentPass,
@@ -719,12 +778,13 @@ pub(crate) fn build(app: &mut App) {
         .add_systems(
             AgentPass,
             (
-                (arrive, stream_partials, judge_failures)
+                (finish::<With<Effect>>, stream_partials, judge_failures)
                     .chain()
                     .in_set(Stage::Arrive),
                 (
                     stop_calls,
                     back_off.run_if(passed(Stage::Review)),
+                    write_unstreamed.run_if(passed(Stage::Review)),
                     settle,
                     commit_replies,
                     end_turns.run_if(passed(Stage::Review)),
@@ -751,7 +811,7 @@ pub(crate) fn build(app: &mut App) {
                     .before(Stage::Gate)
                     .run_if(moved_since_quiet),
                 stop_restored.after(Stage::Gate).before(GateSystems::After),
-                (answer_interrupted, settle_unsent)
+                (answer_interrupted, skip_steered, settle_unsent)
                     .chain()
                     .in_set(GateSystems::Fallback),
                 apply_decisions.in_set(Enter(Stage::Start)),
@@ -762,9 +822,16 @@ pub(crate) fn build(app: &mut App) {
         )
         .add_systems(
             Update,
-            run_passes
-                .in_set(AgentLoop)
-                .run_if(any_match_filter::<Or<(With<Effect>, With<Turn>)>>),
+            (
+                run_passes
+                    .run_if(any_match_filter::<Or<(With<Effect>, With<Turn>, With<Forking>)>>),
+                // In a frame with no pass too, for what came before the loop.
+                |world: &mut World| {
+                    world.try_run_schedule(BetweenStages).ok();
+                },
+            )
+                .chain()
+                .in_set(AgentLoop),
         );
     for stage in Stage::ALL {
         app.add_systems(AgentPass, entering(stage).in_set(Enter(stage)));
@@ -788,11 +855,12 @@ pub(crate) fn build(app: &mut App) {
     app.add_systems(AgentPass, save_in_pass.after(Stage::Start));
 }
 
-/// Saves the agent conversations changed since it last ran, so a change
-/// made in a stage is announced to the later stages of the pass; one that
-/// saved any counts as a move, so the loop runs another pass, where the
-/// earlier stages see it too.
+/// Runs [`BetweenStages`], then saves the agent conversations changed since
+/// it last ran, so a change made in a stage is announced to the later
+/// stages of the pass; one that saved any counts as a move, so the loop
+/// runs another pass, where the earlier stages see it too.
 fn save_in_pass(world: &mut World) {
+    world.try_run_schedule(BetweenStages).ok();
     if let Some(agent) = save_now(world)
         && let Some(mut passes) = world.get_resource_mut::<Passes>()
     {
@@ -969,6 +1037,32 @@ pub(crate) fn moved<C: Component>(mut world: DeferredWorld, context: HookContext
     }
 }
 
+/// Gives the successor of a call of a reply the call's place
+/// ([`InReply`]), and each successor after it that has none, as a chain
+/// may be linked from its end; and counts the move.
+fn superseded(mut world: DeferredWorld, context: HookContext) {
+    let next = |world: &DeferredWorld, effect: Entity| {
+        world
+            .get::<SupersededBy>(effect)
+            .map(SupersededBy::successor)
+    };
+    if let Some(&place) = world.get::<InReply>(context.entity) {
+        let mut chain = Vec::new();
+        let mut at = next(&world, context.entity);
+        while let Some(successor) = at.filter(|s| !chain.contains(s)) {
+            if world.get::<InReply>(successor).is_some() {
+                break;
+            }
+            chain.push(successor);
+            at = next(&world, successor);
+        }
+        for successor in chain {
+            world.commands().entity(successor).try_insert_if_new(place);
+        }
+    }
+    moved::<SupersededBy>(world, context);
+}
+
 /// Gives a new effect its id, and its parent from the effect it is a
 /// `ChildOf`.
 fn take_id(mut world: DeferredWorld, context: HookContext) {
@@ -1109,7 +1203,11 @@ type Saving<'w, 's> = ParamSet<
 fn start(
     mut ready: Query<StartItem, ReadyToStart>,
     agents: Query<&AgentId>,
-    turns: Query<&TurnOutcome>,
+    (turns, replies, inboxes): (
+        Query<(&TurnOf, &Turn, &Calls, Option<&TurnOutcome>)>,
+        Query<ReplyCall>,
+        Inboxes,
+    ),
     tools: ToolStarts,
     effects: Res<Effects>,
     wake: Res<Wake>,
@@ -1126,26 +1224,55 @@ fn start(
         return;
     }
     let at = SystemTime::now();
-    let stopping = |item: &StartItemReadOnlyItem| {
-        let ending = item.of.and_then(|of| turns.get(of.0).ok());
-        ending.and_then(TurnOutcome::stops).is_some()
-    };
-    // Before a call that may change something starts, the reply that asked
-    // for it and the call's mark are written to the store (not yet synced
-    // to disk). When they cannot be, no such call starts: a restart could
-    // not tell that it may have run.
-    let changing: Vec<_> = ready
-        .iter()
-        .filter(|item| !item.message && !item.decision.is_decided() && !stopping(item))
-        .filter(|item| !item.footprint.is_some_and(|it| it.0.reads_only()))
-        .filter_map(|item| Some((item.agent?.0, item.tool?.call.id.clone())))
+    // In the order they were spawned, such as a reply's calls in call order.
+    // Messages are accepted before. An effect decided since the decisions
+    // were applied, such as by an observer of an answer they applied, is
+    // answered by the next pass's.
+    let mut ready: Vec<_> = ready
+        .iter_mut()
+        .filter(|item| {
+            let turn = item.of.and_then(|of| turns.get(of.0).ok());
+            let stopping = turn
+                .and_then(|(_, _, _, ending)| ending)
+                .is_some_and(TurnOutcome::is_stopping);
+            let steered = item.tool.is_some()
+                && turn.is_some_and(|(&TurnOf(agent), state, calls, _)| {
+                    state.reply.is_some_and(|reply| {
+                        inboxes.user_steering(agent)
+                            && is_reply_call(item.entity, reply, calls, &replies)
+                    })
+                });
+            !item.message && !item.decision.is_decided() && !stopping && !steered
+        })
         .collect();
+    ready.sort_unstable_by_key(|item| item.effect.id());
+    // Before an effect that may change something starts, the reply that
+    // asked for it and, for a call of a reply, the call's mark are written
+    // to the store (not yet synced to disk). When they cannot be, no such
+    // effect starts: a restart could not tell that it may have run. An
+    // effect of no reply has no place to mark, but it too waits for that
+    // write.
+    let mut changing = false;
+    let mut marks = Vec::new();
+    for item in ready
+        .iter()
+        .filter(|item| changes(item.tool.is_some(), item.footprint))
+    {
+        changing = true;
+        if let (Some(agent), Some(tool)) = (item.agent, item.tool) {
+            marks.push((
+                agent.0,
+                tool.call.id.clone(),
+                item.in_reply.map(InReply::at),
+            ));
+        }
+    }
     let mut unsaved = None;
-    if !changing.is_empty() {
+    if changing {
         let mut conversations = saving.p1();
-        for (agent, call) in &changing {
-            if let Ok(mut conversation) = conversations.get_mut(*agent) {
-                mark_started(&mut conversation, call);
+        for (agent, call, at) in &marks {
+            if let (Ok(mut conversation), Some(at)) = (conversations.get_mut(*agent), at) {
+                mark_started(&mut conversation, (call, *at));
             }
         }
         if let Some(agent) = saving.p0().save() {
@@ -1158,22 +1285,9 @@ fn start(
             ErrorReport::new(ErrorKind::Internal, why)
         });
     }
-    // In the order they were spawned, such as a reply's calls in call order.
-    let mut ready: Vec<_> = ready.iter_mut().collect();
-    ready.sort_unstable_by_key(|item| item.effect.id());
     for item in ready {
-        // Messages are accepted before. An effect decided since the
-        // decisions were applied, such as by an observer of an answer
-        // they applied, is answered by the next pass's.
-        if item.message || item.decision.is_decided() {
-            continue;
-        }
-        let ending = item.of.and_then(|of| turns.get(of.0).ok());
-        if ending.and_then(TurnOutcome::stops).is_some() {
-            continue;
-        }
         let (entity, effect) = (item.entity, item.effect);
-        let changes = item.tool.is_some() && !item.footprint.is_some_and(|it| it.0.reads_only());
+        let changes = changes(item.tool.is_some(), item.footprint);
         if let Some(unsaved) = unsaved.as_ref().filter(|_| changes) {
             commands
                 .entity(entity)
@@ -1195,13 +1309,12 @@ fn start(
                 started.try_insert_if_new(Outcome(Err(report)));
                 continue;
             };
-            let mut dropped = adapted.start(&mut model);
+            adapted.start(&mut model);
             let connection = adapted.0.clone();
             let kind = EffectKind::Completion {
                 request: model.request.clone(),
                 stream: true,
             };
-            dropped.extend(connection.handler.0.check(&kind));
             let reference = connection.spec.reference();
             let span =
                 info_span!("model_call", agent = scope, effect = %effect.id, model = reference);
@@ -1216,7 +1329,6 @@ fn start(
                 running,
                 feed,
                 SentTo(connection),
-                DroppedOptions(dropped),
             ));
             continue;
         }
@@ -1262,6 +1374,13 @@ fn start(
     }
 }
 
+/// Whether an effect may change something outside the session, as its
+/// [`Footprint`] says: a tool call that says nothing may change anything,
+/// any other effect changes nothing unless its footprint says so.
+fn changes(tool: bool, footprint: Option<&Footprint>) -> bool {
+    footprint.map_or(tool, |footprint| !footprint.0.reads_only())
+}
+
 /// Puts what a handler's run left on its effect, unless it was answered
 /// meanwhile: what a tool published, then the outcome.
 fn answer(mut entity: EntityWorldMut, (outcome, published): Ran) {
@@ -1283,9 +1402,9 @@ struct StartItem {
     decision: &'static Decision,
     request: Option<&'static EffectRequest>,
     tool: Option<&'static ToolRequest>,
+    in_reply: Option<&'static InReply>,
     model: Option<&'static mut ModelRequest>,
     adapted: Option<&'static Adapted>,
-    turn_call: Has<TurnCall>,
     message: Has<Incoming>,
     handler: Option<&'static CallHandler>,
     footprint: Option<&'static Footprint>,
@@ -1474,6 +1593,7 @@ fn assemble(
         .get::<CallOf>(entity)
         .and_then(|call| world.get::<Turn>(call.0))
         .map(|turn| turn.index);
+    record.call = world.get::<InReply>(entity).map(InReply::at);
     Some(record)
 }
 

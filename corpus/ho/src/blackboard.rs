@@ -1,14 +1,10 @@
-//! Plugin corpus (held-out): H18: Shared blackboard for agents (spec `H18-blackboard.md`).
-//!
-//! A board every agent shares ([`Board`], saved with the session): agents
-//! post findings to topics with `board_post` and read them with
-//! `board_read`, and may claim a key (a path, a task) so the others leave
-//! it alone. An agent is subscribed ([`Subscriptions`]) to the topics it
-//! posted to or read; each new post goes to every other subscribed agent as
-//! a note with its next request, which wakes no idle agent. A claim goes
-//! when its holder releases it or is despawned. `/board` toggles the
-//! board's panel in the terminal view, and `/board post <topic> <text>`
-//! posts as the user, noted to every agent.
+//! A shared blackboard for agents. A board every agent shares ([`Board`], saved with the session):
+//! agents post findings to topics with `board_post` and read them with `board_read`, and may claim
+//! a key (a path, a task) so the others leave it alone. An agent is subscribed ([`Subscriptions`])
+//! to the topics it posted to or read; each new post goes to every other subscribed agent as a note
+//! with its next request, which wakes no idle agent. A claim goes when its holder releases it or is
+//! despawned. `/board` toggles the board's panel in the terminal view, and `/board post <topic>
+//! <text>` posts as the user, noted to every agent.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 

@@ -1,12 +1,12 @@
 //! Questions to the client. An approval asks for permission to run the call
 //! it holds; another question is a form, when the client takes forms; else
-//! it is closed with a reason the model reads, so the turn goes on. A
-//! picker is closed with a notice: the client has a command line.
+//! it is closed with a reason the model reads, so the turn goes on. The
+//! harness refuses a picker, which this front does not show.
 
 use agent_client_protocol::schema::v1 as acp;
 use bevy_ecs::system::SystemParam;
 use rig_basics::approval::{ALLOW, DENY, NeedsApproval};
-use rig_harness::pick::{Pick, Picker};
+use rig_harness::pick::Pick;
 use rig_harness::prelude::*;
 use rig_harness::services::WorkDir;
 
@@ -21,9 +21,6 @@ mod tests;
 const UNSHOWN: &str = "The client cannot show this question. Go on without an answer: make \
                        reasonable assumptions and say what you assumed.";
 
-/// How many of a picker's commands a note lists.
-const PICKS: usize = 10;
-
 /// The form field of a question's choices, and of its typed answer.
 const CHOICE: &str = "choice";
 const TEXT: &str = "text";
@@ -33,10 +30,32 @@ const TEXT: &str = "text";
 pub(crate) struct Asking<'w, 's> {
     asks: Query<'w, 's, (&'static Ask, Option<&'static HoldOf>, &'static mut Decision)>,
     approvals: Query<'w, 's, &'static NeedsApproval>,
-    calls: Query<'w, 's, (&'static ToolRequest, &'static ForAgent)>,
-    agents: Query<'w, 's, (&'static AgentId, &'static Conversation)>,
+    calls: Query<
+        'w,
+        's,
+        (
+            &'static ToolRequest,
+            &'static ForAgent,
+            Option<&'static InReply>,
+        ),
+    >,
+    agents: Query<'w, 's, &'static AgentId>,
     dirs: Query<'w, 's, &'static WorkDir>,
     root: Res<'w, ProjectRoot>,
+    workspace: Res<'w, ProjectWorkspace>,
+    commands: Commands<'w, 's>,
+}
+
+/// Asking the client a question: a request of the question
+/// ([`RequestOf`]), so the client is no longer asked once the question
+/// settles or goes.
+#[derive(Component)]
+pub(super) struct ClientAsk(pub(super) tokio::task::AbortHandle);
+
+impl Drop for ClientAsk {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
 }
 
 impl Asking<'_, '_> {
@@ -52,11 +71,10 @@ impl Asking<'_, '_> {
         // The call and its id: a subagent's, never shown before, is shown
         // from here on.
         let call = held.filter(|_| approval.is_some()).and_then(|effect| {
-            let (request, &ForAgent(agent)) = self.calls.get(effect).ok()?;
+            let (request, &ForAgent(agent), in_reply) = self.calls.get(effect).ok()?;
             let call_id = session.calls.get(&effect).cloned().or_else(|| {
-                let (AgentId(of), conversation) = self.agents.get(agent).ok()?;
-                let taken = |id: &str| session.calls.values().any(|shown| shown == id);
-                translate::call_id_in(of, conversation, &request.call.id, taken)
+                let AgentId(of) = self.agents.get(agent).ok()?;
+                Some(translate::call_id_at(of, in_reply?.at()))
             })?;
             session.calls.insert(effect, call_id.clone());
             Some((request, agent, call_id))
@@ -69,7 +87,8 @@ impl Asking<'_, '_> {
             let reasons = approval.into_iter().flat_map(|needs| &needs.reasons);
             let reasons: Vec<_> = reasons.map(|reason| reason.text.as_str()).collect();
             let why = reasons.join("\n");
-            let tool = translate::tool_asked(&request.call, call_id, &cwd, &why);
+            let tool =
+                translate::tool_asked(&request.call, call_id, &cwd, &*self.workspace.0, &why);
             let options = vec![
                 acp::PermissionOption::new(ALLOW, "Allow", acp::PermissionOptionKind::AllowOnce),
                 acp::PermissionOption::new(DENY, "Deny", acp::PermissionOptionKind::RejectOnce),
@@ -91,7 +110,7 @@ impl Asking<'_, '_> {
                     choices: vec![chosen.to_owned()],
                     text: None,
                 };
-                Session::post(&sender, &wake, Request::Answered(entity, Some(answer)));
+                Session::post(&sender, &wake, Request::Answered(entity, Some(answer))).await;
             })
         } else if session
             .client
@@ -112,13 +131,14 @@ impl Asking<'_, '_> {
                 let answer = answered
                     .ok()
                     .and_then(|answered| answer(&ask, answered.action));
-                Session::post(&sender, &wake, Request::Answered(entity, answer));
+                Session::post(&sender, &wake, Request::Answered(entity, answer)).await;
             })
         } else {
             decision.decide(Decider::plugin("rig-acp"), Outcome::refused(UNSHOWN));
             return;
         };
-        session.asking.insert(entity, task.abort_handle());
+        self.commands
+            .spawn((ClientAsk(task.abort_handle()), RequestOf(entity)));
     }
 }
 
@@ -168,19 +188,16 @@ fn answer(ask: &Ask, action: acp::ElicitationAction) -> Option<Answer> {
         }
         _ => None,
     };
-    let offered = |choice: &String| ask.choices.iter().any(|offered| &offered.id == choice);
-    if !choices.iter().flatten().all(offered) {
-        return None;
-    }
     let text = match content.get(TEXT) {
         Some(acp::ElicitationContentValue::String(text)) if ask.free_text => Some(text.clone()),
         _ => None,
     };
     let answered = choices.is_some() || text.is_some();
-    answered.then(|| Answer {
+    let answer = Answer {
         choices: choices.unwrap_or_default(),
         text,
-    })
+    };
+    (answered && ask.check(&answer).is_ok()).then_some(answer)
 }
 
 /// Answers the question on `ask` as the client did, or closes it; a
@@ -201,58 +218,4 @@ pub(super) fn answer_with(commands: &mut Commands, ask: Entity, answer: Option<A
             }
         }
     });
-}
-
-/// Closes a picker, which the client cannot show, saying how to do it
-/// instead.
-pub(super) fn picker(
-    added: On<Add<Picker>>,
-    pickers: Query<&Picker>,
-    mut session: ResMut<Session>,
-    mut commands: Commands,
-) {
-    if let Ok(picker) = pickers.get(added.entity) {
-        session.note(unshown(picker), NoticeLevel::Warn);
-        commands.trigger(Pick::person(added.entity, None));
-    }
-}
-
-/// What to do instead of picking from `picker` here: type a secret, such as
-/// an API key, in rig in a terminal, which hides it, and open a new session,
-/// as a running one reads no key saved elsewhere; else type one of the
-/// commands of its items.
-fn unshown(picker: &Picker) -> String {
-    let title = &picker.title;
-    match (picker.secret, picker.items.as_slice()) {
-        (true, _) => format!(
-            "{title}: this client would show it as you type. Type it in `rig` in a terminal, \
-             with this agent's RIG_HOME, then open a new session here: this one does not read \
-             what is saved meanwhile."
-        ),
-        (false, []) => {
-            format!(
-                "{title}: this client cannot show this question; answer it in rig in a terminal."
-            )
-        }
-        (false, items) => {
-            let shown: Vec<_> = items
-                .iter()
-                .take(PICKS)
-                .map(|item| format!("/{}", item.command))
-                .collect();
-            let more = if items.len() > PICKS { ", …" } else { "" };
-            format!(
-                "{title}: this client cannot show a list to pick from; type one of: {}{more}",
-                shown.join(", ")
-            )
-        }
-    }
-}
-
-/// Stops asking the client about a question that ended before it answered,
-/// as one a stopped turn takes away.
-pub(super) fn forgotten(gone: On<Remove<Ask>>, mut session: ResMut<Session>) {
-    if let Some(task) = session.asking.remove(&gone.entity) {
-        task.abort();
-    }
 }

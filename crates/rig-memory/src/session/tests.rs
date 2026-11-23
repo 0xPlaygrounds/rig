@@ -16,8 +16,10 @@ fn append(store: &dyn Store, log: &str, bytes: &[u8]) -> Result<(), LogWriteErro
 
 /// The file a torn tail `tail` of the log `log` is set aside in.
 fn part(log: &str, tail: &[u8]) -> String {
-    use sha2::Digest;
-    format!("recovered/{log}-{:x}.part", sha2::Sha256::digest(tail))
+    format!(
+        "recovered/{log}-{}.part",
+        rig_core::tool::content_hash(tail).0
+    )
 }
 
 /// A conversation with an image, an authored entry, a splice that keeps an
@@ -135,7 +137,8 @@ fn a_halted_reset_naming_a_blob_reads_halted() -> Result<(), Box<dyn std::error:
             None,
         )],
     };
-    let stored = crate::store_images(&image, &*store)?.into_owned();
+    let put = &mut |name: String, bytes: Vec<u8>| crate::blobs::put_blob(&*store, &name, &bytes);
+    let stored = crate::blobs::store_images_with(&image, put)?.into_owned();
     if stored == image {
         return Err("the image was not stored as a blob".into());
     }
@@ -586,17 +589,24 @@ fn a_save_cut_short_appends_nothing() {
 }
 
 /// A local store over a [`MemoryStore`] whose log reads wait for each other
-/// in pairs once `armed`, and whose blob reads fail while `unreadable`.
+/// in pairs once `armed`, whose blob reads fail while `unreadable` and
+/// writes while `unwritable`, and whose next append to the log `refused`
+/// fails.
 #[derive(Default)]
 struct Gate {
     store: MemoryStore,
     armed: std::sync::atomic::AtomicBool,
     paired: Option<std::sync::Barrier>,
     unreadable: std::sync::atomic::AtomicBool,
+    unwritable: std::sync::atomic::AtomicBool,
+    refused: std::sync::Mutex<Option<String>>,
 }
 
 impl Files for Gate {
     fn write_file(&self, name: &str, bytes: &[u8]) -> std::io::Result<()> {
+        if self.unwritable.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(std::io::Error::other("the disk is full"));
+        }
         self.store.write_file(name, bytes)
     }
 
@@ -635,6 +645,11 @@ impl Store for Gate {
     }
 
     fn append_log(&self, name: &str, len: u64, bytes: &[u8]) -> Result<(), LogWriteError> {
+        let mut refused = self.refused.lock().expect("the refused log");
+        if refused.as_deref() == Some(name) {
+            *refused = None;
+            return Err(std::io::Error::other("the database is full").into());
+        }
         self.store.append_log(name, len, bytes)
     }
 
@@ -730,8 +745,8 @@ fn a_failed_save_can_be_retried() {
 }
 
 /// An image whose blob cannot be read for any reason but its absence fails
-/// the load, synchronous or not; a blob that is gone loads as a
-/// placeholder.
+/// the load, synchronous or not, and the read of that agent's conversation
+/// however it is chosen; a blob that is gone loads as a placeholder.
 #[test]
 fn a_failed_image_read_fails_the_load() {
     let gate = Gate::default();
@@ -742,6 +757,10 @@ fn a_failed_image_read_fails_the_load() {
     assert!(matches!(load(&gate, "agent"), Err(SessionError::Io(_))));
     let loaded = poll(super::load_async(&gate, "agent"), 1).expect("finished");
     assert!(matches!(loaded, Err(SessionError::Io(_))), "{loaded:?}");
+    for agent in [Some("agent"), None] {
+        let read = crate::read_conversation(&gate, agent);
+        assert!(matches!(read, Err(SessionError::Io(_))), "{read:?}");
+    }
 
     gate.unreadable
         .store(false, std::sync::atomic::Ordering::SeqCst);
@@ -752,4 +771,196 @@ fn a_failed_image_read_fails_the_load() {
     }
     let loaded = load(&gate, "agent").expect("a missing blob is a placeholder");
     assert_eq!(loaded.messages().len(), conversation.messages().len());
+}
+
+/// A missing blob does not hide a later image's failed read: the load
+/// fails, as it does when that read comes first.
+#[test]
+fn a_missing_blob_does_not_hide_a_failed_read() {
+    let mut message = Message::User {
+        content: vec![
+            UserContent::image_url("blob:gone.png", Some(ImageMediaType::PNG), None),
+            UserContent::image_url("blob:unread.png", Some(ImageMediaType::PNG), None),
+        ],
+    };
+    let failed = crate::blobs::load_images_with(&mut message, &|name| {
+        Err(match name {
+            "gone.png" => std::io::ErrorKind::NotFound.into(),
+            _ => std::io::Error::other("the disk is unplugged"),
+        })
+    });
+    let kind = failed.map_err(|failure| failure.kind());
+    assert_eq!(kind, Err(std::io::ErrorKind::Other));
+}
+
+/// A session save that fails keeps the unsaved changes of every agent
+/// whose log was not written, and only those, so the same save tried
+/// again stores each change once: after a blob write fails, after an
+/// append is refused, and after a subagent's log was written and its
+/// parent's append is refused.
+#[test]
+fn a_failed_session_save_can_be_retried() {
+    let gate = Gate::default();
+    let mut session = Session::default();
+    for (id, parent) in [("main", None), ("child", Some("main"))] {
+        session.agents.push(SavedAgent {
+            id: id.into(),
+            parent: parent.map(str::to_owned),
+            conversation: Conversation::from_messages([Message::user("hello")]),
+            ..SavedAgent::default()
+        });
+    }
+    session.save(&gate).expect("saved");
+    let push = |session: &mut Session, id: &str, message: Message| {
+        let agent = session.agent_mut(id).expect("an agent");
+        agent.conversation.push(message);
+    };
+    let stored = |session: &Session| {
+        for agent in &session.agents {
+            assert_eq!(load(&gate, &agent.id).expect("loaded"), agent.conversation);
+        }
+    };
+    let image = Message::User {
+        content: vec![UserContent::image_base64(
+            "cG5n",
+            Some(ImageMediaType::PNG),
+            None,
+        )],
+    };
+
+    push(&mut session, "main", image);
+    gate.unwritable
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    assert!(session.save(&gate).is_err());
+    gate.unwritable
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+    session
+        .save(&gate)
+        .expect("saved after a failed blob write");
+    stored(&session);
+
+    push(&mut session, "main", Message::assistant("a cat"));
+    *gate.refused.lock().expect("the refused log") = Some("main".into());
+    assert!(session.save(&gate).is_err());
+    session.save(&gate).expect("saved after a refused append");
+    stored(&session);
+
+    push(&mut session, "child", Message::assistant("done"));
+    push(&mut session, "main", Message::user("go on"));
+    *gate.refused.lock().expect("the refused log") = Some("main".into());
+    assert!(session.save(&gate).is_err());
+    session
+        .save(&gate)
+        .expect("saved after the parent's refused append");
+    stored(&session);
+}
+
+/// Every log of `store`, by name, as stored.
+fn logs_of(store: &dyn Store) -> Vec<(String, Vec<u8>)> {
+    let names = store.logs().expect("the logs").into_iter();
+    names
+        .map(|name| (store.read_log(&name).expect("a log"), name))
+        .map(|(bytes, name)| (name, bytes))
+        .collect()
+}
+
+/// A session read before another save, or before a rewrite, is refused
+/// whole and writes nothing, not even a new agent's log: saving it would
+/// put back what the newer save or the rewrite took out. A session read
+/// after them, and one that saved, save again.
+#[test]
+fn a_stale_session_is_refused_before_it_writes() {
+    let redact = crate::Strings(|text: &mut String| {
+        let found = text.contains("secret");
+        *text = text.replace("secret", "[gone]");
+        found
+    });
+    let newer: [&dyn Fn(&mut Session, &dyn Store); 4] = [
+        &|session, _| {
+            session.saved.insert("added".into(), json!(1));
+        },
+        &|session, _| {
+            let agent = session.agent_mut("main").expect("main");
+            agent.saved.insert("key".into(), json!("newer"));
+        },
+        &|session, _| session.agent_mut("main").expect("main").retired = true,
+        &|session, store| {
+            crate::rewrite(store, Author::plugin("redact"), &redact).expect("rewritten");
+            *session = Session::read(store).expect("read");
+        },
+    ];
+    for change in newer {
+        let store = MemoryStore::default();
+        let mut first = Session::default();
+        first.agents.push(SavedAgent {
+            id: "main".into(),
+            saved: [("key".into(), json!("older"))].into(),
+            ..SavedAgent::default()
+        });
+        first.saved.insert("token".into(), json!("secret"));
+        first.save(&store).expect("saved");
+        let mut stale = Session::read(&store).expect("read");
+        let mut other = Session::read(&store).expect("read");
+        change(&mut other, &store);
+        other.save(&store).expect("the newer save");
+        stale.agents.push(SavedAgent {
+            id: "unsaved".into(),
+            conversation: Conversation::from_messages([Message::user("unsaved")]),
+            ..SavedAgent::default()
+        });
+        let before = logs_of(&store);
+
+        assert!(matches!(
+            stale.save(&store),
+            Err(SessionError::Changed { .. })
+        ));
+        assert_eq!(logs_of(&store), before);
+        other.saved.insert("again".into(), json!(true));
+        other
+            .save(&store)
+            .expect("a session that saved saves again");
+        let mut fresh = Session::read(&store).expect("read");
+        fresh.save(&store).expect("a fresh session saves");
+        assert_eq!(fresh.saved.get("again"), Some(&json!(true)));
+    }
+}
+
+/// A session a writer opened saves, though it leaves a retired agent out.
+#[test]
+fn a_session_a_writer_opened_saves() {
+    let store: Arc<dyn Store> = Arc::new(MemoryStore::default());
+    let mut first = Session::default();
+    for id in ["main", "old"] {
+        first.agents.push(SavedAgent {
+            id: id.into(),
+            conversation: Conversation::from_messages([Message::user(id)]),
+            retired: id == "old",
+            ..SavedAgent::default()
+        });
+    }
+    first.saved.insert("token".into(), json!("secret"));
+    first.save(&*store).expect("saved");
+    let (_writer, mut opened) = Writer::open(store.clone()).expect("opened");
+    assert!(opened.agent("old").is_none());
+    opened.saved.insert("more".into(), json!(1));
+    opened.save(&*store).expect("an opened session saves");
+}
+
+/// Saving refuses a log with a second header, as loading does, rather than
+/// appending to it.
+#[test]
+fn saving_refuses_a_log_with_a_second_header() {
+    let store = MemoryStore::default();
+    let mut conversation = load(&store, "agent").expect("an empty log");
+    conversation.push(Message::user("first"));
+    save(&store, "agent", &mut conversation).expect("saved");
+    let log = store.read_log("agent").expect("a log");
+    let end = log.iter().position(|byte| *byte == b'\n').expect("a line") + 1;
+    let header = log.get(..end).expect("a header").to_vec();
+    append(&store, "agent", &header).expect("a second header appended");
+    let refused = load(&store, "agent").expect_err("loading refuses it");
+    assert!(refused.to_string().contains("a second header"), "{refused}");
+    conversation.push(Message::user("second"));
+    let saved = save(&store, "agent", &mut conversation);
+    assert!(saved.is_err(), "save appended to a log that load refuses");
 }

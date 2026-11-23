@@ -14,41 +14,24 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 
 use crate::attach::{self, NoImage, is_image_path};
-use crate::workspace::{Local, Workspace, text_error};
+use crate::workspace::{Endings, Root, text_error};
 use crate::{
-    CUT_MARK, MAX_BYTES, MAX_FILE_BYTES, MAX_LINE_CHARS, MAX_LINES, blocking, clip, shell_path,
+    CHUNK_BYTES, CUT_MARK, MAX_BYTES, MAX_FILE_BYTES, MAX_LINE_CHARS, MAX_LINES, blocking, excerpt,
+    line_bytes, shell_path,
 };
 
 /// Reads a text file's lines as they are, or a PNG, JPEG, GIF or WebP
 /// image as a line saying what it is and the image. Publishes the file it
-/// read ([`FilesRead`]), by its [resolved](Workspace) path, with the hash
+/// read ([`FilesRead`]), by its [resolved](Root::resolve) path, with the hash
 /// of the bytes it read and, for a text file, the lines it showed, and,
 /// when lines after those were left out, [`OutputCut`].
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Read {
-    /// Where the file is read.
-    pub workspace: Arc<dyn Workspace>,
-    /// The directory a relative path is read from; `None` is the
-    /// workspace's working directory.
-    pub base: Option<PathBuf>,
-    /// Whether a path that resolves outside `base` is refused, before
-    /// anything is read.
-    pub confine: bool,
+    /// Where the files are, and the directory a relative path is taken from.
+    pub root: Root,
     /// Where each file read is noted, for an [`Edit`](crate::Edit) given
     /// the same to tell whether a file changed since.
     pub seen: Seen,
-}
-
-impl Default for Read {
-    /// Reads this machine's files, from this process's working directory.
-    fn default() -> Self {
-        Self {
-            workspace: Arc::new(Local),
-            base: None,
-            confine: false,
-            seen: Seen::default(),
-        }
-    }
 }
 
 /// Most bytes of file text a [`Seen`] keeps, for the files seen last.
@@ -58,16 +41,16 @@ const SEEN_TEXT_BYTES: usize = 8 * 1024 * 1024;
 /// it or [`Edit`](crate::Edit) or [`Write`](crate::Write) last left it, by
 /// resolved path; shared by its clones. With it, an edit whose `old_text`
 /// is not found says whether the file changed since, and so needs reading
-/// again.
+/// again, and a write replaces only a file it holds as it is now.
 ///
 /// It also keeps the whole text of the files last seen whole, up to 8 MB
 /// of them, so an edit starts from it and only writes, if the file still
-/// holds that text ([`Workspace::write_if`]).
+/// holds that text ([`write_if`](crate::workspace::Workspace::write_if)).
 #[derive(Clone, Debug, Default)]
 pub struct Seen(Arc<Mutex<Files>>);
 
 /// What a [`Seen`] holds.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 struct Files {
     hashes: HashMap<PathBuf, ContentHash>,
     /// The texts kept, oldest first, each with its hash.
@@ -91,6 +74,14 @@ impl Files {
 }
 
 impl Seen {
+    /// A `Seen` holding what this one holds now, whose notes from then on
+    /// are its own: for a call whose writes do not reach the files, such
+    /// as one run on an overlay to preview it.
+    pub fn fork(&self) -> Self {
+        let seen = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        Self(Arc::new(Mutex::new(seen.clone())))
+    }
+
     /// Notes that the file `path` held the text with `hash`.
     pub fn saw(&self, path: &Path, hash: ContentHash) {
         let mut seen = self.0.lock().unwrap_or_else(PoisonError::into_inner);
@@ -183,22 +174,8 @@ impl ReadArgs {
     /// assert_eq!(shown, "two\n[1 more lines; read on with offset 3]\n");
     /// ```
     pub fn show(&self, text: &str) -> String {
-        self.shown(text).0
-    }
-
-    /// [`Self::show`], and which lines it shows: what [`Read`] publishes
-    /// in its [`FileRead`], for code that shows a file as `read` would and
-    /// records what it showed.
-    ///
-    /// ```
-    /// use rig_tools::ReadArgs;
-    ///
-    /// let (_, lines) = ReadArgs::new("a.txt").lines(2, 1).shown("one\ntwo\nthree\n");
-    /// assert_eq!((lines.first, lines.count, lines.total), (2, 1, 3));
-    /// ```
-    pub fn shown(&self, text: &str) -> (String, LinesShown) {
         let (first, limit) = self.span();
-        lines_from(text, first, limit, MAX_BYTES)
+        lines_from(text, first, limit, MAX_BYTES).0
     }
 
     /// The first line this read shows, from 1, and how many lines at most.
@@ -216,14 +193,10 @@ impl Tool for Read {
 
     fn description(&self) -> String {
         format!(
-            "Read a regular text file of at most {} MB, or a PNG, JPEG, GIF or WebP image of at \
-             most {} KB, which comes back as the image. Returns a text file's lines as they are, \
-             at most {MAX_LINES} lines or {} KB (lines too long for that are cut shorter, and a \
-             note says so and how to read on), then the offset to read on from if it stopped \
-             early; use offset (from 1) and limit for part of a file, and `rg -n` in `shell` to \
-             find a line. Use `read` to look at a file, not `cat`, `head` or `sed` in `shell` \
-             (but for the command a cut line's note gives), and read several files at once by \
-             calling `read` several times in one reply.",
+            "Read a text file (up to {} MB) or a PNG, JPEG, GIF, or WebP image (up to {} KB). \
+             Returns at most {MAX_LINES} lines or {} KB; use `offset` (from 1) and `limit` for \
+             a range, and `rg -n` in `shell` to locate lines. Prefer `read` over `cat`, `head`, \
+             or `sed`, and batch independent `read` calls in one turn.",
             MAX_FILE_BYTES / (1024 * 1024),
             attach::MOST_BYTES / 1024,
             MAX_BYTES / 1024
@@ -241,9 +214,7 @@ impl Tool for Read {
     }
 
     fn footprint(&self, args: &ReadArgs) -> Touches {
-        Touches::Reads(Scope::Paths(vec![
-            self.workspace.resolve(self.base.as_deref(), &args.path),
-        ]))
+        Touches::Reads(Scope::Paths(vec![self.root.resolve(&args.path)]))
     }
 
     async fn call(
@@ -251,13 +222,16 @@ impl Tool for Read {
         context: &mut ToolContext,
         args: ReadArgs,
     ) -> Result<ToolOutput, ToolExecutionError> {
-        let path = self
-            .workspace
-            .place(self.base.as_deref(), self.confine, &args.path)?;
+        if args.offset == Some(0) {
+            return Err(ToolExecutionError::invalid_args(
+                "offset counts lines from 1; give 1 or more, or leave it out",
+            ));
+        }
+        let path = self.root.place(&args.path)?;
         let shown = path.to_string_lossy().into_owned();
         // The name asked counts too, for a link named as an image.
         let image = is_image_path(&path) || is_image_path(Path::new(&args.path));
-        let workspace = self.workspace.clone();
+        let workspace = self.root.workspace.clone();
         let seen = self.seen.clone();
         let (output, read) = blocking(move || {
             if image {
@@ -293,7 +267,15 @@ impl Tool for Read {
                 .excerpt(&path, first, limit)
                 .map_err(|error| text_error(&shown, error))?;
             let asked = excerpt.text.lines().take(limit).collect();
-            let (output, lines) = show(asked, first, excerpt.total, MAX_BYTES, Some(&shown));
+            let endings = excerpt.endings;
+            let (output, lines) = show(
+                asked,
+                first,
+                excerpt.total,
+                MAX_BYTES,
+                Some(&shown),
+                endings,
+            );
             let hash = excerpt.hash;
             // A read that got the whole file leaves its text for an edit.
             let whole = excerpt
@@ -333,36 +315,37 @@ fn cut_of(lines: LinesShown) -> Option<OutputCut> {
 /// `text`'s lines from line `first` (counted from 1) as [`Read`] shows
 /// them: as they are, at most `limit` lines and about `max_bytes` bytes,
 /// and a last line saying how many lines were left out and the offset to
-/// read on from, or that `first` is past the end. Lines longer than a
-/// width are cut, marked `[…]`, and counted in a note: 2000 characters, or
-/// less when that lets the asked lines fit `max_bytes`, as in a file of
-/// long lines, but never below 100 characters.
+/// read on from, or that `first` is past the end, after a line naming the
+/// text's line endings when they are not LF. Lines longer than a width are
+/// cut, marked `[…]`, and counted in a note: 2000 characters, or less when
+/// that lets the asked lines fit `max_bytes`, as in a file of long lines,
+/// but never below 100 characters.
 pub fn show_lines(text: &str, first: usize, limit: usize, max_bytes: usize) -> String {
     lines_from(text, first, limit, max_bytes).0
 }
 
 /// The narrowest a line is cut to so that more lines fit.
 const MIN_LINE_CHARS: usize = 100;
-/// The bytes of a cut line the command in a read's note shows at once:
-/// a fifth of what `shell` returns, in lines it keeps whole.
-const CHUNK_BYTES: usize = 10_000;
 
 /// [`show_lines`], and which lines it shows.
 fn lines_from(text: &str, first: usize, limit: usize, max_bytes: usize) -> (String, LinesShown) {
     let first = first.max(1);
     let asked = text.lines().skip(first - 1).take(limit).collect();
-    show(asked, first, text.lines().count(), max_bytes, None)
+    let endings = Some(Endings::of(text));
+    show(asked, first, text.lines().count(), max_bytes, None, endings)
 }
 
 /// [`lines_from`] given the lines `asked`, from line `first` (from 1) of
 /// a file of `total` lines. With the file's `path`, the note on the lines
-/// cut says how to read on in the first of them.
+/// cut says how to read on in the first of them; with its line `endings`,
+/// a last line says when they are not LF.
 fn show(
     asked: Vec<&str>,
     first: usize,
     total: usize,
     max_bytes: usize,
     path: Option<&str>,
+    endings: Option<Endings>,
 ) -> (String, LinesShown) {
     let width = width(&asked, max_bytes);
     let mut out = String::new();
@@ -371,7 +354,7 @@ fn show(
     // The first line cut, its number, and the bytes shown of it.
     let mut first_cut = None;
     for (at, line) in asked.iter().enumerate() {
-        let kept = clip(line, width);
+        let kept = excerpt(line, None, width).kept();
         let clipped = kept.len() < line.len();
         let mark = if clipped { CUT_MARK.len() } else { 0 };
         // The first line always shows, so a read always makes progress.
@@ -420,6 +403,13 @@ fn show(
                 String::new()
             }
         );
+    }
+    match endings {
+        Some(Endings::Crlf) => out.push_str("[CRLF line endings; edit keeps them]\n"),
+        Some(Endings::Mixed) => {
+            out.push_str("[mixed line endings: some lines end in CRLF, the others in LF]\n");
+        }
+        Some(Endings::Lf) | None => {}
     }
     if total == 0 {
         out.push_str("[empty file]\n");
@@ -471,8 +461,8 @@ fn read_on(path: &str, cut: usize, number: usize, kept: usize, bytes: usize) -> 
         false => format!("the remaining {} bytes", to - kept),
     };
     format!(
-        "; {which} shows {kept} of its {bytes} bytes: in `shell`, `sed -n '{number}p;{number}q' \
-         {path} | cut -b {from}-{to} | LC_ALL=C fold -b -w {MAX_LINE_CHARS}` shows {next}"
+        "; {which} shows {kept} of its {bytes} bytes: in `shell`, {} shows {next}",
+        line_bytes(path, number, from, to)
     )
 }
 
@@ -487,7 +477,7 @@ fn width(asked: &[&str], max_bytes: usize) -> usize {
         asked
             .iter()
             .map(|line| {
-                let kept = clip(line, width);
+                let kept = excerpt(line, None, width).kept();
                 let mark = if kept.len() < line.len() {
                     CUT_MARK.len()
                 } else {

@@ -1,72 +1,21 @@
 //! Matrix I: a host's own families over the host's bus.
 //!
-//! An agent over a host's bus (`over_bus`; Matrix C's ownership cells)
-//! shares the bus with the host's own handlers, and a hook can dispatch
-//! to them: a `Custom<E>` effect the host defined, the host's embedding
-//! model. Those dispatches are the run's — the recorder taps the host's
-//! bus — but they are not the agent's row: the required row is what the
-//! agent's builder needs (its model, routes, tools, indexes), the
-//! signature is what the trace touched. The replay registers the host's
-//! handlers from the signature, under the host's keys, before the agent
-//! is built; the handler table (the header's first source since #2450)
+//! An agent over a host's bus (`over_bus`; Matrix C's ownership cells) shares the bus with the
+//! host's own handlers, and a hook can dispatch to them: a `Custom<E>` effect the host defined,
+//! or the host's embedding model. Those dispatches are the run's, because the recorder taps the
+//! host's bus, but they are not the agent's row: the required row is what the agent's builder
+//! needs, the signature is what the trace touched. The replay registers the host's handlers
+//! from the signature, under the host's keys, before the agent is built, and
+//! `check_replayable` refuses a signature key no handler serves. The header's handler table
 //! describes the custom kind the row cannot.
 //!
-//! Both interpreters dispatch the hook's effect at the hook's point: the
-//! engine through the hook, the hand driver at the same step. The corpus
-//! names the producer's effect type by the same kind label; the payload
-//! is data.
-//!
-//! # Dimensions
-//!
-//! | axis | values recorded |
-//! |---|---|
-//! | family | `Custom` · `Embed` |
-//! | hook point | `on_run_start` · `on_completion_call` · `on_outcome` (after a tool) · `on_run_settled` · start and settled |
-//! | dispatches | one · two together |
-//! | host policy | `serial_per_handler: true` · `false` |
-//! | medium | unary · streamed with events |
-//! | the key | served · unserved (the bind refused) |
-//!
-//! Full cross-product: 2 × 5 × 2 × 2 × 2 × 2 = 160. Recorded: the 12 cells
-//! below. Pruned: `Rerank` (the only rerank suites are voyageai's, keyless
-//! here, and llamacpp's, local: no cassette can be recorded); the host
-//! policy under every point but the double dispatch (one dispatch is
-//! served the same way under either); `Embed` at every point but run
-//! start and on the anthropic wire (no embedding model there); the
-//! streamed twins of the settled, twice and unserved cells (the medium
-//! changes the completion's events, not where the hook's dispatch lands).
-//!
-//! # Cells
-//!
-//! | golden | producer | shape |
-//! |---|---|---|
-//! | `anthropic_host_custom_at_start` | anthropic `corpus_host.rs` `custom_at_start_…` | `[Custom, Completion]` |
-//! | `anthropic_host_custom_at_completion_call` | `custom_at_completion_call_…` | `[Custom, Completion]` |
-//! | `anthropic_host_custom_at_outcome` | `custom_at_outcome_…` | `[Completion, Tool, Custom, Completion]` |
-//! | `anthropic_host_custom_at_settled` | `custom_at_settled_…` | `[Completion, Custom]`: the dispatch after the answer is recorded |
-//! | `anthropic_host_custom_start_and_settled` | `custom_start_and_settled_…` | `[Custom, Completion, Custom]` |
-//! | `anthropic_host_custom_twice_serial` | `custom_twice_serial_…` | `[Custom, Custom, Completion]`, the host serial |
-//! | `anthropic_host_custom_twice_concurrent` | `custom_twice_concurrent_…` | the same, the host concurrent |
-//! | `anthropic_host_custom_at_start_streamed` | `custom_at_start_streamed_…` | `[Custom, Completion]`, events kept |
-//! | `anthropic_host_custom_at_outcome_streamed` | `custom_at_outcome_streamed_…` | `[Completion, Tool, Custom, Completion]`, events kept |
-//! | `anthropic_host_custom_unserved` | `custom_unserved_…` | `[Completion]`; the hook's bind refused, the run unaffected |
-//! | `openai_host_embed_prompt` | openai `corpus_host.rs` `embed_prompt_…` | `[Embed, Completion]` |
-//! | `openai_host_embed_prompt_streamed` | `embed_prompt_streamed_…` | the same, events kept |
-//!
-//! # What the matrix found
-//!
-//! - A dispatch from `on_run_settled` is recorded: the hook runs before
-//!   the blocking surface returns, the host's recorder is still tapping,
-//!   and the record follows the completion that answered the run.
-//! - A host-bus golden does not name the host's policy (`bus: None`),
-//!   so the serial and concurrent double dispatches are the same log:
-//!   the recorder minted the ids at dispatch, in the hook's order, under
-//!   either policy. The replay reproduces both under its default.
-//! - The replay needs the host's handlers registered: `check_replayable`
-//!   walks the signature against the bus (and the agent's row against the
-//!   log's handler table) and refuses a signature key no handler serves.
-//!   The custom kind is described by the handler table;
-//!   `describe_required` cannot name it from the row and does not need to.
+//! Both interpreters dispatch the hook's effect at the hook's point: the engine through the
+//! hook, the hand driver at the same step. Cells cover `Custom` at each hook point (including
+//! `on_run_settled`, whose dispatch is recorded after the answering completion), two dispatches
+//! under a serial and a concurrent host, streamed twins, an unserved key, and `Embed` at run
+//! start on the openai wire. A host-bus golden does not name the host's policy, so the serial
+//! and concurrent double dispatches are the same log. `Rerank` is not recorded because no rerank
+//! suite can record a cassette here.
 
 use crate::corpus;
 

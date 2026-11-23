@@ -59,10 +59,11 @@ pub fn cassette_scenario_sites(
     }
 }
 
-/// The functions in `source` that declare account failures on their
-/// cassette session, with what they declare: a call to
+/// Every free function and impl method in `source`, with
+/// the account failures it declares on its cassette session: a call to
 /// `expect_account_failure(AccountFailure::X)` declares `X`, and a call to
-/// `bogus_api_key()` declares `Auth`.
+/// `bogus_api_key()` declares `Auth`. One that declares nothing is listed
+/// with nothing, so a caller can tell it from a same-named helper elsewhere.
 pub fn declaring_functions(source: &str) -> Result<Vec<(String, Vec<String>)>, ScenarioError> {
     let syntax = syn::parse_file(source)?;
     let mut visitor = DeclaringVisitor::default();
@@ -76,22 +77,12 @@ struct DeclaringVisitor {
     current: Option<(String, Vec<String>)>,
 }
 
-impl<'ast> Visit<'ast> for DeclaringVisitor {
-    fn visit_item_fn(&mut self, node: &'ast ItemFn) {
-        let outer = self
-            .current
-            .replace((node.sig.ident.to_string(), Vec::new()));
-        visit::visit_item_fn(self, node);
-        if let Some((name, declared)) = std::mem::replace(&mut self.current, outer)
-            && !declared.is_empty()
-        {
-            self.functions.push((name, declared));
-        }
-    }
-
-    fn visit_expr_method_call(&mut self, node: &'ast syn::ExprMethodCall) {
-        let declared = match node.method.to_string().as_str() {
-            "expect_account_failure" => node.args.first().and_then(last_path_segment),
+impl DeclaringVisitor {
+    /// Record what a call to `method` with first argument `kind` (after the
+    /// receiver) declares.
+    fn declare(&mut self, method: &syn::Ident, kind: Option<&Expr>) {
+        let declared = match method.to_string().as_str() {
+            "expect_account_failure" => kind.and_then(last_path_segment),
             "bogus_api_key" => Some("Auth".to_owned()),
             _ => None,
         };
@@ -100,7 +91,42 @@ impl<'ast> Visit<'ast> for DeclaringVisitor {
         {
             list.push(declared);
         }
+    }
+
+    fn function(&mut self, name: &syn::Ident, visit: impl FnOnce(&mut Self)) {
+        let outer = self.current.replace((name.to_string(), Vec::new()));
+        visit(self);
+        if let Some(function) = std::mem::replace(&mut self.current, outer) {
+            self.functions.push(function);
+        }
+    }
+}
+
+impl<'ast> Visit<'ast> for DeclaringVisitor {
+    fn visit_item_fn(&mut self, node: &'ast ItemFn) {
+        self.function(&node.sig.ident, |this| visit::visit_item_fn(this, node));
+    }
+
+    fn visit_impl_item_fn(&mut self, node: &'ast syn::ImplItemFn) {
+        self.function(&node.sig.ident, |this| {
+            visit::visit_impl_item_fn(this, node)
+        });
+    }
+
+    fn visit_expr_method_call(&mut self, node: &'ast syn::ExprMethodCall) {
+        self.declare(&node.method, node.args.first());
         visit::visit_expr_method_call(self, node);
+    }
+
+    /// `ProviderCassette::expect_account_failure(&cassette, kind)`: the same
+    /// call, its receiver written as the first argument.
+    fn visit_expr_call(&mut self, node: &'ast ExprCall) {
+        if let Expr::Path(path) = node.func.as_ref()
+            && let Some(segment) = path.path.segments.last()
+        {
+            self.declare(&segment.ident, node.args.iter().nth(1));
+        }
+        visit::visit_expr_call(self, node);
     }
 }
 

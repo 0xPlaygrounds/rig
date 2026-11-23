@@ -1,6 +1,6 @@
 //! `cargo xtask cassette goldens`: regenerate effect goldens from replay.
 //!
-//! Regenerating replays every selected target with
+//! Regenerating replays every selected suite (all of them by default) with
 //! `RIG_REGENERATE_GOLDEN=1`, so each golden holds exactly what its producer
 //! logs over its replayed cassette.
 
@@ -12,7 +12,7 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
     let mut args = args.iter();
     while let Some(arg) = args.next() {
         match arg.as_str() {
-            "--test" => targets.push(args.next().cloned().ok_or("--test needs a target")?),
+            "--test" => targets.push(args.next().cloned().ok_or("--test needs a suite")?),
             other => return Err(format!("unknown argument {other}")),
         }
     }
@@ -29,8 +29,13 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
         "0",
         "--no-fail-fast",
     ]);
-    for target in &targets {
-        command.args(["--test", target]);
+    if !targets.is_empty() {
+        command.args([
+            "--test",
+            "integration",
+            "-E",
+            &crate::support::suite_filter(&targets),
+        ]);
     }
     let status = command
         .current_dir(root)

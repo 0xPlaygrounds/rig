@@ -14,20 +14,16 @@
 /// [`openai::wire::VENICE`](crate::providers::openai::wire::VENICE).
 pub const VENICE_API_BASE_URL: &str = "https://api.venice.ai/api/v1";
 
-#[cfg(feature = "audio")]
 pub mod audio_generation;
 pub mod completion;
 pub mod embedding;
 pub mod extension;
-#[cfg(feature = "image")]
 pub mod image_generation;
 pub mod transcription;
 
-#[cfg(feature = "audio")]
 pub use audio_generation::*;
 pub use completion::*;
 pub use embedding::*;
-#[cfg(feature = "image")]
 pub use image_generation::*;
 pub use transcription::*;
 

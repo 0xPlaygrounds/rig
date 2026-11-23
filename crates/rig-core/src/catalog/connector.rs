@@ -33,6 +33,13 @@ pub trait SignIn: WasmCompatSend + WasmCompatSync + 'static {
     /// serve `spec`, such as `"ChatGPT"`, whether or not the user is signed
     /// in; for model pickers.
     fn plan(&self, spec: &ModelSpec) -> Option<&'static str>;
+
+    /// Whether the signed-in account offers `spec`. Asked only for a model
+    /// this sign-in serves. Must answer at once without blocking; return
+    /// [`ModelStatus::Checking`] while finding out.
+    fn offers(&self, _spec: &ModelSpec, _transport: &Transport) -> ModelStatus {
+        ModelStatus::Usable
+    }
 }
 
 /// How a [`Connector`] reaches every model of one vendor, in place of the
@@ -101,10 +108,10 @@ fn adapted(spec: &ModelSpec, model: crate::driver::DynModel<Completion>) -> Eras
 }
 
 /// One wrapper of a [`Transport`], `Send` and `Sync` outside browser wasm.
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 type Wrapper = Arc<dyn Fn(DynHttpClient) -> DynHttpClient + Send + Sync>;
 /// One wrapper of a [`Transport`], which may hold browser values.
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+#[cfg(target_family = "wasm")]
 type Wrapper = Arc<dyn Fn(DynHttpClient) -> DynHttpClient>;
 
 /// The wrappers a [`Connector`] applies to every HTTP client its models are
@@ -159,10 +166,19 @@ impl fmt::Debug for Transport {
 /// not, for a picker's note.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ModelStatus {
-    /// It calls tools and connects.
+    /// It calls tools, connects, and any sign-in serving it offers it.
     Usable,
+    /// The sign-in serving it is still finding out whether its account offers it.
+    Checking,
+    /// The account served by the sign-in does not offer it, with a reason for logs.
+    NotOffered(String),
     /// It calls tools, but no key is set: the variables read, in order.
     NoKey(Vec<Cow<'static, str>>),
+    /// Its provider needs no key, such as a local server, and nothing
+    /// configures it: no provider is registered for it and the environment
+    /// sets neither its key nor its base URL. It connects when named, at
+    /// its default address, but nothing says a server runs there.
+    Unconfigured,
     /// It does not call tools, so an agent cannot use it.
     NoTools,
     /// It calls tools but does not connect, for this reason.
@@ -280,13 +296,6 @@ impl Connector {
         &mut self.catalog
     }
 
-    /// The handler of the first sign-in that serves `spec` now, if any.
-    fn signed_in(&self, spec: &ModelSpec) -> Option<Result<ErasedHandler, ConnectError>> {
-        self.sign_ins
-            .iter()
-            .find_map(|sign_in| sign_in.handler(spec, &self.transport))
-    }
-
     /// The catalog model `reference` names, as [`Catalog::resolve`] finds
     /// it, and that model as an effect handler: from the provider
     /// registered for its vendor, else its provider's client built from the
@@ -305,29 +314,31 @@ impl Connector {
         reference: &str,
     ) -> Result<(Arc<ModelSpec>, ErasedHandler), ConnectError> {
         let spec = self.catalog.resolve(reference)?.shared();
-        let handler = self.handler(&spec)?;
-        Ok((spec, handler))
+        let (handler, _) = self.handler(&spec);
+        Ok((spec, handler?))
     }
 
-    /// The handler serving `spec`, as [`Self::connect`] finds it.
-    fn handler(&self, spec: &ModelSpec) -> Result<ErasedHandler, ConnectError> {
+    /// The handler serving `spec`, as [`Self::connect`] finds it, and the
+    /// sign-in serving it when reached through one.
+    fn handler(
+        &self,
+        spec: &ModelSpec,
+    ) -> (Result<ErasedHandler, ConnectError>, Option<&dyn SignIn>) {
         let connected = match self.providers.get(spec.provider.vendor()) {
             Some(provider) => provider.handler(spec, &self.catalog, &self.transport),
-            None => {
-                let options = match self.transport.shared() {
-                    Some(http) => ConnectOptions::new().http(http),
-                    None => ConnectOptions::new(),
-                };
-                self.catalog
-                    .connect_with(spec, options)
-                    .map(|model| adapted(spec, model))
-            }
+            None => ConnectOptions::new().handler(spec, &self.catalog, &self.transport),
         };
         match connected {
-            Err(error @ ConnectError::MissingKey { .. }) => {
-                self.signed_in(spec).unwrap_or(Err(error))
-            }
-            other => other,
+            Err(error @ ConnectError::MissingKey { .. }) => self
+                .sign_ins
+                .iter()
+                .find_map(|sign_in| {
+                    sign_in
+                        .handler(spec, &self.transport)
+                        .map(|handler| (handler, Some(sign_in.as_ref())))
+                })
+                .unwrap_or((Err(error), None)),
+            other => (other, None),
         }
     }
 
@@ -338,7 +349,9 @@ impl Connector {
     }
 
     /// Whether `spec` can serve an agent now, and why not: it must call
-    /// tools and connect as [`Self::connect`] would connect it.
+    /// tools, connect as [`Self::connect`] would connect it, be offered by
+    /// the account when served through a sign-in, and, when its provider
+    /// needs no key, be configured ([`ModelStatus::Unconfigured`]).
     ///
     /// ```
     /// use rig_core::catalog::{Connector, ModelSpec, ModelStatus};
@@ -356,7 +369,22 @@ impl Connector {
         if !spec.tools {
             return ModelStatus::NoTools;
         }
-        match self.handler(spec) {
+        let (handler, sign_in) = self.handler(spec);
+        if let Some(sign_in) = sign_in {
+            let offered = sign_in.offers(spec, &self.transport);
+            if offered != ModelStatus::Usable {
+                return offered;
+            }
+        }
+        let provider = spec.provider;
+        match handler {
+            Ok(_)
+                if !provider.requires_credential()
+                    && !self.is_provided(provider)
+                    && !provider.configured_in_env() =>
+            {
+                ModelStatus::Unconfigured
+            }
             Ok(_) => ModelStatus::Usable,
             Err(ConnectError::MissingKey { tried, .. }) => ModelStatus::NoKey(tried),
             Err(error) => ModelStatus::Unavailable(error.to_string()),
@@ -366,9 +394,9 @@ impl Connector {
     /// Catalog models that call tools and can be reached through a
     /// registered provider, the environment or a sign-in: first those of
     /// providers registered, with a key set or signed in, then those of
-    /// providers that need none (local servers such as Ollama), which a
-    /// picker can mark "no key needed". The check builds the handler
-    /// exactly as a request would, once per provider.
+    /// configured providers that need none (local servers such as Ollama),
+    /// which a picker can mark "no key needed". Only [`ModelStatus::Usable`]
+    /// models are reachable, checked as [`Self::statuses`] checks them.
     pub fn reachable(&self) -> Vec<&ModelSpec> {
         let statuses = self.statuses().into_iter();
         let usable = statuses.filter(|(_, status)| *status == ModelStatus::Usable);
@@ -377,7 +405,11 @@ impl Connector {
 
     /// Every catalog model with its [`ModelStatus`]: first the
     /// [`reachable`](Self::reachable) ones in that order, then the others in
-    /// catalog order. Each provider is checked once.
+    /// catalog order. Only [`ModelStatus::Usable`] is reachable. Models
+    /// claimed by a sign-in's plan or reached through a registered provider
+    /// ([`Self::provide`]), which may answer per model, are checked
+    /// individually; the others, which the environment configures per
+    /// provider, share one check per provider.
     pub fn statuses(&self) -> Vec<(&ModelSpec, ModelStatus)> {
         let mut checked: HashMap<ProviderId, ModelStatus> = HashMap::new();
         let mut statuses: Vec<(&ModelSpec, ModelStatus)> = self
@@ -386,6 +418,9 @@ impl Connector {
             .map(|spec| {
                 let status = match spec.tools {
                     false => ModelStatus::NoTools,
+                    true if self.plan(spec).is_some() || self.is_provided(spec.provider) => {
+                        self.status(spec)
+                    }
                     true => checked
                         .entry(spec.provider)
                         .or_insert_with(|| self.status(spec))
@@ -407,7 +442,7 @@ impl Connector {
 
 // On browser wasm a provider, a sign-in and an HTTP wrapper may hold values
 // that are neither `Send` nor `Sync`, such as JavaScript handles.
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+#[cfg(target_family = "wasm")]
 const _: fn(&mut Connector, ProviderId) = |connector, vendor| {
     use std::rc::Rc;
 

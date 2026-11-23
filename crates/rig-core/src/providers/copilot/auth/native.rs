@@ -1,10 +1,9 @@
-use super::{
-    ApiKeyRecord, AuthContext, AuthError, Authenticator, DeviceCodePrompt, STORE_KEY,
-    refresh_api_key,
-};
+use super::{ApiKeyRecord, Authenticator, STORE_KEY, refresh_api_key};
 use crate::http_client::HttpClientExt;
-use crate::providers::internal::auth::{load_record, request, save_record, send_json};
-use bytes::Bytes;
+use crate::providers::auth::{
+    AuthContext, AuthError, DeviceCodePrompt, Held, form, load_record, request, save_record,
+    send_json,
+};
 use http::Method;
 use serde::Deserialize;
 
@@ -39,26 +38,30 @@ impl Authenticator {
         if let Some(context) = self.0.remembered.live(0) {
             return Ok(context);
         }
-        let _held = self.0.hold(STORE_KEY).await?;
+        let held = self.0.hold(STORE_KEY).await?;
         let mut record: ApiKeyRecord = load_record(&*self.0.store, STORE_KEY).await?;
-        if record.can_reuse_for_oauth(record.github_token.as_deref()) {
+        if record.reusable_for(record.github_token.as_deref()) {
             return Ok(self.remember(record));
         }
 
         let from_cache = record.github_token.is_some();
-        let github_token = match record.github_token.clone() {
-            Some(token) => token,
-            None => self.sign_in_to_github(http, &mut record).await?,
+        let (github_token, held) = match record.github_token.clone() {
+            Some(token) => (token, held),
+            None => self.sign_in_to_github(http, &mut record, held).await?,
         };
-        let session = match refresh_api_key(http, &github_token).await {
-            Ok(session) => session.bound_to(&github_token, Some(github_token.clone())),
+        let (session, _held) = match refresh_api_key(http, &github_token).await {
+            Ok(session) => (
+                session.bound_to(&github_token, Some(github_token.clone())),
+                held,
+            ),
             Err(err) if from_cache && should_retry_with_fresh_access_token(&err) => {
                 record.github_token = None;
                 save_record(&*self.0.store, STORE_KEY, &record).await?;
-                let fresh = self.sign_in_to_github(http, &mut record).await?;
-                refresh_api_key(http, &fresh)
+                let (fresh, held) = self.sign_in_to_github(http, &mut record, held).await?;
+                let session = refresh_api_key(http, &fresh)
                     .await?
-                    .bound_to(&fresh, Some(fresh.clone()))
+                    .bound_to(&fresh, Some(fresh.clone()));
+                (session, held)
             }
             Err(err) => return Err(err),
         };
@@ -66,13 +69,16 @@ impl Authenticator {
         Ok(self.remember(session))
     }
 
-    /// Run the device flow when allowed, and keep the GitHub token it gets
-    /// in `record` and the store before the exchange that may fail.
-    async fn sign_in_to_github<H>(
-        &self,
+    /// Run the device flow when allowed, with the store free meanwhile since
+    /// the user may take minutes, then keep the GitHub token it gets in
+    /// `record` and the store before the exchange that may fail. The last
+    /// sign-in to finish wins, as two sign-ins one after the other would.
+    async fn sign_in_to_github<'a, H>(
+        &'a self,
         http: &H,
         record: &mut ApiKeyRecord,
-    ) -> Result<String, AuthError>
+        held: Held<'a>,
+    ) -> Result<(String, Held<'a>), AuthError>
     where
         H: HttpClientExt,
     {
@@ -82,30 +88,26 @@ impl Authenticator {
                     .into(),
             ));
         }
-        let token = self.login_device_flow(http).await?;
+        let (token, held) = held
+            .store_free_during(&self.0, STORE_KEY, self.login_device_flow(http))
+            .await?;
+        let token = token?;
         record.github_token = Some(token.clone());
         save_record(&*self.0.store, STORE_KEY, record).await?;
-        Ok(token)
+        Ok((token, held))
     }
 
     async fn login_device_flow<H>(&self, http: &H) -> Result<String, AuthError>
     where
         H: HttpClientExt,
     {
-        let body = url::form_urlencoded::Serializer::new(String::new())
-            .append_pair("client_id", GITHUB_CLIENT_ID)
-            .append_pair("scope", "read:user")
-            .finish();
-
         let device: DeviceCodeResponse = send_json(
             http,
-            request(Method::POST, GITHUB_DEVICE_CODE_URL)
-                .header(http::header::ACCEPT, "application/json")
-                .header(
-                    http::header::CONTENT_TYPE,
-                    "application/x-www-form-urlencoded",
-                )
-                .body(Bytes::from(body)),
+            form(
+                request(Method::POST, GITHUB_DEVICE_CODE_URL)
+                    .header(http::header::ACCEPT, "application/json"),
+                &[("client_id", GITHUB_CLIENT_ID), ("scope", "read:user")],
+            ),
         )
         .await?;
 
@@ -127,21 +129,17 @@ impl Authenticator {
         let mut interval = normalize_poll_interval_seconds(device.interval);
 
         while std::time::Instant::now() < deadline {
-            let body = url::form_urlencoded::Serializer::new(String::new())
-                .append_pair("client_id", GITHUB_CLIENT_ID)
-                .append_pair("device_code", &device.device_code)
-                .append_pair("grant_type", "urn:ietf:params:oauth:grant-type:device_code")
-                .finish();
-
             let response: AccessTokenResponse = send_json(
                 http,
-                request(Method::POST, GITHUB_ACCESS_TOKEN_URL)
-                    .header(http::header::ACCEPT, "application/json")
-                    .header(
-                        http::header::CONTENT_TYPE,
-                        "application/x-www-form-urlencoded",
-                    )
-                    .body(Bytes::from(body)),
+                form(
+                    request(Method::POST, GITHUB_ACCESS_TOKEN_URL)
+                        .header(http::header::ACCEPT, "application/json"),
+                    &[
+                        ("client_id", GITHUB_CLIENT_ID),
+                        ("device_code", &device.device_code),
+                        ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
+                    ],
+                ),
             )
             .await?;
 
@@ -160,16 +158,6 @@ impl Authenticator {
         Err(AuthError::Message(
             "Timed out waiting for GitHub Copilot device authorization".into(),
         ))
-    }
-}
-
-impl ApiKeyRecord {
-    fn can_reuse_for_oauth(&self, bootstrap_token: Option<&str>) -> bool {
-        if !self.has_live_api_key() {
-            return false;
-        }
-
-        bootstrap_token.is_none_or(|bootstrap_token| self.matches_bootstrap_token(bootstrap_token))
     }
 }
 

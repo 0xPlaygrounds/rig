@@ -109,6 +109,10 @@ fn current_model_default_max_tokens_match_anthropic_limits() {
         Some(128_000)
     );
     assert_eq!(
+        default_max_tokens_for_model(crate::catalog::ModelFacts::builtin(), CLAUDE_FABLE_5_2),
+        Some(128_000)
+    );
+    assert_eq!(
         default_max_tokens_for_model(crate::catalog::ModelFacts::builtin(), CLAUDE_FABLE_5),
         Some(128_000)
     );
@@ -362,6 +366,223 @@ fn strict_tools_opt_in_marks_and_sanitizes_rig_tools_only() {
     let provider_tool = &value["tools"][1];
     assert_eq!(provider_tool["type"], "mcp_toolset");
     assert!(provider_tool.get("strict").is_none());
+}
+
+/// The `input_schema` the encoder sends for a non-strict tool taking
+/// `parameters`.
+fn sent_input_schema(parameters: Value) -> Value {
+    let mut tool = generic_tool("act");
+    tool.parameters = parameters;
+    let body = request_body(Params {
+        model: CLAUDE_SONNET_4_6,
+        request: completion_request_with_tools(vec![tool], None),
+        prompt_caching: false,
+        cache: None,
+        static_prefix_cache_ttl: None,
+    })
+    .expect("the request encodes");
+    body["tools"][0]["input_schema"].clone()
+}
+
+/// Anthropic answers 400 for a tool whose `input_schema` root has no
+/// `type: "object"` or has an `anyOf`, `oneOf` or `allOf` ("input_schema
+/// does not support oneOf, allOf, or anyOf at the top level"). The root's
+/// combinators and `not` go under `not: {not: ...}`, which accepts the same
+/// inputs, and the rest of the root stays as written. A unit test because
+/// the rejection is the request shape, and every recorded body pins it.
+#[test]
+fn root_combinators_of_a_tool_schema_go_under_a_double_not() {
+    #[derive(serde::Deserialize, schemars::JsonSchema)]
+    #[allow(dead_code)]
+    enum Shape {
+        Circle { radius: f64 },
+        Square { side: f64 },
+    }
+    #[derive(serde::Deserialize, schemars::JsonSchema)]
+    #[allow(dead_code)]
+    struct Edit {
+        path: String,
+        #[serde(flatten)]
+        operation: Operation,
+    }
+    #[derive(serde::Deserialize, schemars::JsonSchema)]
+    #[serde(tag = "op", rename_all = "snake_case")]
+    #[allow(dead_code)]
+    enum Operation {
+        Read { limit: usize },
+        Write { text: String },
+    }
+
+    let shape = crate::tool::args_schema::<Shape>();
+    let one_of = shape["oneOf"].clone();
+    assert!(one_of.is_array() && shape.get("type").is_none());
+    assert_eq!(
+        sent_input_schema(shape),
+        json!({"type": "object", "not": {"not": {"oneOf": one_of}}})
+    );
+
+    let mut edit = crate::tool::args_schema::<Edit>();
+    let one_of = remove_preserving_order(edit.as_object_mut().expect("an object schema"), "oneOf")
+        .expect("a flattened enum gives a root oneOf");
+    let mut expected = edit.clone();
+    expected["not"] = json!({"not": {"oneOf": one_of}});
+    edit["oneOf"] = expected["not"]["not"]["oneOf"].clone();
+    assert_eq!(sent_input_schema(edit), expected);
+
+    let base = json!({"properties": {"code": {"type": "string"}}, "required": ["code"]});
+    let tenant = json!({"properties": {"tenant": {"type": "string"}}, "required": ["tenant"]});
+    let forbidden = json!({"required": ["force"]});
+    assert_eq!(
+        sent_input_schema(json!({
+            "type": "object",
+            "allOf": [base, tenant],
+            "anyOf": [base, tenant],
+            "not": forbidden,
+        })),
+        json!({
+            "type": "object",
+            "not": {"not": {"anyOf": [base, tenant], "allOf": [base, tenant], "not": forbidden}},
+        })
+    );
+}
+
+/// A root `unevaluatedProperties` or `unevaluatedItems` reads what the
+/// root's other validating keywords evaluate, and a subschema under `not`
+/// reports nothing, so those keywords go under the double `not` with it.
+/// The root keeps its `type`, its definitions and its annotations.
+#[test]
+fn root_unevaluated_keywords_go_under_the_double_not_with_what_they_read() {
+    let a = json!({"properties": {"a": {"type": "string"}}, "required": ["a"]});
+    let b = json!({"properties": {"b": {"type": "integer"}}, "required": ["b"]});
+    let definitions = json!({"Id": {"type": "integer"}});
+    let properties = json!({"id": {"$ref": "#/$defs/Id"}});
+    for keyword in ["unevaluatedProperties", "unevaluatedItems"] {
+        assert_eq!(
+            sent_input_schema(json!({
+                "type": "object",
+                "description": "Act on a or b.",
+                "$defs": definitions,
+                "properties": properties,
+                "oneOf": [a, b],
+                keyword: false,
+            })),
+            json!({
+                "type": "object",
+                "description": "Act on a or b.",
+                "$defs": definitions,
+                "not": {"not": {"properties": properties, "oneOf": [a, b], keyword: false}},
+            })
+        );
+    }
+}
+
+/// A local JSON Pointer reference into a keyword that moves under the
+/// double `not` follows it there. One into a keyword that stays, or inside
+/// a subschema with its own `$id`, which pointers resolve against, and a
+/// `$ref` key in data such as a `const` are left as written; a property
+/// named `const` is a schema.
+#[test]
+fn pointer_references_into_moved_keywords_follow_them() {
+    let branch = json!({"properties": {"a": {"type": "string"}}, "required": ["a"]});
+    let resource = json!({"$id": "item.json", "$ref": "#/anyOf/0"});
+    let literal = json!({"const": {"$ref": "#/anyOf/0"}});
+    assert_eq!(
+        sent_input_schema(json!({
+            "type": "object",
+            "$defs": {"Id": {"type": "integer"}, "Item": resource},
+            "properties": {
+                "a": {"$ref": "#/anyOf/0/properties/a"},
+                "id": {"$ref": "#/$defs/Id"},
+                "literal": literal,
+                "const": {"$ref": "#/anyOf/0/properties/a"},
+            },
+            "anyOf": [branch, {"required": ["b"]}],
+        })),
+        json!({
+            "type": "object",
+            "$defs": {"Id": {"type": "integer"}, "Item": resource},
+            "properties": {
+                "a": {"$ref": "#/not/not/anyOf/0/properties/a"},
+                "id": {"$ref": "#/$defs/Id"},
+                "literal": literal,
+                "const": {"$ref": "#/not/not/anyOf/0/properties/a"},
+            },
+            "not": {"not": {"anyOf": [branch, {"required": ["b"]}]}},
+        })
+    );
+
+    let properties = json!({"b": {"$ref": "#/properties/a"}, "a": {"type": "integer"}});
+    let moved = json!({"b": {"$ref": "#/not/not/properties/a"}, "a": {"type": "integer"}});
+    assert_eq!(
+        sent_input_schema(json!({
+            "type": "object",
+            "properties": properties,
+            "allOf": [{"$dynamicRef": "#/properties/b"}],
+            "unevaluatedProperties": false,
+        })),
+        json!({
+            "type": "object",
+            "not": {"not": {
+                "properties": moved,
+                "allOf": [{"$dynamicRef": "#/not/not/properties/b"}],
+                "unevaluatedProperties": false,
+            }},
+        })
+    );
+
+    assert_eq!(
+        sent_input_schema(json!({"type": "object", "$ref": "#/oneOf/0", "oneOf": [branch]})),
+        json!({"type": "object", "$ref": "#/not/not/oneOf/0", "not": {"not": {"oneOf": [branch]}}})
+    );
+
+    // Draft-07 `dependencies` maps a name to a subschema or to a list of names.
+    assert_eq!(
+        sent_input_schema(json!({
+            "type": "object",
+            "dependencies": {"x": {"$ref": "#/anyOf/0"}, "y": ["x"]},
+            "anyOf": [branch],
+        })),
+        json!({
+            "type": "object",
+            "dependencies": {"x": {"$ref": "#/not/not/anyOf/0"}, "y": ["x"]},
+            "not": {"not": {"anyOf": [branch]}},
+        })
+    );
+
+    let payload = |reference: &str| {
+        json!({
+            "type": "string",
+            "contentMediaType": "application/json",
+            "contentSchema": {"$ref": reference},
+        })
+    };
+    assert_eq!(
+        sent_input_schema(json!({
+            "type": "object",
+            "properties": {"payload": payload("#/anyOf/0")},
+            "anyOf": [branch],
+        })),
+        json!({
+            "type": "object",
+            "properties": {"payload": payload("#/not/not/anyOf/0")},
+            "not": {"not": {"anyOf": [branch]}},
+        })
+    );
+}
+
+/// A tool schema with no root combinator is sent as written, combinators
+/// below the root included.
+#[test]
+fn tool_schema_without_a_root_combinator_is_sent_as_written() {
+    for schema in [
+        json!({"type": "object", "properties": {"q": {"type": "string"}}, "required": ["q"]}),
+        json!({
+            "type": "object",
+            "properties": {"id": {"anyOf": [{"type": "string"}, {"type": "integer"}]}},
+        }),
+    ] {
+        assert_eq!(sent_input_schema(schema.clone()), schema);
+    }
 }
 
 fn system_has_cache_control(value: &serde_json::Value) -> bool {
@@ -1042,12 +1263,12 @@ fn blocks_without_a_current_item_rebuild_as_pi_does() {
 }
 
 // -------------------------------------------------------------------
-// Citations (#1767)
+// Citations
 // -------------------------------------------------------------------
 
 #[test]
 fn document_serializes_citations_and_metadata() {
-    let value = user_wire(message::UserContent::Document(message::Document {
+    let value = user_wire(message::UserContent::Document(message::DocumentContent {
         data: message::DocumentData::Text("hello".into()),
         media_type: Some(DocumentMediaType::TXT),
         additional_params: Some(json!({"title": "My Doc", "citations": {"enabled": true}})),
@@ -1062,16 +1283,6 @@ fn document_serializes_citations_and_metadata() {
         "context should be skipped when None"
     );
 }
-
-/// Raw-capture tests: `CompletionResponse::raw` driven end to end over a
-/// mock transport that hands back a Messages body *and* a `request-id`
-/// response header. `raw` is the verbatim reply document — not a
-/// re-serialization of the parsed type — so it answers what the normalized
-/// response does not, and the transport id the driver read off the headers
-/// reaches the normalized response rather than the document.
-/// `with_error_response_headers` with `200 OK` is the one unary double
-/// that carries response headers.
-mod raw_capture {}
 
 /// A `tool_use` whose `input` is not an object keeps its call, with the
 /// arguments normalized, and no provider item: the item could not be sent
@@ -1116,8 +1327,8 @@ fn an_assistant_image_is_sent_as_its_placeholder() {
 fn encodes_states_exactly_the_media_the_encoder_carries() {
     use crate::completion::{Media, Place, ReplayTarget};
     use message::{
-        Audio, AudioMediaType, Document, DocumentMediaType as Doc, DocumentSourceKind as Source,
-        Image, ImageMediaType, Video, VideoMediaType,
+        Audio, AudioMediaType, DocumentContent, DocumentMediaType as Doc,
+        DocumentSourceKind as Source, Image, ImageMediaType, Video, VideoMediaType,
     };
 
     let wire = AnthropicConfig::new("test-key").completion(CLAUDE_SONNET_4_6);
@@ -1126,12 +1337,12 @@ fn encodes_states_exactly_the_media_the_encoder_carries() {
         media_type,
         ..Image::default()
     };
-    let document = |data: Source, media_type: Option<Doc>| Document {
+    let document = |data: Source, media_type: Option<Doc>| DocumentContent {
         data: data.into(),
         media_type,
         additional_params: None,
     };
-    let text = |text: &str, media_type: Option<Doc>| Document {
+    let text = |text: &str, media_type: Option<Doc>| DocumentContent {
         data: message::DocumentData::Text(text.into()),
         media_type,
         additional_params: None,
@@ -1251,7 +1462,7 @@ fn a_text_family_document_is_sent_as_its_text() {
             "untyped",
         ),
     ] {
-        let converted = user_wire(message::UserContent::Document(message::Document {
+        let converted = user_wire(message::UserContent::Document(message::DocumentContent {
             data,
             media_type,
             additional_params: None,
@@ -1458,7 +1669,7 @@ fn sent_with(
     )
 }
 
-/// #2655: a `tool_use` the provider sent without an id gets an id rig
+/// A `tool_use` the provider sent without an id gets an id rig
 /// issues, and the replayed item carries the spelling its result gets, so
 /// the call and its result always agree, on every dialect.
 #[test]
@@ -1499,7 +1710,7 @@ fn an_idless_call_replays_under_the_id_its_result_gets() {
     }
 }
 
-/// #2703: Claude Opus 5.5 binds its thinking to the tools and system prompt
+/// Claude Opus 5.5 binds its thinking to the tools and system prompt
 /// it was made under. Its turns replay verbatim whatever the tools, and
 /// every request asks Anthropic, under the binding beta, to drop a block
 /// whose binding no longer matches (pi's `drop_block`). A model that does
@@ -1580,7 +1791,7 @@ fn drop_block_joins_the_callers_thinking() {
 
 /// Anthropic A4: thinking that ended without a signature keeps no item, so
 /// it replays as text, as pi sends it. Kimi, which sends thinking unsigned,
-/// takes it back as thinking (#1315).
+/// takes it back as thinking.
 #[test]
 fn unsigned_thinking_keeps_its_item_only_where_the_dialect_takes_it() {
     let unsigned = json!({"type": "thinking", "thinking": "plan", "signature": ""});
@@ -1721,16 +1932,18 @@ fn a_server_tool_result_never_replays_without_its_use() {
     );
 }
 
-/// Anthropic's wire reads its own ids and their dated snapshots. Another
-/// vendor's spelling is that vendor's catalog row, which carries the
-/// Anthropic facts itself.
+/// Anthropic's wire reads its own ids, their dated snapshots and a
+/// gateway's `anthropic/` spelling of them. Another vendor's spelling is that
+/// vendor's catalog row, which carries the Anthropic facts itself.
 #[test]
 fn context_binding_reads_anthropics_ids_and_their_snapshots() {
     for model in [
         "claude-opus-5-5",
         "claude-opus-5-5-20260101",
         "claude-opus-5",
+        "anthropic/claude-opus-5",
         "claude-fable-5-1",
+        "claude-fable-5-2",
         "claude-sonnet-5-5",
     ] {
         assert!(
@@ -2503,5 +2716,21 @@ fn a_cache_point_within_a_message_marks_the_last_block_of_its_items() {
     assert_eq!(
         marks(3, 1),
         [vec![false], vec![false, false], vec![false, false]]
+    );
+}
+
+/// A gateway's `anthropic/` spelling of a listed id takes that id's default
+/// `max_tokens`; an id the catalog does not list still has none.
+#[test]
+fn a_gateways_anthropic_prefixed_id_takes_the_listed_default_max_tokens() {
+    let facts = crate::catalog::ModelFacts::builtin();
+    assert_eq!(
+        default_max_tokens_for_model(facts, "anthropic/claude-opus-5"),
+        Some(128_000)
+    );
+    assert_eq!(default_max_tokens_for_model(facts, "anthropic/gpt-5"), None);
+    assert_eq!(
+        default_max_tokens_for_model(facts, "openai/claude-opus-5"),
+        None
     );
 }

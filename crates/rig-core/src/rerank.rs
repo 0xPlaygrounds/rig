@@ -32,6 +32,7 @@ pub struct RerankResult {
     /// Relevance score, with higher values more relevant within this response.
     /// The range is provider-specific and may include negative values. Do not
     /// interpret it as a probability or compare scores across responses.
+    #[serde(deserialize_with = "crate::json_utils::floats")]
     pub relevance_score: f64,
 }
 

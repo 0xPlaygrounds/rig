@@ -6,13 +6,8 @@ use crate::driver::Model;
 use crate::error::ProviderError;
 use crate::model::ModelList;
 use crate::providers::openai::responses_api::wire::Responses;
-
-#[cfg(feature = "image")]
-use crate::providers::openai::wire::Images;
-#[cfg(feature = "audio")]
-use crate::providers::openai::wire::Speech;
 use crate::providers::openai::wire::{
-    Chat, Embeddings, OpenAIConfig, OpenAiWire, Rerank, Transcriptions,
+    Chat, Embeddings, Images, OpenAIConfig, OpenAiWire, Rerank, Speech, Transcriptions,
 };
 
 http_client!(
@@ -83,15 +78,11 @@ impl OpenAI {
     }
 
     /// The image-generation model for `model`.
-    #[cfg(feature = "image")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
     pub fn image_generation(&self, model: impl Into<String>) -> Model<Images> {
         self.model(self.config.image_generation(model))
     }
 
     /// The speech model for `model`.
-    #[cfg(feature = "audio")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "audio")))]
     pub fn audio_generation(&self, model: impl Into<String>) -> Model<Speech> {
         self.model(self.config.audio_generation(model))
     }

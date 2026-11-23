@@ -30,3 +30,12 @@ async fn test_think_tool_call() {
         "I need to verify the user's identity before proceeding"
     );
 }
+
+#[test]
+fn the_description_has_no_source_indentation() {
+    let description = ThinkTool.description();
+    assert!(
+        !description.contains('\n') && !description.contains("  "),
+        "{description:?}"
+    );
+}

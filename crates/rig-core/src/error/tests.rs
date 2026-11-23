@@ -3,7 +3,6 @@ use http::StatusCode;
 use super::*;
 use crate::{
     http_client::{self, Error as H},
-    observe::AdapterErrorBoundary,
     provider_response::ProviderResponseError,
 };
 
@@ -165,18 +164,14 @@ fn vector_response_less_transport_reports_preserve_classification_and_sources() 
     #[error("transport backend")]
     struct Backend(#[source] Reset);
 
-    let Err(invalid_header) = http::HeaderValue::from_bytes(b"\x00") else {
-        panic!("NUL must be an invalid header value");
-    };
     let Err(protocol) = http::Request::builder().header("x-invalid", "\n").body(()) else {
         panic!("a newline must be an invalid request header value");
     };
     let protocol_source = protocol.to_string();
-    let header_source = invalid_header.to_string();
     for (transport, retryable, sources) in [
         (http_client::Error::StreamEnded, true, Vec::new()),
         (
-            http_client::Error::instance(Backend(Reset)),
+            http_client::Error::transient(Backend(Reset)),
             true,
             vec!["transport backend".to_owned(), "socket reset".to_owned()],
         ),
@@ -186,18 +181,12 @@ fn vector_response_less_transport_reports_preserve_classification_and_sources() 
             vec![protocol_source],
         ),
         (
-            http_client::Error::InvalidHeaderValue(invalid_header),
-            false,
-            vec![header_source],
-        ),
-        (http_client::Error::NoHeaders, false, Vec::new()),
-        (
             http_client::Error::InvalidContentType(http::HeaderValue::from_static("text/html")),
             false,
             Vec::new(),
         ),
         (
-            http_client::Error::unbuilt(Backend(Reset)),
+            http_client::Error::permanent(Backend(Reset)),
             false,
             vec!["transport backend".to_owned(), "socket reset".to_owned()],
         ),
@@ -413,46 +402,40 @@ fn wrapped_document_error_retains_nested_sources() {
 /// replaced, one row per former variant whose report is unchanged. The
 /// completion, embedding, rerank, transcription, image, audio and cached
 /// content enums produced identical reports for identical inputs, so each
-/// shared case is one row. Every field, the serialized reply included, and
-/// the observation boundary must match.
+/// shared case is one row. Every field, the serialized reply included, must
+/// match.
 #[test]
 fn reports_match_the_replaced_error_enums() {
-    let cases: Vec<(&str, ProviderError, &str, AdapterErrorBoundary)> = vec![
+    let cases: Vec<(&str, ProviderError, &str)> = vec![
         (
             "*::HttpError(StreamEnded)",
             ProviderError::Http(H::StreamEnded.into()),
             r#"{"code":null,"http_status":null,"kind":"http","message":"HttpError: Stream ended","refusal":false,"retryable":true,"source_chain":[]}"#,
-            AdapterErrorBoundary::Transport,
         ),
         (
-            "*::HttpError(Instance)",
-            ProviderError::Http(H::instance(std::io::Error::other("conn reset")).into()),
+            "*::HttpError(Transient)",
+            ProviderError::Http(H::transient(std::io::Error::other("conn reset")).into()),
             r#"{"code":null,"http_status":null,"kind":"http","message":"HttpError: Http client error: conn reset","refusal":false,"retryable":true,"source_chain":[]}"#,
-            AdapterErrorBoundary::Unknown,
         ),
         (
-            "*::HttpError(NoHeaders)",
-            ProviderError::Http(H::NoHeaders.into()),
-            r#"{"code":null,"http_status":null,"kind":"http","message":"HttpError: Request in error state, cannot access headers","refusal":false,"retryable":false,"source_chain":[]}"#,
-            AdapterErrorBoundary::Request,
+            "*::HttpError(Permanent)",
+            ProviderError::Http(H::permanent(std::io::Error::other("not logged in")).into()),
+            r#"{"code":null,"http_status":null,"kind":"http","message":"HttpError: Http client error: not logged in","refusal":false,"retryable":false,"source_chain":[]}"#,
         ),
         (
             "*::JsonError",
             ProviderError::Json(json_error().into()),
             r#"{"code":null,"http_status":null,"kind":"json","message":"JsonError: EOF while parsing an object at line 1 column 1","refusal":false,"retryable":false,"source_chain":["EOF while parsing an object at line 1 column 1"]}"#,
-            AdapterErrorBoundary::Decode,
         ),
         (
             "*::ResponseError",
             ProviderError::Response("bad shape".into()),
             r#"{"code":null,"http_status":null,"kind":"response","message":"ResponseError: bad shape","refusal":false,"retryable":false,"source_chain":[]}"#,
-            AdapterErrorBoundary::Decode,
         ),
         (
             "*::ProviderError",
             ProviderError::Provider("provider said no".into()),
             r#"{"code":null,"http_status":null,"kind":"provider","message":"ProviderError: provider said no","refusal":false,"retryable":false,"source_chain":[]}"#,
-            AdapterErrorBoundary::ProviderResponse,
         ),
         (
             "*::from_http_response(429)+id+headers",
@@ -463,19 +446,16 @@ fn reports_match_the_replaced_error_enums() {
             .with_provider_request_id(Some("req_1".into()))
             .with_response_headers(Some(headers())),
             r#"{"code":"rate_limit","http_status":429,"kind":"provider_response","message":"ProviderResponseError: status 429 Too Many Requests: {\"error\":{\"type\":\"rate_limit\"}} (request id: req_1)","provider_response":{"body":"{\"error\":{\"type\":\"rate_limit\"}}","provider_request_id":"req_1","status":429},"refusal":false,"request_id":"req_1","retryable":true,"source_chain":[]}"#,
-            AdapterErrorBoundary::ProviderResponse,
         ),
         (
             "*::from_http_response(400)",
             ProviderError::from_http_response(StatusCode::BAD_REQUEST, "plain body"),
             r#"{"code":null,"http_status":400,"kind":"provider_response","message":"ProviderResponseError: status 400 Bad Request: plain body","provider_response":{"body":"plain body","provider_request_id":null,"status":400},"refusal":false,"retryable":false,"source_chain":[]}"#,
-            AdapterErrorBoundary::ProviderResponse,
         ),
         (
             "*::from_transport_error(503)",
             ProviderError::from_transport_error(transport_503()),
             r#"{"code":"overloaded","http_status":503,"kind":"provider_response","message":"ProviderResponseError: status 503 Service Unavailable: {\"error\":{\"code\":\"overloaded\",\"message\":\"busy\"}}","provider_response":{"body":"{\"error\":{\"code\":\"overloaded\",\"message\":\"busy\"}}","provider_request_id":null,"status":503},"refusal":false,"retryable":true,"source_chain":[]}"#,
-            AdapterErrorBoundary::ProviderResponse,
         ),
         (
             "*::from_provider_body+refusal",
@@ -485,35 +465,30 @@ fn reports_match_the_replaced_error_enums() {
                     .with_code(Some("REFUSED".into())),
             ),
             r#"{"code":"REFUSED","http_status":null,"kind":"provider_response","message":"ProviderResponseError: {\"error\":{\"code\":\"content_filter\"}}","provider_response":{"body":"{\"error\":{\"code\":\"content_filter\"}}","code":"REFUSED","provider_request_id":null,"refusal":true,"status":null},"refusal":true,"retryable":false,"source_chain":[]}"#,
-            AdapterErrorBoundary::ProviderResponse,
         ),
         (
             "*::from_provider_body+transient",
             ProviderError::from_provider_body("sdk said busy").with_transient(Some(true)),
             r#"{"code":null,"http_status":null,"kind":"provider_response","message":"ProviderResponseError: sdk said busy","provider_response":{"body":"sdk said busy","provider_request_id":null,"status":null,"transient":true},"refusal":false,"retryable":true,"source_chain":[]}"#,
-            AdapterErrorBoundary::ProviderResponse,
         ),
         (
             "Completion/Embedding/Rerank::UrlError",
             ProviderError::Url(url_error()),
             r#"{"code":null,"http_status":null,"kind":"url","message":"UrlError: relative URL without a base","refusal":false,"retryable":false,"source_chain":["relative URL without a base"]}"#,
-            AdapterErrorBoundary::Request,
         ),
         (
             "Completion/Transcription/ImageGeneration/AudioGeneration::RequestError",
             ProviderError::Request(boxed().into()),
             r#"{"code":null,"http_status":null,"kind":"request","message":"RequestError: io broke","refusal":false,"retryable":false,"source_chain":["io broke"]}"#,
-            AdapterErrorBoundary::Request,
         ),
     ];
-    for (case, error, expected, boundary) in cases {
+    for (case, error, expected) in cases {
         let expected: serde_json::Value = serde_json::from_str(expected).expect("expected report");
         assert_eq!(
             serde_json::to_value(error.report()).expect("report serializes"),
             expected,
             "{case}"
         );
-        assert_eq!(error.boundary(), boundary, "{case}");
     }
 }
 
@@ -573,7 +548,6 @@ fn verdicts_on_a_handle_or_credential_keep_the_reply() {
         assert_eq!(report.http_status, Some(status));
         assert!(!report.retryable);
         assert!(report.provider_response.is_some());
-        assert_eq!(error.boundary(), AdapterErrorBoundary::ProviderResponse);
     }
     assert_eq!(expired.provider_request_id(), Some("req_c"));
 }
@@ -598,7 +572,6 @@ fn request_building_failures_share_one_shape() {
         assert_eq!(report.kind, ErrorKind::Request);
         assert!(!report.retryable);
         assert_eq!(report.source_chain.len(), 1, "{error}");
-        assert_eq!(error.boundary(), AdapterErrorBoundary::Request);
     }
 }
 

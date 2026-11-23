@@ -1,32 +1,10 @@
 //! OpenAI Chat Completions history serialization and response matrix.
 //!
-//! This matrix exercises the request serializer and response normalizer around
-//! caller-owned history, including tool-call ids, arguments, ordered tool
-//! results, Unicode-bearing text, and both public completion surfaces.
-//!
-//! The complete input space exercised here is a 2 × 2 × 2 × 3 cross-product:
-//!
-//! | dimension | values |
-//! |---|---|
-//! | transport | blocking, streaming |
-//! | model | `gpt-4o-mini`, `gpt-4.1-mini` |
-//! | surface | provider-native raw, normalized Rig response |
-//! | history shape | text, one tool result, two ordered tool results |
-//!
-//! That is 24 cells, of which the one below is a test. Each test proves the
-//! exact serialized history from its fixture and compares the observed response
-//! text to those exact blocking or SSE bytes.
-//!
-//! Each test maps to
-//! `crates/rig-cassette/fixtures/cassettes/openai/chat_history_roundtrip_matrix/<test-name>.yaml`.
-//! The two inexpensive mini models are stable history/tool-call controls from
-//! separate families. Assertions cover provider-native and normalized blocking
-//! responses, raw and normalized streams, Unicode text, exact tool ids and
-//! arguments, ordered tool results, the current prompt, and terminal arrival.
-//!
-//! | recorded cells | exact fixture set |
-//! |---|---|
-//! | 1 of 24 | `crates/rig-cassette/fixtures/cassettes/openai/chat_history_roundtrip_matrix/streaming_gpt_4o_mini_normalized_parallel_tool.yaml` |
+//! This matrix exercises the request serializer and response normalizer
+//! around caller-owned history: tool-call ids, arguments, ordered tool
+//! results, Unicode text, and both public completion surfaces. Each cell
+//! proves the exact serialized history from its fixture and compares the
+//! observed response text to the exact blocking or SSE bytes.
 
 use rig::streaming::Item;
 use std::sync::{Arc, Mutex};
@@ -38,7 +16,7 @@ use rig::message::{AssistantContent, ToolResultContent, UserContent};
 use rig::streaming::StreamEvent;
 use serde_json::{Value, json};
 
-use super::super::support::{OpenAiCassette, with_openai_history_roundtrip_cassette_result};
+use super::super::support::{OpenAiCassette, with_openai_cassette_result};
 use rig::completion::CompletionRequest;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -336,7 +314,7 @@ fn cell(transport: Transport, model: ModelVariant, surface: Surface, shape: Shap
 // mapping between tests and fixtures.
 
 crate::matrix::case_matrix! {
-    wrapper: with_openai_history_roundtrip_cassette_result, family: history_roundtrip_matrix_case;
+    wrapper: with_openai_cassette_result, family: history_roundtrip_matrix_case;
     # [tokio :: test]
     streaming_gpt_4o_mini_normalized_parallel_tool: ("chat_history_roundtrip_matrix/streaming_gpt_4o_mini_normalized_parallel_tool", configured, cell (Transport :: Streaming , ModelVariant :: Gpt4oMini , Surface :: Normalized , Shape :: ParallelTool ,));
 }

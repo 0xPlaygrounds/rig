@@ -31,13 +31,19 @@ curl --request POST \
 --url "${MILVUS_BASE_URL}/v2/vectordb/collections/create" \
 --header "Authorization: Bearer ${TOKEN}" \
 --header "Content-Type: application/json" \
--d '{
+--data @- <<EOF
+{
     "collectionName": "${MILVUS_COLLECTION_NAME}",
     "dbName": "${MILVUS_DATABASE_NAME}",
     "schema": {
         "autoId": true,
         "enabledDynamicField": false,
         "fields": [
+            {
+                "fieldName": "id",
+                "dataType": "Int64",
+                "isPrimary": true
+            },
             {
                 "fieldName": "embedding",
                 "dataType": "FloatVector",
@@ -47,15 +53,19 @@ curl --request POST \
             },
             {
                 "fieldName": "document",
-                "dataType": "JSON",
+                "dataType": "JSON"
             },
             {
                 "fieldName": "embeddedText",
-                "dataType": "VarChar"
+                "dataType": "VarChar",
+                "elementTypeParams": {
+                    "max_length": 65535
+                }
             }
         ]
     }
-}'
+}
+EOF
 ```
 
 This will create a collection with the following fields:

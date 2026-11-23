@@ -265,7 +265,7 @@ fn prompt_cache_comparison_joins_the_mapped_ttl() {
         &gpt_6(),
         GenerationOptions::default().cache(CacheRetention::Long),
         responses(OpenAiResponsesOptions::default().prompt_cache_comparison("resp_0")),
-        json!({"prompt_cache_options": {"ttl": "30m", "comparison_response_id": "resp_0"}}),
+        json!({"prompt_cache_options": {"ttl": "12h", "comparison_response_id": "resp_0"}}),
     );
 }
 
@@ -495,13 +495,13 @@ fn prompt_cache_options_reach_the_request_typed_and_through_additional_params() 
     let raw = prepared_body_of(
         &wire,
         prompt().additional_params(json!({
-            "prompt_cache_options": {"ttl": "30m", "comparison_response_id": "resp_0"}
+            "prompt_cache_options": {"ttl": "12h", "comparison_response_id": "resp_0"}
         })),
     );
     assert_eq!(typed, raw);
     assert_eq!(
         typed["prompt_cache_options"],
-        json!({"ttl": "30m", "comparison_response_id": "resp_0"})
+        json!({"ttl": "12h", "comparison_response_id": "resp_0"})
     );
     assert!(typed.get("prompt_cache_retention").is_none());
 }
@@ -515,7 +515,7 @@ fn prompt_cache_options_serialize_at_request_top_level() {
         shared(OpenAiShared::default().prompt_cache_key("tenant:acme:v1")),
     );
     assert_eq!(body["prompt_cache_key"], json!("tenant:acme:v1"));
-    assert_eq!(body["prompt_cache_options"]["ttl"], json!("30m"));
+    assert_eq!(body["prompt_cache_options"]["ttl"], json!("12h"));
 }
 
 // ── extras from recorded replies ───────────────────────────────────────

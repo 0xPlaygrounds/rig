@@ -5,11 +5,13 @@
 use std::collections::BTreeMap;
 use std::fmt;
 use std::fs::{self, File, OpenOptions};
-use std::io::{ErrorKind, Write};
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use rig_core::json_utils::remove_preserving_order;
+use rig_harness::harness_protocol::config::linked;
+use rig_harness::harness_protocol::env::SECRET_PREFIX;
+use rig_harness::harness_protocol::fs as harness_fs;
 use serde::{Deserialize, Serialize};
 use serde_json::ser::PrettyFormatter;
 use serde_json::{Map, Value};
@@ -26,8 +28,8 @@ const SERVERS: &str = "mcpServers";
 pub enum Scope {
     /// `RIG_HOME/mcp.json`, the user's in every project.
     User,
-    /// `<project>/.rig/mcp.json`, which starts nothing the user did not
-    /// approve.
+    /// `<project>/.rig/mcp.json`, whose entries replace the user's of the
+    /// same name.
     Project,
     /// A client of rig's, such as an editor, for this run only: in no file.
     Client,
@@ -205,23 +207,34 @@ fn refuse_fields(fields: &[(&str, bool)], whose: &str) -> Result<(), String> {
     }
 }
 
-/// The server `written` whole, on one line, as written: its `${VAR}`s
-/// are not expanded, so a line about a server not approved shows all that
-/// approving it approves, and no secret.
-pub fn describe(written: &Value) -> String {
-    written.to_string()
-}
-
 /// `text` with each `${VAR}` replaced by the variable, and each
 /// `${VAR:-default}` by the variable unless it is unset or empty, else
-/// by `default`. Errors name `field`.
+/// by `default`, as written. A `${` ends at the `}` that pairs with it, so
+/// a default may hold paired braces, such as `{"a":1}`; text after that `}`
+/// is kept as it is, and a `${` whose braces never pair, such as one with
+/// an unpaired `{` in its default, is refused as not closed. Errors name
+/// `field`; a secret variable
+/// ([`SECRET_PREFIX`], in any case, as Windows reads names) is refused,
+/// set or not.
 fn expand(text: &str, field: &str) -> Result<String, String> {
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
     while let Some(start) = rest.find("${") {
         out.push_str(rest.get(..start).unwrap_or_default());
         let after = rest.get(start + 2..).unwrap_or_default();
-        let Some(end) = after.find('}') else {
+        let mut depth = 0_usize;
+        let end = after.bytes().position(|byte| match byte {
+            b'{' => {
+                depth += 1;
+                false
+            }
+            b'}' if depth > 0 => {
+                depth -= 1;
+                false
+            }
+            byte => byte == b'}',
+        });
+        let Some(end) = end else {
             return Err(format!("`{field}`: a `${{` is not closed"));
         };
         let inner = after.get(..end).unwrap_or_default();
@@ -229,6 +242,12 @@ fn expand(text: &str, field: &str) -> Result<String, String> {
             Some((name, default)) => (name, Some(default)),
             None => (inner, None),
         };
+        let prefix = name.get(..SECRET_PREFIX.len()).unwrap_or_default();
+        if prefix.eq_ignore_ascii_case(SECRET_PREFIX) {
+            return Err(format!(
+                "`{field}`: ${{{name}}} is a secret of rig's, which no server is given"
+            ));
+        }
         let value = std::env::var(name).ok();
         match (value, default) {
             (Some(value), Some(_)) if !value.is_empty() => out.push_str(&value),
@@ -359,52 +378,21 @@ impl McpFile {
         lock(&self.lock)
     }
 
-    /// Replaces the file with `bytes`, atomically, through a new file of
-    /// its own beside it, with the old one's permissions and group: never through a
-    /// file that was there, such as a link a checkout planted. The user's
-    /// own file, when it is a link, is replaced where it points.
+    /// Replaces the file with `bytes` by [`harness_fs::replace`], private
+    /// when new as its headers may hold tokens, and never through a file
+    /// that was there, such as a link a checkout planted. The user's own
+    /// file, when it is a link, is replaced where it points.
     fn write(&self, bytes: &[u8]) -> Result<(), String> {
         let path = match self.scope {
-            Scope::User => followed(self.path()),
+            Scope::User => linked(&self.path()).map_err(|error| error.to_string())?,
             Scope::Project | Scope::Client => self.path(),
         };
         let failed = |error: std::io::Error| format!("could not write {}: {error}", path.display());
-        let dir = path.parent().unwrap_or(&self.dir);
-        fs::create_dir_all(dir).map_err(failed)?;
+        fs::create_dir_all(path.parent().unwrap_or(&self.dir)).map_err(failed)?;
         if self.scope == Scope::Project {
             self.inside_project()?;
         }
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_or(0, |since| since.as_nanos());
-        let part = dir.join(format!(".{FILE}.{}-{nanos}.part", std::process::id()));
-        let kept = fs::symlink_metadata(&path)
-            .ok()
-            .filter(|metadata| metadata.is_file());
-        let written = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&part)
-            .and_then(|mut file| {
-                if let Some(kept) = &kept {
-                    // Its group too, as a directory may give a new file
-                    // another; a group that cannot be kept fails the write.
-                    #[cfg(unix)]
-                    std::os::unix::fs::fchown(
-                        &file,
-                        None,
-                        Some(std::os::unix::fs::MetadataExt::gid(kept)),
-                    )?;
-                    file.set_permissions(kept.permissions())?;
-                }
-                file.write_all(bytes)?;
-                file.sync_all()
-            })
-            .and_then(|()| fs::rename(&part, &path));
-        if written.is_err() {
-            fs::remove_file(&part).ok();
-        }
-        written.map_err(failed)
+        harness_fs::replace(&path, bytes).map_err(failed)
     }
 
     /// Refuses a project's `.rig` that leads out of the project, such as a
@@ -451,22 +439,6 @@ impl McpFile {
     fn not_servers(&self) -> String {
         format!("{}: `{SERVERS}` is not an object", self.path().display())
     }
-}
-
-/// Where the links from `path` lead, the last one's target even when it
-/// does not exist yet; `path` itself when it is no link.
-fn followed(mut path: PathBuf) -> PathBuf {
-    // Bounded, as a loop of links never ends.
-    for _ in 0..40 {
-        let Ok(target) = fs::read_link(&path) else {
-            return path;
-        };
-        path = match path.parent() {
-            Some(dir) => dir.join(target),
-            None => target,
-        };
-    }
-    path
 }
 
 /// The lock file at `path`, locked until it is dropped: what every change of
@@ -742,20 +714,22 @@ impl<'a> Spans<'a> {
     }
 }
 
-/// The user's file under `home` and the project's under `root`, each change
-/// locked by `home/mcp.lock`.
-pub fn files(home: &Path, root: &Path) -> [McpFile; 2] {
-    let lock = lock_path(home);
-    [
-        McpFile {
-            dir: home.to_path_buf(),
-            scope: Scope::User,
-            lock: lock.clone(),
-        },
-        McpFile {
-            dir: root.join(".rig"),
-            scope: Scope::Project,
-            lock,
-        },
-    ]
+/// The user's file in `home`, its changes locked by `home/mcp.lock`.
+pub fn user_file(home: &Path) -> McpFile {
+    McpFile {
+        dir: home.to_path_buf(),
+        scope: Scope::User,
+        lock: lock_path(home),
+    }
+}
+
+/// The project's file in its `.rig`, `config`
+/// ([`Project::config`](rig_harness::services::Project::config)), its
+/// changes locked by `home/mcp.lock`.
+pub fn project_file(home: &Path, config: &Path) -> McpFile {
+    McpFile {
+        dir: config.to_path_buf(),
+        scope: Scope::Project,
+        lock: lock_path(home),
+    }
 }

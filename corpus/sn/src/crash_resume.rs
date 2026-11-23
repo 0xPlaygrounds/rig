@@ -1,34 +1,19 @@
-//! Recovers a turn a crash cut short.
+//! Recovers a turn a crash cut short. After a crash the kernel restores every call left without a
+//! result as [`Restored`] work, those that may change something [`Interrupted`], and stops the turn
+//! unless a plugin lets it [`CarryOn`]. This plugin also keeps the text a model call streamed, in
+//! its session data `crash-resume/<agent>.json`, written at least every second and removed when the
+//! turn ends.
 //!
-//! The kernel keeps what a running turn's calls did: a call that may
-//! change something is marked on the conversation before it starts, any
-//! call that settles while its reply runs is marked with its result, and a
-//! restart after a crash spawns every call left without a result as
-//! [`Restored`] work, the marked ones [`Interrupted`], in the same turn,
-//! which the kernel stops unless a plugin lets it [`CarryOn`]. What the
-//! kernel does not keep is the text a model call streamed; this plugin
-//! keeps it in its session data, `crash-resume/<agent>.json`, at least
-//! every second. A turn that ends removes the file.
+//! On resume, each agent with restored work is [`Recovering`]: its restored calls and model call
+//! are held, an "Interrupted turn" note goes in its transcript, and the user is asked what to do.
+//! Continue gives each call its result, else "may or may not have completed" if it started or "not
+//! run (interrupted)" if it never started or only reads; it keeps the cut model call's partial
+//! text, marked incomplete, and carries the turn on. Discard stops the turn and puts the
+//! conversation back to before its user message, which goes back in the input. Leave changes
+//! nothing; the question comes back with the next message, which waits for the answer.
 //!
-//! On resume, each agent with restored work is [`Recovering`]: its
-//! restored turn carries on as this plugin decides, its restored calls and
-//! model call are held, the "Interrupted turn" note goes in its
-//! transcript, and the user is asked:
-//!
-//! - **Continue**: each call gets its result, else "may or may not have
-//!   completed" (started) or "not run (interrupted)" (not run: it never
-//!   started, or it only reads and changed nothing); the
-//!   partial text of a model call the crash cut is kept, marked incomplete;
-//!   the turn carries on;
-//! - **Discard**: the turn is stopped and the conversation goes back to
-//!   before its user message, which goes back in the input;
-//! - **Leave**: nothing changes; the question comes back with the next
-//!   message, which waits for the answer.
-//!
-//! Subagents the crash interrupted are listed in their parent's note and
-//! follow its choice. A run nobody can answer, such as `--resume --print`,
-//! continues. A torn last line in an agent's log is reported by the
-//! kernel's restore, which sets it aside.
+//! Subagents the crash interrupted are listed in their parent's note and follow its choice. A run
+//! nobody can answer, such as `--resume --print`, continues.
 
 use std::collections::HashMap;
 
@@ -298,7 +283,7 @@ fn recover(
         let Ok((_, _, parent, _)) = agents.get(agent) else {
             continue;
         };
-        if parent.is_some_and(|parent| found.contains_key(&parent.0)) {
+        if parent.is_some_and(|parent| found.contains_key(&parent.parent())) {
             continue;
         }
         let mut text = recovering.body.clone();
@@ -306,7 +291,7 @@ fn recover(
             let Ok((_, _, Some(of), name)) = agents.get(child) else {
                 continue;
             };
-            if of.0 == agent {
+            if of.parent() == agent {
                 let name = name.map_or("subagent", Name::as_str);
                 let lines = nested.body.replace('\n', "\n    ");
                 text.push_str(&format!(
@@ -386,7 +371,7 @@ fn ask(
     mut commands: Commands,
 ) {
     for (agent, mut recovering, parent) in &mut agents {
-        let nested = parent.is_some_and(|parent| parents.contains(parent.0));
+        let nested = parent.is_some_and(|parent| parents.contains(parent.parent()));
         if nested || recovering.left || recovering.ask.is_some() || recovering.choice.is_some() {
             continue;
         }
@@ -450,7 +435,7 @@ fn resolve(
         .collect();
     for (_, _, mut recovering, _, parent, _) in &mut agents {
         if recovering.choice.is_none()
-            && let Some(&choice) = parent.and_then(|parent| chosen.get(&parent.0))
+            && let Some(&choice) = parent.and_then(|parent| chosen.get(&parent.parent()))
         {
             recovering.choice = Some(choice);
         }
@@ -474,10 +459,8 @@ fn resolve(
             // turn; what it commits is cut or left as it was.
             if !recovering.stopping {
                 recovering.stopping = true;
-                let why = "an interrupted turn the user did not continue".to_owned();
-                commands
-                    .entity(recovering.turn)
-                    .try_insert(TurnOutcome::Stopped(Some(why)));
+                let why = "an interrupted turn the user did not continue";
+                commands.trigger(StopTurn::plugin_alone(agent, "crash-resume", why));
             }
             continue;
         }

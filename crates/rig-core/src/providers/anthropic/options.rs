@@ -26,13 +26,8 @@ fn claude_reasoning(
     max_tokens: Option<u64>,
 ) -> Mapping {
     let support = spec.map(|spec| &spec.reasoning);
-    // A model the catalog says does not reason is answered by the shared
-    // rule: nothing to turn off, and nothing else to take.
-    if let Some(support) = support.filter(|support| !support.supported()) {
-        return match support.refusal(reasoning) {
-            Some(reason) => Mapping::unsupported(reason),
-            None => Mapping::Omit("the model does not reason"),
-        };
+    if support.is_some_and(|support| !support.supported()) {
+        return Mapping::does_not_reason(reasoning);
     }
     match reasoning {
         Reasoning::Off => match spec {
@@ -145,13 +140,7 @@ pub(super) fn map_options(
     fields: OptionFields<'_>,
 ) -> OptionMap {
     let model = request.model.as_deref().unwrap_or(&wire.model);
-    let max_tokens = request.max_tokens.or_else(|| {
-        if model == wire.model {
-            wire.default_max_tokens
-        } else {
-            wire.provider.dialect.default_max_tokens(&wire.facts, model)
-        }
-    });
+    let max_tokens = wire.max_tokens(request, model);
     // Not `options::param`, which calls `map_options`.
     let has_tools = crate::completion::history::declares_tools(request);
     match wire.provider.dialect.name {
@@ -166,7 +155,7 @@ pub(super) fn map_options(
     }
 }
 
-/// Anthropic's own API (section 6.1 of `TYPED_OPTIONS.md`).
+/// Anthropic's own API (section 2.1 of `TYPED_OPTIONS.md`).
 fn anthropic(
     wire: &Messages,
     request: &CompletionRequest,

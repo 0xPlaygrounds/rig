@@ -1,25 +1,20 @@
-//! FH-17: import sessions from Claude Code and Codex.
+//! Imports sessions from Claude Code and Codex. `rig import claude-code [path]` and `rig import
+//! codex [path]` read the other tool's session files (its default directory, or a file or directory
+//! given) and make each a normal saved session of this harness, which `/resume` lists: the user's
+//! messages, the model's text, reasoning and tool calls, and the results, in order, each logged at
+//! the source's time. `/import <tool> [path]` does the same inside a session, and `/import` alone
+//! lists the sessions found in a picker.
 //!
-//! `rig import claude-code [path]` and `rig import codex [path]` read the
-//! other tool's session files (its default directory, or a file or
-//! directory given) and make each a normal saved session of this harness,
-//! which `/resume` lists: the user's messages, the model's text, reasoning
-//! and tool calls, and the results, in order, each logged at the source's
-//! time. `/import <tool> [path]` does the same inside a session, and
-//! `/import` alone lists the sessions found in a picker. Common tools are
-//! mapped onto rig's (`Bash` and Codex's `shell` onto `shell`, `Edit` onto
-//! `edit`, …); others keep their name and arguments. An imported model
-//! turn says where it came from in its rig-core `Origin` (`api` `import`,
-//! `provider` the source tool), so no provider replays it as its own. A
-//! subagent's (sidechain) conversation becomes a subagent of the imported
-//! session. An entry the importer does not understand becomes a note in
-//! the transcript, and each import reports a count per kind
-//! ([`SessionImported`]). Importing the same source session again appends
-//! what is new to the session made the first time.
+//! Common tools are mapped onto rig's (`Bash` and Codex's `shell` onto `shell`, `Edit` onto `edit`,
+//! …); others keep their name and arguments. An imported model turn says where it came from in its
+//! rig-core `Origin` (`api` `import`, `provider` the source tool), so no provider replays it as its
+//! own. A subagent's (sidechain) conversation becomes a subagent of the imported session. An entry
+//! the importer does not understand becomes a note in the transcript, and each import reports a
+//! count per kind ([`SessionImported`]). Importing the same source session again appends what is
+//! new to the session made the first time.
 //!
-//! A session is written with [`Session::save`] into a new session's store
-//! ([`Home::new_session`], [`StoreOpener`]), with the source it came from
-//! in the plugin's own file there.
+//! A session is written with [`Session::save`] into a new session's store ([`Home::new_session`],
+//! [`StoreOpener`]), with the source it came from in the plugin's own file there.
 
 mod parse;
 
@@ -198,12 +193,12 @@ fn import_command_line(
     let reason = match Source::named(name) {
         None => {
             eprintln!("usage: rig import claude-code|codex [path]");
-            ExitReason::Failed(2)
+            ExitReason::Failed(FailCode::or_failure(2))
         }
         Some(source) => match import_all((&home.0, &stores), source, path) {
             Err(why) => {
                 eprintln!("rig import: {why}");
-                ExitReason::Failed(1)
+                ExitReason::Failed(FailCode::FAILURE)
             }
             Ok(done) => {
                 let mut failed = false;
@@ -220,7 +215,7 @@ fn import_command_line(
                     }
                 }
                 if failed {
-                    ExitReason::Failed(1)
+                    ExitReason::Failed(FailCode::FAILURE)
                 } else {
                     ExitReason::Quit
                 }
@@ -298,17 +293,15 @@ fn picker(agent: Entity) -> Picker {
             .as_deref()
             .and_then(Path::file_name)
             .map(|name| name.to_string_lossy().into_owned());
-        picker.items.push(PickItem {
-            label: format!(
-                "{date} · {} · {}",
-                project.unwrap_or_default(),
-                first_line(&parsed)
-            ),
-            command: format!("{COMMAND} {} {}", source.name(), file.display()),
-            detail: Some(source.label().to_owned()),
-            more: None,
-            checked: false,
-        });
+        let label = format!(
+            "{date} · {} · {}",
+            project.unwrap_or_default(),
+            first_line(&parsed)
+        );
+        let command = format!("{COMMAND} {} {}", source.name(), file.display());
+        picker
+            .items
+            .push(PickItem::new(label, command).detail(source.label()));
     }
     picker
 }

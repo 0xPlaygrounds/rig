@@ -94,11 +94,13 @@ fn five_files_two_at_a_time_one_fails_and_writes_elsewhere_are_refused() {
         .add_observer(on_spawn)
         .add_observer(on_despawn);
     let parent_model = MockCompletionModel::from_stream_turns([reply("unused")]);
-    let mut parent = app.world_mut().spawn(Agent);
-    if let Some(connection) = connect(&parent_model) {
-        let choice = ModelChoice(connection.spec.reference());
-        parent.insert((connection, choice));
-    }
+    let parent = match connect(&parent_model) {
+        Some(connection) => {
+            let choice = ModelChoice(connection.spec.reference());
+            spawn_root(app.world_mut(), (connection, choice))
+        }
+        None => spawn_root(app.world_mut(), ()),
+    };
     let parent = parent.id();
     app.finish();
     app.update();
@@ -139,7 +141,4 @@ fn five_files_two_at_a_time_one_fails_and_writes_elsewhere_are_refused() {
     assert!(a_heard.contains("You may change only"), "{a_heard}");
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(MapReducePlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(MapReducePlugin);

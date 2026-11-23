@@ -344,7 +344,7 @@ async fn responses_extras_from_a_unary_recording() {
 /// `native_finish_reason` included.
 #[tokio::test]
 async fn chat_extras_read_alike_from_a_recorded_stream() {
-    use crate::test_utils::provider_extensions::{recorded_stream, streamed_reply_of};
+    use crate::test_utils::provider_extensions::{recorded_reply, streamed_reply_of};
 
     let read = |reply: crate::completion::CompletionResponse| {
         reply
@@ -355,7 +355,7 @@ async fn chat_extras_read_alike_from_a_recorded_stream() {
     let streamed = read(
         streamed_reply_of(
             chat(MODEL),
-            recorded_stream(
+            recorded_reply(
                 "openrouter",
                 "raw_stream_capture_matrix/stream_raw_exposes_terminal_cost_and_provider",
                 0,
@@ -378,4 +378,61 @@ async fn chat_extras_read_alike_from_a_recorded_stream() {
     assert_eq!(streamed.provider.as_deref(), Some("Azure"));
     assert_eq!(streamed.cost, Some(2.7e-6));
     assert_eq!(streamed.native_finish_reason.as_deref(), Some("stop"));
+}
+
+/// A threshold refuses a short array and a repeated percentile, and reads
+/// a full array, a partial object and a scalar.
+#[test]
+fn thresholds_refuse_a_short_array_and_a_repeated_percentile() {
+    for input in ["[]", "[2.5]", "[null,1.5]", r#"{"p50":1.0,"p50":2.0}"#] {
+        assert!(
+            serde_json::from_str::<LatencyThreshold>(input).is_err(),
+            "{input}"
+        );
+        assert!(
+            serde_json::from_str::<ThroughputThreshold>(input).is_err(),
+            "{input}"
+        );
+    }
+    let full = PercentileThresholds {
+        p50: Some(1.0),
+        p75: None,
+        p90: Some(3.0),
+        p99: Some(4.0),
+    };
+    let partial = PercentileThresholds {
+        p75: Some(2.5),
+        ..PercentileThresholds::default()
+    };
+    for (input, read) in [
+        (
+            "[1.0,null,3.0,4.0]",
+            ThroughputThreshold::Percentile(full.clone()),
+        ),
+        (
+            r#"{"p75":2.5,"other":1}"#,
+            ThroughputThreshold::Percentile(partial.clone()),
+        ),
+        ("12.5", ThroughputThreshold::Simple(12.5)),
+    ] {
+        assert_eq!(
+            serde_json::from_str::<ThroughputThreshold>(input).ok(),
+            Some(read),
+            "{input}"
+        );
+    }
+    for (input, read) in [
+        ("[1.0,null,3.0,4.0]", LatencyThreshold::Percentile(full)),
+        (
+            r#"{"p75":2.5,"other":1}"#,
+            LatencyThreshold::Percentile(partial),
+        ),
+        ("12.5", LatencyThreshold::Simple(12.5)),
+    ] {
+        assert_eq!(
+            serde_json::from_str::<LatencyThreshold>(input).ok(),
+            Some(read),
+            "{input}"
+        );
+    }
 }

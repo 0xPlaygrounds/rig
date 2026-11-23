@@ -1,10 +1,9 @@
-//! FH-01: the dirty working tree guard. The first call of a session that
-//! would change the project (`write`, `edit`, or a `shell` command not on a
-//! short read-only list) waits while `git status` runs. A dirty tree is the
-//! user's to sort out first: they stash it, commit it as WIP, carry on, or
-//! stop the call. Once answered, every later call passes, across `/reload`
-//! and `/resume` too, since the answer is saved with the session. A run
-//! nobody can answer follows `headless` in `RIG_HOME/dirty-guard.toml`.
+//! The dirty working tree guard. The first call of a session that would change the project
+//! (`write`, `edit`, or a `shell` command not on a short read-only list) waits while `git status`
+//! runs. A dirty tree is the user's to sort out first: they stash it, commit it as WIP, carry on,
+//! or stop the call. Once answered, every later call passes, across `/reload` and `/resume` too,
+//! since the answer is saved with the session. A run nobody can answer follows `headless` in
+//! `RIG_HOME/dirty-guard.toml`.
 
 use std::path::{Path, PathBuf};
 

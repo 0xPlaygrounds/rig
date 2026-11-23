@@ -19,10 +19,8 @@ async fn list_models_smoke() {
             "expected Gemini to return at least one model\nModel list: {models:#?}"
         );
 
-        // rig#2322 — Gemini reports an output ceiling for every model and rig
-        // used to drop it during conversion. Nothing in the library knew the
-        // real limit, which is how a hardcoded 4096 default survived: the
-        // recorded listing says 65536 for this model, ~16x larger.
+        // Gemini reports an output ceiling for every model, and conversion must
+        // keep it: the recorded listing says 65536 for this model.
         let flash = models
             .iter()
             .find(|model| model.id == "gemini-2.5-flash")
@@ -55,16 +53,10 @@ async fn list_models_smoke() {
     .await;
 }
 
-/// rig#2079 — a failed Gemini listing must carry provider, path, status and a
-/// body preview.
-///
-/// Gemini used to build its own request and let a transport-level send error
-/// convert directly, so a rejected listing surfaced as a bare `RequestError`
-/// whose only content was the stringified status. Its own
-/// `!status.is_success()` branch never ran: the reqwest transport reports a
-/// non-2xx *as an error* before returning a response, the same dead-arm shape
-/// rig#2315 fixed for `verify`. Routing through the shared fetch classifies it
-/// as the provider's reply with the context every other lister already produced.
+/// A failed Gemini listing must carry provider, path, status and a body
+/// preview. The reqwest transport reports a non-2xx as an error before
+/// returning a response, so only the shared fetch path classifies it as the
+/// provider's reply.
 ///
 /// Recorded with a deliberately invalid key so the 401 is Gemini's own.
 #[tokio::test]

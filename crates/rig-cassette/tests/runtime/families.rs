@@ -51,7 +51,7 @@ macro_rules! rows {
             #[tokio::test]
             async fn $name() {
                 let replies = replies!($($pinned)? $provider, $scenario);
-                produce(crate::wires::$wire, replies, Family::$family, &$cell).await;
+                produce(crate::runtime::wires::$wire, replies, Family::$family, &$cell).await;
             }
         )*
     };

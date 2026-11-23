@@ -13,8 +13,9 @@ use rig::tool::ToolSet;
 use rig::vector_store::in_memory_store::InMemoryVectorStore;
 use rig_test_support::cassette_models::GeminiModels;
 
+use super::super::agent_run_support::FORCE_TOOLS_PREAMBLE;
 use super::super::support::with_gemini_cassette;
-use super::super::tools_support::{EmbedAdd, EmbedMultiply, EmbedSubtract, FORCE_TOOLS_PREAMBLE};
+use super::super::tools_support::{EmbedAdd, EmbedMultiply, EmbedSubtract};
 
 /// Build an in-memory index over the toolset's embeddable schemas.
 async fn build_tool_index(
@@ -43,13 +44,13 @@ async fn sample_caps_retrieved_definitions() {
         |client| async move {
             let mut toolset = ToolSet::default();
             toolset
-                .add_retrieved_tool(EmbedAdd::default())
+                .add_retrieved_tool(EmbedAdd)
                 .expect("the tool context serializes");
             toolset
-                .add_retrieved_tool(EmbedSubtract::default())
+                .add_retrieved_tool(EmbedSubtract)
                 .expect("the tool context serializes");
             toolset
-                .add_retrieved_tool(EmbedMultiply::default())
+                .add_retrieved_tool(EmbedMultiply)
                 .expect("the tool context serializes");
             let index = build_tool_index(&client, &toolset).await;
 

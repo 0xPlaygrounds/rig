@@ -1,0 +1,286 @@
+//! While the agent runs, a signal that would end the launcher (SIGTERM,
+//! SIGINT, SIGHUP; Ctrl+C elsewhere than unix) is passed on to the agent,
+//! and the launcher waits for it, at most [`STOP_WAIT`], before it ends:
+//! the agent's last lines come before the shell's prompt, and a script's
+//! `wait` returns once the agent is gone. On unix the launcher then ends as
+//! the signal would have ended it ([`end_as_heard`]). A signal the launcher
+//! was started ignoring, as under `nohup`, stays ignored. While the
+//! launcher asks for a secret, a heard signal ends the wait for input
+//! ([`Stdin`]), so the launcher puts the terminal back and then ends as the
+//! signal would have.
+
+use std::process::Child;
+use std::sync::atomic::{AtomicI32, AtomicUsize, Ordering};
+use std::time::Instant;
+
+use rig_harness_protocol::{CLOSE_WAIT, STOP_WAIT};
+
+#[cfg(unix)]
+use super::POLL;
+
+/// Runs `close`, the launcher's closing output after a signal, for at most
+/// [`CLOSE_WAIT`]: a terminal or pipe whose reader stopped would otherwise
+/// hold it.
+pub(super) fn bounded(close: impl FnOnce() + Send + 'static) {
+    let (done, closed) = std::sync::mpsc::channel();
+    let spawned = std::thread::Builder::new().spawn(move || {
+        close();
+        done.send(()).ok();
+    });
+    if spawned.is_ok() {
+        closed.recv_timeout(CLOSE_WAIT).ok();
+    }
+}
+
+/// The first signal heard while the agent ran; 0 while none was.
+static HEARD: AtomicI32 = AtomicI32::new(0);
+
+/// How many ending signals were heard while the agent ran.
+static TIMES: AtomicUsize = AtomicUsize::new(0);
+
+/// The signal heard while the agent ran, if one was.
+pub(super) fn heard() -> Option<i32> {
+    Some(HEARD.load(Ordering::SeqCst)).filter(|signal| *signal != 0)
+}
+
+/// Passes each heard signal on to the agent it watches, as a terminal
+/// would (a repeat ends an agent's clean exit at once), and kills the agent
+/// if it has not ended [`STOP_WAIT`] after the first.
+pub(super) struct Watch {
+    told: Option<Instant>,
+    /// How many signals it passed on.
+    passed: usize,
+    killed: bool,
+    #[cfg(unix)]
+    replaced: Vec<(libc::c_int, libc::sigaction)>,
+}
+
+impl Watch {
+    /// Hears the ending signals until dropped; if one was heard by then,
+    /// they stay heard, so the launcher's cleanup is not cut short.
+    pub(super) fn start() -> Self {
+        #[cfg(not(any(unix, target_family = "wasm")))]
+        console::listen();
+        Self {
+            told: None,
+            passed: 0,
+            killed: false,
+            #[cfg(unix)]
+            // SAFETY: the handler only stores to atomics.
+            replaced: unsafe { unix::listen(unix::on_signal, libc::SA_RESTART) },
+        }
+    }
+
+    /// Called as the launcher waits for `child`: tells it of each signal
+    /// heard, and kills it once it had [`STOP_WAIT`] to end.
+    pub(super) fn pass_on(&mut self, child: &mut Child) {
+        let Some(signal) = heard() else {
+            return;
+        };
+        let times = TIMES.load(Ordering::SeqCst).max(1);
+        if self.passed < times {
+            self.passed = times;
+            #[cfg(unix)]
+            unix::tell(child, signal);
+            #[cfg(not(unix))]
+            let _ = signal;
+        }
+        let told = *self.told.get_or_insert_with(Instant::now);
+        if !self.killed && told.elapsed() >= STOP_WAIT {
+            self.killed = true;
+            child.kill().ok();
+        }
+    }
+}
+
+impl Drop for Watch {
+    fn drop(&mut self) {
+        #[cfg(unix)]
+        if heard().is_none() {
+            unix::restore(&self.replaced);
+        }
+        #[cfg(not(any(unix, target_family = "wasm")))]
+        console::WAITING.store(false, Ordering::SeqCst);
+    }
+}
+
+/// The launcher's stdin, unbuffered, read while a [`Watch`] hears the
+/// ending signals: a read waits for input [`POLL`] at a time and fails
+/// once a signal was heard. A signal may reach any thread, so a blocked
+/// read is not relied on to be cut short. The failure is not
+/// [`ErrorKind::Interrupted`](std::io::ErrorKind::Interrupted), which
+/// readers retry.
+#[cfg(unix)]
+pub(super) struct Stdin;
+
+#[cfg(unix)]
+impl std::io::Read for Stdin {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        loop {
+            if heard().is_some() {
+                return Err(std::io::Error::other("a signal ends the launcher"));
+            }
+            if let Some(read) = unix::read_waiting(buf, POLL) {
+                return read;
+            }
+        }
+    }
+}
+
+/// Ends the launcher as the signal heard while the agent ran would have,
+/// after its cleanup; returns when none was, or elsewhere than unix.
+pub(super) fn end_as_heard() {
+    #[cfg(unix)]
+    if let Some(signal) = heard() {
+        unix::raise(signal);
+    }
+}
+
+#[cfg(unix)]
+pub(crate) mod unix {
+    use std::process::Child;
+    use std::sync::atomic::Ordering;
+
+    use super::{HEARD, TIMES};
+
+    /// The signals a terminal or a supervisor ends the launcher with.
+    const ENDING: [libc::c_int; 3] = [libc::SIGTERM, libc::SIGINT, libc::SIGHUP];
+
+    /// Hears each ending signal the launcher was not started ignoring with
+    /// `handler`, under `flags`, for the agent or a build; the actions it
+    /// replaced.
+    ///
+    /// # Safety
+    ///
+    /// `handler` must be async-signal-safe.
+    pub(crate) unsafe fn listen(
+        handler: extern "C" fn(libc::c_int),
+        flags: libc::c_int,
+    ) -> Vec<(libc::c_int, libc::sigaction)> {
+        let mut replaced = Vec::new();
+        for signal in ENDING {
+            // SAFETY: plain calls on zeroed actions this function owns; the
+            // caller vouches for the handler.
+            unsafe {
+                let mut before: libc::sigaction = std::mem::zeroed();
+                libc::sigaction(signal, std::ptr::null(), &raw mut before);
+                if before.sa_sigaction == libc::SIG_IGN {
+                    continue;
+                }
+                let mut action: libc::sigaction = std::mem::zeroed();
+                action.sa_sigaction = handler as *const () as libc::sighandler_t;
+                action.sa_flags = flags;
+                libc::sigemptyset(&raw mut action.sa_mask);
+                libc::sigaction(signal, &raw const action, std::ptr::null_mut());
+                replaced.push((signal, before));
+            }
+        }
+        replaced
+    }
+
+    /// Puts back the actions [`listen`] replaced.
+    pub(crate) fn restore(replaced: &[(libc::c_int, libc::sigaction)]) {
+        for (signal, before) in replaced {
+            // SAFETY: puts back an action read by `listen`.
+            unsafe {
+                libc::sigaction(*signal, before, std::ptr::null_mut());
+            }
+        }
+    }
+
+    /// Notes the first ending signal and counts each; only atomics, which
+    /// are async-signal-safe.
+    pub(super) extern "C" fn on_signal(signal: libc::c_int) {
+        let _ = HEARD.compare_exchange(0, signal, Ordering::SeqCst, Ordering::SeqCst);
+        TIMES.fetch_add(1, Ordering::SeqCst);
+    }
+
+    /// Sends `signal` to `child`.
+    pub(super) fn tell(child: &Child, signal: libc::c_int) {
+        if let Ok(pid) = libc::pid_t::try_from(child.id()) {
+            // SAFETY: `kill` takes plain integers.
+            unsafe {
+                libc::kill(pid, signal);
+            }
+        }
+    }
+
+    /// Reads stdin into `buf` once it has input; `None` when it has none
+    /// after `wait`, or a signal cut the wait or the read short.
+    pub(super) fn read_waiting(
+        buf: &mut [u8],
+        wait: std::time::Duration,
+    ) -> Option<std::io::Result<usize>> {
+        let mut input = libc::pollfd {
+            fd: libc::STDIN_FILENO,
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        let timeout = libc::c_int::try_from(wait.as_millis()).unwrap_or(libc::c_int::MAX);
+        // SAFETY: `poll` reads and writes the one `pollfd` it is given.
+        let ready = unsafe { libc::poll(&raw mut input, 1, timeout) };
+        if ready == 0 {
+            return None;
+        }
+        // SAFETY: `read` writes at most `buf.len()` bytes into `buf`.
+        let read = (ready > 0)
+            .then(|| unsafe { libc::read(libc::STDIN_FILENO, buf.as_mut_ptr().cast(), buf.len()) });
+        match read {
+            Some(read) if read >= 0 => Some(Ok(usize::try_from(read).unwrap_or_default())),
+            _ => {
+                let failure = std::io::Error::last_os_error();
+                (failure.kind() != std::io::ErrorKind::Interrupted).then_some(Err(failure))
+            }
+        }
+    }
+
+    /// Ends the process by `signal`'s default action.
+    pub(super) fn raise(signal: libc::c_int) {
+        // SAFETY: plain calls; the default action of an ending signal ends
+        // the process.
+        unsafe {
+            libc::signal(signal, libc::SIG_DFL);
+            let mut unblocked: libc::sigset_t = std::mem::zeroed();
+            libc::sigemptyset(&raw mut unblocked);
+            libc::sigaddset(&raw mut unblocked, signal);
+            libc::pthread_sigmask(
+                libc::SIG_UNBLOCK,
+                &raw const unblocked,
+                std::ptr::null_mut(),
+            );
+            libc::raise(signal);
+        }
+    }
+}
+
+/// Ctrl+C reaches every process of the console, the agent too: while the
+/// launcher waits for the agent it notes Ctrl+C and waits on; otherwise it
+/// ends as Ctrl+C ends it.
+#[cfg(not(any(unix, target_family = "wasm")))]
+mod console {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    use rig_harness_protocol::SIGNAL_EXIT_CODE;
+
+    use super::HEARD;
+
+    /// Whether a [`super::Watch`] waits for the agent.
+    pub(super) static WAITING: AtomicBool = AtomicBool::new(false);
+
+    pub(super) fn listen() {
+        static SET: std::sync::Once = std::sync::Once::new();
+        WAITING.store(true, Ordering::SeqCst);
+        SET.call_once(|| {
+            let _ = ctrlc::set_handler(|| {
+                if !WAITING.load(Ordering::SeqCst) {
+                    std::process::exit(SIGNAL_EXIT_CODE.into());
+                }
+                // Not a signal number: any nonzero value says one came.
+                let _ = HEARD.compare_exchange(0, 2, Ordering::SeqCst, Ordering::SeqCst);
+            });
+        });
+    }
+}
+
+#[cfg(test)]
+mod tests;

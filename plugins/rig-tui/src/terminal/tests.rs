@@ -122,12 +122,14 @@ fn a_terminal_write_sent_on_the_way_out_is_written() {
 struct Probe {
     asked: bool,
     drawn: usize,
+    written: Vec<u8>,
 }
 
 const PROBE: ratatui::layout::Size = ratatui::layout::Size::new(6, 2);
 
 impl Write for Probe {
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        self.written.extend_from_slice(bytes);
         Ok(bytes.len())
     }
 
@@ -211,4 +213,20 @@ fn taking_the_screen_asks_nothing_and_the_next_frame_is_whole() {
         assert!(!terminal.backend().asked);
         assert_eq!(frame(&mut terminal), whole);
     }
+}
+
+/// Buttons and the wheel are reported, in the form that has no limit on
+/// the column, and a mouse that only moves is not. Windows asks its console
+/// instead.
+#[cfg(not(windows))]
+#[test]
+fn taking_the_screen_asks_for_the_mouse_but_not_its_motion() {
+    let terminal = Terminal::new(Probe::default());
+    assert!(terminal.is_ok());
+    let Ok(mut terminal) = terminal else { return };
+    assert!(take_screen(&mut terminal, false).is_ok());
+    let written = String::from_utf8_lossy(&terminal.backend().written).into_owned();
+    assert!(written.contains("\x1b[?1002h"), "{written:?}");
+    assert!(written.contains("\x1b[?1006h"), "{written:?}");
+    assert!(!written.contains("\x1b[?1003h"), "{written:?}");
 }

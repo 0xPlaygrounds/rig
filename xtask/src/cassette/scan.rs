@@ -169,10 +169,7 @@ pub(crate) fn scan(text: &str, secrets: &[String]) -> Vec<Hit> {
         if is_uuid(token)
             && let Some(position) = text.find(token)
         {
-            let mut start = position.saturating_sub(16);
-            while !lower.is_char_boundary(start) {
-                start -= 1;
-            }
+            let start = lower.floor_char_boundary(position.saturating_sub(16));
             if lower[start..position].contains("team") {
                 hit("xai_team", token);
             }

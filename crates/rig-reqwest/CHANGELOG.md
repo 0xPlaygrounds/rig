@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.47.0](https://github.com/0xPlaygrounds/rig/compare/rig-reqwest-v0.46.0...rig-reqwest-v0.47.0) - 2026-11-20
+
+### Fixed
+
+- *(reqwest)* send no credential headers on a redirect to another origin ([#3113](https://github.com/0xPlaygrounds/rig/pull/3113)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(http)* [**breaking**] an error keeps its retry class from where it was made ([#2969](https://github.com/0xPlaygrounds/rig/pull/2969)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Other
+
+- *(rig-core, rig-http)* [**breaking**] drop the websocket cargo feature; fold infra repeats; one json_len ([#3357](https://github.com/0xPlaygrounds/rig/pull/3357)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-http)* [**breaking**] HttpClientExt takes and returns Bytes; dead rig-http and rig-core surface ([#3341](https://github.com/0xPlaygrounds/rig/pull/3341)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] remove duplicated tests, dead code and doc bloat across the workspace ([#3202](https://github.com/0xPlaygrounds/rig/pull/3202)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #3202
+- [**breaking**] PRs run what the change can break, one test binary per crate, one required check ([#3014](https://github.com/0xPlaygrounds/rig/pull/3014)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #3014
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
+## [0.46.0](https://github.com/0xPlaygrounds/rig/compare/v0.45.0...v0.46.0) - 2026-10-31
+
+### Added
+
+- *(rig-traffic)* record every provider HTTP exchange, on rig-cassette's engine ([#2893](https://github.com/0xPlaygrounds/rig/pull/2893)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(harness)* add claude-cloak and harden Anthropic handling ([#2875](https://github.com/0xPlaygrounds/rig/pull/2875)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 ## [0.45.0](https://github.com/0xPlaygrounds/rig/compare/rig-reqwest-v0.44.0...rig-reqwest-v0.45.0) - 2026-10-19
 
 ### Added

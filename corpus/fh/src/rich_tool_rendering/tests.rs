@@ -13,8 +13,7 @@ use rig_harness_test_support::{
     Ended, app_on, calls, connect, first_agent, log_ended, reply, run_until, scratch_home,
 };
 use rig_tui::{
-    CallState, RenderInput, RenderKey, RenderOutput, RenderRequest, ToolCallView, ToolRender,
-    TuiPlugin,
+    CallState, RenderInput, RenderKey, RenderOutput, RenderRequest, ToolRender, TuiPlugins,
 };
 use serde_json::json;
 
@@ -40,26 +39,17 @@ fn note_facts(
     }
 }
 
-/// The lines of `view` as the terminal view draws them: through the
+/// The lines of `call` as the terminal view draws them: through the
 /// render systems, which start from the default look.
-fn drawn(world: &mut World, view: &ToolCallView<'_>) -> Vec<String> {
-    let input = ToolRender {
-        call: view.call.clone(),
-        result: view.result.cloned(),
-        state: view.state.clone(),
-        theme: view.theme,
-        facts: view.facts.cloned(),
-        took: view.took,
-        output: view.output.map(str::to_owned),
-        children: view.children.to_vec(),
-    };
+fn drawn(world: &mut World, call: ToolRender) -> Vec<String> {
     let key = RenderKey::Tool(0, 0);
+    let output = RenderOutput {
+        lines: call.default_lines(),
+        decorations: Vec::new(),
+    };
     let request = RenderRequest {
-        input: RenderInput::Tool(input),
-        output: RenderOutput {
-            lines: view.default_lines(),
-            decorations: Vec::new(),
-        },
+        input: RenderInput::Tool(call),
+        output,
     };
     let mut batch = RenderBatch::default();
     batch.requests.insert(key.clone(), request);
@@ -73,7 +63,7 @@ fn drawn(world: &mut World, view: &ToolCallView<'_>) -> Vec<String> {
 /// Another plugin's look, of its `probe` tool.
 fn draw_probe(mut batch: ResMut<RenderBatch>) {
     for (call, output) in batch.tools_mut("probe") {
-        output.lines = vec![call.view().header("probe says hi", "")];
+        output.lines = vec![call.header("probe says hi", "").into()];
     }
 }
 
@@ -110,7 +100,7 @@ fn edits_read_as_diffs_and_commands_as_command_lines() {
         SessionLogPlugin,
         EditTool,
         ShellTool,
-        TuiPlugin,
+        TuiPlugins,
     ))
     .add_plugins(RichToolRenderingPlugin)
     .add_systems(TranscriptRender, draw_probe.in_set(RenderSystems::Render))
@@ -179,11 +169,11 @@ fn edits_read_as_diffs_and_commands_as_command_lines() {
                     .iter()
                     .copied()
                     .find(|result| result.call == call.id);
-                let mut view = ToolCallView::new(call, result, CallState::Done);
+                let mut view = ToolRender::new(call.clone(), result.cloned(), CallState::Done);
                 let known = facts.0.get(&call.id);
-                view.facts = known.map(|(published, _)| published);
+                view.facts = known.map(|(published, _)| published.clone());
                 view.took = known.map(|(_, took)| *took);
-                screen.extend(drawn(world, &view));
+                screen.extend(drawn(world, view));
             }
         }
     }
@@ -212,9 +202,9 @@ fn edits_read_as_diffs_and_commands_as_command_lines() {
     let (Some(probe), Some(other)) = (probe, other) else {
         return;
     };
-    let probe = drawn(world, &ToolCallView::new(&probe, None, CallState::Done));
+    let probe = drawn(world, ToolRender::new(probe, None, CallState::Done));
     assert!(probe.concat().contains("probe says hi"));
-    let other = drawn(world, &ToolCallView::new(&other, None, CallState::Done));
+    let other = drawn(world, ToolRender::new(other, None, CallState::Done));
     assert!(other.concat().contains(r#"other {"x":1}"#));
 
     // The command that printed 100k lines: the tool's note of what it
@@ -242,9 +232,9 @@ fn edits_read_as_diffs_and_commands_as_command_lines() {
     let Some(running) = call("shell", parse_partial_arguments(r#"{"command": "make"}"#)) else {
         return;
     };
-    let mut view = ToolCallView::new(&running, None, CallState::Running(Some("c".into())));
-    view.output = Some("a\nb\nc\n");
-    let shown = drawn(world, &view);
+    let mut view = ToolRender::new(running, None, CallState::Running(Some("c".into())));
+    view.output = Some("a\nb\nc\n".to_owned());
+    let shown = drawn(world, view);
     let shown: Vec<&str> = shown.iter().map(|line| line.trim()).collect();
     assert!(shown.ends_with(&["a", "b", "c"]), "{shown:?}");
     std::fs::remove_dir_all(&dir).ok();
@@ -263,8 +253,8 @@ fn a_streaming_write_shows_its_path_before_its_last_chunk() {
         let Some(call) = call("write", parse_partial_arguments(&so_far)) else {
             return false;
         };
-        let view = ToolCallView::new(&call, None, CallState::Streaming);
-        drawn(app.world_mut(), &view)
+        let view = ToolRender::new(call, None, CallState::Streaming);
+        drawn(app.world_mut(), view)
             .concat()
             .contains("write big.txt")
     });

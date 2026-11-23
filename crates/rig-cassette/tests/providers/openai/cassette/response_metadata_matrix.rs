@@ -1,37 +1,16 @@
-//! Edge matrix for echoed response metadata on the OpenAI Responses API
-//! (rig#2483, rig#2493).
+//! Echoed response metadata on the OpenAI Responses API.
 //!
-//! **Bug.** The response wire struct reached the request-shaped
-//! `AdditionalParameters` through `#[serde(flatten)]`, so one optional
-//! metadata field disagreeing with its Rust type discarded the whole
-//! response. Two ways that happened in the field: MiniMax-style endpoints
-//! echo `top_p` as an object (`invalid type: map, expected f64`, killing a
-//! response that carried a valid tool call — #2483), and with
-//! `serde_json/arbitrary_precision` enabled anywhere in the graph every
-//! buffered number becomes an internal map, so even `top_p: 0.95` failed and
-//! the terminal `response.completed` frame — the one carrying usage — became a
-//! hard stream error (#2493).
+//! Metadata is captured as raw JSON and projected per key, so a key whose
+//! value does not fit its Rust type is dropped, never fatal to the response.
+//! OpenAI-compatible endpoints echo `top_p` as an object, and
+//! `serde_json/arbitrary_precision` turns every buffered number into a map;
+//! neither may discard a tool call or the terminal frame's usage.
 //!
-//! **Fix.** Metadata is captured as raw JSON and projected per key; a key
-//! whose value does not fit is dropped, never fatal.
-//!
-//! **Fixtures.** Cells 3–4 are hand-derived from recorded OpenAI turns: the
-//! recorded *response* bodies were copied and every `"top_p":1.0` replaced
-//! with `"top_p":{"value":1.0}`, the shape a compatible endpoint emits, while
-//! the recorded *request* bodies stay byte-identical so the harness still
-//! matches them. It is the only way to pin the compatible-endpoint shape
-//! without a MiniMax key, and each cell asserts the fixture really carries the
-//! object shape so a re-record cannot silently turn it into a plain-OpenAI
-//! cell.
-//!
-//! | # | cell | transport | `top_p` on the wire | fixture |
-//! |---|------|-----------|---------------------|---------|
-//! | 3 | `object_top_p_blocking_tool_call` | blocking | `{"value":1.0}` | derived |
-//! | 4 | `object_top_p_streaming_terminal_usage` | streaming | `{"value":1.0}` | derived |
-//!
-//! Unit cells for the projection itself (per-key drop, numeric decode under
-//! `arbitrary_precision`, round-trip) live beside the type in
-//! `crates/rig-core/src/providers/openai/responses_api/tests.rs`.
+//! The fixtures are derived from recorded OpenAI turns: every `"top_p":1.0`
+//! in the response bodies is replaced with `"top_p":{"value":1.0}`, while
+//! the request bodies stay byte-identical so the harness still matches them.
+//! Each cell asserts its fixture carries the object shape, so a re-record
+//! cannot silently turn it into a plain OpenAI cell.
 
 use rig::message::AssistantContent;
 use rig::providers::openai;

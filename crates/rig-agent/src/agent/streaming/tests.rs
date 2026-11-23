@@ -13,16 +13,15 @@ use crate::completion::{CompletionRequest, FinishReason, PromptError, ToolDefini
 use crate::run::{AgentRun, AgentRunStep};
 use crate::streaming::{Item, StreamEvent};
 use crate::test_utils::{
-    CapturedSpan, MockAddTool, MockCompletionModel, MockContextProbeTool, MockStreamEvent,
-    MockSubtractTool, MockToolError, SessionId, TraceCapture, mock_final,
+    CapturedSpan, Counted, MockAddTool, MockCompletionModel, MockContextProbeTool, MockStreamEvent,
+    MockSubtractTool, SessionId, TraceCapture, drive_to_final_response, mock_final,
 };
-use crate::tool::{Tool, ToolContext};
+use crate::tool::ToolContext;
 use futures::{StreamExt, TryStreamExt};
 use rig_core::message::{AssistantContent, Message, ToolChoice, ToolResultContent, UserContent};
 use rig_core::operation::Finish;
 use rig_core::providers::anthropic;
 use rig_core::tool::feedback::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER;
-use serde::Deserialize;
 use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
@@ -265,22 +264,6 @@ impl AgentHook for PanicOnUnknownToolHook {
     }
 }
 
-#[derive(Clone)]
-struct CountingAddTool {
-    calls: Arc<AtomicU32>,
-}
-
-#[derive(Clone)]
-struct CountingSubtractTool {
-    calls: Arc<AtomicU32>,
-}
-
-#[derive(Deserialize)]
-struct CountingOperationArgs {
-    x: i32,
-    y: i32,
-}
-
 fn arithmetic_tool_definition(name: &str, description: &str) -> ToolDefinition {
     ToolDefinition {
         name: rig_core::message::ToolName::new(name).expect("tool name"),
@@ -300,54 +283,6 @@ fn arithmetic_tool_definition(name: &str, description: &str) -> ToolDefinition {
             "required": ["x", "y"],
         }),
         annotations: Default::default(),
-    }
-}
-
-impl Tool for CountingAddTool {
-    const NAME: &'static str = "add";
-    type Error = MockToolError;
-    type Args = CountingOperationArgs;
-    type Output = i32;
-
-    fn description(&self) -> String {
-        "Add x and y together".to_string()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        arithmetic_tool_definition(Self::NAME, "Add x and y together").parameters
-    }
-
-    async fn call(
-        &self,
-        _context: &mut ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
-        self.calls.fetch_add(1, Ordering::SeqCst);
-        Ok(args.x + args.y)
-    }
-}
-
-impl Tool for CountingSubtractTool {
-    const NAME: &'static str = "subtract";
-    type Error = MockToolError;
-    type Args = CountingOperationArgs;
-    type Output = i32;
-
-    fn description(&self) -> String {
-        "Subtract y from x".to_string()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        arithmetic_tool_definition(Self::NAME, "Subtract y from x").parameters
-    }
-
-    async fn call(
-        &self,
-        _context: &mut ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
-        self.calls.fetch_add(1, Ordering::SeqCst);
-        Ok(args.x - args.y)
     }
 }
 
@@ -391,13 +326,7 @@ async fn execution_commit_items_are_not_emitted_when_run_commit_fails() {
     let runner = AgentBuilder::new(MockCompletionModel::from_turns([]))
         .build()
         .prompt("go");
-    let tool_snapshot = Arc::new(
-        runner
-            .tool_server_handle
-            .snapshot_tool_defs(None)
-            .await
-            .expect("empty tool snapshot should build"),
-    );
+    let tool_snapshot = Arc::new(runner.tool_server_handle.snapshot_with_dynamic(&[]));
 
     let mut run = AgentRun::new("go").max_turns(2);
     assert!(matches!(
@@ -438,7 +367,7 @@ async fn execution_commit_items_are_not_emitted_when_run_commit_fails() {
     forged["Execute"]["tool_call"]["id"] = serde_json::json!({"provider": "mismatched_call"});
     calls[0] = serde_json::from_value(forged).expect("a forged call deserializes");
 
-    let hook_context = HookContext::new(true, None, crate::handlers::Handlers::default());
+    let hook_context = HookContext::new(true, crate::handlers::Handlers::default());
     hook_context.set_turn(1);
     let committed_before = run.messages().len();
     let settled = drive_tool_calls(
@@ -448,7 +377,7 @@ async fn execution_commit_items_are_not_emitted_when_run_commit_fails() {
         calls,
         tool_snapshot,
         |span| span,
-        true,
+        None,
     )
     .await;
 
@@ -797,6 +726,65 @@ async fn unary_prompt_message_telemetry_records_accepted_output_when_opted_in() 
     );
 }
 
+/// A streamed run records `gen_ai.completion` on the agent span it created
+/// once, at the end, with the run's output, and not at all when
+/// `on_model_turn_finished` stops the run, as a blocking run does.
+#[tokio::test]
+async fn streamed_run_records_its_completion_once_at_the_end() {
+    struct StopAfterTurn;
+    impl AgentHook for StopAfterTurn {
+        async fn on_model_turn_finished(
+            &self,
+            _: &HookContext,
+            _: ModelTurnFinished<'_>,
+        ) -> ModelTurnAction {
+            ModelTurnAction::Stop("enough".to_owned())
+        }
+    }
+
+    let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+    let spans = TraceCapture::default();
+    let _default = tracing::subscriber::set_default(spans.subscriber());
+    let warmup = AgentBuilder::new(MockCompletionModel::text("warmup")).build();
+    warmup.prompt("warmup").await.expect("warmup prompt");
+    tracing::callsite::rebuild_interest_cache();
+
+    let one_turn = || {
+        MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("streamed answer"),
+            MockStreamEvent::final_response(Usage::default()),
+        ]])
+    };
+    // (agent, the recorded completion: `None` for a stopped run)
+    let cases = [
+        (AgentBuilder::new(one_turn()), Some("streamed answer")),
+        (
+            AgentBuilder::new(streaming_tool_then_text_model()).tool(MockAddTool),
+            Some("done"),
+        ),
+        (AgentBuilder::new(one_turn()).add_hook(StopAfterTurn), None),
+    ];
+    for (builder, expected) in cases {
+        spans.clear();
+        let agent = builder.record_content_telemetry(true).build();
+        let mut stream = agent.prompt("question").max_turns(2).stream();
+        let mut failed = false;
+        while let Some(item) = stream.next().await {
+            failed |= item.is_err();
+        }
+        assert_eq!(failed, expected.is_none(), "only the stopped run fails");
+
+        let agent_span = spans
+            .spans()
+            .into_iter()
+            .find(|span| span.name == "invoke_agent")
+            .expect("invoke_agent span should be captured");
+        let recorded = usize::from(expected.is_some());
+        assert_eq!(agent_span.record_count("gen_ai.completion"), recorded);
+        assert_eq!(agent_span.text("gen_ai.completion").as_deref(), expected);
+    }
+}
+
 #[tokio::test]
 async fn streaming_rejected_message_telemetry_does_not_record_output() {
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
@@ -921,13 +909,13 @@ fn completion_calls_stream_item_serializes_and_deserializes_expected_shape() {
 
 #[test]
 fn final_response_serializes_completion_calls_with_missing_usage() {
-    let item = MultiTurnStreamItem::FinalResponse(
-        PromptResponse::from_content(vec![AssistantContent::text("done")], usage(3, 4))
-            .with_completion_calls(vec![
-                CompletionCall::new(0, Usage::default(), serde_json::json!({"id": "resp_0"})),
-                CompletionCall::new(1, usage(3, 4), serde_json::json!({"id": "resp_1"})),
-            ]),
-    );
+    let item = MultiTurnStreamItem::FinalResponse(PromptResponse {
+        completion_calls: vec![
+            CompletionCall::new(0, Usage::default(), serde_json::json!({"id": "resp_0"})),
+            CompletionCall::new(1, usage(3, 4), serde_json::json!({"id": "resp_1"})),
+        ],
+        ..PromptResponse::from_content(vec![AssistantContent::text("done")], usage(3, 4))
+    });
 
     if let MultiTurnStreamItem::FinalResponse(response) = &item {
         assert_eq!(response.requests(), 2);
@@ -1028,7 +1016,9 @@ async fn a_streamed_run_reads_back_item_by_item() {
             "streamAssistantItem",
             "toolCall",
             "toolExecutionCommitted",
+            "toolExecutionStarted",
             "toolResult",
+            "toolResultItem",
         ]
     );
     assert_eq!(fragments, r#"{"x": 2, "y": 3}"#);
@@ -1055,15 +1045,10 @@ impl AgentHook for RepairDefaultApiHook {
     async fn on_invalid_tool_call(
         &self,
         _ctx: &HookContext,
-        event: &InvalidToolCallContext,
+        context: &InvalidToolCallContext,
     ) -> Option<InvalidToolCallAction> {
-        Some(match event {
-            context => {
-                assert_eq!(context.tool_name, "default_api");
-                InvalidToolCallAction::repair("add")
-            }
-            _ => InvalidToolCallAction::fail(),
-        })
+        assert_eq!(context.tool_name, "default_api");
+        Some(InvalidToolCallAction::repair("add"))
     }
 }
 
@@ -1074,18 +1059,13 @@ impl AgentHook for RetryDefaultApiHook {
     async fn on_invalid_tool_call(
         &self,
         _ctx: &HookContext,
-        event: &InvalidToolCallContext,
+        context: &InvalidToolCallContext,
     ) -> Option<InvalidToolCallAction> {
-        Some(match event {
-            context => {
-                assert_eq!(context.tool_name, "default_api");
-                if let Some(args) = context.args.as_deref() {
-                    assert!(!args.is_empty());
-                }
-                InvalidToolCallAction::retry("Use the add tool instead")
-            }
-            _ => InvalidToolCallAction::fail(),
-        })
+        assert_eq!(context.tool_name, "default_api");
+        if let Some(args) = context.args.as_deref() {
+            assert!(!args.is_empty());
+        }
+        Some(InvalidToolCallAction::retry("Use the add tool instead"))
     }
 }
 
@@ -1096,21 +1076,18 @@ impl AgentHook for SkipDefaultApiHook {
     async fn on_invalid_tool_call(
         &self,
         _ctx: &HookContext,
-        event: &InvalidToolCallContext,
+        context: &InvalidToolCallContext,
     ) -> Option<InvalidToolCallAction> {
-        Some(match event {
-            context => {
-                assert_eq!(context.tool_name, "default_api");
-                InvalidToolCallAction::skip("default_api was skipped")
-            }
-            _ => InvalidToolCallAction::fail(),
-        })
+        assert_eq!(context.tool_name, "default_api");
+        Some(InvalidToolCallAction::skip("default_api was skipped"))
     }
 }
 
 #[derive(Clone, Default)]
 struct RecordingToolCallDeltaHook {
     deltas: Arc<Mutex<Vec<RecordedToolCallDelta>>>,
+    /// Stop the run at the first delta instead of continuing.
+    stop: bool,
 }
 
 impl RecordingToolCallDeltaHook {
@@ -1137,7 +1114,11 @@ impl AgentHook for RecordingToolCallDeltaHook {
             .lock()
             .expect("tool call delta hook records mutex was poisoned")
             .push(record);
-        ObservationAction::continue_run()
+        if self.stop {
+            ObservationAction::stop("stop on tool call delta")
+        } else {
+            ObservationAction::continue_run()
+        }
     }
 }
 
@@ -1157,17 +1138,13 @@ impl RecordingTextDeltaHook {
 
 impl AgentHook for RecordingTextDeltaHook {
     async fn on_text_delta(&self, _ctx: &HookContext, event: TextDelta<'_>) -> ObservationAction {
-        match event {
-            TextDelta { delta, aggregated } => {
-                let record = (delta.to_string(), aggregated.to_string());
-                self.deltas
-                    .lock()
-                    .expect("text delta hook records mutex was poisoned")
-                    .push(record);
-                ObservationAction::continue_run()
-            }
-            _ => ObservationAction::continue_run(),
-        }
+        let TextDelta { delta, aggregated } = event;
+        let record = (delta.to_string(), aggregated.to_string());
+        self.deltas
+            .lock()
+            .expect("text delta hook records mutex was poisoned")
+            .push(record);
+        ObservationAction::continue_run()
     }
 }
 
@@ -1254,101 +1231,6 @@ impl AgentHook for RetryFirstReasoningTurnHook {
     }
 }
 
-#[derive(Clone)]
-struct RecordingTextAndRetryInvalidToolHook {
-    text: RecordingTextDeltaHook,
-}
-
-impl AgentHook for RecordingTextAndRetryInvalidToolHook {
-    async fn on_text_delta(&self, ctx: &HookContext, event: TextDelta<'_>) -> ObservationAction {
-        self.text.on_text_delta(ctx, event).await
-    }
-    async fn on_invalid_tool_call(
-        &self,
-        ctx: &HookContext,
-        event: &InvalidToolCallContext,
-    ) -> Option<InvalidToolCallAction> {
-        RetryDefaultApiHook.on_invalid_tool_call(ctx, event).await
-    }
-}
-
-#[derive(Clone)]
-struct RecordingDeltaAndRetryInvalidToolHook {
-    delta: RecordingToolCallDeltaHook,
-}
-
-impl AgentHook for RecordingDeltaAndRetryInvalidToolHook {
-    async fn on_tool_call_delta(
-        &self,
-        ctx: &HookContext,
-        event: ToolCallDelta<'_>,
-    ) -> ObservationAction {
-        self.delta.on_tool_call_delta(ctx, event).await
-    }
-    async fn on_invalid_tool_call(
-        &self,
-        ctx: &HookContext,
-        event: &InvalidToolCallContext,
-    ) -> Option<InvalidToolCallAction> {
-        RetryDefaultApiHook.on_invalid_tool_call(ctx, event).await
-    }
-}
-
-#[derive(Clone)]
-struct RecordingDeltaAndSkipInvalidToolHook {
-    delta: RecordingToolCallDeltaHook,
-}
-
-impl AgentHook for RecordingDeltaAndSkipInvalidToolHook {
-    async fn on_tool_call_delta(
-        &self,
-        ctx: &HookContext,
-        event: ToolCallDelta<'_>,
-    ) -> ObservationAction {
-        self.delta.on_tool_call_delta(ctx, event).await
-    }
-    async fn on_invalid_tool_call(
-        &self,
-        ctx: &HookContext,
-        event: &InvalidToolCallContext,
-    ) -> Option<InvalidToolCallAction> {
-        SkipDefaultApiHook.on_invalid_tool_call(ctx, event).await
-    }
-}
-
-#[derive(Clone, Default)]
-struct TerminatingToolCallDeltaHook {
-    deltas: Arc<Mutex<Vec<RecordedToolCallDelta>>>,
-}
-
-impl TerminatingToolCallDeltaHook {
-    fn observed(&self) -> Vec<RecordedToolCallDelta> {
-        self.deltas
-            .lock()
-            .expect("tool call delta hook records mutex was poisoned")
-            .clone()
-    }
-}
-
-impl AgentHook for TerminatingToolCallDeltaHook {
-    async fn on_tool_call_delta(
-        &self,
-        _ctx: &HookContext,
-        event: ToolCallDelta<'_>,
-    ) -> ObservationAction {
-        let record = (
-            event.part.index(),
-            event.tool_name.to_string(),
-            event.delta.to_string(),
-        );
-        self.deltas
-            .lock()
-            .expect("tool call delta hook records mutex was poisoned")
-            .push(record);
-        ObservationAction::stop("stop on tool call delta")
-    }
-}
-
 /// The streaming driver threads the per-call `ToolContext` to executed
 /// tools, exactly like the blocking path.
 #[tokio::test]
@@ -1380,13 +1262,7 @@ async fn tool_context_reaches_tool_through_streaming_loop() {
         .max_turns(3)
         .stream();
 
-    while let Some(item) = stream.next().await {
-        match item {
-            Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
-            Err(err) => panic!("unexpected streaming error: {err:?}"),
-            Ok(_) => {}
-        }
-    }
+    drive_to_final_response(&mut stream).await;
 
     assert_eq!(probe.observed().as_deref(), Some("session:xyz-789"));
 }
@@ -1471,9 +1347,7 @@ async fn invalid_tool_call_hook_skip_emits_streaming_tool_result() {
     ]);
     let recorded = model.clone();
     let agent = AgentBuilder::new(model)
-        .tool(CountingAddTool {
-            calls: add_calls.clone(),
-        })
+        .tool(Counted(MockAddTool, add_calls.clone()))
         .build();
 
     let mut stream = agent
@@ -1566,9 +1440,7 @@ async fn invalid_tool_call_hook_retries_mixed_streaming_turn_without_executing_v
     ]);
     let recorded = model.clone();
     let agent = AgentBuilder::new(model)
-        .tool(CountingAddTool {
-            calls: add_calls.clone(),
-        })
+        .tool(Counted(MockAddTool, add_calls.clone()))
         .build();
 
     let mut stream = agent
@@ -1689,9 +1561,7 @@ async fn invalid_tool_call_hook_skips_mixed_streaming_turn_without_executing_val
     ]);
     let recorded = model.clone();
     let agent = AgentBuilder::new(model)
-        .tool(CountingAddTool {
-            calls: add_calls.clone(),
-        })
+        .tool(Counted(MockAddTool, add_calls.clone()))
         .build();
 
     let mut stream = agent
@@ -1827,13 +1697,7 @@ async fn invalid_completed_tool_call_skip_preserves_streaming_reasoning_history(
         .history(Vec::<Message>::new())
         .stream();
 
-    while let Some(item) = stream.next().await {
-        match item {
-            Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
-            Ok(_) => {}
-            Err(err) => panic!("unexpected streaming error: {err:?}"),
-        }
-    }
+    drive_to_final_response(&mut stream).await;
 
     let requests = recorded.requests();
     assert_eq!(requests.len(), 2);
@@ -1876,16 +1740,13 @@ async fn invalid_tool_call_delta_retry_uses_structured_tool_feedback() {
     ]);
     let recorded = model.clone();
     let agent = AgentBuilder::new(model)
-        .tool(CountingAddTool {
-            calls: add_calls.clone(),
-        })
+        .tool(Counted(MockAddTool, add_calls.clone()))
         .build();
 
     let mut stream = agent
         .prompt("use the tool")
-        .add_hook(RecordingDeltaAndRetryInvalidToolHook {
-            delta: delta_hook.clone(),
-        })
+        .add_hook(delta_hook.clone())
+        .add_hook(RetryDefaultApiHook)
         .max_turns(3)
         .history(Vec::<Message>::new())
         .max_invalid_tool_call_retries(1)
@@ -2017,21 +1878,14 @@ async fn invalid_tool_call_delta_retry_resets_streaming_text_delta_state() {
 
     let mut stream = agent
         .prompt("use the tool")
-        .add_hook(RecordingTextAndRetryInvalidToolHook {
-            text: text_hook.clone(),
-        })
+        .add_hook(text_hook.clone())
+        .add_hook(RetryDefaultApiHook)
         .max_turns(3)
         .history(Vec::<Message>::new())
         .max_invalid_tool_call_retries(1)
         .stream();
 
-    while let Some(item) = stream.next().await {
-        match item {
-            Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
-            Ok(_) => {}
-            Err(err) => panic!("unexpected streaming error: {err:?}"),
-        }
-    }
+    drive_to_final_response(&mut stream).await;
 
     assert_eq!(
         text_hook.observed(),
@@ -2062,16 +1916,13 @@ async fn invalid_tool_call_delta_skip_uses_structured_tool_feedback() {
     ]);
     let recorded = model.clone();
     let agent = AgentBuilder::new(model)
-        .tool(CountingAddTool {
-            calls: add_calls.clone(),
-        })
+        .tool(Counted(MockAddTool, add_calls.clone()))
         .build();
 
     let mut stream = agent
         .prompt("use the tool")
-        .add_hook(RecordingDeltaAndSkipInvalidToolHook {
-            delta: delta_hook.clone(),
-        })
+        .add_hook(delta_hook.clone())
+        .add_hook(SkipDefaultApiHook)
         .max_turns(3)
         .history(Vec::<Message>::new())
         .stream();
@@ -2206,12 +2057,8 @@ async fn multiple_valid_streaming_tool_calls_execute_after_batch_validation() {
     ]);
     let recorded = model.clone();
     let agent = AgentBuilder::new(model)
-        .tool(CountingAddTool {
-            calls: add_calls.clone(),
-        })
-        .tool(CountingSubtractTool {
-            calls: subtract_calls.clone(),
-        })
+        .tool(Counted(MockAddTool, add_calls.clone()))
+        .tool(Counted(MockSubtractTool, subtract_calls.clone()))
         .build();
 
     let mut stream = agent.prompt("use tools").max_turns(3).stream();
@@ -2607,7 +2454,10 @@ async fn stream_prompt_tool_call_deltas_hook_termination_prevents_delta_emit() {
         MockStreamEvent::tool_call_arguments_delta("tool_1", "{\"x\":1}"),
         MockStreamEvent::final_response_with_total_tokens(3),
     ]]);
-    let hook = TerminatingToolCallDeltaHook::default();
+    let hook = RecordingToolCallDeltaHook {
+        stop: true,
+        ..Default::default()
+    };
     let agent = AgentBuilder::new(model).tool(MockAddTool).build();
 
     let mut stream = agent
@@ -2717,17 +2567,9 @@ async fn final_response_can_remain_empty_for_truly_textless_turns() {
     assert_eq!(final_response_text.as_deref(), Some(""));
 }
 
-/// rig#2322 — a turn that produced **nothing** and was cut short at the
-/// output-token limit must not finalize as a successful empty answer.
-///
-/// Not a cassette test: a provider cannot be made to emit an exactly-empty
-/// `MAX_TOKENS` turn on demand, so the wire shape is scripted. The Gemini
-/// cassette suite pins the *request* side of rig#2322; this pins what the
-/// agent does with the response.
-///
-/// This is the failure users actually saw. The 4096 cap truncated the turn,
-/// the assembler dropped `FinishReason::Length`, and the run finished as a
-/// successful `""` — a blank answer with no error and nothing to inspect.
+/// A turn that produced nothing and was cut short at the output-token limit
+/// fails instead of finalizing as a successful empty answer. Scripted because
+/// a provider cannot be made to emit an exactly-empty `MAX_TOKENS` turn.
 #[tokio::test]
 async fn empty_turn_truncated_at_max_tokens_is_an_error_not_an_empty_answer() {
     let model =
@@ -2772,12 +2614,8 @@ async fn empty_turn_truncated_at_max_tokens_is_an_error_not_an_empty_answer() {
     );
 }
 
-/// rig#2322 — the guard against over-correcting the test above: a turn that
-/// streamed **real output** before hitting the limit stays valid.
-///
-/// Truncation after partial output is a normal, useful result — the caller
-/// gets the prefix the model produced. Only a turn that delivered nothing
-/// is an error. Scripted for the same reason as above.
+/// A turn that streamed real output before hitting the limit stays a valid
+/// answer: only a turn that delivered nothing is an error.
 #[tokio::test]
 async fn partial_output_truncated_at_max_tokens_stays_a_valid_answer() {
     let model = MockCompletionModel::from_stream_turns([[
@@ -2821,11 +2659,7 @@ async fn partial_output_truncated_at_max_tokens_stays_a_valid_answer() {
     );
 }
 
-/// rig#2322 — a content-filtered turn that delivered nothing gets the same
-/// treatment as a truncated one: it is not a successful empty answer.
-///
-/// Scripted rather than recorded because a safety filter cannot be
-/// provoked reliably or ethically on demand.
+/// A content-filtered turn that delivered nothing fails like a truncated one.
 #[tokio::test]
 async fn empty_content_filtered_turn_is_an_error_not_an_empty_answer() {
     let model =
@@ -2902,20 +2736,9 @@ async fn empty_turn_with_an_unknown_finish_reason_fails_the_run() {
     );
 }
 
-/// rig#2322 — a turn that spent its whole budget **thinking** and was cut
-/// off before answering must error, not report success with `""`.
-///
-/// This is the common shape of the bug, not a corner of it: Gemini counts
-/// thinking tokens against `maxOutputTokens` (the committed cassettes show
-/// `thoughtsTokenCount` of 176–307 on ordinary prompts), so a truncated
-/// thinking turn *typically* carries reasoning and no text.
-///
-/// The first version of this guard keyed on `is_empty_assistant_turn`,
-/// which is false for a reasoning-only turn — so the headline scenario
-/// still finalized as a successful empty answer. The predicate is now
-/// `turn_delivered_no_answer`.
-///
-/// Synthetic: a provider cannot be made to truncate mid-thought on demand.
+/// A turn that spent its whole budget thinking and was cut off before
+/// answering fails instead of reporting success with `""`. Reasoning alone is
+/// not an answer, since providers count thinking tokens against the cap.
 #[tokio::test]
 async fn reasoning_only_turn_truncated_at_max_tokens_is_an_error() {
     let model = MockCompletionModel::from_stream_turns([[
@@ -2952,10 +2775,7 @@ async fn reasoning_only_turn_truncated_at_max_tokens_is_an_error() {
     );
 }
 
-/// rig#2322 — the same shape under a content filter takes the same path.
-///
-/// Synthetic for the same reason, plus: a safety filter cannot be provoked
-/// reliably or ethically on demand.
+/// A reasoning-only turn stopped by a content filter fails the same way.
 #[tokio::test]
 async fn reasoning_only_turn_content_filtered_is_an_error() {
     let model = MockCompletionModel::from_stream_turns([[
@@ -2996,11 +2816,8 @@ async fn reasoning_only_turn_content_filtered_is_an_error() {
     );
 }
 
-/// rig#2322 — the guard against over-correcting into "reasoning present
-/// means failure": a turn that thought **and then answered** before being
-/// truncated is a valid answer.
-///
-/// Synthetic: same reason as above.
+/// A turn that thought and then answered before being truncated is a valid
+/// answer.
 #[tokio::test]
 async fn reasoning_then_text_truncated_stays_a_valid_answer() {
     let model = MockCompletionModel::from_stream_turns([[
@@ -3038,16 +2855,10 @@ async fn reasoning_then_text_truncated_stays_a_valid_answer() {
     );
 }
 
-/// rig#2322 — what happens to the partial reasoning when the turn errors.
-///
-/// A caller debugging a truncated thinking turn wants to see how far the
-/// model got. The reasoning reaches them because it was *streamed*: every
-/// part's end is delivered before the run reads the finish reason. History
-/// keeps nothing — the truncation guard runs before the push, so a
-/// reasoning-only turn nobody can answer around is not committed on either
-/// runtime (CONTRACT §4; `run::tests::a_truncated_reasoning_only_turn_commits_nothing`).
-/// This test once pinned the opposite ordering (push, then guard); the
-/// stream is the surface that keeps the partial reasoning debuggable.
+/// The partial reasoning of a truncated turn that errors reaches the stream
+/// consumer, because every part's end is delivered before the run reads the
+/// finish reason. History keeps nothing: the truncation guard runs before the
+/// push (CONTRACT §4).
 #[tokio::test]
 async fn partial_reasoning_reaches_the_consumer_when_the_truncated_turn_errors() {
     let model = MockCompletionModel::from_stream_turns([[

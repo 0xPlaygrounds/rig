@@ -24,7 +24,7 @@ async fn anthropic_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette,
     (cassette, bound)
 }
 
-/// Cassette wrapper for the run-lifecycle matrix (PR #2407): the client sends
+/// Cassette wrapper for the run-lifecycle matrix: the client sends
 /// through a [`DynHttpClient`] carrying the supplied [`HttpMiddleware`], so
 /// the same recorded exchange exercises the transport middleware seam and the
 /// run lifecycle hooks together (see
@@ -256,85 +256,6 @@ fn normalize_anthropic_base_url(base_url: &str) -> String {
     }
 }
 
-/// The JSON response body a *blocking* Anthropic cassette recorded.
-///
-/// Reading the fixture back is how a cell asserts its own premise: a recorded
-/// turn that quietly stopped producing the shape the cell is about would
-/// otherwise keep the cell green while it covers nothing.
-pub(super) fn recorded_response_body(scenario: &str) -> serde_json::Value {
-    let path = crate::cassettes::cassette_path("anthropic", scenario);
-    let contents = std::fs::read_to_string(&path)
-        .unwrap_or_else(|err| panic!("cassette {} should be readable: {err}", path.display()));
-
-    let (_, response) = contents.split_once("\nthen:\n").unwrap_or_else(|| {
-        panic!(
-            "cassette {} should have a `then:` response section",
-            path.display()
-        )
-    });
-    // The harness can record a non-UTF-8 body as base64 (`body_encoding`).
-    // No caller of this helper records one, and reading such a body as JSON
-    // would be silently wrong — so refuse rather than guess.
-    assert!(
-        !response.contains("body_encoding: base64"),
-        "cassette {} records a base64 body; this helper reads JSON response \
-         bodies only",
-        path.display()
-    );
-    let line = response
-        .lines()
-        .find_map(|line| line.trim_start().strip_prefix("body: "))
-        .unwrap_or_else(|| panic!("cassette {} should record a response body", path.display()));
-
-    // The harness writes the body as a single-line YAML single-quoted scalar,
-    // in which a literal quote is doubled.
-    let json = line
-        .strip_prefix('\'')
-        .and_then(|rest| rest.strip_suffix('\''))
-        .map_or_else(|| line.to_string(), |body| body.replace("''", "'"));
-
-    serde_json::from_str(&json).unwrap_or_else(|err| {
-        panic!(
-            "response body in cassette {} should be JSON: {err}",
-            path.display()
-        )
-    })
-}
-
-/// Cassette wrapper for the `stop_sequence`-on-the-streamed-terminal matrix.
-///
-/// Delegates to [`with_anthropic_cassette`] — the behavior is identical, and
-/// deliberately shared so the three cannot drift apart when the base wrapper
-/// gains policy. What the separate name buys is a per-bug entry in the
-/// cassette-safety registry, so `crates/rig-
-/// cassette/fixtures/cassettes/anthropic/stop_sequence_terminal_matrix/`
-/// is auditable as one bug's evidence. (The fixture *path* comes from the
-/// scenario string, not from the wrapper.)
-pub(super) async fn with_anthropic_stop_sequence_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(AnthropicModels) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_anthropic_cassette(spec, test_body).await;
-}
-
-/// Cassette wrapper for the empty-content-`stop_sequence` normalization matrix.
-///
-/// Delegates to [`with_anthropic_cassette`], separate for the same per-bug
-/// registry reason as [`with_anthropic_stop_sequence_cassette`] (see
-/// `crates/rig-cassette/fixtures/cassettes/anthropic/empty_stop_sequence_matrix/`).
-pub(super) async fn with_anthropic_empty_stop_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(AnthropicModels) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_anthropic_cassette(spec, test_body).await;
-}
-
 /// Like [`with_anthropic_cassette`], but the client authenticates with a
 /// deliberately invalid API key — for recording real 401 responses without a
 /// secret anywhere near the fixture (auth headers are neither recorded nor
@@ -366,127 +287,6 @@ pub(super) async fn with_anthropic_cassette_bogus_key<F, Fut>(
     cassette.finish_after_test(result).await;
 }
 
-/// The effect corpus's request-shape matrix (Matrix E), one wrapper per
-/// matrix so its cassettes are one suite directory
-/// (`crates/rig-cassette/fixtures/cassettes/anthropic/corpus_request_shape/`).
-pub(super) async fn with_anthropic_corpus_request_shape_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(AnthropicModels) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_anthropic_cassette(spec, test_body).await;
-}
-
-/// The effect corpus's hook matrix (Matrix B):
-/// `crates/rig-cassette/fixtures/cassettes/anthropic/corpus_hooks/`.
-pub(super) async fn with_anthropic_corpus_hooks_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(AnthropicModels) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_anthropic_cassette(spec, test_body).await;
-}
-
-/// The effect corpus's serving matrix (Matrix C):
-/// `crates/rig-cassette/fixtures/cassettes/anthropic/corpus_serving/`.
-pub(super) async fn with_anthropic_corpus_serving_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(AnthropicModels) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_anthropic_cassette(spec, test_body).await;
-}
-
-/// The effect corpus's outcome matrix (Matrix D):
-/// `crates/rig-cassette/fixtures/cassettes/anthropic/corpus_outcome/`.
-pub(super) async fn with_anthropic_corpus_outcome_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(AnthropicModels) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_anthropic_cassette(spec, test_body).await;
-}
-
-/// The effect corpus's endings matrix (Matrix F):
-/// `crates/rig-cassette/fixtures/cassettes/anthropic/corpus_endings/`.
-pub(super) async fn with_anthropic_corpus_endings_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(AnthropicModels) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_anthropic_cassette(spec, test_body).await;
-}
-
-/// The effect corpus's oracle matrix (Matrix O):
-/// `crates/rig-cassette/fixtures/cassettes/anthropic/corpus_oracle/`.
-pub(super) async fn with_anthropic_corpus_oracle_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(AnthropicModels) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_anthropic_cassette(spec, test_body).await;
-}
-
-/// The effect corpus's per-turn shaping matrix (Matrix M):
-/// `crates/rig-cassette/fixtures/cassettes/anthropic/corpus_shaping/`.
-pub(super) async fn with_anthropic_corpus_shaping_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(AnthropicModels) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_anthropic_cassette(spec, test_body).await;
-}
-
-/// The effect corpus's causal-dispatch matrix (Matrix Q):
-/// `crates/rig-cassette/fixtures/cassettes/anthropic/corpus_causal/`.
-pub(super) async fn with_anthropic_corpus_causal_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(AnthropicModels) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_anthropic_cassette(spec, test_body).await;
-}
-
-/// The effect corpus's host-families matrix (Matrix I):
-/// `crates/rig-cassette/fixtures/cassettes/anthropic/corpus_host/`.
-pub(super) async fn with_anthropic_corpus_host_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(AnthropicModels) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_anthropic_cassette(spec, test_body).await;
-}
-
-/// The effect corpus's output-mode matrix (Matrix H):
-/// `crates/rig-cassette/fixtures/cassettes/anthropic/corpus_output/`.
-pub(super) async fn with_anthropic_corpus_output_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(AnthropicModels) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_anthropic_cassette(spec, test_body).await;
-}
-
 /// The `request-id` response header each interaction of an Anthropic cassette
 /// recorded, in wire order — one entry per interaction, `None` for an
 /// interaction whose response carried no such header.
@@ -496,34 +296,15 @@ pub(super) async fn with_anthropic_corpus_output_cassette<F, Fut>(
 /// reported one. Reading it back from the fixture is how the raw-capture and
 /// parity matrices assert that premise instead of assuming it.
 pub(super) fn recorded_request_id_headers(scenario: &str) -> Vec<Option<String>> {
-    let path = crate::cassettes::cassette_path("anthropic", scenario);
-    let contents = std::fs::read_to_string(&path)
-        .unwrap_or_else(|err| panic!("cassette {} should be readable: {err}", path.display()));
-
-    let mut ids = Vec::new();
-    let mut in_response = false;
-    let mut pending_request_id_header = false;
-    for line in contents.lines() {
-        if line == "when:" {
-            in_response = false;
-        } else if line == "then:" {
-            in_response = true;
-            ids.push(None);
-        } else if in_response {
-            let trimmed = line.trim_start();
-            if pending_request_id_header {
-                pending_request_id_header = false;
-                if let Some(value) = trimmed.strip_prefix("value: ")
-                    && let Some(slot) = ids.last_mut()
-                {
-                    *slot = Some(value.trim().to_string());
-                }
-            } else if trimmed == "- name: request-id" {
-                pending_request_id_header = true;
-            }
-        }
-    }
-    ids
+    crate::cassettes::recorded_response_header_pairs("anthropic", scenario)
+        .into_iter()
+        .map(|headers| {
+            headers
+                .into_iter()
+                .find(|(name, _)| name == "request-id")
+                .map(|(_, value)| value)
+        })
+        .collect()
 }
 
 /// Assert that a sequence of ids the code under test observed is the sequence

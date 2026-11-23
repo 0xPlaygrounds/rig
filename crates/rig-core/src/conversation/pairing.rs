@@ -1,7 +1,8 @@
 //! The rules pairing a conversation's tool calls with their results:
-//! validation and repair of a message list, the same repair over entries
-//! that keeps their ids ([`normalize`]), the calls a cut-short conversation
-//! still owes, and where a window of it may start.
+//! which result answers which call ([`answered_by`]), validation and repair
+//! of a message list, the same repair over entries that keeps their ids
+//! ([`normalize`]), the calls a cut-short conversation still owes, and
+//! where a window of it may start.
 //!
 //! ```
 //! use rig_core::{conversation::pairing, message::Message};
@@ -14,9 +15,11 @@ use std::borrow::Borrow;
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use super::{Author, Entry, MessageId};
+use serde::{Deserialize, Serialize};
+
+use super::{Author, Entry, MessageId, ResultFacts};
 use crate::message::{
-    AssistantContent, AssistantMessage, CallId, Message, ToolCall, ToolName, UserContent,
+    AssistantMessage, CallId, Message, Origin, StopReason, ToolCall, ToolName, UserContent,
 };
 use crate::tool::feedback::tool_result_message;
 
@@ -24,7 +27,9 @@ use crate::tool::feedback::tool_result_message;
 /// See [`validate`].
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum PairingError {
-    /// Two assistant messages in a row (index of the second).
+    /// Two assistant messages adjacent in the input that could merge (index
+    /// of the second). Two that cannot may stand side by side: a different
+    /// origin, or a different outcome.
     #[error("consecutive assistant messages at index {index}")]
     ConsecutiveAssistant {
         /// Index of the offending (second) assistant message.
@@ -49,6 +54,109 @@ pub enum PairingError {
         /// The orphan result's call id.
         call_id: CallId,
     },
+}
+
+/// A tool call's place: its reply's entry and its index among the reply's
+/// tool calls. Unlike a provider's call id, no two calls of one
+/// conversation share one; across agents, pair it with the agent.
+///
+/// ```
+/// use rig_core::conversation::{CallRef, Conversation};
+/// use rig_core::message::{AssistantContent, AssistantMessage, Message, ToolCall, ToolFunction, ToolName};
+///
+/// let look = ToolFunction::new(ToolName::new("look")?, serde_json::json!({}));
+/// let call = AssistantContent::ToolCall(ToolCall::from_wire("c1", look));
+/// let mut conversation = Conversation::new();
+/// let reply = conversation.push(Message::Assistant(AssistantMessage::new(vec![call.clone(), call])));
+/// let second = CallRef { reply, index: 1 };
+/// assert_eq!(second.wire(), format!("{reply}/1"));
+/// let pending = conversation.pending_calls();
+/// assert_eq!(pending.get(1).map(|(at, _)| *at), Some(second));
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct CallRef {
+    pub reply: MessageId,
+    pub index: u32,
+}
+
+impl CallRef {
+    /// Its text form, such as `m4/1`.
+    pub fn wire(&self) -> String {
+        format!("{}/{}", self.reply, self.index)
+    }
+
+    /// The tool calls of `message`, the entry `reply`, with their places.
+    pub fn calls(
+        reply: MessageId,
+        message: &AssistantMessage,
+    ) -> impl Iterator<Item = (Self, &ToolCall)> {
+        (0..).zip(message.tool_calls()).map(move |(index, call)| {
+            let at = Self { reply, index };
+            (at, call)
+        })
+    }
+}
+
+/// The answer of each of `calls`, in call order: the n-th answer with an id
+/// answers the n-th call with that id, as [`pair`] pairs them. `None` for a
+/// call nothing answers; an answer no call waits for is dropped.
+///
+/// ```
+/// use rig_core::conversation::pairing::answered_by;
+/// use rig_core::message::CallId;
+///
+/// let id = CallId::from_wire("c1");
+/// let answers = [(&id, "first"), (&id, "second")];
+/// assert_eq!(answered_by([&id, &id, &id], answers), [Some("first"), Some("second"), None]);
+/// ```
+pub fn answered_by<'c, 'a, T>(
+    calls: impl IntoIterator<Item = &'c CallId>,
+    answers: impl IntoIterator<Item = (&'a CallId, T)>,
+) -> Vec<Option<T>> {
+    let mut waiting: Vec<(usize, &CallId)> = calls.into_iter().enumerate().collect();
+    let mut found: Vec<Option<T>> = waiting.iter().map(|_| None).collect();
+    for (id, answer) in answers {
+        if let Some((at, _)) = take(&mut waiting, id, |(_, id)| id)
+            && let Some(slot) = found.get_mut(at)
+        {
+            *slot = Some(answer);
+        }
+    }
+    found
+}
+
+/// The item of each of `calls`, in call order: the one kept at its place
+/// for its id, else one of the rest, kept elsewhere or without a place,
+/// that [`answered_by`] pairs with it. An edit that deletes a call moves
+/// the next into its place, so a place holds its item only for its call.
+pub fn placed<T: Copy>(
+    calls: &[(CallRef, &CallId)],
+    items: &[(&CallId, Option<CallRef>, T)],
+) -> Vec<Option<T>> {
+    let kept: Vec<Option<usize>> = calls
+        .iter()
+        .map(|(place, call)| {
+            let here =
+                |(id, at, _): &(&CallId, Option<CallRef>, T)| *at == Some(*place) && id == call;
+            items.iter().position(here)
+        })
+        .collect();
+    let rest = (0..)
+        .zip(items)
+        .filter(|(at, _)| !kept.contains(&Some(*at)));
+    let waiting = calls.iter().zip(&kept).filter(|(_, kept)| kept.is_none());
+    let mut paired = answered_by(
+        waiting.map(|((_, id), _)| *id),
+        rest.map(|(_, &(id, _, item))| (id, item)),
+    )
+    .into_iter();
+    kept.into_iter()
+        .map(|kept| match kept {
+            Some(at) => items.get(at).map(|&(.., item)| item),
+            None => paired.next().flatten(),
+        })
+        .collect()
 }
 
 /// Rejects what [`pair`] would repair: consecutive assistant messages, a
@@ -109,8 +217,9 @@ pub struct Paired {
 /// [`validate`] accepts, losing no turn: the lenient load of a
 /// history from outside the protocol, such as a stored transcript, and the
 /// close of a run's history at cancellation. Beyond [`pair`], an assistant
-/// turn left directly after another is merged into it; `repairs` reports
-/// the input as [`pair`] read it.
+/// turn left directly after another is merged into it when the two can
+/// share an origin and ended the same way, and an empty turn before a tool
+/// result is left out; `repairs` reports the input as [`pair`] read it.
 pub fn repair(messages: Vec<Message>) -> Paired {
     let shaped = shape(messages, true);
     Paired {
@@ -141,19 +250,19 @@ pub struct Normalized {
 
 /// `entries` repaired as [`repair`] repairs their messages, but that user
 /// entries side by side stay apart: an assistant entry directly after
-/// another is merged into it (the later stop standing) and keeps the
-/// first's id, author and made-time; a result no call waits for is
-/// dropped, and an entry left empty with it; a made-up result for a call
-/// nothing answered goes into the next user entry, else a new entry by
-/// [`Author::rig`]; a system entry arriving while calls wait moves after
-/// the entries that answer them. A list [`repair`] leaves as it is comes
-/// back unchanged.
+/// another is merged into it as [`repair`] says (the later stop
+/// standing) and keeps the first's id, author and made-time; a result no
+/// call waits for is dropped, and an entry left empty with it; a made-up
+/// result for a call nothing answered goes into the next user entry, else
+/// a new entry by [`Author::rig`]; a system entry arriving while calls wait
+/// moves after the entries that answer them. A list [`repair`] leaves as it
+/// is comes back unchanged.
 pub fn normalize(entries: Vec<Entry>) -> Normalized {
     let (messages, metas): (Vec<Message>, Vec<Meta>) = entries
         .into_iter()
         .map(|entry| {
             let message = Arc::unwrap_or_clone(entry.message);
-            (message, (entry.author, entry.id, entry.made))
+            (message, (entry.author, entry.id, entry.made, entry.facts))
         })
         .unzip();
     let shaped = shape(messages, false);
@@ -161,20 +270,26 @@ pub fn normalize(entries: Vec<Entry>) -> Normalized {
     let mut merged = Vec::new();
     let mut entries = Vec::with_capacity(shaped.messages.len());
     for (message, sources) in shaped.messages.into_iter().zip(shaped.sources) {
+        // The facts of every entry it holds anything of, found by call.
+        let facts = sources
+            .iter()
+            .filter_map(|source| metas.get(*source))
+            .fold(ResultFacts::default(), |facts, (.., more)| facts.and(more));
         let mut free = sources.iter().filter(|source| used.insert(**source));
         let kept = free.next().and_then(|source| metas.get(*source));
-        let into = kept.and_then(|(_, id, _)| *id);
+        let into = kept.and_then(|(_, id, ..)| *id);
         for gone in free.filter_map(|source| metas.get(*source)?.1) {
             if let Some(into) = into {
                 merged.push((into, gone));
             }
         }
         let entry = match kept {
-            Some((author, id, made)) => Entry {
+            Some((author, id, made, _)) => Entry {
                 message: Arc::new(message),
                 author: author.clone(),
                 id: *id,
                 made: *made,
+                facts,
             },
             // Part of an entry already kept, by its author, or results
             // made up, by rig.
@@ -186,6 +301,7 @@ pub fn normalize(entries: Vec<Entry>) -> Normalized {
                         .map_or_else(|| Some(Author::rig()), |(author, ..)| author.clone()),
                     id: None,
                     made: None,
+                    facts,
                 }
             }
         };
@@ -197,12 +313,12 @@ pub fn normalize(entries: Vec<Entry>) -> Normalized {
         entries,
         repairs: shaped.repairs,
         merged,
-        dropped: dropped.filter_map(|(_, (_, id, _))| *id).collect(),
+        dropped: dropped.filter_map(|(_, (_, id, ..))| *id).collect(),
     }
 }
 
-/// An entry without its message: author, id and made-time.
-type Meta = (Option<Author>, Option<MessageId>, Option<u64>);
+/// An entry without its message: author, id, made-time and facts.
+type Meta = (Option<Author>, Option<MessageId>, Option<u64>, ResultFacts);
 
 /// Messages after [`pair`]'s walk and [`merge_turns`], each with the input
 /// indices it holds anything of (the first is the one it stands for), and
@@ -235,8 +351,58 @@ fn shape(messages: Vec<Message>, merge_users: bool) -> Shaped {
     shaped
 }
 
-/// Merge every assistant turn directly after another into it, the later
-/// turn's stop standing; whether any was merged.
+/// Whether two assistant turns in a row can be one. Replay trusts a turn's
+/// one origin for every block, so the two must match on what replay
+/// compares, not on one reply's ids, or both have none. This is an
+/// equivalence, so the order merges happen in cannot change the result:
+/// a turn with no origin never joins one with, and each replays as it is.
+fn share_origin(first: Option<&Origin>, later: Option<&Origin>) -> bool {
+    match (first, later) {
+        (Some(first), Some(later)) => {
+            first.same_model(&later.api, &later.provider, &later.model)
+                && first.context == later.context
+        }
+        (None, None) => true,
+        _ => false,
+    }
+}
+
+/// What decides whether two assistant turns in a row merge.
+struct TurnKind {
+    empty: bool,
+    failed: bool,
+    aborted: bool,
+    origin: Option<Origin>,
+}
+
+impl TurnKind {
+    fn of(turn: &AssistantMessage) -> Self {
+        Self {
+            empty: turn.content.is_empty(),
+            failed: matches!(turn.stop, Some(StopReason::Error(_))),
+            aborted: matches!(turn.stop, Some(StopReason::Aborted(_))),
+            origin: turn.origin.clone(),
+        }
+    }
+
+    /// Whether `later`, directly after this turn, merges into it. An empty
+    /// turn has nothing to protect, so it always does. Turns with different
+    /// outcomes stay apart: one stop stands for a merged turn, and it decides
+    /// what the whole turn sends.
+    fn merges(&self, later: &Self) -> bool {
+        self.empty
+            || later.empty
+            || (self.failed == later.failed
+                && self.aborted == later.aborted
+                && share_origin(self.origin.as_ref(), later.origin.as_ref()))
+    }
+}
+
+/// Merge every assistant turn directly after another that
+/// [merges](TurnKind::merges) into it, the later turn's stop standing;
+/// whether any was merged. An empty turn changes nothing about the turn it
+/// merges with: an empty first turn gives way to the later's origin, and an
+/// empty later turn's stop is dropped.
 fn merge_turns(shaped: &mut Shaped) -> bool {
     let before = shaped.messages.len();
     let mut messages: Vec<Message> = Vec::with_capacity(before);
@@ -245,9 +411,16 @@ fn merge_turns(shaped: &mut Shaped) -> bool {
     for (mut message, mut from) in all {
         if let Message::Assistant(turn) = &mut message
             && let Some(Message::Assistant(previous)) = messages.last_mut()
+            && TurnKind::of(previous).merges(&TurnKind::of(turn))
         {
+            let first_empty = previous.content.is_empty();
+            if first_empty {
+                previous.origin = turn.origin.take();
+            }
+            if first_empty || !turn.content.is_empty() {
+                previous.stop = turn.stop.take();
+            }
             previous.content.append(&mut turn.content);
-            previous.stop = turn.stop.take();
             if let Some(into) = sources.last_mut() {
                 into.append(&mut from);
             }
@@ -299,17 +472,31 @@ fn walk(
         sourced,
         ..Walk::default()
     };
-    for step in steps(history) {
+    let parting = if sourced {
+        parting_turns(&history)
+    } else {
+        Vec::new()
+    };
+    walk.repairs
+        .extend(parting.iter().map(|(_, why)| why.clone()));
+    for step in steps(history, &parting) {
         match step {
             Step::Turn(index, turn) => {
-                if walk.after_assistant && turn.is_some() {
+                if let (Some(before), Some(turn)) = (&walk.after_turn, &turn)
+                    && before.merges(&TurnKind::of(turn))
+                {
                     walk.repairs
                         .push(PairingError::ConsecutiveAssistant { index });
                 }
                 walk.close();
                 stored = None;
                 walk.gap = turn.is_none();
-                walk.after_assistant = turn.is_some();
+                walk.after_turn = match &turn {
+                    Some(turn) if turn.content.is_empty() && walk.after_turn.is_some() => {
+                        walk.after_turn.take()
+                    }
+                    turn => turn.as_ref().map(TurnKind::of),
+                };
                 let Some(turn) = turn else { continue };
                 if !turn.stop.as_ref().is_some_and(|stop| stop.is_failure()) {
                     let calls = turn.tool_calls();
@@ -320,7 +507,7 @@ fn walk(
                 walk.put(Message::Assistant(turn), [index]);
             }
             Step::System(index, system) => {
-                walk.after_assistant = false;
+                walk.after_turn = None;
                 if walk.waiting.is_empty() {
                     walk.gap = false;
                     walk.put(system, [index]);
@@ -329,7 +516,7 @@ fn walk(
                 }
             }
             Step::User(first, parts) => {
-                walk.after_assistant = false;
+                walk.after_turn = None;
                 if parts.is_empty() {
                     walk.close();
                     let empty = Message::User {
@@ -351,7 +538,7 @@ fn walk(
                             true
                         }
                         Some(_) => false,
-                        None => answer(&mut walk.waiting, &result.call, |(id, _)| id),
+                        None => take(&mut walk.waiting, &result.call, |(id, _)| id).is_some(),
                     };
                     if answers {
                         content.push((Some(index), UserContent::ToolResult(result)));
@@ -394,39 +581,6 @@ pub(crate) fn is_result(part: &UserContent) -> bool {
     matches!(part, UserContent::ToolResult(_))
 }
 
-/// Why a batch of results does not answer a turn's calls ([`answers`]).
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum AnswerError {
-    /// A part of the batch is not a tool result.
-    #[error("received content that is not a tool result")]
-    NotAResult,
-    /// A result for an id no call has, or whose every call was answered.
-    #[error("received a result for unknown or already-answered tool call id `{0}`")]
-    Unknown(CallId),
-    /// The calls the batch left unanswered, in call order.
-    #[error("left pending tool call id(s) unanswered: {0:?}")]
-    Unanswered(Vec<CallId>),
-}
-
-/// Whether `results` answer `pending` exactly, one result per occurrence of
-/// an id in any order, matched as [`pair`] matches them.
-pub fn answers(pending: &[CallId], results: &[UserContent]) -> Result<(), AnswerError> {
-    let mut waiting = pending.to_vec();
-    for result in results {
-        let UserContent::ToolResult(result) = result else {
-            return Err(AnswerError::NotAResult);
-        };
-        if !answer(&mut waiting, &result.call, |id| id) {
-            return Err(AnswerError::Unknown(result.call.clone()));
-        }
-    }
-    if waiting.is_empty() {
-        Ok(())
-    } else {
-        Err(AnswerError::Unanswered(waiting))
-    }
-}
-
 /// The user message closing `calls` nothing answered: a [`NO_RESULT_PROVIDED`]
 /// error result per occurrence, in call order, exactly as [`pair`] closes them.
 pub fn close_pending<'a>(calls: impl IntoIterator<Item = &'a ToolCall>) -> Message {
@@ -452,15 +606,10 @@ fn unanswered<'a>(
         .collect()
 }
 
-/// Take the first of `waiting` with the id `id`; false when none has it.
-fn answer<T>(waiting: &mut Vec<T>, id: &CallId, id_of: impl Fn(&T) -> &CallId) -> bool {
-    match waiting.iter().position(|call| id_of(call) == id) {
-        Some(at) => {
-            waiting.remove(at);
-            true
-        }
-        None => false,
-    }
+/// Takes the first of `waiting` with the id `id`.
+fn take<T>(waiting: &mut Vec<T>, id: &CallId, id_of: impl Fn(&T) -> &CallId) -> Option<T> {
+    let at = waiting.iter().position(|call| id_of(call) == id)?;
+    Some(waiting.remove(at))
 }
 
 /// One step of [`pair`]'s walk, with indices into its input.
@@ -473,11 +622,44 @@ enum Step {
     User(usize, Vec<(usize, UserContent)>),
 }
 
+/// The empty turns before a tool result, with no other turn between, and
+/// why each is left out of a repair. A result answers only a turn before
+/// it, so such a turn can only part it from its call; a result after it is
+/// an orphan as the input reads, so the history was never valid.
+fn parting_turns(history: &[Option<Message>]) -> Vec<(usize, PairingError)> {
+    let mut parting = Vec::new();
+    let mut result = None;
+    for (index, message) in history.iter().enumerate().rev() {
+        match message {
+            Some(Message::System { .. }) => {}
+            Some(Message::User { content }) => {
+                let found = content.iter().find_map(UserContent::as_tool_result);
+                let found = found.map(|found| (index, found.call.clone()));
+                result = found.or(result);
+            }
+            Some(Message::Assistant(turn)) if turn.content.is_empty() => {
+                if let Some((at, call_id)) = &result {
+                    let why = PairingError::OrphanToolResult {
+                        index: *at,
+                        call_id: call_id.clone(),
+                    };
+                    parting.push((index, why));
+                }
+            }
+            _ => result = None,
+        }
+    }
+    parting
+}
+
 /// `history` as steps, each run of adjacent non-empty user messages made
 /// one, so results split over several messages answer the turn before them.
-fn steps(history: Vec<Option<Message>>) -> Vec<Step> {
+fn steps(history: Vec<Option<Message>>, left_out: &[(usize, PairingError)]) -> Vec<Step> {
     let mut steps: Vec<Step> = Vec::with_capacity(history.len());
     for (index, message) in history.into_iter().enumerate() {
+        if left_out.iter().any(|(at, _)| *at == index) {
+            continue;
+        }
         match message {
             None => steps.push(Step::Turn(index, None)),
             Some(Message::Assistant(turn)) => steps.push(Step::Turn(index, Some(turn))),
@@ -522,7 +704,9 @@ struct Walk {
     /// content after them, each with its index (none for one made up).
     pending: Vec<(Option<usize>, UserContent)>,
     pending_gap: bool,
-    after_assistant: bool,
+    /// The turn just walked, when the last step was a turn. An empty turn
+    /// after another leaves that one here.
+    after_turn: Option<TurnKind>,
 }
 
 impl Walk {
@@ -654,36 +838,40 @@ fn sourced(content: Vec<(Option<usize>, UserContent)>) -> (Vec<usize>, Vec<UserC
 
 /// The tool calls of the last assistant message in `messages` that no
 /// later tool result answers, in call order: what a conversation cut short
-/// still owes the model.
+/// still owes the model. A turn that ended in an error or was aborted owes
+/// none, as its calls never run.
 pub fn pending_calls(messages: &[impl Borrow<Message>]) -> Vec<ToolCall> {
-    let Some((at, Message::Assistant(reply))) = messages
+    let pending = pending(messages);
+    let calls = pending.into_iter().flat_map(|(_, calls)| calls);
+    calls.map(|(_, call)| call.clone()).collect()
+}
+
+/// [`pending_calls`], with the index of the message asking for them and
+/// each call's place among its tool calls.
+pub(crate) fn pending<M: Borrow<Message>>(
+    messages: &[M],
+) -> Option<(usize, Vec<(u32, &ToolCall)>)> {
+    let (at, reply) = messages
         .iter()
         .map(Borrow::borrow)
         .enumerate()
-        .rfind(|(_, message)| matches!(message, Message::Assistant(_)))
-    else {
-        return Vec::new();
-    };
-    let answered: Vec<&CallId> = messages
+        .rev()
+        .find_map(|(at, message)| match message {
+            Message::Assistant(reply) => Some((at, reply)),
+            _ => None,
+        })?;
+    if reply.stop.as_ref().is_some_and(|stop| stop.is_failure()) {
+        return None;
+    }
+    let results = messages
         .iter()
         .skip(at + 1)
-        .flat_map(|message| match message.borrow() {
-            Message::User { content } => content.as_slice(),
-            _ => &[],
-        })
-        .filter_map(|item| match item {
-            UserContent::ToolResult(result) => Some(&result.call),
-            _ => None,
-        })
-        .collect();
-    reply
-        .content
-        .iter()
-        .filter_map(|item| match item {
-            AssistantContent::ToolCall(call) if !answered.contains(&&call.id) => Some(call.clone()),
-            _ => None,
-        })
-        .collect()
+        .flat_map(|message| message.borrow().results())
+        .map(|result| (&result.call, ()));
+    let answered = answered_by(reply.tool_calls().map(|call| &call.id), results);
+    let calls = (0..).zip(reply.tool_calls()).zip(answered);
+    let calls = calls.filter_map(|(call, answer)| answer.is_none().then_some(call));
+    Some((at, calls.collect()))
 }
 
 /// The first index at or after `at` a request may start `messages` from:

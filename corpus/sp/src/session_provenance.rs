@@ -12,7 +12,6 @@ use std::path::Path;
 
 use rig_harness::harness_protocol::VERSION;
 use rig_harness::prelude::*;
-use rig_harness::rig_ecs::WriteLogs;
 use serde::{Deserialize, Serialize};
 
 /// The key the record is kept under.
@@ -37,7 +36,6 @@ impl Plugin for SessionProvenancePlugin {
             Last,
             (record_setup, track_models)
                 .chain()
-                .before(WriteLogs)
                 .run_if(resource_exists::<SessionRestored>),
         );
     }
@@ -62,7 +60,7 @@ pub struct Provenance {
 pub struct Setup {
     /// rig's version.
     pub agent_version: String,
-    /// The plugins `plugins.toml` loaded, by crate.
+    /// The plugins the agent loaded, by crate.
     pub plugins: BTreeMap<String, PluginVersion>,
     /// Each agent the user started, by id, with its model.
     pub models: BTreeMap<String, AgentModel>,
@@ -278,7 +276,9 @@ fn read_setup((plugins, models, root, workspace, processes): &SetupInputs) -> Se
     let mut by_crate: BTreeMap<String, PluginVersion> = BTreeMap::new();
     for (name, source) in plugins {
         let entry = by_crate.entry(source.package.clone()).or_default();
-        entry.version = version_of(&source.source);
+        if entry.version.is_empty() || !source.source.is_empty() {
+            entry.version = version_of(&source.source);
+        }
         let short = name.as_str().rsplit("::").next().unwrap_or(name.as_str());
         entry.plugins.push(short.to_owned());
     }
@@ -307,7 +307,7 @@ fn read_setup((plugins, models, root, workspace, processes): &SetupInputs) -> Se
     }
 }
 
-/// A plugin's version from where `plugins.toml` builds it: `version 0.3`
+/// A plugin's version from where the agent was built from it: `version 0.3`
 /// is `0.3`; a path or git source is kept as it is.
 fn version_of(source: &str) -> String {
     match source.strip_prefix("version ") {

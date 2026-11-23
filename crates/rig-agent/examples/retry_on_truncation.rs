@@ -1,19 +1,13 @@
-//! Retry a turn the provider cut short, without credentials or provider types.
+//! Retries a turn the provider cut short, without credentials or provider types.
 //!
-//! `ModelTurnFinished` reports why the provider stopped (`finish_reason`) and
-//! the output-token cap that exact attempt ran under (`max_tokens`). Together
-//! they make "the provider truncated me, go again with more room" a portable
-//! policy: the hook below names no provider and never touches a raw response
-//! type, so the same code works against every model Rig supports.
-//!
-//! The scripted model here truncates whenever its cap is below what the answer
-//! needs, so the escalation is *causal* rather than staged — the loop ends
-//! because the cap finally became large enough, not because a script said so.
+//! The hook reads `finish_reason` and the attempt's `max_tokens` from
+//! `ModelTurnFinished` and retries with a larger cap, naming no provider. The
+//! scripted model truncates whenever its cap is below what the answer needs, so the
+//! loop ends once the cap is large enough.
 //!
 //! ```not_rust
 //! cargo run -p rig-agent --example retry_on_truncation
 //! ```
-//!
 
 use std::sync::atomic::{AtomicU64, Ordering};
 

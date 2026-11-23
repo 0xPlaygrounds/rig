@@ -1,38 +1,22 @@
 //! Part 5: multimodal.
 //!
-//! **Servers**: two vision configurations, and each cell says which and why.
+//! Two vision servers, and each cell says which and why. The vision server (8082,
+//! `ggml-org/Qwen3-VL-2B-Instruct-GGUF` Q8_0 with `mmproj`) has a chat template
+//! that supports tool calls but does not track image order. The large vision
+//! server (8093, `ggml-org/Qwen2.5-VL-7B-Instruct-GGUF` Q4_K_M with `mmproj`)
+//! answers image questions correctly but writes prose instead of calling tools,
+//! because its template reports `chat_template_caps.supports_tool_calls: false`
+//! with or without an image. On the vision server,
+//! [`an_image_and_a_tool_reach_the_model_together`] pins that the call carries
+//! what the image showed; the image-in-a-tool-result cell lives in
+//! `image_tool_result`.
 //!
-//! | Server | Model | Why |
-//! | --- | --- | --- |
-//! | vision (8082) | `ggml-org/Qwen3-VL-2B-Instruct-GGUF` Q8_0 + `mmproj` | the smoke vision tier; its template *does* support tool calls |
-//! | large vision (8093) | `ggml-org/Qwen2.5-VL-7B-Instruct-GGUF` Q4_K_M + `mmproj` | for cells that need the model to be *right*; its template does **not** support tool calls |
-//!
-//! The split is measured rather than assumed, and the two models fail in
-//! opposite directions. Asked which of two images is the photograph,
-//! Qwen3-VL-2B answers "FIRST" whichever order they arrive in — it is
-//! responsive but not tracking order — while Qwen2.5-VL-7B answers FIRST and
-//! SECOND correctly. Asked to call a tool about an image, Qwen3-VL-2B calls it
-//! and Qwen2.5-VL-7B writes prose instead, because its chat template reports
-//! `chat_template_caps.supports_tool_calls: false` (`GET /props`) — with or
-//! without an image, so it is the template, not the modality.
-//!
-//! | Cell | Dimension | Server | Pinned |
-//! | --- | --- | --- | --- |
-//! | `image_tool_result::a_tool_result_image_is_read_by_the_model` | image in a tool result | vision | the #2380 capability |
-//! | [`an_image_and_a_tool_reach_the_model_together`] | image + tools | vision | the call carries what the image showed |
-//! | [`a_video_part_is_refused_even_though_props_advertises_video`] | video | vision | 400 `unsupported content[].type` |
-//!
-//! # `modalities.video: true` does not mean the chat endpoint takes a video
-//!
-//! `GET /props` reports `{"vision": true, "video": true, "audio": false}` for
-//! both vision models, so "what does rig do with a video part" is a real
-//! question rather than a hypothetical. The answer: rig maps
-//! [`UserContent::Video`](rig::message::UserContent::Video) to OpenAI's
-//! `{"type": "video_url", ...}` part, and llama.cpp answers
-//! `400 unsupported content[].type`. The flag describes what the *model* can
-//! encode, not what the chat-completions content vocabulary accepts; llama.cpp
-//! takes video by other means. Rig's conversion is not wrong — there is no
-//! other OpenAI-shaped part to send — and the refusal is clean, so this is a
+//! [`a_video_part_is_refused_even_though_props_advertises_video`]: `GET /props`
+//! reports `"video": true` for both vision models, yet llama.cpp answers rig's
+//! `video_url` part for [`UserContent::Video`](rig::message::UserContent::Video)
+//! with `400 unsupported content[].type`. The flag describes what the model can
+//! encode, not what the chat-completions content vocabulary accepts. There is no
+//! other OpenAI-shaped part to send and the refusal is clean, so this is a
 //! recorded boundary rather than a defect.
 
 use rig::message::{AssistantContent, ImageMediaType, Message, UserContent, VideoMediaType};

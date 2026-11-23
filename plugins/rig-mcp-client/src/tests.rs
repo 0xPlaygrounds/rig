@@ -1,14 +1,18 @@
+#![allow(clippy::disallowed_methods, reason = "test fixtures")]
+
 use std::io::{BufRead, Write};
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::Receiver;
 use std::time::Instant;
 
-use rig_basics::print::{HeadlessEnded, PrintPlugin, TOOLS};
+use rig_basics::print::{HeadlessEnded, PrintPlugin};
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::Invocation;
 use rig_harness::host::exit::ExitPlugin;
 use rig_harness::rig_memory::DirFiles;
+use rig_harness::run::TOOLS;
 use rig_harness::services::ServicesPlugin;
 use rig_harness_test_support::{
     Collected, MemoryStore, app_on, calls, collect, connect, reply, run_until, scripted_models,
@@ -42,6 +46,19 @@ const CHILD: &str = "RIG_MCP_CHILD";
 /// leaves the list that follows the first word unanswered, and has `mul` in
 /// the next.
 const HANGS: &str = "RIG_MCP_HANGS";
+
+/// When set, the stub writes each answer after a byte-order mark, and its
+/// list of tools describes `add` at length.
+const LONG: &str = "RIG_MCP_LONG";
+
+/// When set, the stub refuses an `initialize` that offers any protocol
+/// version but the latest released one, as a server that knows only that
+/// one does.
+const RELEASED: &str = "RIG_MCP_RELEASED";
+
+/// When set, the stub answers `initialize` with the older protocol version
+/// `2025-06-18`, whatever was offered.
+const OLDER: &str = "RIG_MCP_OLDER";
 
 /// The model a headless run chooses.
 const MODEL: &str = "test/model";
@@ -90,7 +107,10 @@ fn stub() {
         let params = request.get("params").cloned().unwrap_or_default();
         let result = match request.get("method").and_then(Value::as_str) {
             Some("initialize") => json!({
-                "protocolVersion": params.get("protocolVersion").cloned().unwrap_or_default(),
+                "protocolVersion": match std::env::var_os(OLDER) {
+                    Some(_) => json!("2025-06-18"),
+                    None => params.get("protocolVersion").cloned().unwrap_or_default(),
+                },
                 "capabilities": match std::env::var_os(NO_TOOLS) {
                     Some(_) => json!({ "resources": {} }),
                     None => json!({ "tools": { "listChanged": true } }),
@@ -136,7 +156,10 @@ fn stub() {
             }
             Some("tools/list") => json!({ "tools": [{
                 "name": "add",
-                "description": "Adds two numbers.",
+                "description": match std::env::var_os(LONG) {
+                    Some(_) => "Adds two numbers. ".repeat(100),
+                    None => "Adds two numbers.".to_owned(),
+                },
                 "inputSchema": {
                     "type": "object",
                     "properties": { "a": { "type": "number" }, "b": { "type": "number" } },
@@ -161,14 +184,30 @@ fn stub() {
             }
             _ => json!({}),
         };
+        let offered = params.get("protocolVersion").and_then(Value::as_str);
         let answer = match (request.get("method"), std::env::var_os(NO_TOOLS)) {
+            (Some(method), _)
+                if method == "initialize"
+                    && std::env::var_os(RELEASED).is_some()
+                    && offered != Some("2025-11-25") =>
+            {
+                json!({
+                    "jsonrpc": "2.0", "id": id,
+                    "error": { "code": -32602, "message": format!("Unsupported protocol version {offered:?}") },
+                })
+            }
             (Some(method), Some(_)) if method == "tools/list" => json!({
                 "jsonrpc": "2.0", "id": id,
                 "error": { "code": -32601, "message": "Method not found" },
             }),
             _ => json!({ "jsonrpc": "2.0", "id": id, "result": result }),
         };
-        if writeln!(out, "{answer}")
+        let bom = if std::env::var_os(LONG).is_some() {
+            "\u{feff}"
+        } else {
+            ""
+        };
+        if writeln!(out, "{bom}{answer}")
             .and_then(|()| out.flush())
             .is_err()
         {
@@ -200,6 +239,8 @@ fn project(name: &str) -> PathBuf {
     let project = exe.with_file_name(run).join(name);
     std::fs::remove_dir_all(&project).ok();
     std::fs::create_dir_all(project.join("home")).ok();
+    // Its own `.rig` makes it the project, wherever the test runs.
+    std::fs::create_dir_all(project.join(".rig")).ok();
     project
 }
 
@@ -211,7 +252,7 @@ fn write_servers(path: &Path, servers: Value) {
     std::fs::write(path, json!({ "mcpServers": servers }).to_string()).ok();
 }
 
-/// An app with the plugin on `project`, its home inside it, `settings`, and
+/// An app with the plugin started in `project`, its home inside it, `settings`, and
 /// the notices it writes collected; `invoked` makes it a headless run.
 fn app_in(project: &Path, settings: &str, invoked: Option<Invocation>) -> (App, Receiver<()>) {
     app_with::<McpPlugin>(project, settings, invoked)
@@ -402,7 +443,35 @@ fn stub_tools_come_and_go_with_its_server() {
 }
 
 #[test]
-fn a_project_server_starts_only_once_approved_as_written() {
+fn a_project_server_starts_with_no_question() {
+    let project = project("trusted");
+    let marker = project.join("started");
+    let server = stub_server(json!({ MARKER: marker }));
+    write_servers(&project.join(".rig/mcp.json"), json!({ "stub": server }));
+    let (mut app, wakes) = app_in(&project, "", None);
+    app.finish();
+    run_until(&mut app, &wakes, |world| has(world, "stub__add"));
+    assert!(marker.exists());
+    assert_eq!(scope(app.world_mut(), "stub"), Some(Scope::Project));
+    let told = notices(app.world());
+    assert!(
+        told.contains(&"MCP server `stub` connected: 2 tools.".to_owned()),
+        "{told:?}"
+    );
+    std::fs::remove_dir_all(project).ok();
+}
+
+/// [`app_in`] with [`approval::McpApprovalPlugin`] on too.
+fn asking_app(project: &Path) -> (App, Receiver<()>) {
+    let (mut app, wakes) = app_in(project, "[mcp]\nfirst_retry_secs = 3600", None);
+    app.add_plugins(approval::McpApprovalPlugin);
+    app.finish();
+    app.update();
+    (app, wakes)
+}
+
+#[test]
+fn with_approval_a_project_server_waits_for_approve_and_a_changed_one_is_asked_again() {
     let project = project("approval");
     let marker = project.join("started");
     let mut server = stub_server(json!({ MARKER: marker }));
@@ -410,11 +479,9 @@ fn a_project_server_starts_only_once_approved_as_written() {
     if let Some(env) = server.get_mut("env").and_then(Value::as_object_mut) {
         env.insert("TOKEN".to_owned(), json!("${RIG_MCP_TEST_TOKEN:-none}"));
     }
-    let whole = config::describe(&server);
+    let whole = server.to_string();
     write_servers(&project.join(".rig/mcp.json"), json!({ "stub": server }));
-    let (mut app, wakes) = app_in(&project, "", None);
-    app.finish();
-    app.update();
+    let (mut app, wakes) = asking_app(&project);
     let agent =
         rig_harness_test_support::first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
     // Time enough for a process to start, were one started.
@@ -425,34 +492,175 @@ fn a_project_server_starts_only_once_approved_as_written() {
     }
     assert!(!marker.exists(), "an unapproved server started");
     let state = status(app.world_mut(), "stub").map(|status| status.state);
-    assert_eq!(state, Some(McpState::NotApproved));
+    assert_eq!(state, Some(McpState::Held));
     let told = notices(app.world());
-    let line = format!("  stub: {whole}\n");
-    assert!(told.iter().any(|text| text.contains(&line)), "{told:?}");
+    assert!(told.iter().any(|text| text.contains(&whole)), "{told:?}");
     mcp(&mut app, agent, "");
     let listed =
         format!("stub (project): not approved; /mcp approve stub starts it as written: {whole}");
-    assert!(notices(app.world()).iter().any(|text| text == &listed));
+    let told = notices(app.world());
+    assert!(told.iter().any(|text| text == &listed), "{told:?}");
+    // A word after the name is refused, the line coming back as typed, and
+    // nothing is approved.
+    mcp(&mut app, agent, "approve stub --user");
+    let state = status(app.world_mut(), "stub").map(|status| status.state);
+    assert_eq!(state, Some(McpState::Held));
+    let refused = &app.world().resource::<Collected<Recalled>>().0;
+    let lines: Vec<_> = refused
+        .iter()
+        .map(|recalled| recalled.text.as_str())
+        .collect();
+    assert_eq!(lines, ["/mcp approve stub --user"]);
 
     mcp(&mut app, agent, "approve stub");
-    let approved = format!("Approved `stub` as written: {whole}; connecting.");
+    let approved = format!("Approved `stub` as written: {whole}.");
     assert!(notices(app.world()).iter().any(|text| text == &approved));
     run_until(&mut app, &wakes, |world| has(world, "stub__add"));
     assert!(marker.exists());
+    // Denied, it stops.
+    mcp(&mut app, agent, "deny stub");
+    run_until(&mut app, &wakes, |world| !has(world, "stub__add"));
+    let state = status(app.world_mut(), "stub").map(|status| status.state);
+    assert_eq!(state, Some(McpState::Held));
+    mcp(&mut app, agent, "approve stub");
     drop(app);
 
     // The approval is kept, for the server as it was written then.
-    let (mut app, wakes) = app_in(&project, "", None);
-    app.finish();
+    let (mut app, wakes) = asking_app(&project);
     run_until(&mut app, &wakes, |world| has(world, "stub__add"));
     drop(app);
     let changed = stub_server(json!({ MARKER: marker, "MORE": "1" }));
     write_servers(&project.join(".rig/mcp.json"), json!({ "stub": changed }));
-    let (mut app, _) = app_in(&project, "", None);
+    let (mut app, _) = asking_app(&project);
+    let state = status(app.world_mut(), "stub").map(|status| status.state);
+    assert_eq!(state, Some(McpState::Held));
+    std::fs::remove_dir_all(project).ok();
+}
+
+/// Asking added before [`McpPlugin`], as `app.add_plugins((McpApprovalPlugin, McpPlugin))`.
+#[derive(Default)]
+struct AskingFirst;
+
+impl Plugin for AskingFirst {
+    fn build(&self, app: &mut App) {
+        app.add_plugins((approval::McpApprovalPlugin, McpPlugin));
+    }
+}
+
+#[test]
+fn approval_added_before_mcp_servers_holds_an_unapproved_project_server() {
+    let project = project("approval-first");
+    write_servers(
+        &project.join(".rig/mcp.json"),
+        json!({ "stub": stub_server(json!({})) }),
+    );
+    let (mut app, _) = app_with::<AskingFirst>(&project, "[mcp]\nfirst_retry_secs = 3600", None);
     app.finish();
     app.update();
+    let world = app.world_mut();
+    let mut names = world.query::<&Name>();
+    let approve = names
+        .iter(world)
+        .any(|name| name.as_str() == "/mcp-approve");
+    assert!(approve, "/mcp-approve is a command");
+    let state = status(world, "stub").map(|status| status.state);
+    assert_eq!(state, Some(McpState::Held));
+    std::fs::remove_dir_all(project).ok();
+}
+
+#[test]
+fn with_approval_a_users_server_is_never_held() {
+    let project = project("approval-home");
+    write_servers(
+        &project.join("home/mcp.json"),
+        json!({ "stub": stub_server(json!({})) }),
+    );
+    let (mut app, wakes) = asking_app(&project);
+    run_until(&mut app, &wakes, |world| has(world, "stub__add"));
+    assert_eq!(scope(app.world_mut(), "stub"), Some(Scope::User));
+    std::fs::remove_dir_all(project).ok();
+}
+
+/// A policy plugin of a few lines, on the public API: it holds `held`.
+fn hold_held(added: On<Add<McpServer>>, servers: Query<&McpServer>, mut commands: Commands) {
+    if servers
+        .get(added.entity)
+        .is_ok_and(|server| server.name == "held")
+    {
+        let hold = McpHold("held by the test's policy".to_owned());
+        commands.entity(added.entity).insert(hold);
+    }
+}
+
+/// A policy of a few lines that holds a server once it sees one of its
+/// tools.
+fn hold_on_a_tool(added: On<Add<McpToolOf>>, tools: Query<&McpToolOf>, mut commands: Commands) {
+    if let Ok(McpToolOf(server)) = tools.get(added.entity) {
+        let hold = McpHold("a tool of it is not allowed".to_owned());
+        commands.entity(*server).insert(hold);
+    }
+}
+
+#[test]
+fn a_hold_that_comes_as_the_tools_register_takes_them_all_away() {
+    let project = project("policy-tools");
+    write_servers(
+        &project.join("home/mcp.json"),
+        json!({ "stub": stub_server(json!({})) }),
+    );
+    let (mut app, wakes) = app_in(&project, "[mcp]\nfirst_retry_secs = 3600", None);
+    app.add_observer(hold_on_a_tool);
+    app.finish();
+    run_until(&mut app, &wakes, |world| {
+        world
+            .try_query_filtered::<(), (With<McpServer>, With<McpHold>)>()
+            .is_some_and(|mut held| held.iter(world).next().is_some())
+    });
+    assert!(!has(app.world(), "stub__add") && !has(app.world(), "stub__hang"));
     let state = status(app.world_mut(), "stub").map(|status| status.state);
-    assert_eq!(state, Some(McpState::NotApproved));
+    assert_eq!(state, Some(McpState::Held));
+    std::fs::remove_dir_all(project).ok();
+}
+
+#[test]
+fn a_policy_plugin_holds_the_server_it_names_until_it_lets_go() {
+    let project = project("policy");
+    let marker = project.join("started");
+    write_servers(
+        &project.join("home/mcp.json"),
+        json!({
+            "held": stub_server(json!({ MARKER: marker })),
+            "free": stub_server(json!({})),
+        }),
+    );
+    let (mut app, wakes) = app_in(&project, "[mcp]\nfirst_retry_secs = 3600", None);
+    app.add_observer(hold_held);
+    app.finish();
+    run_until(&mut app, &wakes, |world| has(world, "free__add"));
+    assert!(!marker.exists() && !has(app.world(), "held__add"));
+    let agent =
+        rig_harness_test_support::first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
+    mcp(&mut app, agent, "");
+    let told = notices(app.world());
+    let listed = "held (user): held by the test's policy";
+    assert!(told.iter().any(|text| text.contains(listed)), "{told:?}");
+    let world = app.world_mut();
+    let held = world
+        .query_filtered::<(Entity, &McpServer), With<McpHold>>()
+        .iter(world)
+        .map(|(entity, server)| (entity, server.name.clone()))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        held.iter()
+            .map(|(_, name)| name.as_str())
+            .collect::<Vec<_>>(),
+        ["held"]
+    );
+    if let Some((entity, _)) = held.first() {
+        world.entity_mut(*entity).remove::<McpHold>();
+    }
+    run_until(&mut app, &wakes, |world| has(world, "held__add"));
+    assert!(marker.exists());
     std::fs::remove_dir_all(project).ok();
 }
 
@@ -484,7 +692,7 @@ fn add_and_remove_save_to_the_users_file_and_keep_the_rest() {
     assert_eq!(std::fs::read_to_string(&file).unwrap_or_default(), before);
     assert!(status(app.world_mut(), "web").is_none());
 
-    // A project server the user adds is approved as added.
+    // A project server the user adds starts as added.
     mcp(
         &mut app,
         agent,
@@ -496,8 +704,7 @@ fn add_and_remove_save_to_the_users_file_and_keep_the_rest() {
         written,
         json!({ "mcpServers": { "local": { "command": "/no/such/server", "args": ["--flag"] } } })
     );
-    let state = status(app.world_mut(), "local").map(|status| status.state);
-    assert_ne!(state, Some(McpState::NotApproved));
+    assert_eq!(scope(app.world_mut(), "local"), Some(Scope::Project));
 
     // A file that is not JSON is left alone.
     std::fs::write(&file, "{ not json").ok();
@@ -523,6 +730,17 @@ fn headless(
     tools: &str,
     model: &MockCompletionModel,
 ) -> (App, Option<HeadlessEnded>) {
+    headless_with(project, settings, tools, model, |_| {})
+}
+
+/// [`headless`], with `add` adding to the app first.
+fn headless_with(
+    project: &Path,
+    settings: &str,
+    tools: &str,
+    model: &MockCompletionModel,
+    add: impl FnOnce(&mut App),
+) -> (App, Option<HeadlessEnded>) {
     let invoked = Invocation {
         print: Some("Add 2 and 3.".to_owned()),
         flags: vec![(TOOLS.to_owned(), Some(tools.to_owned()))],
@@ -535,6 +753,7 @@ fn headless(
         .add_observer(|ended: On<HeadlessEnded>, mut log: ResMut<Ended>| {
             log.0 = Some(ended.event().clone());
         });
+    add(&mut app);
     app.finish();
     app.cleanup();
     run_until(&mut app, &wakes, |world| {
@@ -571,6 +790,30 @@ fn a_headless_run_waits_for_the_servers_its_tools_name() {
 }
 
 #[test]
+fn a_headless_run_waits_for_no_held_server() {
+    let project = project("headless-held");
+    let marker = project.join("started");
+    write_servers(
+        &project.join("home/mcp.json"),
+        json!({
+            "held": stub_server(json!({ MARKER: marker })),
+            "stub": stub_server(json!({})),
+        }),
+    );
+    let model = MockCompletionModel::from_stream_turns([
+        calls("c1", "stub__add", json!({ "a": 2, "b": 3 })),
+        reply("5"),
+    ]);
+    let (_app, ended) = headless_with(&project, "", "stub__add", &model, |app| {
+        app.add_observer(hold_held);
+    });
+    let how = ended.map(|ended| (ended.code, ended.answer));
+    assert_eq!(how, Some((0, Some("5".to_owned()))));
+    assert!(!marker.exists(), "a held server started");
+    std::fs::remove_dir_all(project).ok();
+}
+
+#[test]
 fn a_change_said_while_the_first_list_comes_is_in_before_the_run_starts() {
     let project = project("changes");
     let server = stub_server(json!({ CHANGES: "1" }));
@@ -596,7 +839,8 @@ fn a_list_left_unanswered_holds_back_no_later_change() {
     app.finish();
     run_until(&mut app, &wakes, |world| has(world, "stub__mul"));
     let told = notices(app.world());
-    let unlisted = "its tools could not be listed again: no answer within 1s";
+    let unlisted =
+        "its tools could not be listed again: no answer within 1 s (`[mcp] connect_timeout_secs`)";
     assert!(told.iter().any(|text| text.contains(unlisted)), "{told:?}");
     std::fs::remove_dir_all(project).ok();
 }
@@ -632,14 +876,15 @@ fn a_headless_run_gives_up_on_a_server_that_fails_or_never_answers() {
     };
     assert!(failed("broken") && failed("silent"), "{told:?}");
     assert!(
-        told.iter().any(|text| text.contains("no answer within 1s")),
+        told.iter()
+            .any(|text| text.contains("no answer within 1 s (`[mcp] connect_timeout_secs`)")),
         "{told:?}"
     );
     std::fs::remove_dir_all(project).ok();
 }
 
 #[test]
-fn an_approved_project_server_takes_the_users_place_until_denied_or_removed() {
+fn a_project_server_takes_the_users_place_until_removed() {
     let project = project("same-name");
     let (user, theirs) = (project.join("home/mcp.json"), project.join(".rig/mcp.json"));
     write_servers(
@@ -650,87 +895,27 @@ fn an_approved_project_server_takes_the_users_place_until_denied_or_removed() {
     let users = std::fs::read_to_string(&user).unwrap_or_default();
     let (mut app, wakes) = app_in(&project, "[mcp]\nfirst_retry_secs = 3600", None);
     app.finish();
-    app.update();
-    let agent =
-        rig_harness_test_support::first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
-    // Not approved, the project's waits, said so, and the user's runs.
-    assert_eq!(scope(app.world_mut(), "stub"), Some(Scope::User));
-    let told = notices(app.world());
-    let waits = "  stub (yours of that name comes first meanwhile): {\"command\":";
-    assert!(told.iter().any(|text| text.contains(waits)), "{told:?}");
-    mcp(&mut app, agent, "");
-    let listed = "stub (project): not approved, yours comes first meanwhile";
-    assert!(
-        notices(app.world())
-            .iter()
-            .any(|text| text.contains(listed))
-    );
-    // A word after the name is refused, and nothing is approved.
-    mcp(&mut app, agent, "approve stub --user");
-    assert_eq!(scope(app.world_mut(), "stub"), Some(Scope::User));
-
-    mcp(&mut app, agent, "approve stub");
     run_until(&mut app, &wakes, |world| has(world, "stub__add"));
     assert_eq!(scope(app.world_mut(), "stub"), Some(Scope::Project));
-    mcp(&mut app, agent, "deny stub");
-    // The user's server may say it could not start before this is read.
-    let told = notices(app.world());
-    let back = "Yours takes its place; connecting.";
-    assert!(told.iter().any(|text| text.ends_with(back)), "{told:?}");
-    run_until(&mut app, &wakes, |world| !has(world, "stub__add"));
-    assert_eq!(scope(app.world_mut(), "stub"), Some(Scope::User));
+    let agent =
+        rig_harness_test_support::first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
+    // A word after the name is refused, and nothing is removed.
+    mcp(&mut app, agent, "remove stub --project");
+    assert!(has(app.world(), "stub__add"));
 
     // A removal without a file takes the one shown, and the other's comes.
-    mcp(&mut app, agent, "approve stub");
     mcp(&mut app, agent, "remove stub");
+    let told = notices(app.world());
+    let back = "takes its place; /mcp shows it.";
+    assert!(told.iter().any(|text| text.ends_with(back)), "{told:?}");
     assert!(
         !std::fs::read_to_string(&theirs)
             .unwrap_or_default()
             .contains("stub")
     );
     assert_eq!(std::fs::read_to_string(&user).unwrap_or_default(), users);
+    run_until(&mut app, &wakes, |world| !has(world, "stub__add"));
     assert_eq!(scope(app.world_mut(), "stub"), Some(Scope::User));
-    // A shadowed project server is listed whatever its state.
-    write_servers(
-        &theirs,
-        json!({ "stub": { "command": "x", "disabled": true } }),
-    );
-    mcp(&mut app, agent, "");
-    let listed = "stub (project): disabled in its mcp.json; yours comes first";
-    assert!(
-        notices(app.world())
-            .iter()
-            .any(|text| text.contains(listed))
-    );
-    let changed = stub_server(json!({ "MORE": "1" }));
-    write_servers(&theirs, json!({ "stub": changed }));
-    // A word after the name is refused, and nothing is removed.
-    mcp(&mut app, agent, "remove stub --project");
-    assert!(
-        std::fs::read_to_string(&user)
-            .unwrap_or_default()
-            .contains("stub")
-    );
-    mcp(&mut app, agent, "remove --user stub");
-    let told = notices(app.world());
-    let waits = "is not approved: /mcp approve stub starts it.";
-    assert!(
-        told.last().is_some_and(|text| text.ends_with(waits)),
-        "{told:?}"
-    );
-    assert!(
-        !std::fs::read_to_string(&user)
-            .unwrap_or_default()
-            .contains("stub")
-    );
-    assert!(
-        std::fs::read_to_string(&theirs)
-            .unwrap_or_default()
-            .contains("stub")
-    );
-    // What remains is the project's, changed since it was approved.
-    let state = status(app.world_mut(), "stub").map(|status| status.state);
-    assert_eq!(state, Some(McpState::NotApproved));
     std::fs::remove_dir_all(project).ok();
 }
 
@@ -741,8 +926,11 @@ fn a_project_on_another_host_has_no_project_servers_here() {
     write_servers(&local, json!({ "here": stub_server(json!({})) }));
     let before = std::fs::read_to_string(&local).unwrap_or_default();
     let (mut app, _) = app_in(&project, "", None);
-    let remote =
-        rig_harness::rig_tools::remote::Remote::new("bench", ["false"], Default::default());
+    let remote = rig_harness::rig_tools::remote::Remote::new(
+        "bench",
+        ["false"],
+        rig_harness::rig_tools::process::Launcher::default,
+    );
     assert!(remote.is_ok(), "{remote:?}");
     if let Ok(remote) = remote {
         app.insert_resource(ProjectWorkspace(Arc::new(remote)));
@@ -814,8 +1002,23 @@ fn what_a_server_started_goes_with_it() {
     }
 }
 
+/// Started in a folder of the project, rig reads the project's file.
 #[test]
-fn a_project_whose_rig_is_rig_home_has_no_project_file() {
+fn a_folder_of_a_project_has_the_projects_servers() {
+    let project = project("folder");
+    let dir = project.join("sub/dir");
+    std::fs::create_dir_all(dir.join("home")).ok();
+    let server = stub_server(json!({}));
+    write_servers(&project.join(".rig/mcp.json"), json!({ "stub": server }));
+    let (mut app, _) = app_in(&dir, "", None);
+    app.finish();
+    app.update();
+    assert_eq!(scope(app.world_mut(), "stub"), Some(Scope::Project));
+    std::fs::remove_dir_all(project).ok();
+}
+
+#[test]
+fn a_project_in_the_home_directory_has_no_project_file() {
     // Rig run in the home directory: `~/.rig` is the user's own.
     let project = project("home-dir");
     let home = project.join(".rig");
@@ -824,43 +1027,23 @@ fn a_project_whose_rig_is_rig_home_has_no_project_file() {
         json!({ "mine": { "command": "x", "disabled": true } }),
     );
     let (mut app, _) = app_in(&project, "", None);
-    app.insert_resource(RigHome(Home::at(home)));
+    // As rig finds it run in the home directory, which is the project.
+    let found = Project::find(&project, &home, Some(&project));
+    app.insert_resource(RigHome(Home::at(home)))
+        .insert_resource(found);
     app.finish();
     app.update();
     assert_eq!(scope(app.world_mut(), "mine"), Some(Scope::User));
-    let told = notices(app.world());
-    assert!(
-        !told.iter().any(|text| text.contains("not approved")),
-        "{told:?}"
-    );
     let agent =
         rig_harness_test_support::first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
     mcp(&mut app, agent, "add --project theirs x");
     let refused = &app.world().resource::<Collected<Recalled>>().0;
     let why = refused.last().and_then(|recalled| recalled.why.as_deref());
     assert!(
-        why.is_some_and(|why| why.contains(".rig is RIG_HOME itself")),
+        why.is_some_and(|why| why.contains(".rig is RIG_HOME, or it is your home folder")),
         "{why:?}"
     );
     std::fs::remove_dir_all(project).ok();
-}
-
-#[cfg(target_os = "linux")]
-#[test]
-fn a_project_whose_path_is_not_utf8_has_no_project_file() {
-    use std::os::unix::ffi::OsStrExt;
-    let parent = project("not-utf8");
-    let project = parent.join(std::ffi::OsStr::from_bytes(b"repo-\x80"));
-    write_servers(
-        &project.join(".rig/mcp.json"),
-        json!({ "theirs": stub_server(json!({})) }),
-    );
-    let (mut app, _) = app_in(&parent, "", None);
-    app.insert_resource(ProjectRoot(project));
-    app.finish();
-    app.update();
-    assert!(status(app.world_mut(), "theirs").is_none());
-    std::fs::remove_dir_all(parent).ok();
 }
 
 #[test]
@@ -888,6 +1071,50 @@ fn a_server_that_offers_no_tools_connects_with_none() {
     std::fs::remove_dir_all(project).ok();
 }
 
+#[test]
+fn a_server_that_knows_only_the_released_protocol_connects() {
+    let project = project("released");
+    let server = stub_server(json!({ RELEASED: "1" }));
+    write_servers(&project.join("home/mcp.json"), json!({ "gh": server }));
+    let (mut app, wakes) = app_in(&project, "[mcp]\nfirst_retry_secs = 3600", None);
+    app.finish();
+    run_until(&mut app, &wakes, |world| {
+        notices(world).iter().any(|notice| notice.contains("`gh`"))
+    });
+    let told = notices(app.world());
+    assert!(
+        told.contains(&"MCP server `gh` connected: 2 tools.".to_owned()),
+        "{told:?}"
+    );
+    std::fs::remove_dir_all(project).ok();
+}
+
+#[test]
+fn a_server_that_answers_an_older_protocol_is_spoken_to_in_it() {
+    let project = project("older");
+    let server = stub_server(json!({ OLDER: "1" }));
+    write_servers(&project.join("home/mcp.json"), json!({ "old": server }));
+    let (mut app, wakes) = app_in(&project, "[mcp]\nfirst_retry_secs = 3600", None);
+    app.finish();
+    run_until(&mut app, &wakes, |world| {
+        notices(world).iter().any(|notice| notice.contains("`old`"))
+    });
+    let told = notices(app.world());
+    assert!(
+        told.contains(&"MCP server `old` connected: 2 tools.".to_owned()),
+        "{told:?}"
+    );
+    let world = app.world_mut();
+    let versions: Vec<_> = world
+        .query::<&McpLink>()
+        .iter(world)
+        .filter_map(|link| link.0.peer().peer_info())
+        .map(|info| info.protocol_version.to_string())
+        .collect();
+    assert_eq!(versions, ["2025-06-18"]);
+    std::fs::remove_dir_all(project).ok();
+}
+
 #[cfg(target_os = "linux")]
 #[test]
 fn as_rig_exits_every_server_process_is_killed_and_none_starts() {
@@ -907,13 +1134,11 @@ fn as_rig_exits_every_server_process_is_killed_and_none_starts() {
             .and_then(Value::as_array)
             .cloned()
             .unwrap_or_default();
-        let launched = Processes::default().launcher().command(text("command"));
-        let mut command = tokio::process::Command::from(launched);
+        let mut command = Processes::default().launcher().command(text("command"));
         command
             .args(args.iter().filter_map(Value::as_str))
             .envs([(STUB, "1"), (SILENT, "1")])
-            .stdin(Stdio::piped())
-            .kill_on_drop(true);
+            .stdin(Stdio::piped());
         command
     };
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -922,9 +1147,11 @@ fn as_rig_exits_every_server_process_is_killed_and_none_starts() {
     assert!(runtime.is_ok(), "{runtime:?}");
     let Ok(runtime) = runtime else { return };
     let _entered = runtime.enter();
-    let running = groups.spawn(&mut stub());
-    let pid = running.as_ref().ok().and_then(|it| it.child.id());
-    let pid = pid.map(|pid| pid.to_string()).unwrap_or_default();
+    let running = groups.spawn(stub());
+    let pid = running
+        .as_ref()
+        .map(|it| it.id().to_string())
+        .unwrap_or_default();
     assert!(alive(&pid));
     groups.close();
     let waited = Instant::now();
@@ -933,7 +1160,7 @@ fn as_rig_exits_every_server_process_is_killed_and_none_starts() {
     }
     assert!(!alive(&pid), "{pid} outlived the exit");
     // Nothing starts once closed.
-    let late = groups.spawn(&mut stub());
+    let late = groups.spawn(stub());
     assert!(late.is_err_and(|error| error.to_string() == "rig is exiting"));
     drop(running);
 }
@@ -987,6 +1214,16 @@ fn a_client_server_is_taken_as_given_and_no_file_is_read_without_the_plugin() {
     run_until(&mut app, &wakes, |world| has(world, "files__add"));
     assert!(literal.exists() && !mine.exists());
     assert_eq!(scope(app.world_mut(), "files"), Some(Scope::Client));
+    // The tool is the crate's, as with McpPlugin, so a plugin filter such as
+    // tool search's `plugins = ["rig-mcp-client"]` finds it.
+    let world = app.world_mut();
+    let package = world
+        .query::<(&ToolDef, &ProvidedBy)>()
+        .iter(world)
+        .find(|(def, _)| def.0.name.as_str() == "files__add")
+        .and_then(|(_, by)| world.get::<PluginSource>(by.0))
+        .map(|source| source.package.clone());
+    assert_eq!(package.as_deref(), Some("rig-mcp-client"));
     let agent = rig_harness_test_support::first_agent(app.world_mut());
     let agent = agent.unwrap_or(Entity::PLACEHOLDER);
     mcp(&mut app, agent, "");
@@ -1001,7 +1238,7 @@ fn a_client_server_is_taken_as_given_and_no_file_is_read_without_the_plugin() {
 }
 
 #[test]
-fn a_client_server_takes_its_name_over_the_users_and_the_approved_projects() {
+fn a_client_server_takes_its_name_over_the_users_and_the_projects() {
     let project = project("client-names");
     let (user, theirs) = (project.join("home/mcp.json"), project.join(".rig/mcp.json"));
     let (mine, ours) = (
@@ -1012,17 +1249,15 @@ fn a_client_server_takes_its_name_over_the_users_and_the_approved_projects() {
         project.join("first-started"),
         project.join("second-started"),
     );
-    let approved = stub_server(json!({ MARKER: ours }));
     write_servers(
         &user,
         json!({ "files": stub_server(json!({ MARKER: mine })) }),
     );
-    write_servers(&theirs, json!({ "files": approved }));
+    write_servers(
+        &theirs,
+        json!({ "files": stub_server(json!({ MARKER: ours })) }),
+    );
     let (mut app, wakes) = app_in(&project, "", None);
-    let data = app.world().resource::<PluginData>();
-    let lock = config::lock_path(&project.join("home"));
-    let mut approvals = Approvals::read(Some(data), project.display().to_string(), lock);
-    assert!(approvals.set("files", approved, true).is_ok());
     name_clients(
         &mut app,
         vec![
@@ -1035,13 +1270,12 @@ fn a_client_server_takes_its_name_over_the_users_and_the_approved_projects() {
     let agent = rig_harness_test_support::first_agent(app.world_mut());
     let agent = agent.unwrap_or(Entity::PLACEHOLDER);
     // A file's server of the name stays stopped whatever /mcp does.
-    mcp(&mut app, agent, "approve files");
     mcp(&mut app, agent, "remove --user files");
     mcp(&mut app, agent, "");
     assert!(!mine.exists() && !ours.exists());
     assert!(first.exists() && !second.exists());
     assert_eq!(scope(app.world_mut(), "files"), Some(Scope::Client));
-    // The approved project's server stands for the user's, and gives way.
+    // The project's server stands for the user's, and gives way.
     let told = notices(app.world());
     assert!(
         told.contains(&gives_way("files", Scope::Project)),
@@ -1168,5 +1402,410 @@ fn a_run_with_no_session_starts_no_server_of_the_files() {
     }
     assert!(status(app.world_mut(), "files").is_none());
     assert!(!mine.exists());
+    std::fs::remove_dir_all(project).ok();
+}
+
+/// Done item: `--tools <server>__<tool>` at a terminal waits for the server
+/// as a headless run does, where it was refused before the server
+/// connected.
+#[test]
+fn a_terminal_run_can_name_a_servers_tool_in_its_tools() {
+    let project = project("terminal");
+    write_servers(
+        &project.join("home/mcp.json"),
+        json!({ "stub": stub_server(json!({})) }),
+    );
+    let model = MockCompletionModel::from_stream_turns([reply("ok")]);
+    let invoked = Invocation {
+        flags: vec![(TOOLS.to_owned(), Some("stub__add".to_owned()))],
+        ..Invocation::default()
+    };
+    let (mut app, wakes) = app_in(&project, "", Some(invoked));
+    app.world_mut().resource_mut::<Invoked>().terminal = true;
+    app.insert_resource(scripted_models([(MODEL, &model)]))
+        .add_front(Front::new("view").on_terminal())
+        .add_plugins((ExitPlugin, PrintPlugin));
+    let agent = spawn_root(app.world_mut(), ()).id();
+    app.finish();
+    app.cleanup();
+    run_until(&mut app, &wakes, |world| has(world, "stub__add"));
+    app.world_mut().trigger(SetModel {
+        entity: agent,
+        model: MODEL.to_owned(),
+        kind: ChoiceKind::ForThisRun,
+    });
+    let ask = Deliver::new(agent, "Add 2 and 3.", DeliveryMode::Steer);
+    app.world_mut().trigger(ask);
+    run_until(&mut app, &wakes, |_| model.request_count() > 0);
+    assert_eq!(app.should_exit(), None);
+    let first = model.requests().first().map(|request| {
+        let names = request.tools.iter().map(|tool| tool.name.to_string());
+        names.collect::<Vec<_>>()
+    });
+    assert_eq!(first, Some(vec!["stub__add".to_owned()]));
+    std::fs::remove_dir_all(project).ok();
+}
+
+/// A server whose list of tools is past the limit, after an answer that
+/// starts with a byte-order mark, is lost saying so: the reason survives
+/// the list that ended the connection.
+#[test]
+fn a_tool_list_past_the_limit_loses_the_server_saying_why() {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .build();
+    assert!(runtime.is_ok(), "a tokio runtime");
+    let Ok(runtime) = runtime else { return };
+    let exe = std::env::current_exe().unwrap_or_default();
+    let module = module_path!().split_once("::").map_or("", |(_, path)| path);
+    let env = [(STUB, "1"), (LONG, "1")].map(|(key, value)| (key.to_owned(), value.to_owned()));
+    let start = Start {
+        spec: ServerSpec::Stdio {
+            command: exe.to_string_lossy().into_owned(),
+            args: vec![
+                format!("{module}::stub"),
+                "--exact".to_owned(),
+                "--ignored".to_owned(),
+                "--nocapture".to_owned(),
+                "--test-threads=1".to_owned(),
+            ],
+            env: env.into_iter().collect(),
+            cwd: None,
+        },
+        processes: Processes::default(),
+        groups: Groups::default(),
+        root: project("long-list"),
+        limit: Duration::from_secs(20),
+        line_limit: 1024,
+    };
+    let (sender, _events) = async_channel::bounded(EVENTS);
+    let ran = runtime.block_on(start.run(&Outbox(sender)));
+    let why = ran.err().unwrap_or_default();
+    assert!(why.contains("more than 1024 bytes"), "{why}");
+}
+
+/// A wait of 0 seconds does not read, so the user's settings refuse the
+/// run naming the key, rather than it becoming 1.
+#[test]
+fn a_wait_of_zero_seconds_does_not_read() {
+    for key in ["connect_timeout_secs", "first_retry_secs"] {
+        let settings = Settings::from_toml(&format!("[mcp]\n{key} = 0"));
+        let read = settings.get::<McpSettings>("mcp");
+        assert!(
+            read.as_ref().is_err_and(|why| why.contains("[mcp]")),
+            "{key}: {:?}",
+            read.err()
+        );
+    }
+}
+
+/// The header every request to [`Loopback`] must carry, and its value.
+const TOKEN_HEADER: &str = "x-rig-token";
+const TOKEN: &str = "loopback-secret";
+
+/// An MCP server over streamable HTTP in this process: `add(a, b)` answers
+/// with the sum, and `mul` is listed once `grown` is set.
+#[derive(Clone, Default)]
+struct Loopback {
+    grown: Arc<AtomicBool>,
+    /// The client of each session, once it said it is ready.
+    peers: Arc<Mutex<Vec<rmcp::Peer<rmcp::RoleServer>>>>,
+}
+
+impl rmcp::ServerHandler for Loopback {
+    fn get_info(&self) -> rmcp::model::ServerConfig {
+        let capabilities = rmcp::model::ServerCapabilities::builder()
+            .enable_tools()
+            .enable_tool_list_changed()
+            .build();
+        rmcp::model::ServerConfig::new(capabilities)
+    }
+
+    async fn on_initialized(&self, context: NotificationContext<rmcp::RoleServer>) {
+        let mut peers = self.peers.lock().unwrap_or_else(PoisonError::into_inner);
+        peers.push(context.peer);
+    }
+
+    async fn list_tools(
+        &self,
+        _: Option<rmcp::model::PaginatedRequestParams>,
+        _: rmcp::service::RequestContext<rmcp::RoleServer>,
+    ) -> Result<rmcp::model::ListToolsResult, rmcp::ErrorData> {
+        let object = json!({
+            "type": "object",
+            "properties": { "a": { "type": "number" }, "b": { "type": "number" } },
+        });
+        let schema = Arc::new(object.as_object().cloned().unwrap_or_default());
+        let mut tools = vec![McpDefinition::new(
+            "add",
+            "Adds two numbers.",
+            schema.clone(),
+        )];
+        if self.grown.load(Ordering::SeqCst) {
+            tools.push(McpDefinition::new("mul", "Multiplies two numbers.", schema));
+        }
+        Ok(rmcp::model::ListToolsResult::with_all_items(tools))
+    }
+
+    async fn call_tool(
+        &self,
+        request: rmcp::model::CallToolRequestParams,
+        _: rmcp::service::RequestContext<rmcp::RoleServer>,
+    ) -> Result<rmcp::model::CallToolResponse, rmcp::ErrorData> {
+        let number = |key| {
+            let arguments = request.arguments.as_ref();
+            let value = arguments.and_then(|arguments| arguments.get(key));
+            value.and_then(Value::as_f64).unwrap_or_default()
+        };
+        let sum = number("a") + number("b");
+        let text = rmcp::model::ContentBlock::text(sum.to_string());
+        Ok(rmcp::model::CallToolResult::success(vec![text]).into())
+    }
+}
+
+/// Refuses a request without the token, counting it in `refused`.
+async fn token_only(
+    refused: Arc<AtomicUsize>,
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let token = request.headers().get(TOKEN_HEADER);
+    if token.is_some_and(|token| token == TOKEN) {
+        return next.run(request).await;
+    }
+    refused.fetch_add(1, Ordering::SeqCst);
+    axum::response::IntoResponse::into_response(http::StatusCode::UNAUTHORIZED)
+}
+
+/// The plugin uses rmcp's default reqwest client, which reads `HTTP_PROXY`,
+/// `ALL_PROXY` and `NO_PROXY` (and their lowercase forms): on a machine with
+/// a proxy and no `NO_PROXY` for 127.0.0.1, this test goes through the proxy.
+#[test]
+fn a_streamable_http_server_connects_lists_answers_and_changes_its_tools() {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
+        .enable_all()
+        .build();
+    assert!(runtime.is_ok(), "{runtime:?}");
+    let Ok(runtime) = runtime else { return };
+    let server = Loopback::default();
+    let refused = Arc::new(AtomicUsize::new(0));
+    let factory = server.clone();
+    let service = rmcp::transport::StreamableHttpService::new(
+        move || Ok(factory.clone()),
+        Arc::new(
+            rmcp::transport::streamable_http_server::session::local::LocalSessionManager::default(),
+        ),
+        rmcp::transport::StreamableHttpServerConfig::default(),
+    );
+    let counted = refused.clone();
+    let router =
+        axum::Router::new()
+            .nest_service("/mcp", service)
+            .layer(axum::middleware::from_fn(move |request, next| {
+                token_only(counted.clone(), request, next)
+            }));
+    let listener = runtime.block_on(tokio::net::TcpListener::bind("127.0.0.1:0"));
+    let bound = listener.and_then(|listener| Ok((listener.local_addr()?, listener)));
+    assert!(bound.is_ok(), "{bound:?}");
+    let Ok((address, listener)) = bound else {
+        return;
+    };
+    runtime.spawn(async move { axum::serve(listener, router).await });
+
+    let project = project("http");
+    let url = format!("http://{address}/mcp");
+    write_servers(
+        &project.join("home/mcp.json"),
+        json!({ "web": { "type": "http", "url": url, "headers": { TOKEN_HEADER: TOKEN } } }),
+    );
+    let model = MockCompletionModel::from_stream_turns([
+        calls("c1", "web__add", json!({ "a": 2, "b": 3 })),
+        reply("2 + 3 = 5."),
+    ]);
+    let (mut app, wakes) = app_in(&project, "[mcp]\nfirst_retry_secs = 3600", None);
+    app.init_resource::<Outputs>().add_observer(
+        |settled: On<Add<Settled>>,
+         calls: Query<&Outcome, With<ToolRequest>>,
+         mut log: ResMut<Outputs>| {
+            if let Ok(outcome) = calls.get(settled.entity) {
+                log.0.push(outcome.tool_result().output().render());
+            }
+        },
+    );
+    app.finish();
+    app.update();
+    let agent = rig_harness_test_support::first_agent(app.world_mut());
+    let connection = connect(&model);
+    assert!(agent.is_some() && connection.is_some());
+    let (Some(agent), Some(connection)) = (agent, connection) else {
+        return;
+    };
+    app.world_mut().entity_mut(agent).insert(connection);
+
+    run_until(&mut app, &wakes, |world| has(world, "web__add"));
+    let told = notices(app.world());
+    assert!(
+        told.contains(&"MCP server `web` connected: 1 tool.".to_owned()),
+        "{told:?}"
+    );
+    app.world_mut()
+        .trigger(Deliver::new(agent, "Add 2 and 3.", DeliveryMode::Queue));
+    run_until(&mut app, &wakes, |world| {
+        model.request_count() == 2 && !world.entity(agent).contains::<ActiveTurn>()
+    });
+    assert_eq!(app.world().resource::<Outputs>().0, ["5"]);
+
+    // The server's word that its tools changed, outside any request of the
+    // client's, brings the new list.
+    server.grown.store(true, Ordering::SeqCst);
+    let peers = server
+        .peers
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone();
+    assert_eq!(peers.len(), 1);
+    for peer in peers {
+        let said = runtime.block_on(peer.notify_tool_list_changed());
+        assert!(said.is_ok(), "{said:?}");
+    }
+    run_until(&mut app, &wakes, |world| has(world, "web__mul"));
+    let state = status(app.world_mut(), "web").map(|status| (status.state, status.tools));
+    assert_eq!(state, Some((McpState::Connected, 2)));
+    // Every request carried the header.
+    assert_eq!(refused.load(Ordering::SeqCst), 0);
+    drop(app);
+    runtime.shutdown_background();
+    std::fs::remove_dir_all(project).ok();
+}
+
+#[test]
+fn a_server_that_refuses_its_client_says_why_in_plain_words() {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
+        .enable_all()
+        .build();
+    assert!(runtime.is_ok(), "{runtime:?}");
+    let Ok(runtime) = runtime else { return };
+    // Answers as a server that takes OAuth does: 401 to every request, and
+    // 403 on `/scoped`, each with a bearer challenge. `/bare` answers 401
+    // with no challenge, and `/garbled` a JSON type with HTML in it.
+    let router = axum::Router::new()
+        .route(
+            "/scoped",
+            axum::routing::any(|| async {
+                let challenge = "Bearer error=\"insufficient_scope\", scope=\"repo\"";
+                (
+                    http::StatusCode::FORBIDDEN,
+                    [(http::header::WWW_AUTHENTICATE, challenge)],
+                )
+            }),
+        )
+        .route(
+            "/bare",
+            axum::routing::any(|| async { http::StatusCode::UNAUTHORIZED }),
+        )
+        .route(
+            "/garbled",
+            axum::routing::any(|| async {
+                let json = [(http::header::CONTENT_TYPE, "application/json")];
+                (json, "<html>oops</html>")
+            }),
+        )
+        .fallback(|| async {
+            let challenge = "Bearer resource_metadata=\"http://127.0.0.1/.well-known/oauth-protected-resource\"";
+            (
+                http::StatusCode::UNAUTHORIZED,
+                [(http::header::WWW_AUTHENTICATE, challenge)],
+            )
+        });
+    let listener = runtime.block_on(tokio::net::TcpListener::bind("127.0.0.1:0"));
+    let bound = listener.and_then(|listener| Ok((listener.local_addr()?, listener)));
+    assert!(bound.is_ok(), "{bound:?}");
+    let Ok((address, listener)) = bound else {
+        return;
+    };
+    runtime.spawn(async move { axum::serve(listener, router).await });
+    // A port nothing listens on once its listener is dropped.
+    let closed = std::net::TcpListener::bind("127.0.0.1:0").and_then(|free| free.local_addr());
+    assert!(closed.is_ok(), "{closed:?}");
+    let Ok(closed) = closed else { return };
+
+    let project = project("refused");
+    let token = json!({ "Authorization": "Bearer expired" });
+    let servers = json!({
+        "conf": { "type": "http", "url": format!("http://{address}/mcp") },
+        "keyed": { "type": "http", "url": format!("http://{address}/mcp"), "headers": token },
+        "scoped": { "type": "http", "url": format!("http://{address}/scoped"), "headers": token },
+        "bare": { "type": "http", "url": format!("http://{address}/bare") },
+        "barekeyed": { "type": "http", "url": format!("http://{address}/bare"), "headers": token },
+        "garbled": { "type": "http", "url": format!("http://{address}/garbled") },
+        "gone": { "type": "http", "url": format!("http://{closed}/mcp") },
+        "readonly": {
+            "type": "http",
+            "url": format!("http://{address}/mcp"),
+            "headers": { "X-MCP-Readonly": "true" },
+        },
+    });
+    write_servers(&project.join("home/mcp.json"), servers);
+    let (mut app, wakes) = app_in(&project, "[mcp]\nfirst_retry_secs = 3600", None);
+    app.finish();
+    run_until(&mut app, &wakes, |world| notices(world).len() == 8);
+    let (gone, mut told): (Vec<_>, Vec<_>) = notices(app.world())
+        .into_iter()
+        .partition(|notice| notice.starts_with("MCP server `gone`"));
+    told.sort();
+    let gone = gone.concat();
+    assert!(
+        gone.starts_with("MCP server `gone` could not connect: ")
+            && gone.contains(&format!(
+                "error sending request for url (http://{closed}/mcp)"
+            ))
+            && !gone.contains("rmcp::"),
+        "{gone}"
+    );
+    assert_eq!(
+        told,
+        [
+            "MCP server `bare` could not connect: it needs a token (HTTP 401). A server that \
+             takes a token in a header works: see \"Servers: `mcp.json`\" in the rig-mcp-client \
+             README.",
+            "MCP server `barekeyed` could not connect: it refused the token in its `headers` \
+             (HTTP 401).",
+            "MCP server `conf` could not connect: it asks for a sign-in (OAuth), which rig \
+                 does not support. A server that takes a token in a header works: see \"Servers: \
+                 `mcp.json`\" in the rig-mcp-client README.",
+            "MCP server `garbled` could not connect: its answer was not MCP JSON (expected \
+             value at line 1 column 1: <html>oops</html>).",
+            "MCP server `keyed` could not connect: it refused the token in its `headers` \
+                 (HTTP 401).",
+            "MCP server `readonly` could not connect: it asks for a sign-in (OAuth), which rig \
+             does not support. A server that takes a token in a header works: see \"Servers: \
+             `mcp.json`\" in the rig-mcp-client README.",
+            "MCP server `scoped` could not connect: the token in its `headers` lacks a \
+                 permission it needs (HTTP 403, insufficient scope).",
+        ],
+    );
+    drop(app);
+    runtime.shutdown_background();
+    std::fs::remove_dir_all(project).ok();
+}
+
+#[cfg(unix)]
+#[test]
+fn a_server_that_exits_at_once_says_so() {
+    let project = project("exits");
+    write_servers(
+        &project.join("home/mcp.json"),
+        json!({ "quits": { "command": "true" } }),
+    );
+    let (mut app, wakes) = app_in(&project, "[mcp]\nfirst_retry_secs = 3600", None);
+    app.finish();
+    run_until(&mut app, &wakes, |world| !notices(world).is_empty());
+    assert_eq!(
+        notices(app.world()),
+        ["MCP server `quits` could not connect: it closed the connection before it answered."],
+    );
     std::fs::remove_dir_all(project).ok();
 }

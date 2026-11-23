@@ -8,18 +8,28 @@ use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::load;
 use rig_harness_test_support::{
-    Ended, app_in, first_agent, log_ended, reply, run_until, scratch_home, scripted_models,
-    tui_view,
+    Ended, app_in, deliver, first_agent, log_ended, reply, scratch_home, scripted_models, tui_view,
 };
 use rig_tui::TuiTestScreen;
 
 use super::*;
 
-/// The test plugin whose version changes between runs.
+/// The test plugin whose version changes between runs. It loads a part of
+/// its own package the way a plugin adds one it needs, with no source.
 #[derive(Default)]
 struct AlphaPlugin;
 
 impl Plugin for AlphaPlugin {
+    fn build(&self, app: &mut App) {
+        load::<AlphaPartPlugin>(app, "alpha", "");
+    }
+}
+
+/// The part [`AlphaPlugin`] loads.
+#[derive(Default)]
+struct AlphaPartPlugin;
+
+impl Plugin for AlphaPartPlugin {
     fn build(&self, _app: &mut App) {}
 }
 
@@ -80,8 +90,8 @@ fn start(
     tui_view(&mut app);
     if new {
         let model = ModelChoice("test/scripted-a".to_owned());
-        let agent = (Name::new("main"), Agent, AgentId("main".to_owned()), model);
-        app.world_mut().spawn(agent);
+        let agent = (Name::new("main"), AgentId("main".to_owned()), model);
+        spawn_root(app.world_mut(), agent);
     }
     app.finish();
     app.cleanup();
@@ -95,16 +105,13 @@ fn start(
 /// Sends `line` as the user typed it: a command runs, a message's turn
 /// runs to its end.
 fn send(app: &mut App, wakes: &Receiver<()>, agent: Entity, line: &str) {
-    let ended = app.world().resource::<Ended>().0.len();
     let typed = Deliver::new(agent, line, DeliveryMode::Queue).with_author(Author::user());
-    app.world_mut().trigger(typed);
     if line.starts_with('/') {
+        app.world_mut().trigger(typed);
         app.update();
         app.update();
     } else {
-        run_until(app, wakes, |world| {
-            world.resource::<Ended>().0.len() > ended
-        });
+        deliver(app, wakes, typed);
     }
 }
 
@@ -232,5 +239,44 @@ fn the_setup_and_its_changes_are_recorded_resumed_and_never_sent() {
             assert!(!sent.contains(secret), "{secret} in {sent}");
         }
     }
+    fs::remove_dir_all(home.root()).ok();
+}
+
+/// A model chosen on the exit frame is recorded on it, and the record is
+/// saved with the session.
+#[test]
+fn a_model_chosen_as_the_session_exits_is_kept() {
+    let home = scratch_home("sp-session-provenance-exit");
+    let repo = home.root().join("repo");
+    assert!(fs::create_dir_all(&repo).is_ok());
+    git(&repo, &["init", "-q", "-b", "main"]);
+    commit(&repo, "a.txt");
+    let a = MockCompletionModel::from_stream_turns([reply("Done.")]);
+    let b = MockCompletionModel::from_stream_turns(Vec::<Vec<_>>::new());
+    let models = || scripted_models([("test/scripted-a", &a), ("test/scripted-b", &b)]);
+    let at = (&home, repo.as_path());
+
+    let started = start(at, "1000-3", models(), "0.1", true);
+    assert!(started.is_some(), "a session with an agent");
+    let Some((mut app, wakes, agent)) = started else {
+        return;
+    };
+    send(&mut app, &wakes, agent, "Do it.");
+    app.world_mut().trigger(SetModel {
+        entity: agent,
+        model: "test/scripted-b".to_owned(),
+        kind: ChoiceKind::ForThisRun,
+    });
+    app.world_mut().write_message(AppExit::Success);
+    app.update();
+    assert_eq!(kinds(&record(&app, agent)), [EntryKind::Model]);
+    drop(app);
+
+    let resumed = start(at, "1000-3", models(), "0.1", true);
+    assert!(resumed.is_some(), "the session was resumed");
+    let Some((app, _wakes, agent)) = resumed else {
+        return;
+    };
+    assert_eq!(kinds(&record(&app, agent)).first(), Some(&EntryKind::Model));
     fs::remove_dir_all(home.root()).ok();
 }

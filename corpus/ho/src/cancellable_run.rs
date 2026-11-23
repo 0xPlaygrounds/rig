@@ -1,21 +1,14 @@
-//! Long commands with live output and per-call cancel (spec
-//! `H09-cancellable-run.md`): the `run` tool, `/cancel-call` and `ctrl+k`.
+//! Long commands with live output and per-call cancel: the `run` tool, `/cancel-call` and `ctrl+k`.
+//! Each `run` call starts `sh -c` through the shared launcher ([`Processes`]) as a process group of
+//! its own. Its output lines go into the call's [`RunOutput`], which keeps the last 4 KB and feeds
+//! the call's [`ToolProgress`] (the terminal view shows it at most 10 times a second). When the
+//! turn is interrupted or stopped, the call is answered with the output so far and `[interrupted]`
+//! ([`IfStopped`]).
 //!
-//! `run` is an open tool. Each call starts `sh -c` through the shared
-//! launcher ([`Processes`]) as a process group of its own. A thread hands
-//! the command's output lines to a [`Running::stream`] on the call's job
-//! entity, and each line goes into the call's [`RunOutput`], which keeps
-//! the last 4 KB. From it the plugin keeps the call's [`ToolProgress`]
-//! (which every front shows, the terminal view at most 10 times a second)
-//! and its [`IfStopped`]: the output so far and `[interrupted]`, which the
-//! kernel answers with when the turn is interrupted or stopped.
-//!
-//! A cancel (`/cancel-call`, `ctrl+k`) or the timeout sends the group
-//! SIGTERM, then SIGKILL three seconds later (a [`WakeAt`] on the job).
-//! Once the command ended the call is answered with its last 4 KB of output
-//! and how it ended, so a cancel lets the turn carry on with the model
-//! deciding. The job is [`JobOf`] its call and ends when the call settles,
-//! which kills a command still running.
+//! A cancel or the timeout sends the group SIGTERM, then SIGKILL three seconds later. Once the
+//! command ended, the call is answered with its last 4 KB of output and how it ended, so a cancel
+//! lets the turn carry on with the model deciding. The job is [`JobOf`] its call and ends when the
+//! call settles, which kills a command still running.
 
 use std::cmp::Reverse;
 use std::thread;
@@ -27,8 +20,8 @@ use rig_harness::prelude::*;
 use rig_tui::ratatui::style::{Style, Stylize};
 use rig_tui::ratatui::text::Line;
 use rig_tui::{
-    AppKeyBindingsExt, CallState, KeyBinding, KeyPress, RenderBatch, ToolCallView, run_command,
-    text_rows,
+    AppKeyBindingsExt, CallState, KeyBinding, KeyPress, LookLine, RenderBatch, ToolRender,
+    run_command, text_rows,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -139,11 +132,9 @@ impl RunOutput {
     fn push(&mut self, line: &str) {
         self.text.push_str(line);
         self.text.push('\n');
-        let mut excess = self.text.len().saturating_sub(KEPT_BYTES);
+        let excess = self.text.len().saturating_sub(KEPT_BYTES);
         if excess > 0 {
-            while !self.text.is_char_boundary(excess) {
-                excess += 1;
-            }
+            let excess = self.text.ceil_char_boundary(excess);
             self.text.drain(..excess);
             self.cut = true;
         }
@@ -385,19 +376,20 @@ fn show_progress(
 /// Draws the `run` calls.
 fn draw(mut batch: ResMut<RenderBatch>) {
     for (call, output) in batch.tools_mut(RUN) {
-        output.lines = look(&call.view());
+        output.lines = look(call);
     }
 }
 
 /// The terminal view's look of a `run` call: the command, then its output
 /// while it runs, or its result.
-fn look(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
+fn look(view: &ToolRender) -> Vec<LookLine> {
     let command = view.argument("command").unwrap_or_default();
-    let mut lines = vec![view.header(RUN, command)];
+    let mut lines = vec![view.header(RUN, command).into()];
     match &view.state {
         CallState::Running(Some(progress)) if view.result.is_none() => {
-            lines.extend(text_rows(progress, Style::new().dim()));
-            lines.push(Line::from("    ctrl+k cancels").yellow());
+            let rows = text_rows(progress, Style::new().dim());
+            lines.extend(rows.into_iter().map(LookLine::from));
+            lines.push(Line::from("    ctrl+k cancels").yellow().into());
         }
         _ => lines.extend(view.result_lines()),
     }

@@ -10,7 +10,7 @@ use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ModelAdapter;
 use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
 use rig_harness_test_support::MemoryStore;
-use rig_harness_test_support::{Ended, app_on, log_ended, reply, run_until};
+use rig_harness_test_support::{Ended, app_on, deliver, log_ended, reply};
 
 use super::*;
 
@@ -46,11 +46,7 @@ fn overloaded() -> Vec<MockStreamEvent> {
 
 /// Sends `text` and runs frames until one more turn ended; its answer.
 fn ask(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str) -> Option<String> {
-    let ended = |world: &World| world.resource::<Ended>().0.len();
-    let before = ended(app.world());
-    app.world_mut()
-        .trigger(Deliver::new(agent, text, DeliveryMode::Queue));
-    run_until(app, wakes, |world| ended(world) > before);
+    deliver(app, wakes, Deliver::new(agent, text, DeliveryMode::Queue));
     match app.world().resource::<Ended>().0.last() {
         Some(TurnOutcome::Answered(message)) => message.final_answer(),
         _ => None,
@@ -135,10 +131,7 @@ fn an_overloaded_model_falls_back_and_comes_back_after_the_cooldown() {
     assert_eq!(b.request_count(), 3);
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(ModelFallbackPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(ModelFallbackPlugin);
 
 /// The model plugins, loaded together.
 #[test]

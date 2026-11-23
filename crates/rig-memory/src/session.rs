@@ -6,12 +6,10 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io;
 use std::ops::ControlFlow;
 
-use rig_core::conversation::{ChangeRecord, Conversation};
+use rig_core::conversation::{ChangeRecord, Conversation, Lineage};
 use serde_json::Value;
 
-use crate::blobs::{
-    BLOBS, load_images, load_images_with, messages_mut, named_blobs, put_blob, read_blob,
-};
+use crate::blobs::{BLOBS, load_images_with, messages_mut, named_blobs, put_blob, read_blob};
 use crate::format::{Body, Header, LogLines, Meta, SESSION, parse, stamp_of};
 use crate::store::now;
 use crate::writer::Book;
@@ -26,7 +24,14 @@ pub struct Session {
     pub saved: BTreeMap<String, Value>,
     /// What reading it repaired or worked around.
     pub repairs: Vec<Repair>,
+    /// Where each log ended when the session was read or last saved, so a
+    /// save refuses a store that moved on.
+    pub(crate) ends: BTreeMap<String, End>,
 }
+
+/// Where a log ends: its lineage and the `seq` after its last record. A
+/// write or a rewrite of the log changes it.
+pub(crate) type End = (Lineage, u64);
 
 /// An agent as its log left it.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -142,11 +147,7 @@ fn read_lines(
     let Some((_, _, first)) = lines.iter().next() else {
         return Ok(None);
     };
-    let refuse = |line, why| SessionError::Record {
-        log: name.to_owned(),
-        line,
-        why,
-    };
+    let refuse = |line, why| SessionError::record(name, line, why);
     let (started, header) = read_header(name, first)?;
     let mut last = started;
     for (line, _, bytes) in lines.iter().skip(1) {
@@ -190,11 +191,8 @@ pub(crate) fn read_header(name: &str, first: &[u8]) -> Result<(Stamp, Header), S
         return Err(SessionError::Format { log, found });
     }
     if !header.lineage.is_log() {
-        return Err(SessionError::Record {
-            log: name.to_owned(),
-            line: 1,
-            why: "a header without the log's lineage".to_owned(),
-        });
+        let why = "a header without the log's lineage".to_owned();
+        return Err(SessionError::record(name, 1, why));
     }
     Ok((started, header))
 }
@@ -315,7 +313,8 @@ pub(crate) fn note_meta(meta: Meta, state: &mut BTreeMap<String, Value>, retired
 /// `lines`, the log `name`, read for saving to it as [`fold_lines`] reads
 /// it, but its changes only counted by their stamps, not read or applied:
 /// its conversation is empty, continuing the log; its saved values and
-/// retirement are read. `None` when it holds no complete line.
+/// retirement are read, and a second header is refused as loading refuses
+/// it. `None` when it holds no complete line.
 fn tally(name: &str, lines: &LogLines) -> Result<Option<Folded>, SessionError> {
     let Some((_, _, first)) = lines.iter().next() else {
         return Ok(None);
@@ -324,13 +323,12 @@ fn tally(name: &str, lines: &LogLines) -> Result<Option<Folded>, SessionError> {
     let (mut last, mut changes) = (started, 0);
     let (mut state, mut retired) = (BTreeMap::new(), false);
     for (line, _, bytes) in lines.iter().skip(1) {
-        let refuse = |why| SessionError::Record {
-            log: name.to_owned(),
-            line,
-            why,
-        };
+        let refuse = |why| SessionError::record(name, line, why);
         let (stamp, change) = stamp_of(bytes).map_err(refuse)?;
         if !change && let (_, Body::Meta(meta)) = parse(bytes).map_err(refuse)? {
+            if matches!(meta, Meta::Header(_)) {
+                return Err(refuse("a second header".to_owned()));
+            }
             note_meta(meta, &mut state, &mut retired);
         }
         last = stamp;
@@ -454,10 +452,17 @@ pub(crate) fn skipped<'a>(
     skipped
 }
 
+/// Where each log of `folded` ends.
+pub(crate) fn ends(folded: &[Folded]) -> BTreeMap<String, End> {
+    let end = |log: &Folded| (log.name.clone(), (log.header.lineage, log.next_seq));
+    folded.iter().map(end).collect()
+}
+
 /// The session of `folded`, with `repairs`.
 pub(crate) fn session_of(folded: Vec<Folded>, repairs: Vec<Repair>) -> Session {
     let mut session = Session {
         repairs,
+        ends: ends(&folded),
         ..Session::default()
     };
     for log in folded {
@@ -532,22 +537,34 @@ impl Session {
     /// one): appends each agent's unsaved changes (an agent new to the
     /// store gets a header), its changed and removed saved values, and its
     /// retirement, and the session's changed values. Each agent's
-    /// conversation is left with nothing unsaved. A torn last line of a log
-    /// written to is first set aside, as [`Writer::open`](crate::Writer::open)
-    /// does.
+    /// conversation is left with nothing unsaved once its log is written; a
+    /// save that fails leaves the others with their unsaved changes, so it
+    /// can be tried again, and writes no change twice. A torn last line of
+    /// a log written to is first set aside, as
+    /// [`Writer::open`](crate::Writer::open) does.
     ///
     /// # Errors
     ///
-    /// [`SessionError::Changed`] when a log that holds changes moved on since
-    /// the agent's conversation was read, or holds another conversation,
-    /// before anything is written; when the store fails, a log is in another
-    /// format, or a line has no stamp; or when a write fails. It reads the
-    /// stamps of the logs' changes, not the changes, so a change that does
-    /// not apply is refused by [`Self::read`], not here.
+    /// [`SessionError::Changed`], before anything is written, when a log
+    /// was started, written, rewritten or removed since the session was read
+    /// or last saved (unless `store` is empty, so a session saves as a copy
+    /// to an empty store), or a log that holds changes holds another
+    /// conversation than its agent's: read the session again and redo the
+    /// edit. When the store fails, a log is in another format, or a line has
+    /// no stamp; or when a write fails. It reads the stamps of the logs'
+    /// changes, not the changes, so a change that does not apply is refused
+    /// by [`Self::read`], not here.
     pub fn save(&mut self, store: &dyn Store) -> Result<(), SessionError> {
         let mut folded = Vec::new();
         for (name, lines) in &read_logs(store)? {
             folded.extend(tally(name, lines)?);
+        }
+        let now = ends(&folded);
+        if !now.is_empty() && now != self.ends {
+            let mut logs = now.keys().chain(self.ends.keys());
+            let log = logs.find(|log| now.get(*log) != self.ends.get(*log));
+            let log = log.cloned().unwrap_or_default();
+            return Err(SessionError::Changed { log });
         }
         let had = |id: &str| folded.iter().find(|log| log.name == id);
         for agent in &self.agents {
@@ -561,10 +578,11 @@ impl Session {
         let torn = torn_tails(store, &folded)?.into_iter();
         book.set_aside(torn.map(|(log, _, cut)| (log, cut)));
         book.start();
-        for agent in &mut self.agents {
+        let mut staged: Vec<_> = self.agents.iter().map(|a| a.conversation.clone()).collect();
+        for (agent, conversation) in self.agents.iter().zip(&mut staged) {
             let _ = book.opened(&agent.id, agent.parent.as_deref());
             let put = &mut |name: String, bytes: Vec<u8>| put_blob(store, &name, &bytes);
-            book.save(put, &agent.id, &mut agent.conversation);
+            book.save(put, &agent.id, conversation);
             let known = had(&agent.id).map(|log| &log.state);
             book.states(&agent.id, known, &agent.saved);
             if agent.retired && !had(&agent.id).is_some_and(|log| log.retired) {
@@ -573,7 +591,16 @@ impl Session {
         }
         let known = had(SESSION).map(|log| &log.state);
         book.states(SESSION, known, &self.saved);
-        book.flush(store)
+        let flushed = book.flush(store);
+        self.ends = now.clone();
+        self.ends.extend(book.written());
+        for (agent, conversation) in self.agents.iter_mut().zip(staged) {
+            // A log whose end moved was written, with every change queued for it.
+            if flushed.is_ok() || self.ends.get(&agent.id) != now.get(&agent.id) {
+                agent.conversation = conversation;
+            }
+        }
+        flushed
     }
 }
 
@@ -618,7 +645,7 @@ pub fn load(store: &dyn Store, log: &str) -> Result<Conversation, SessionError> 
 /// The conversation of `folded`, an empty one for no log; refused when an
 /// image of it could not be read for a reason other than that its blob is
 /// gone.
-fn conversation_of(folded: Option<Folded>) -> Result<Conversation, SessionError> {
+pub(crate) fn conversation_of(folded: Option<Folded>) -> Result<Conversation, SessionError> {
     let Some(folded) = folded else {
         return Ok(Conversation::new());
     };
@@ -779,7 +806,7 @@ pub fn history(store: &dyn Store, log: &str) -> Result<Vec<(Stamp, LogRecord)>, 
             Body::Change(mut recorded) => {
                 // A lost image is read without data, as by a restore.
                 let _ = messages_mut(&mut recorded.change, &mut |message| {
-                    let _ = load_images(message, store);
+                    let _ = load_images_with(message, &|name| read_blob(store, name));
                     Ok(())
                 });
                 LogRecord::Change(recorded)

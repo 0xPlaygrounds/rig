@@ -2,7 +2,7 @@
 //!
 //! Replays by default; set `RIG_PROVIDER_TEST_MODE=record` to record against a
 //! local Ollama server. Exercises that reasoning emitted on turn 1 survives into
-//! history and is accepted back by Ollama on turn 2 (regression for #1926).
+//! history and is accepted back by Ollama on turn 2.
 
 use super::super::support::with_ollama_cassette;
 use crate::reasoning::{self, ReasoningRoundtripAgent};

@@ -5,10 +5,17 @@
 //! owns the app's loop: a thread reads the terminal and wakes the loop,
 //! `PreUpdate` handles input one key at a time ([`TuiKeys`]), and
 //! `PostUpdate` lays out and draws a frame only when something drawn
-//! changed ([`TuiSystems`]).
+//! changed ([`TuiSystems`]). It shows every plugin's pickers and every
+//! agent's questions, one at a time ([`PickerInput`]). All of this exists in
+//! every run, also under another front such as `--print`, which never draws
+//! a frame. [`ratatui`] and [`crossterm`] are re-exported so a plugin uses
+//! the same versions.
 //!
-//! [`TuiPlugin`] is [`TuiViewPlugin`] plus [`DefaultScreenPlugin`]. Where a
-//! plugin hooks in:
+//! [`TuiPlugin`] is [`TuiViewPlugin`] plus [`DefaultScreenPlugin`];
+//! [`TuiPlugins`] adds it with the parts a user may leave out, such as
+//! the [`status`] line, the [`hints`], the terminal's title ([`title`])
+//! and the [`sticky`] prompt bar.
+//! Where a plugin hooks in:
 //!
 //! - **Panels:** [`TuiPanel`], drawn in [`TuiSystems::Draw`] ([`panel`]);
 //!   [`RequestRedraw`] for a frame, [`TerminalSize`] for the screen.
@@ -19,7 +26,8 @@
 //!   agent's conversation on screen.
 //! - **Looks:** [`TranscriptRender`] for tool calls, notes, content
 //!   blocks, asides, message text and decorations; [`BuildFailedLooks`].
-//! - **Status line:** [`StatusItems`], [`AppStatus`] ([`status`]).
+//! - **Status line:** [`StatusItems`], [`AppStatus`] ([`status`]); the
+//!   [`StatusLinePlugin`](status::StatusLinePlugin) draws it under the input.
 //! - **Keys:** [`KeyBinding`], [`KeyFocus`] ([`keys`]); [`PendingInput`]
 //!   in [`InputSystems::Filter`] for keys before any binding, with the
 //!   [`InputContext`].
@@ -32,17 +40,13 @@
 //!   [`text_rows`], and
 //!   the colors of what each thing is and the flat surfaces of panels,
 //!   [`Theme`].
-//!
-//! The view shows every plugin's pickers and every agent's questions, one
-//! at a time ([`PickerInput`]). All of this exists in every run, also under
-//! another front such as `--print`, which never draws a frame. [`ratatui`]
-//! and [`crossterm`] are re-exported so a plugin uses the same versions.
 
 mod clipboard;
 mod complete;
 pub mod diff;
 mod editor;
 pub mod highlight;
+pub mod hints;
 mod history;
 mod input;
 mod jsonl;
@@ -54,22 +58,22 @@ mod pick;
 mod render;
 mod renderers;
 mod screen;
+mod selection;
 pub mod status;
+pub mod sticky;
 mod terminal;
 mod theme;
+pub mod title;
 mod transcript;
-mod turns;
 mod view;
-pub mod wrap;
+pub use rig_markdown::wrap;
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_ecs::schedule::common_conditions::any_match_filter;
 use rig_ecs::stage::AgentLoop;
 use rig_harness::prelude::launcher::{BUILD_ORIGIN, Refused};
-use rig_harness::prelude::{
-    Answerer, AppCliExt, AppKeepsExt, AppSettingsExt, Front, RigHome, ShownAgent,
-};
+use rig_harness::prelude::{Answerer, AppCliExt, AppKeepsExt, Front, RigHome, ShownAgent};
 
 pub use complete::{Candidate, Completion, CompletionKind, CompletionSource, CompletionTrigger};
 pub use crossterm;
@@ -84,25 +88,26 @@ pub use pane::{MainPane, MainTranscript, PaneKeys, TranscriptPane, TranscriptSou
 pub use panel::{
     PanelCanvas, Placement, RedrawArea, RequestRedraw, TerminalSize, TuiPanel, TuiSystems,
 };
-pub use pick::{ChoiceAction, ChoiceKeys, InlineStrip, PickerInput};
+pub use pick::{ChoiceAction, ChoiceKeys, ChoiceSystems, InlineStrip, PickerInput};
 pub use ratatui;
 pub use render::{TranscriptLayout, TuiFrame};
 pub use renderers::{
-    AsideRender, AsideView, CallState, ChildCall, ContentBlock, ContentKind, ContentRender,
-    ContentView, DecoratedMessage, EntryRender, EntryView, MessageRender, MessageView,
+    AsideRender, CallState, ChildCall, ContentKind, ContentRender, EntryRender, LookLine,
     OUTPUT_INDENT, RenderBatch, RenderContent, RenderInput, RenderKey, RenderOutput, RenderRequest,
-    RenderRevision, RenderSystems, Role, ToolCallView, ToolRender, TranscriptRender, text_rows,
+    RenderRevision, RenderSystems, ToolRender, TranscriptRender, text_rows,
 };
 pub use screen::DefaultScreenPlugin;
-pub use status::{AppStatus, Side, StatusItem, StatusItems, StatusLine, StatusSystems, Tone};
+pub use status::{
+    AppStatus, AppStatusPartsExt, Side, StatusItem, StatusItems, StatusLine, StatusSystems, Tone,
+};
 pub use terminal::{
     CopyToClipboard, RunInTerminal, TerminalExit, TerminalFocus, TerminalWrite, TuiTestScreen,
 };
 pub use theme::Theme;
 pub use transcript::{PastEffects, Replaced};
 pub use view::{
-    DrawnLine, DrawnRow, DrawnTranscript, Highlight, ItemRow, LineSpan, MarkIn, Notices, RowWrap,
-    ScrollTo, ShowAgent, ShownNotice, TextMark, TranscriptItem, TranscriptSlot, TranscriptView,
+    CallItem, DrawnLine, DrawnRow, DrawnTranscript, Highlight, ItemRow, LineSpan, MarkIn, RowWrap,
+    ScrollTo, ShowAgent, TextMark, TranscriptItem, TranscriptView,
 };
 
 /// The terminal view's name as a front.
@@ -120,6 +125,41 @@ impl Plugin for TuiPlugin {
     }
 }
 
+/// The terminal view ([`TuiPlugin`]) with the parts the agent adds as
+/// plugins of their own, each unless the app has it: the
+/// [`StatusLinePlugin`](status::StatusLinePlugin), the
+/// [`KeyHintsPlugin`](hints::KeyHintsPlugin), the
+/// [`TerminalTitlePlugin`](title::TerminalTitlePlugin) and the
+/// [`StickyPromptPlugin`](sticky::StickyPromptPlugin). For an app or a test
+/// that adds the view itself; the agent adds each from the settings.
+#[derive(Default)]
+pub struct TuiPlugins;
+
+impl Plugin for TuiPlugins {
+    fn build(&self, app: &mut App) {
+        if !app.is_plugin_added::<TuiPlugin>() {
+            app.add_plugins(TuiPlugin);
+        }
+        if !app.is_plugin_added::<status::StatusLinePlugin>() {
+            app.add_plugins(status::StatusLinePlugin);
+        }
+        if !app.is_plugin_added::<hints::KeyHintsPlugin>() {
+            app.add_plugins(hints::KeyHintsPlugin);
+        }
+        if !app.is_plugin_added::<title::TerminalTitlePlugin>() {
+            app.add_plugins(title::TerminalTitlePlugin);
+        }
+        if !app.is_plugin_added::<sticky::StickyPromptPlugin>() {
+            app.add_plugins(sticky::StickyPromptPlugin);
+        }
+    }
+
+    // Each part is added once, so it is no harm to add this again.
+    fn is_unique(&self) -> bool {
+        false
+    }
+}
+
 /// The terminal view without a screen: the terminal, the keys, the frame
 /// and the widgets' systems, which draw whatever widgets are spawned. The
 /// [`TuiPlugin`] adds it with the [`DefaultScreenPlugin`]; an app that
@@ -132,6 +172,7 @@ impl Plugin for TuiViewPlugin {
         // What other plugins use is there in any run; without the
         // terminal, no frame is ever due.
         status::add(app);
+        app.add_status_part(&input::COPIED, "Copied lines");
         // Spawned in `build`, so a plugin's `finish` may disable one.
         keys::add_built_in(app);
         renderers::add(app);
@@ -143,10 +184,9 @@ impl Plugin for TuiViewPlugin {
         );
         // The notices shown and the unsent draft, in the session's files.
         app.keeps_files("tui");
-        app.add_setting::<turns::TuiSettings>("tui");
         app.init_resource::<render::FrameLayout>()
             .init_resource::<TuiFrame>()
-            .init_resource::<Notices>()
+            .init_resource::<view::Notices>()
             .init_resource::<transcript::CallFacts>()
             .init_resource::<TerminalSize>()
             .init_resource::<Theme>()
@@ -193,7 +233,7 @@ impl Plugin for TuiViewPlugin {
                 Update,
                 (HistorySystems::Record, HistorySystems::Save).chain(),
             );
-        app.add_front(Front::new(FRONT).on_terminal());
+        app.add_front(Front::new(FRONT).on_terminal().shows_pickers());
     }
 
     /// Owns the terminal when the run is the terminal view's: any other
@@ -231,12 +271,17 @@ pub fn add_view(app: &mut App) {
         .init_resource::<ShownAgent>()
         .init_resource::<view::TuiView>()
         .init_resource::<complete::FileIndex>()
-        .init_resource::<turns::Told>()
-        .register_required_components::<rig_ecs::agent::Partial, transcript::StreamingCalls>()
-        .add_observer(transcript::forget_streams)
         .add_observer(clipboard::type_pasted)
+        .add_observer(clipboard::warn_copy_missed)
         .add_observer(render::redraw_on_remove)
-        .add_systems(Startup, (view::load_notices, view::load_draft))
+        .add_systems(
+            Startup,
+            (
+                view::load_notices,
+                view::load_draft,
+                keys::tell_refused.after(view::load_notices),
+            ),
+        )
         .add_systems(TuiKeys, history::seed_shown.in_set(HistorySystems::Seed))
         .add_systems(
             PreUpdate,
@@ -266,8 +311,9 @@ pub fn add_view(app: &mut App) {
                 // its picker, its notices and a refusal come back in this
                 // frame, and so does a question asked there.
                 (
-                    pick::queue_choices,
-                    pick::mark_highlighted,
+                    (pick::queue_choices, pick::mark_highlighted)
+                        .chain()
+                        .in_set(ChoiceSystems),
                     pick::follow_previews,
                     keys::arm_inline_keys,
                     view::collect_notices,
@@ -296,20 +342,18 @@ pub fn add_view(app: &mut App) {
                     .run_if(any_match_filter::<(With<RunInTerminal>, Without<TerminalExit>)>)
                     .before(TuiSystems::Layout),
                 transcript::note_effects.in_set(TuiSystems::Prepare),
-                turns::tell_state,
                 input::note_input_context.in_set(TuiSystems::Prepare),
+                input::show_copied
+                    .run_if(resource_exists_and_changed::<view::TuiView>)
+                    .in_set(StatusSystems::Show),
                 (
-                    pane::draw_panes,
+                    pane::draw_panes.in_set(pane::DrawPanes),
                     editor::draw_editors,
                     status::draw_status_lines,
                     pick::draw_inline_strips,
                 )
                     .in_set(TuiSystems::Draw),
-                (
-                    complete::follow_input,
-                    transcript::follow_streams,
-                    render::lay_out_frame,
-                )
+                (complete::follow_input, render::lay_out_frame)
                     .chain()
                     .in_set(TuiSystems::Layout),
                 render::lay_out_fitted
@@ -326,23 +370,18 @@ pub fn add_view(app: &mut App) {
         )
         .add_systems(
             Last,
-            (
-                view::keep_draft,
-                // With the notices sent in `Last`, such as a failed last save.
-                (view::collect_notices, view::keep_notices)
-                    .chain()
-                    .after(rig_ecs::WriteLogs),
-            )
+            view::keep_draft
                 .in_set(bevy_app::OnAppExitSystems)
                 .run_if(on_message::<AppExit>),
         )
-        // After the frame, and after what runs on the way out, which may
-        // write to the terminal before the view lets it go.
+        // With the notices sent as the logs are written, such as a failed
+        // last save.
         .add_systems(
-            Last,
-            turns::restore_title
-                .run_if(on_message::<AppExit>)
-                .in_set(bevy_app::OnAppExitSystems),
+            rig_ecs::Persist,
+            (view::collect_notices, view::keep_notices)
+                .chain()
+                .after(rig_ecs::WriteLogs)
+                .run_if(on_message::<AppExit>),
         )
         .add_systems(
             Last,
@@ -355,9 +394,7 @@ pub fn add_view(app: &mut App) {
         .add_observer(keys::release_focus)
         .add_observer(view::on_focus)
         .add_observer(view::on_scroll_to)
-        .add_observer(transcript::note_agent_name)
-        .add_observer(turns::turn_started)
-        .add_observer(turns::turn_ended);
+        .add_observer(transcript::note_agent_name);
 }
 
 /// The system that draws a failed build's note, in
@@ -367,20 +404,23 @@ pub fn add_view(app: &mut App) {
 pub struct BuildFailedLooks;
 
 /// The look of a failed build's note, which the model reads too.
-fn build_failed(entry: &EntryView<'_>) -> Vec<ratatui::text::Line<'static>> {
+fn build_failed(entry: &EntryRender) -> Vec<ratatui::text::Line<'static>> {
     use ratatui::style::Style;
     let mut lines = vec![ratatui::text::Line::styled(
         "✗ build failed (noted for the agent)",
         Style::new().red().bold(),
     )];
-    lines.extend(text_rows(entry.text, Style::new().red().dim()));
+    lines.extend(text_rows(&entry.text, Style::new().red().dim()));
     lines
 }
 
 /// Draws the notes of failed builds.
 fn render_build_failed(mut batch: ResMut<RenderBatch>) {
     for (entry, output) in batch.entries_mut(BUILD_ORIGIN) {
-        output.lines = build_failed(&entry.view());
+        output.lines = build_failed(entry)
+            .into_iter()
+            .map(LookLine::from)
+            .collect();
     }
 }
 

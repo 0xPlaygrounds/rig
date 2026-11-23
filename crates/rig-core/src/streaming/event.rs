@@ -25,6 +25,8 @@
 //! # Ok::<(), rig_core::streaming::SequenceError>(())
 //! ```
 
+use std::collections::btree_map::Entry;
+
 use serde::{Deserialize, Serialize};
 
 use crate::message::{AssistantContent, ToolName};
@@ -145,6 +147,76 @@ impl StreamEvent {
             Self::End { .. } => "End",
         }
     }
+
+    /// The events a stream writes for `content` arriving whole as the part
+    /// at `part`: its start, its text, reasoning or argument text as one
+    /// fragment, and its end holding `content`. Empty text writes no
+    /// fragment. A call's fragment is its
+    /// [`raw_arguments`](crate::message::ToolFunction::raw_arguments): the
+    /// text the model sent when it was not an object, else the object.
+    ///
+    /// ```
+    /// use rig_core::message::AssistantContent;
+    /// use rig_core::streaming::{Part, StreamEvent};
+    ///
+    /// let events = StreamEvent::whole(Part::new(0), &AssistantContent::text("Hi"));
+    /// let names: Vec<_> = events.iter().map(StreamEvent::name).collect();
+    /// assert_eq!(names, ["Start", "Text", "End"]);
+    /// ```
+    pub fn whole(part: Part, content: &AssistantContent) -> Vec<Self> {
+        let name = content
+            .as_tool_call()
+            .map(|call| call.function.name.clone());
+        let start = Self::Start {
+            part,
+            kind: PartKind::of(content),
+            name,
+        };
+        let end = Self::End {
+            part,
+            content: content.clone(),
+        };
+        [start]
+            .into_iter()
+            .chain(Self::fragment(part, content))
+            .chain([end])
+            .collect()
+    }
+
+    /// `content`'s whole text, reasoning or argument text as one fragment
+    /// of `part`, or `None` when it is empty or `content` has none.
+    pub(crate) fn fragment(part: Part, content: &AssistantContent) -> Option<Self> {
+        match content {
+            AssistantContent::Text(text) if !text.text.is_empty() => Some(Self::Text {
+                part,
+                text: text.text.clone(),
+            }),
+            AssistantContent::Reasoning(reasoning) if !reasoning.text.is_empty() => {
+                Some(Self::Reasoning {
+                    part,
+                    text: reasoning.text.clone(),
+                })
+            }
+            AssistantContent::ToolCall(call) => {
+                let json = call.function.raw_arguments();
+                (!json.is_empty()).then_some(Self::Arguments { part, json })
+            }
+            _ => None,
+        }
+    }
+}
+
+impl PartKind {
+    /// The kind of part that holds `content`.
+    pub(crate) const fn of(content: &AssistantContent) -> Self {
+        match content {
+            AssistantContent::Text(_) => Self::Text,
+            AssistantContent::Reasoning(_) => Self::Reasoning,
+            AssistantContent::ToolCall(_) => Self::ToolCall,
+            AssistantContent::Image(_) => Self::Image,
+            AssistantContent::Opaque(_) => Self::Opaque,
+        }
+    }
 }
 
 /// One item of a stream: an event of the operation, or a payload the
@@ -192,7 +264,7 @@ pub enum SequenceError {
     Shape(String),
     /// An event names a part that has not started, or a start reuses a
     /// position.
-    #[error("item {0} names a part that has not started")]
+    #[error("item {0} names a part that has not started, or starts one twice")]
     UnknownPart(usize),
     /// A part ended twice, or grew after its end.
     #[error("item {0} touches a part that already ended")]
@@ -218,7 +290,7 @@ impl StreamRecord {
     /// [`Self::parse`] for a stream that stopped early (an error or a
     /// cancellation): parts may still be open at its end.
     pub fn parse_prefix(value: serde_json::Value) -> Result<Self, SequenceError> {
-        let items: Vec<Item<StreamEvent>> = serde_json::from_value(value)
+        let items: Vec<Item<StreamEvent>> = crate::json_utils::from_value(&value)
             .map_err(|error| SequenceError::Shape(error.to_string()))?;
         Self::from_items(items)
     }
@@ -234,21 +306,16 @@ impl StreamRecord {
                     if (*kind == PartKind::ToolCall) != name.is_some() {
                         return Err(SequenceError::WrongKind(position));
                     }
-                    if self.parts.insert(index, (*kind, false)).is_some() {
+                    let Entry::Vacant(part) = self.parts.entry(index) else {
                         return Err(SequenceError::UnknownPart(position));
-                    }
+                    };
+                    part.insert((*kind, false));
                     None
                 }
                 StreamEvent::Text { .. } => Some(PartKind::Text),
                 StreamEvent::Reasoning { .. } => Some(PartKind::Reasoning),
                 StreamEvent::Arguments { .. } => Some(PartKind::ToolCall),
-                StreamEvent::End { content, .. } => Some(match content {
-                    AssistantContent::Text(_) => PartKind::Text,
-                    AssistantContent::Reasoning(_) => PartKind::Reasoning,
-                    AssistantContent::ToolCall(_) => PartKind::ToolCall,
-                    AssistantContent::Image(_) => PartKind::Image,
-                    AssistantContent::Opaque(_) => PartKind::Opaque,
-                }),
+                StreamEvent::End { content, .. } => Some(PartKind::of(content)),
             };
             if let Some(kind) = kind {
                 match self.parts.get_mut(&index) {

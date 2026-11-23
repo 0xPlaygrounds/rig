@@ -1,8 +1,6 @@
-//! Per-model request parameters, set in a file and tweaked live.
-//!
-//! `RIG_HOME/models.toml`, and over it the project's `.rig/models.toml`,
-//! hold one table per model id (`"scripted-strong"`), catalog reference
-//! (`"anthropic/claude-opus-4"`) or glob of either (`"gpt-*"`):
+//! Per-model request parameters, set in a file and tweaked live. `RIG_HOME/models.toml`, and
+//! over it the project's `.rig/models.toml`, hold one table per model id (`"scripted-strong"`),
+//! catalog reference (`"anthropic/claude-opus-4"`) or glob of either (`"gpt-*"`):
 //!
 //! ```toml
 //! ["gpt-*"]
@@ -18,27 +16,20 @@
 //! system_suffix = "Answer tersely."
 //! ```
 //!
-//! Every model request, whichever agent or plugin makes it, gets the
-//! parameters of the model it goes to, in Prepare's edit phase
-//! ([`ModelParamsSystems`]): a session override (`/params set`) over the
-//! project file over the user file over the provider's default, and within
-//! a file an exact match over a glob, a longer glob over a shorter one.
-//! `extra_body` is deep-merged into the request body and `headers` go on
-//! the HTTP request, as given; `system_suffix` is the system prompt's last
-//! section. A value that does not fit (`temperature = "hot"`) is reported
-//! with its file and line as the file loads, and its table is ignored. The
-//! files are read again for each batch of requests, the project's through
-//! the project's workspace (off the main thread, the requests held, when
-//! it is elsewhere), so an edit takes effect at the next request. A
-//! parameter the model does not take, by its catalog entry or its wire
-//! (`seed` on Anthropic), is left out with one warning naming the model.
+//! Every model request, whichever agent or plugin makes it, gets the parameters of the model it
+//! goes to: a session override (`/params set`) over the project file over the user file over
+//! the provider's default, and within a file an exact match over a glob, a longer glob over a
+//! shorter one. `extra_body` is deep-merged into the request body and `headers` go on the HTTP
+//! request, as given; `system_suffix` is the system prompt's last section. A value that does
+//! not fit (`temperature = "hot"`) is reported with its file and line as the file loads, and
+//! its table is ignored. The files are read again for each batch of requests, so an edit takes
+//! effect at the next request. A parameter the model does not take, by its catalog entry or its
+//! wire (`seed` on Anthropic), is left out with one warning naming the model.
 //!
-//! `/params` shows what the shown agent's model gets and where each value
-//! comes from; `/params set <name> <value>` and `/params unset <name>`
-//! override one for this session, saved with it.
+//! `/params` shows what the shown agent's model gets and where each value comes from; `/params
+//! set <name> <value>` and `/params unset <name>` override one for this session, saved with it.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::future::Future;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
@@ -47,12 +38,9 @@ use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{CompletionRequest, Section, SystemPrompt};
 use rig_harness::rig_core::effect::EffectId;
-use rig_harness::rig_core::http_client::{
-    self, Bytes, DynHttpClient, HttpClientExt, LazyBody, MultipartForm, Request, Response,
-    StreamingResponse,
-};
+use rig_harness::rig_core::http_client::{self, Exchange, HeaderMap, HttpMiddleware};
 use rig_harness::rig_core::serve::Serving;
-use rig_harness::rig_core::wasm_compat::WasmCompatSend;
+use rig_harness::rig_core::wasm_compat::WasmBoxedFuture;
 use serde_json::{Map, Value};
 
 #[cfg(test)]
@@ -95,12 +83,7 @@ impl Plugin for ModelParamsPlugin {
         app.world_mut()
             .get_resource_or_init::<Models>()
             .0
-            .wrap_http(move |inner| {
-                DynHttpClient::new(WithHeaders {
-                    inner,
-                    table: wrapped.clone(),
-                })
-            });
+            .wrap_http(move |inner| inner.with_middleware(WithHeaders(wrapped.clone())));
         app.insert_resource(headers)
             .init_resource::<Files>()
             .init_resource::<Warned>()
@@ -811,60 +794,25 @@ fn show(reference: &str, params: &Effective, max_output: Option<u32>) -> String 
     lines.join("\n")
 }
 
-/// An HTTP client that adds each model call's headers to its requests.
-#[derive(Clone)]
-struct WithHeaders {
-    inner: DynHttpClient,
-    table: HeaderTable,
-}
+/// A hook that adds each model call's headers to its requests.
+struct WithHeaders(HeaderTable);
 
-impl WithHeaders {
-    /// `request` with the headers of the call its [`Serving`] names.
-    fn headed(&self, mut request: Request<Bytes>) -> Request<Bytes> {
-        let serving = request.extensions().get::<Serving>().map(|s| s.effect);
-        let headers = serving.and_then(|effect| self.table.lock().get(&effect).cloned());
-        for (name, value) in headers.into_iter().flatten() {
+impl HttpMiddleware for WithHeaders {
+    fn before_request_headers<'a>(
+        &'a self,
+        exchange: Exchange<'a>,
+        headers: &'a mut HeaderMap,
+    ) -> WasmBoxedFuture<'a, http_client::Result<()>> {
+        let serving = exchange.extensions.get::<Serving>().map(|s| s.effect);
+        let table = serving.and_then(|effect| self.0.lock().get(&effect).cloned());
+        for (name, value) in table.into_iter().flatten() {
             if let (Ok(name), Ok(value)) = (
                 http::HeaderName::from_bytes(name.as_bytes()),
                 http::HeaderValue::from_str(&value),
             ) {
-                request.headers_mut().insert(name, value);
+                headers.insert(name, value);
             }
         }
-        request
-    }
-}
-
-impl HttpClientExt for WithHeaders {
-    fn send<T, U>(
-        &self,
-        req: Request<T>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        T: Into<Bytes> + WasmCompatSend,
-        U: From<Bytes> + WasmCompatSend + 'static,
-    {
-        self.inner
-            .send::<Bytes, U>(self.headed(req.map(Into::into)))
-    }
-
-    fn send_multipart<U>(
-        &self,
-        req: Request<MultipartForm>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        U: From<Bytes> + WasmCompatSend + 'static,
-    {
-        self.inner.send_multipart(req)
-    }
-
-    fn send_streaming<T>(
-        &self,
-        req: Request<T>,
-    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
-    where
-        T: Into<Bytes> + WasmCompatSend,
-    {
-        self.inner.send_streaming(self.headed(req.map(Into::into)))
+        Box::pin(std::future::ready(Ok(())))
     }
 }

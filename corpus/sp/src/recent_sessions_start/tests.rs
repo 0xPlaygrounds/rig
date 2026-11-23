@@ -9,8 +9,8 @@ use rig_harness::commands::CommandPlugin;
 use rig_harness::pick::PickPlugin;
 use rig_harness::rig_core::message::Message;
 use rig_harness_test_support::{
-    Ended, app_in, first_agent, log_ended, press, reply, run_until, scratch_home, scripted_models,
-    tui_view,
+    Ended, app_in, first_agent, log_ended, press, reply, run_until, say, scratch_home,
+    scripted_models, tui_view,
 };
 use rig_tui::TuiTestScreen;
 
@@ -60,13 +60,9 @@ fn talk(app: &mut App, wakes: &Receiver<()>, ask: &str) {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
-    let before = app.world().resource::<Ended>().0.len();
-    app.world_mut()
-        .trigger(Deliver::new(agent, ask, DeliveryMode::Steer));
-    run_until(app, wakes, |world| {
-        world.resource::<Ended>().0.len() > before
-    });
+    say(app, wakes, agent, ask);
     app.update();
 }
 
@@ -329,4 +325,40 @@ fn lists_filters_and_resumes_recent_sessions_without_writing() {
     drop(app);
     fs::remove_dir_all(home.root()).ok();
     fs::remove_dir_all(empty.root()).ok();
+}
+
+/// Switching to another branch of the session, with no conversation
+/// changing, lists that branch's turns.
+#[test]
+fn the_turns_listed_follow_the_branch_switched_to() {
+    let home = scratch_home("recent-switch");
+    let (mut app, wakes) = app_in(&home, &SessionId::generate());
+    let model = MockCompletionModel::from_stream_turns([reply("1."), reply("2."), reply("3.")]);
+    app.insert_resource(scripted_models([(MODEL, &model)]))
+        .add_plugins((AgentPlugin, SessionLogPlugin, RecentSessionsPlugin))
+        .add_plugins(CurrentAgentPlugin)
+        .init_resource::<Ended>()
+        .add_observer(log_ended);
+    app.finish();
+    app.update();
+    let choice = || ModelChoice(MODEL.to_owned());
+    let long = spawn_root(app.world_mut(), choice()).id();
+    let short = spawn_root(app.world_mut(), choice()).id();
+    for (n, agent) in [long, long, short].into_iter().enumerate() {
+        let ask = Deliver::new(agent, "Go on.", DeliveryMode::Steer);
+        app.world_mut().trigger(ask);
+        run_until(&mut app, &wakes, |world| {
+            world.resource::<Ended>().0.len() > n
+        });
+    }
+    let turns = |app: &mut App, agent: Entity| {
+        let id = app.world().get::<AgentId>(agent).cloned();
+        app.world_mut().resource_mut::<CurrentAgent>().0 = id.map(|id| id.0).unwrap_or_default();
+        app.update();
+        app.world()
+            .get_resource::<SessionShape>()
+            .map(|shape| shape.turns)
+    };
+    assert_eq!(turns(&mut app, long), Some(2));
+    assert_eq!(turns(&mut app, short), Some(1));
 }

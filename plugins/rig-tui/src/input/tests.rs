@@ -1,12 +1,202 @@
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 use bevy_ecs::system::RunSystemOnce;
+use crossterm::event::{Event, KeyCode, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+use rig_core::completion::Message;
 use rig_ecs::prelude::*;
 
 use super::super::editor::Editor;
 use super::super::history::Sent;
 use super::super::view::{self, TuiView};
 use super::send;
+use crate::pick::PickerInput;
+use crate::tests::{
+    Delivered as Accepted, input, main_view, press, push, type_text, typed, view_app,
+};
+use crate::{KeyInput, TuiTestScreen};
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::main_agent::ShownAgent;
+use rig_harness::pick::Picker;
+use rig_harness::prelude::Conversation;
+
+/// A mouse event of `kind` at `column` and `row`, among the frame's input.
+fn mouse(app: &mut App, kind: MouseEventKind, column: u16, row: u16) {
+    let modifiers = KeyModifiers::NONE;
+    let event = MouseEvent {
+        kind,
+        column,
+        row,
+        modifiers,
+    };
+    push(app, KeyInput::Event(Event::Mouse(event)));
+}
+
+/// An app with a screen and `questions` numbered messages in its
+/// transcript, then three with characters two or three cells wide.
+fn transcript_app(questions: usize) -> App {
+    let (mut app, agent) = view_app();
+    app.insert_resource(TuiTestScreen::new(60, 20));
+    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
+        for index in 0..questions {
+            conversation.push(Message::user(format!("question {index}")));
+        }
+        conversation.push(Message::user("界x"));
+        conversation.push(Message::user("ｶﾞx"));
+        conversation.push(Message::user("\u{17D8}x"));
+    }
+    app.update();
+    app
+}
+
+#[test]
+fn the_wheel_scrolls_the_transcript_or_moves_a_lists_choice() {
+    let mut app = transcript_app(30);
+    type_text(&mut app, "unsent draft");
+    for (kind, scrolled) in [
+        (MouseEventKind::ScrollUp, true),
+        (MouseEventKind::ScrollDown, false),
+    ] {
+        mouse(&mut app, kind, 10, 5);
+        app.update();
+        assert_eq!(main_view(&app).top().is_some(), scrolled);
+        assert_eq!(input(&app).text(), "unsent draft");
+    }
+
+    let (mut app, _) = view_app();
+    app.add_command("model", "Choose the model", |_: In<CommandArgs>| {});
+    app.add_command("pair", "Two arguments", |_: In<CommandArgs>| {});
+    type_text(&mut app, "/");
+    mouse(&mut app, MouseEventKind::ScrollDown, 10, 5);
+    app.update();
+    let completion = app.world().resource::<TuiView>().completion.as_ref();
+    assert_eq!(completion.map(|completion| completion.selected), Some(1));
+
+    let picker = Picker::new("Size").item("small", "").item("large", "");
+    let picker = app.world_mut().spawn(picker).id();
+    app.update();
+    mouse(&mut app, MouseEventKind::ScrollDown, 10, 5);
+    app.update();
+    let chosen = app.world().get::<PickerInput>(picker);
+    assert_eq!(chosen.map(|choosing| choosing.selected), Some(1));
+}
+
+/// A drag copies the text it showed when the button came up, once, also
+/// when a key comes in the same read, and a character two or three cells
+/// wide it starts inside or crosses; a click copies nothing.
+#[test]
+fn a_drag_copies_the_text_under_it_and_a_click_copies_nothing() {
+    let mut app = transcript_app(3);
+    let rows = app.world().resource::<TuiTestScreen>().rows();
+    let found = rows.iter().enumerate().find_map(|(row, text)| {
+        let (before, _) = text.split_once("question 1")?;
+        Some((
+            u16::try_from(before.chars().count()).ok()?,
+            u16::try_from(row).ok()?,
+        ))
+    });
+    assert!(found.is_some(), "{rows:?}");
+    let (column, row) = found.unwrap_or_default();
+    let written = |app: &App| {
+        let written = app.world().resource::<TuiTestScreen>().written();
+        String::from_utf8_lossy(written).into_owned()
+    };
+    let left = MouseButton::Left;
+
+    mouse(&mut app, MouseEventKind::Down(left), column, row);
+    mouse(&mut app, MouseEventKind::Up(left), column, row);
+    app.update();
+    assert!(!written(&app).contains("\x1b]52;"));
+
+    mouse(&mut app, MouseEventKind::Down(left), column, row);
+    mouse(&mut app, MouseEventKind::Up(left), column + 2, row);
+    app.update();
+    let copies = |app: &App| written(app).matches("\x1b]52;").count();
+    assert_eq!(copies(&app), 1);
+    mouse(&mut app, MouseEventKind::Up(left), column + 4, row);
+    app.update();
+    assert_eq!(copies(&app), 1, "a release with no press copies nothing");
+
+    mouse(&mut app, MouseEventKind::Down(left), column, row);
+    mouse(&mut app, MouseEventKind::Drag(left), column + 4, row);
+    mouse(&mut app, MouseEventKind::Up(left), column + 9, row);
+    push(
+        &mut app,
+        KeyInput::Event(Event::Key(KeyCode::Char('x').into())),
+    );
+    app.update();
+    let copied = format!("\x1b]52;c;{}\x07", STANDARD.encode("question 1"));
+    assert!(written(&app).contains(&copied), "{:?}", written(&app));
+    app.update();
+    assert_eq!(input(&app).text(), "x");
+
+    let wide = [("界", 1, 2), ("ｶﾞ", 0, 2), ("\u{17D8}", 2, 3)];
+    for (symbol, from, to) in wide {
+        let text = format!("{symbol}x");
+        let buffer = app.world().resource::<TuiTestScreen>().buffer();
+        let wide = buffer.area.positions().find(|at| {
+            let cell = buffer.cell(*at);
+            cell.is_some_and(|cell| cell.symbol() == symbol)
+        });
+        assert!(wide.is_some(), "{symbol}");
+        let wide = wide.unwrap_or_default();
+        mouse(&mut app, MouseEventKind::Down(left), wide.x + from, wide.y);
+        mouse(&mut app, MouseEventKind::Up(left), wide.x + to, wide.y);
+        app.update();
+        let copied = format!("\x1b]52;c;{}\x07", STANDARD.encode(text));
+        assert!(written(&app).contains(&copied), "{:?}", written(&app));
+    }
+}
+
+/// The frame after a drag's release says how many lines it copied, until
+/// the next click or key; a click, or a drag over blank cells, says
+/// nothing, and blank rows a drag ends in are not counted.
+#[test]
+fn a_drag_says_how_many_lines_it_copied_until_the_next_click_or_key() {
+    let mut app = transcript_app(3);
+    let rows = |app: &App| app.world().resource::<TuiTestScreen>().rows();
+    let says = |app: &App, text: &str| rows(app).iter().any(|row| row.contains(text));
+    let left = MouseButton::Left;
+    let release = |app: &mut App, column, row| {
+        mouse(app, MouseEventKind::Up(left), column, row);
+        app.update();
+        app.update();
+    };
+    mouse(&mut app, MouseEventKind::Down(left), 2, 1);
+    release(&mut app, 2, 1);
+    assert!(!says(&app, "Copied"));
+
+    mouse(&mut app, MouseEventKind::Down(left), 2, 1);
+    mouse(&mut app, MouseEventKind::Drag(left), 4, 2);
+    release(&mut app, 6, 3);
+    assert!(says(&app, "Copied 3 lines"), "{:?}", rows(&app));
+    mouse(&mut app, MouseEventKind::Down(left), 2, 1);
+    app.update();
+    assert!(!says(&app, "Copied"));
+
+    mouse(&mut app, MouseEventKind::Down(left), 2, 1);
+    release(&mut app, 6, 1);
+    assert!(says(&app, "Copied 1 line"));
+    press(&mut app, "left");
+    assert!(!says(&app, "Copied"));
+
+    let shown = rows(&app);
+    let mut after_text = shown.iter().zip(shown.iter().skip(1));
+    let blank =
+        after_text.position(|(above, row)| !above.trim().is_empty() && row.trim().is_empty());
+    let blank = u16::try_from(blank.unwrap_or_default().saturating_add(1)).unwrap_or_default();
+    assert!(blank > 1, "{shown:?}");
+    mouse(&mut app, MouseEventKind::Down(left), 40, 1);
+    release(&mut app, 50, 1);
+    assert!(!says(&app, "Copied"), "{:?}", rows(&app));
+    mouse(&mut app, MouseEventKind::Down(left), 0, blank);
+    release(&mut app, 50, blank);
+    assert!(!says(&app, "Copied"), "{:?}", rows(&app));
+
+    let text = blank.saturating_sub(1);
+    mouse(&mut app, MouseEventKind::Down(left), 0, text);
+    release(&mut app, 50, blank);
+    assert!(says(&app, "Copied 1 line"), "{:?}", rows(&app));
+}
 
 /// The texts agents accepted.
 #[derive(Resource, Default)]
@@ -78,9 +268,8 @@ fn a_refused_command_comes_back_whole_and_enter_sends_it_as_a_message() {
         let notices = app.world().resource::<view::Notices>();
         let input = crate::tests::input(&app);
         let shown: Vec<&str> = notices
-            .all()
-            .iter()
-            .map(|notice| notice.text.as_str())
+            .numbered()
+            .map(|(_, notice)| notice.text.as_str())
             .collect();
         assert_eq!(input.text(), typed);
         assert!(
@@ -89,7 +278,10 @@ fn a_refused_command_comes_back_whole_and_enter_sends_it_as_a_message() {
         );
     }
     assert_eq!(
-        app.world().resource::<crate::Notices>().all().len(),
+        app.world()
+            .resource::<crate::view::Notices>()
+            .numbered()
+            .count(),
         refused.len()
     );
     enter(&mut app, "/gui still doesnt do anything");
@@ -97,6 +289,26 @@ fn a_refused_command_comes_back_whole_and_enter_sends_it_as_a_message() {
         app.world().resource::<Delivered>().0,
         ["/gui still doesnt do anything"]
     );
+}
+
+/// Only the refused line left unchanged goes to the model on the next
+/// Enter: cleared with Ctrl+C and typed again, it is refused again.
+#[test]
+fn a_refused_command_typed_again_after_ctrl_c_is_refused_again() {
+    let (mut app, _) = view_app();
+    app.add_command("echo", "Echoes", |_: In<CommandArgs>| {});
+    let delivered = |app: &App| app.world().resource::<Accepted>().0.clone();
+    type_text(&mut app, "/zzzfoo");
+    press(&mut app, "enter");
+    assert_eq!(typed(&app), "/zzzfoo");
+    press(&mut app, "ctrl+c");
+    assert_eq!(typed(&app), "");
+    type_text(&mut app, "/zzzfoo");
+    press(&mut app, "enter");
+    assert_eq!(typed(&app), "/zzzfoo");
+    assert!(delivered(&app).is_empty(), "{:?}", delivered(&app));
+    press(&mut app, "enter");
+    assert_eq!(delivered(&app), ["/zzzfoo"]);
 }
 
 #[test]
@@ -240,9 +452,10 @@ struct Searched(usize);
 #[test]
 fn the_transcript_has_the_keys_while_an_item_is_selected_until_typing() {
     use crate::tests::{press, typed, view_app};
-    use crate::{AppKeyBindingsExt, KeyBinding, KeyPress, KeyPressed, KeyScope, TranscriptItem};
+    use crate::{
+        AppKeyBindingsExt, CallItem, KeyBinding, KeyPress, KeyPressed, KeyScope, TranscriptItem,
+    };
     use crossterm::event::KeyCode;
-    use rig_core::message::CallId;
 
     let (mut app, _) = view_app();
     let slash = KeyBinding::new(KeyPress::key(KeyCode::Char('/')), "Search the transcript");
@@ -251,7 +464,7 @@ fn the_transcript_has_the_keys_while_an_item_is_selected_until_typing() {
         .add_key_binding(slash.in_scope(KeyScope::Transcript), searched);
     let selected = |app: &App| crate::tests::main_view(app).selected.clone();
     let select = |app: &mut App| {
-        let item = TranscriptItem::Call(CallId::from_wire("c1"));
+        let item = TranscriptItem::Call(CallItem::Streaming(0));
         crate::tests::steer(app, |view| view.selected = Some(item));
     };
     select(&mut app);
@@ -323,4 +536,210 @@ fn ctrl_d_on_an_empty_input_quits_and_on_a_draft_does_nothing() {
     assert_eq!((quits(&app), typed(&app).as_str()), (0, "draft"));
     press(&mut app, "ctrl+c ctrl+d");
     assert_eq!(quits(&app), 1);
+}
+
+/// Pastes `text` into the input and runs a frame.
+fn paste(app: &mut App, text: &str) {
+    push(app, KeyInput::Event(Event::Paste(text.to_owned())));
+    app.update();
+}
+
+/// A paste ending in a word that would complete, `@` alone or a partly
+/// typed path, opens no list, so one Enter sends it as pasted.
+#[test]
+fn enter_after_a_paste_ending_in_a_path_word_sends_it() {
+    use rig_harness::prelude::ProjectRoot;
+    use std::time::{Duration, Instant};
+
+    let root = crate::tests::scratch("paste-enter");
+    std::fs::write(root.join("lib.rs"), "").ok();
+    let (mut app, _) = view_app();
+    app.insert_resource(ProjectRoot(root.clone()));
+    let run_for = |app: &mut App, wait: Duration| {
+        let started = Instant::now();
+        while started.elapsed() < wait {
+            app.update();
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    };
+    // Typed, `@l` lists the project's paths once they are walked.
+    type_text(&mut app, "@l");
+    let started = Instant::now();
+    while app.world().resource::<TuiView>().completion.is_none()
+        && started.elapsed() < Duration::from_secs(10)
+    {
+        run_for(&mut app, Duration::from_millis(5));
+    }
+    let listed = app.world().resource::<TuiView>().completion.is_some();
+    press(&mut app, "ctrl+c");
+    for pasted in ["ping @lib", "look at @"] {
+        paste(&mut app, pasted);
+        run_for(&mut app, Duration::from_millis(200));
+        assert!(app.world().resource::<TuiView>().completion.is_none());
+        press(&mut app, "enter");
+        assert_eq!(
+            app.world()
+                .resource::<Accepted>()
+                .0
+                .last()
+                .map(String::as_str),
+            Some(pasted)
+        );
+        press(&mut app, "ctrl+c");
+    }
+    std::fs::remove_dir_all(&root).ok();
+    assert!(listed);
+}
+
+/// A pasted `/comp` opens no list of commands: Enter sends it as typed,
+/// and it is refused as an unknown command rather than completed.
+#[test]
+fn enter_after_a_pasted_partial_command_does_not_complete_it() {
+    let (mut app, _) = view_app();
+    app.add_command("compact", "Compacts", |_: In<CommandArgs>| {});
+    paste(&mut app, "/comp");
+    assert!(app.world().resource::<TuiView>().completion.is_none());
+    press(&mut app, "enter");
+    assert_eq!(typed(&app), "/comp");
+    // Typed by hand, the same word still opens the list, and so does a key
+    // typed into a pasted one.
+    press(&mut app, "ctrl+c");
+    type_text(&mut app, "/comp");
+    assert!(app.world().resource::<TuiView>().completion.is_some());
+    press(&mut app, "ctrl+c");
+    paste(&mut app, "/com");
+    type_text(&mut app, "p");
+    press(&mut app, "tab");
+    assert_eq!(typed(&app), "/compact ");
+    // Esc, or any key that leaves the text as pasted, opens no list, even
+    // with the cursor moved off the word and back.
+    press(&mut app, "ctrl+c");
+    paste(&mut app, "/comp");
+    press(&mut app, "esc");
+    press(&mut app, "down");
+    press(&mut app, "ctrl+a");
+    press(&mut app, "ctrl+e");
+    assert!(app.world().resource::<TuiView>().completion.is_none());
+    press(&mut app, "enter");
+    assert_eq!(typed(&app), "/comp");
+    // A list typed open after a paste and closed with Esc stays closed as
+    // the word grows.
+    press(&mut app, "ctrl+c");
+    paste(&mut app, "/co");
+    press(&mut app, "ctrl+a");
+    press(&mut app, "ctrl+e");
+    type_text(&mut app, "m");
+    assert!(app.world().resource::<TuiView>().completion.is_some());
+    press(&mut app, "esc");
+    type_text(&mut app, "p");
+    assert!(app.world().resource::<TuiView>().completion.is_none());
+}
+
+/// Waiting inbox messages for `agent` (accepted and not yet answered), in
+/// send order: `(mode, text)`.
+fn waiting_inbox(app: &mut App, agent: Entity) -> Vec<(DeliveryMode, String)> {
+    let world = app.world_mut();
+    let mut query = world
+        .query_filtered::<(&Effect, &Incoming, &ForAgent), (With<Started>, Without<Outcome>)>();
+    let mut items: Vec<_> = query
+        .iter(world)
+        .filter(|(.., to)| to.0 == agent)
+        .map(|(effect, message, _)| (effect.id(), message.mode, message.text().to_owned()))
+        .collect();
+    items.sort_by_key(|(id, ..)| *id);
+    items
+        .into_iter()
+        .map(|(_, mode, text)| (mode, text))
+        .collect()
+}
+
+/// Pressing Up on an empty input while a steering message is waiting pulls
+/// that message back out of the inbox so editing and re-sending replaces it
+/// instead of queuing a second steering message.
+#[test]
+fn up_recalls_waiting_steering_message_to_edit_instead_of_duplicating() {
+    let (mut app, agent) = view_app();
+    // Simulate a running turn so Enter steers into the inbox.
+    app.world_mut().spawn(TurnOf(agent));
+    app.update();
+
+    type_text(&mut app, "first steer");
+    press(&mut app, "enter");
+    assert_eq!(typed(&app), "");
+    assert_eq!(
+        waiting_inbox(&mut app, agent),
+        [(DeliveryMode::Steer, "first steer".to_owned())]
+    );
+
+    // Up on empty input recalls the waiting message and removes it from the inbox.
+    press(&mut app, "up");
+    assert_eq!(typed(&app), "first steer");
+    assert!(waiting_inbox(&mut app, agent).is_empty());
+
+    // Editing and sending queues only the updated steering message.
+    type_text(&mut app, " edited");
+    press(&mut app, "enter");
+    assert_eq!(typed(&app), "");
+    assert_eq!(
+        waiting_inbox(&mut app, agent),
+        [(DeliveryMode::Steer, "first steer edited".to_owned())]
+    );
+}
+
+/// Up recalls waiting user Steer/Queue messages newest-first only when the
+/// main input is empty, leaving Inform notes, non-user messages, and typed
+/// drafts untouched, and falls back to prompt history once none remain.
+#[test]
+fn up_recalls_waiting_messages_newest_first_and_preserves_drafts_and_other_messages() {
+    let (mut app, agent) = view_app();
+    app.world_mut().spawn(TurnOf(agent));
+    app.update();
+
+    // Non-user steer and user Inform messages must not be recalled by Up.
+    app.world_mut().trigger(
+        Deliver::new(agent, "subagent note", DeliveryMode::Steer).with_author(Author::rig()),
+    );
+    app.world_mut()
+        .trigger(Deliver::new(agent, "fyi note", DeliveryMode::Inform));
+    app.update();
+
+    type_text(&mut app, "steer one");
+    press(&mut app, "enter");
+    type_text(&mut app, "queue two");
+    press(&mut app, "tab");
+    assert_eq!(
+        waiting_inbox(&mut app, agent),
+        [
+            (DeliveryMode::Steer, "subagent note".to_owned()),
+            (DeliveryMode::Inform, "fyi note".to_owned()),
+            (DeliveryMode::Steer, "steer one".to_owned()),
+            (DeliveryMode::Queue, "queue two".to_owned()),
+        ]
+    );
+
+    // A non-empty draft is not clobbered by Up.
+    type_text(&mut app, "draft");
+    press(&mut app, "up");
+    assert_eq!(typed(&app), "draft");
+    assert_eq!(waiting_inbox(&mut app, agent).len(), 4);
+
+    // Clear draft, then Up pops newest ("queue two"), then ("steer one").
+    press(&mut app, "ctrl+c");
+    press(&mut app, "up");
+    assert_eq!(typed(&app), "queue two");
+    press(&mut app, "ctrl+c");
+    press(&mut app, "up");
+    assert_eq!(typed(&app), "steer one");
+    assert_eq!(
+        waiting_inbox(&mut app, agent),
+        [
+            (DeliveryMode::Steer, "subagent note".to_owned()),
+            (DeliveryMode::Inform, "fyi note".to_owned()),
+        ]
+    );
+
+    // With no waiting user Steer/Queue messages left, Up browses prompt history.
+    press(&mut app, "ctrl+c");
+    press(&mut app, "up");
+    assert_eq!(typed(&app), "steer one");
 }

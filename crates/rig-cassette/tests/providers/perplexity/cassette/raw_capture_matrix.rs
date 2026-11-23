@@ -1,36 +1,19 @@
 //! Raw provider response capture on Perplexity's blocking chat-completions
 //! path.
 //!
-//! **The feature.** Every blocking completion attaches the provider's own
-//! reply to the normalized [`rig::completion::CompletionResponse::raw`].
-//! Capture is always on: there is no flag to request it, nothing about it
-//! reaches the wire, and a `Value::Null` only ever means a response built by
-//! hand with no provider payload behind it.
+//! Every blocking completion attaches the provider's own reply to the
+//! normalized [`rig::completion::CompletionResponse::raw`]. Capture is always
+//! on, and a `Value::Null` only means a response built by hand. The driver sets
+//! `raw` from the reply's bytes (`driver::call`), so it is the provider's
+//! response document, not a round-trip through a decoded type. Perplexity's
+//! `citations` and `search_results` reach a caller only through `raw`, because
+//! no shared chat-completions type models them.
 //!
-//! **What `raw` is.** The driver sets it from the reply's bytes
-//! (`driver::call`), so it is the provider's response *document*, not a
-//! round-trip through whatever type the decoder happened to parse. That
-//! matters here more than for any other provider in this family: Perplexity's
-//! wire carries `citations` and `search_results`, which no shared
-//! chat-completions type models, and they reach a caller through `raw`
-//! precisely because `raw` is the body.
-//!
-//! | # | Cell | Dimension | expected | Status |
-//! |---|------|-----------|----------|--------|
-//! | 3 | `normalized_fields_match_raw_renormalized` | normalized view | the response reproduces its fixture bytes, and the same checks hold against its own `raw` | recorded |
-//!
-//! The scenario literals — and therefore the fixture filenames — keep the
-//! names they were recorded under; the cell names describe what the cells now
-//! assert.
-//!
-//! Every cell is recorded. Each re-derives its premise from its own fixture
-//! after the wrapper returns, so a recording that stopped carrying a usage
-//! block, a finish reason or a citations array fails loudly instead of
-//! covering nothing. Perplexity contracts no request-id header, so
-//! `provider_request_id` is `None` on every turn here — a documented outcome,
-//! pinned as such with [`assert_no_request_id`], never folded into the shared
-//! body contract. Perplexity's models search the web on every turn, so the
-//! prompt is deliberately trivial.
+//! Each cell re-derives its premise from its own fixture, so a recording that
+//! stopped carrying usage, a finish reason or citations fails loudly.
+//! Perplexity contracts no request-id header, so `provider_request_id` is
+//! `None` on every turn, pinned with [`assert_no_request_id`]. Its models
+//! search the web on every turn, so the prompt is deliberately trivial.
 
 use rig::completion::CompletionRequest;
 use rig::providers::perplexity;

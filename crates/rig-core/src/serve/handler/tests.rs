@@ -10,57 +10,24 @@ use crate::streaming::{Item, Part, Relayed, StreamEvent, UnknownPayload};
 #[derive(Default)]
 struct Seen {
     outcomes: Vec<Result<Answered, ErrorReport>>,
-    context: Option<crate::observe::AdapterContext>,
 }
 
 struct Observer(Arc<Mutex<Seen>>);
 
-impl Observe for Observer {
-    fn adapter_context(&self) -> Option<crate::observe::AdapterContext> {
-        self.0.lock().expect("seen").context.clone()
-    }
-
-    fn origin(&mut self, _origin: &crate::message::Origin) {}
-    fn outcome(&mut self, outcome: Result<Answered, ErrorReport>) {
-        self.0.lock().expect("seen").outcomes.push(outcome);
-    }
-
+impl crate::serve::Recorder for Observer {
+    fn handlers(&self, _: Vec<HandlerDescriptor>) {}
+    fn begin(&self, _: EffectId, _: HandlerKey, _: EffectKind, _: crate::serve::DispatchContext) {}
+    fn discard(&self, _: EffectId) {}
+    fn patch(&self, _: EffectId, _: EffectKind) {}
     fn keep_events(&self) -> bool {
         true
     }
-
-    fn event(&mut self, _: &Item<StreamEvent>) {}
-
-    fn discard(&mut self, _: &str) {}
-    fn patch(&mut self, _: &EffectKind) {}
-}
-
-/// An observer's adapter context reaches the handler unless the caller
-/// set one, whichever was installed first.
-#[test]
-fn an_observer_never_overwrites_the_callers_adapter_context() {
-    use crate::observe::{AdapterContext, ObservationLog, Subject};
-    let log = Arc::new(ObservationLog::default());
-    let context = |operation: &str| AdapterContext::new(log.clone(), Subject::default(), operation);
-    let observer = || {
-        let seen = Seen {
-            context: Some(context("observer")),
-            ..Seen::default()
-        };
-        Box::new(Observer(Arc::new(Mutex::new(seen))))
-    };
-    let operation = |dispatch: Dispatch| {
-        dispatch
-            .adapter_context()
-            .map(|it| it.operation().to_owned())
-    };
-    let observed = Dispatch::new(EffectId::from_raw(1), false).with_observer(observer());
-    assert_eq!(operation(observed).as_deref(), Some("observer"));
-    let first = Dispatch::new(EffectId::from_raw(2), false).with_adapter_context(context("caller"));
-    assert_eq!(
-        operation(first.with_observer(observer())).as_deref(),
-        Some("caller")
-    );
+    fn event(&self, _: EffectId, _: &Item<StreamEvent>) {}
+    fn origin(&self, _: EffectId, _: &crate::message::Origin) {}
+    fn tool_output(&self, _: EffectId, _: crate::tool::ToolResultContext) {}
+    fn resolve(&self, _: EffectId, outcome: Result<Answered, ErrorReport>) {
+        self.0.lock().expect("seen").outcomes.push(outcome);
+    }
 }
 
 #[test]
@@ -278,7 +245,10 @@ fn an_observer_never_changes_what_the_consumer_receives() {
         for streaming in [true, false] {
             let seen = Arc::new(Mutex::new(Seen::default()));
             let observed = Observed {
-                observer: Box::new(Observer(seen.clone())),
+                recorder: Arc::new(Observer(seen.clone())),
+                id: EffectId::from_raw(0),
+                published: None,
+                streamed: false,
                 told: false,
             };
             if streaming {
@@ -395,17 +365,6 @@ fn a_model_handler_names_what_its_model_leaves_out() {
         fn name(&self) -> String {
             "pass".to_owned()
         }
-        async fn before(&self, _: EffectId, _: &EffectKind) -> crate::serve::BeforeServe {
-            crate::serve::BeforeServe::Proceed
-        }
-        async fn after(
-            &self,
-            _: EffectId,
-            _: &EffectKind,
-            _: &Result<Answered, ErrorReport>,
-        ) -> crate::serve::AfterServe {
-            crate::serve::AfterServe::Keep
-        }
     }
     let http = crate::test_utils::RecordingHttpClient::new("{}");
     let model = crate::catalog::Catalog::builtin()
@@ -466,4 +425,112 @@ fn a_tool_handler_and_its_wrappers_have_their_descriptors_key() {
         assert_eq!(Serve::key(&handler), handler.descriptor().key);
         assert_eq!(handler.key(), &crate::effect::tool_key("think"));
     }
+}
+
+/// Counts how often it is asked whether to keep events, and keeps none.
+#[derive(Default)]
+struct Asked(std::sync::atomic::AtomicUsize);
+
+impl crate::serve::Recorder for Asked {
+    fn handlers(&self, _: Vec<HandlerDescriptor>) {}
+    fn begin(&self, _: EffectId, _: HandlerKey, _: EffectKind, _: crate::serve::DispatchContext) {}
+    fn discard(&self, _: EffectId) {}
+    fn patch(&self, _: EffectId, _: EffectKind) {}
+    fn keep_events(&self) -> bool {
+        self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        false
+    }
+    fn event(&self, _: EffectId, _: &Item<StreamEvent>) {}
+    fn origin(&self, _: EffectId, _: &crate::message::Origin) {}
+    fn tool_output(&self, _: EffectId, _: crate::tool::ToolResultContext) {}
+    fn resolve(&self, _: EffectId, _: Result<Answered, ErrorReport>) {}
+}
+
+/// A recorder is asked whether it keeps events only where the answer
+/// decides something: an origin, an error item and each item after the
+/// first.
+#[test]
+fn a_recorder_is_asked_to_keep_events_only_where_it_decides() {
+    let asked = Arc::new(Asked::default());
+    let mut observed = Observed {
+        recorder: asked.clone(),
+        id: EffectId::from_raw(0),
+        published: None,
+        streamed: false,
+        told: false,
+    };
+    let item = || {
+        Ok(Relayed::Item(Item::Unknown(UnknownPayload::new(
+            serde_json::json!({}),
+        ))))
+    };
+    for relayed in [
+        Ok(Relayed::Origin(crate::message::Origin::new(
+            "test", "test", "test",
+        ))),
+        item(),
+        item(),
+        Err(ErrorReport::new(crate::error::ErrorKind::Internal, "item")),
+    ] {
+        observed.item(&relayed, None);
+    }
+    assert_eq!(asked.0.load(std::sync::atomic::Ordering::SeqCst), 3);
+}
+
+/// Says its key without its descriptor, and counts the descriptors built.
+#[derive(Default)]
+struct CheapKey(std::sync::atomic::AtomicUsize);
+
+impl Serve for CheapKey {
+    type Family = crate::effect::family::Dynamic;
+
+    fn descriptor(&self) -> HandlerDescriptor {
+        self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        HandlerDescriptor {
+            key: HandlerKey::from("cheap"),
+            family: crate::effect::FamilyDescriptor::Custom {
+                kind: "test".into(),
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    fn key(&self) -> HandlerKey {
+        HandlerKey::from("cheap")
+    }
+
+    async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply {
+        Reply::Outcome(Ok(Answered::Custom {
+            payload: serde_json::Value::Null,
+        }))
+    }
+}
+
+/// Sharing and erasing a handler, again and again, keeps its cheap key:
+/// no descriptor is built to learn it.
+#[test]
+fn sharing_and_erasing_keep_a_cheap_key() {
+    let handler = Arc::new(CheapKey::default());
+    let erased = ErasedHandler::new(Arc::clone(&handler));
+    let again = ErasedHandler::new(Arc::new(erased.clone()));
+    assert_eq!(Serve::key(&erased), HandlerKey::from("cheap"));
+    assert_eq!(again.key(), &HandlerKey::from("cheap"));
+    assert_eq!(handler.0.load(std::sync::atomic::Ordering::SeqCst), 0);
+}
+
+/// An embedding model of unknown width is described without one, not as
+/// zero wide, in the descriptor a record keeps.
+#[test]
+fn an_embedding_model_of_unknown_width_has_no_dims() {
+    let described = |ndims| {
+        let model = crate::driver::Model::new(
+            crate::driver::Local::new("mock")
+                .with_capabilities(crate::wire::Capabilities::embedding(5, ndims)),
+            crate::test_utils::MockEmbeddings,
+        );
+        let handler = ErasedHandler::new(crate::serve::adapters::ModelAdapter::new("mock", model));
+        serde_json::to_value(handler.descriptor().family).expect("serializes")
+    };
+    assert_eq!(described(10)["dims"], 10);
+    assert_eq!(described(0).get("dims"), None);
 }

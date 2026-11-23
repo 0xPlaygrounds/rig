@@ -1,13 +1,9 @@
-//! Plugin corpus (held-out): H02: File leases across agents (spec `H02-file-lease.md`).
-//!
-//! A call of a file-changing tool (`[file_lease] tools`, by default `edit`
-//! and `write`) takes a lease on the files its `Footprint` says it writes
-//! while it runs. A call on a file another call holds waits, first come
-//! first served, held by a hold named "waiting for `<agent>`" (which the
-//! front shows on the call), until the lease is its own; after
-//! `max_wait_secs` it is refused. Each agent that changed a file owns it
-//! until its turn ends, and is told with its next model request when
-//! another agent changed it meanwhile.
+//! File leases across agents. A call of a file-changing tool (`[file_lease] tools`, by default
+//! `edit` and `write`) takes a lease on the files its `Footprint` says it writes while it runs. A
+//! call on a file another call holds waits, first come first served, held by a hold named "waiting
+//! for `<agent>`" (which the front shows on the call), until the lease is its own; after
+//! `max_wait_secs` it is refused. Each agent that changed a file owns it until its turn ends, and
+//! is told with its next model request when another agent changed it meanwhile.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};

@@ -1,9 +1,8 @@
 //! Mistral model listing, recorded from the real API.
 //!
-//! Was an `#[ignore]` live test, which meant Mistral's lister — one of the
-//! providers routed through the shared `get_json` fetch — had no coverage that
-//! runs in CI. rig#2079 recorded it, together with the failure path so the
-//! shared status triage is pinned on this provider too.
+//! Mistral's lister routes through the shared `get_json` fetch. The recording
+//! covers the success and the failure path, so the shared status triage is
+//! pinned on this provider too.
 //!
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
@@ -39,7 +38,7 @@ async fn list_models_smoke() -> Result<()> {
     .await
 }
 
-/// rig#2079 — the shared fetch path classifies a rejected listing as
+/// The shared fetch path classifies a rejected listing as
 /// the provider's reply, with its status and a route naming provider and path.
 #[tokio::test]
 async fn list_models_rejected_key_reports_api_error_with_context() -> Result<()> {

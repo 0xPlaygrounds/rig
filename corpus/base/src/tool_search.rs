@@ -1,15 +1,11 @@
-//! Deferred tools with tool search (corpus spec 24).
-//!
-//! Tools named by the `[tool_search]` settings (name globs, or every tool a
-//! plugin crate added, such as an MCP client's) are left out of each
-//! request until the agent activates them: `tool_search {query}` names the
-//! five deferred tools that match its keywords best and activates them for
-//! the calling agent, which is offered them from its next request on. A
-//! deferred tool called before it was activated still runs; its result
-//! says it is now active. What each agent activated is saved with the
-//! session; a new agent, a subagent too, starts with none. `/tools` counts
-//! the active and deferred tools, and the system prompt says how many are
-//! deferred.
+//! Deferred tools with tool search. Tools named by the `[tool_search]` settings (name
+//! globs, or every tool a plugin crate added, such as an MCP client's) are left out of each
+//! request until the agent activates them: `tool_search {query}` names the five deferred
+//! tools that match its keywords best and activates them for the calling agent, which is
+//! offered them from its next request on. A deferred tool called before it was activated
+//! still runs; its result says it is now active. What each agent activated is saved with
+//! the session; a new agent, a subagent too, starts with none. `/tools` counts the active
+//! and deferred tools, and the system prompt says how many are deferred.
 
 use std::cmp::Reverse;
 

@@ -92,12 +92,13 @@ so its sensitivity and size grow with the run. Hosts must apply their persistenc
 and redaction policy before storing it. Constructing a run directly does not
 execute an agent's configured hooks, tools, or retrieval.
 
-Everything an agent loop *is* sits beside it in `rig_agent::run` — the
+Everything an agent loop *is* sits beside it in `rig_agent::run`: the
 `RunSpec` it is configured by, `prepare_request` (the pure `(RunSpec,
-capabilities, history, tools, patch) → PreparedRequest` step, so every driver
-sends the same bytes), the output policy, the per-turn `RequestPatch`, the
-run's response and error types, the invalid-call decisions, the streamed-turn
-assembler and the loop-side transcript helpers — all sans-IO and serializable.
+capabilities, prompt, history, tools, patch) → PreparedRequest` step whose
+`CompletionRequest` every driver sends unchanged, so all drivers send the same
+bytes), the output policy, the per-turn `RequestPatch`, the run's response and
+error types, the invalid-call decisions, the streamed-turn assembler and the
+loop-side transcript helpers. All of it is sans-IO and serializable.
 rig-core keeps only the message-model invariants (`conversation::pairing`, the
 `tool::feedback` constructors). A host that drives runs itself (an ECS schedule, a
 job system) depends on this crate with default features off: that graph
@@ -189,6 +190,15 @@ the model and result-content telemetry; handler recording retains the original
 answer. Streaming deltas are provisional, and `ModelTurnRetried` tells consumers
 to discard a rejected turn.
 
+A turn's tool policy and output schema are fixed when its request is prepared,
+and the run checks the response against them. Change the tool choice or the
+active tools in `on_completion_call` with a `RequestPatch`; the output schema
+belongs to the agent. An `on_dispatch` completion patch that changes the tool
+choice, the tool names, the provider-hosted tools, the raw `tool_choice`
+parameter or the output schema, including the output tool's parameters, is
+refused before the provider is called. It may still reorder definitions and
+rewrite their descriptions and the parameters of ordinary tools.
+
 Keep hook-private state in the hook, keyed by run ID when shared across runs.
 Use `Scratchpad` for transient cross-hook state and run entries (rig-core
 `conversation::Aside`s) for state that must serialize or follow forks. Full snapshots read through `last_entry` avoid
@@ -203,10 +213,6 @@ attempt's terminal reason and effective output cap for portable truncation
 policies; the credential-free `retry_on_truncation` example demonstrates cap
 growth on both surfaces. The `run_budget` example caps a run's total tokens
 and tool calls the same way, with counts kept in the scratchpad.
-
-With `test-utils`, `test_utils::HookTestHarness` gives a hook stack the run
-context a runner would, so a hook's actions and scratchpad state can be tested
-without running an agent.
 
 Tools implement `rig_core::tool::Tool`, work in both runtimes, and receive
 each call's `&mut ToolContext`.
@@ -223,6 +229,19 @@ exposes safe kind-level feedback to the model by default. Explicit
 `ToolExecutionError` constructors expose their detailed messages; use them or
 `with_model_output` only for deliberately model-visible feedback. Inbound
 context and host-only result metadata belong in `ToolContext`, not model output.
+
+Streamed runs report each tool call as it starts (`ToolExecutionStarted`)
+and its accepted output as soon as its outcome hooks accept it
+(`ToolResultItem`), without waiting for the rest of the batch. A returned
+top-level JSON array is reported one element at a time, with a zero-based
+`index` and the total `count`; any other output is one item, multimodal blocks
+together, and an empty array reports nothing. Text is never reparsed as JSON.
+Items reflect outcome-hook rewrites and carry the call ID. They are not a
+commit: items already reported stay reported when a sibling fails the batch,
+and a sibling already running when that happens still reports its items as it
+finishes. `ToolExecutionCommitted` and the aggregate `ToolResult` keep atomic
+batch semantics and call order. Use `ToolResultItem` for live progress and
+`ToolResult` for history; do not record both as tool results.
 
 Tool registries publish changes to every attached handler table. Generated tool
 keys use `<owner>/tool:<name>#<generation>`, and a request catalog runs the
@@ -246,11 +265,7 @@ wasm feature flags anywhere in the workspace. `rig-core` relaxes its
 
 Wasm gates name a `target_os` (`all(target_arch = "wasm32", target_os =
 "unknown")`) rather than a bare `target_arch = "wasm32"`, because the latter
-also matches WASI, which has no JS host. WASI itself does not build: `rig-core`
-depends unconditionally on `reqwest`, which pulls `hyper`/`socket2` and a tokio
-feature set WASI rejects. Supporting it would mean making `reqwest` optional and
-adding a `wasi:http` client behind `rig_core::http_client` — a project, not a
-`cfg` fix.
+also matches WASI, which has no JS host. WASI is not supported.
 
 **MCP (`rig-rmcp`) is native-only.** rmcp's `ClientHandler` is declared
 `Sized + Send + Sync + 'static` unconditionally — its `local` feature relaxes

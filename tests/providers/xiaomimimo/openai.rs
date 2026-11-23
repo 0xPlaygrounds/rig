@@ -2,22 +2,15 @@
 
 use rig::providers::xiaomimimo;
 
-use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
+use crate::support::assert_completion_smoke;
 
 #[tokio::test]
 #[ignore = "requires XIAOMI_MIMO_API_KEY"]
 async fn openai_compatible_completion_smoke() {
-    let response = rig::AgentBuilder::new(
+    assert_completion_smoke(
         xiaomimimo::from_env()
             .expect("XIAOMI_MIMO_API_KEY should be set")
             .completion(xiaomimimo::MIMO_V2_5_PRO),
     )
-    .preamble(BASIC_PREAMBLE)
-    .build()
-    .prompt(BASIC_PROMPT)
-    .await
-    .expect("Xiaomi MiMo OpenAI-compatible completion should succeed")
-    .output();
-
-    assert_nonempty_response(&response);
+    .await;
 }

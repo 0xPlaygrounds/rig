@@ -16,7 +16,7 @@ use crate::completion::options::FinalBody;
 use crate::completion::{CompletionRequest, ProviderCapabilities};
 use crate::error::EncodeError;
 use crate::operation::Completion;
-use crate::providers::internal::named_dialect;
+use crate::providers::internal::{credential_header, named_dialect};
 use crate::wire::{Body, Capabilities, Descriptor, Encoded, Framing, Mode, Secret, Wire};
 use serde::{Deserialize, Serialize};
 
@@ -238,7 +238,7 @@ impl Dialect {
 /// Z.AI's Anthropic-format endpoint.
 pub const ZAI: Dialect = compatible(
     crate::providers::zai::PROVIDER_NAME,
-    "https://api.z.ai/api/anthropic",
+    crate::providers::zai::ANTHROPIC_API_BASE_URL,
     "ZAI_API_KEY",
     Some("ZAI_ANTHROPIC_API_BASE"),
 );
@@ -246,7 +246,7 @@ pub const ZAI: Dialect = compatible(
 /// MiniMax's Anthropic-format endpoint.
 pub const MINIMAX: Dialect = compatible(
     crate::providers::minimax::PROVIDER_NAME,
-    "https://api.minimax.io/anthropic",
+    crate::providers::minimax::GLOBAL_ANTHROPIC_API_BASE_URL,
     "MINIMAX_API_KEY",
     Some("MINIMAX_ANTHROPIC_API_BASE"),
 );
@@ -260,7 +260,7 @@ pub const MOONSHOT: Dialect = Dialect {
     },
     ..compatible(
         crate::providers::moonshot::PROVIDER_NAME,
-        "https://api.moonshot.ai/anthropic",
+        crate::providers::moonshot::ANTHROPIC_API_BASE_URL,
         "MOONSHOT_API_KEY",
         Some("MOONSHOT_ANTHROPIC_API_BASE"),
     )
@@ -269,7 +269,7 @@ pub const MOONSHOT: Dialect = Dialect {
 /// Xiaomi MiMo's Anthropic-format endpoint.
 pub const XIAOMIMIMO: Dialect = compatible(
     crate::providers::xiaomimimo::PROVIDER_NAME,
-    "https://api.xiaomimimo.com/anthropic",
+    crate::providers::xiaomimimo::ANTHROPIC_API_BASE_URL,
     "XIAOMI_MIMO_API_KEY",
     Some("XIAOMI_MIMO_ANTHROPIC_API_BASE"),
 );
@@ -461,11 +461,12 @@ impl AnthropicConfig {
         betas: &[String],
     ) -> http::request::Builder {
         let builder = match self.dialect.quirks.auth {
-            Auth::ApiKey => builder.header("x-api-key", self.api_key.expose()),
+            Auth::ApiKey => credential_header(builder, "x-api-key", self.api_key.expose()),
             Auth::OptionalBearer if self.api_key.is_empty() => builder,
-            Auth::OptionalBearer => builder.header(
-                http::header::AUTHORIZATION,
-                format!("Bearer {}", self.api_key.expose()),
+            Auth::OptionalBearer => credential_header(
+                builder,
+                "authorization",
+                &format!("Bearer {}", self.api_key.expose()),
             ),
         };
         let builder = builder.header("anthropic-version", &self.version);
@@ -535,8 +536,7 @@ pub struct Messages {
 impl Messages {
     /// The same wire, encoding with `facts` and pricing its replies by
     /// them. The `max_tokens` a request without one defaults to becomes the
-    /// dialect's default for the model under `facts`; set another with
-    /// [`Self::with_default_max_tokens`] after this.
+    /// dialect's default for the model under `facts`.
     pub fn with_facts(mut self, facts: ModelFacts) -> Self {
         self.default_max_tokens = self
             .provider
@@ -546,10 +546,16 @@ impl Messages {
         self
     }
 
-    /// Set the `max_tokens` a request without one defaults to.
-    pub fn with_default_max_tokens(mut self, tokens: u64) -> Self {
-        self.default_max_tokens = Some(tokens);
-        self
+    /// The `max_tokens` a request to `model` sends: its own, else the
+    /// dialect's default for another model than the wire's, else the wire's.
+    pub(super) fn max_tokens(&self, request: &CompletionRequest, model: &str) -> Option<u64> {
+        let other_model = (model != self.model).then_some(model);
+        request
+            .max_tokens
+            .or_else(|| {
+                other_model.and_then(|m| self.provider.dialect.default_max_tokens(&self.facts, m))
+            })
+            .or(self.default_max_tokens)
     }
 
     /// Enable cache breakpoints on the system prompt, final tool, and final message block.
@@ -645,10 +651,10 @@ pub struct Prepared {
 impl Messages {
     /// Encode `request` as [`Wire::encode`] does, with `envelope` building
     /// the HTTP request in place of `POST /v1/messages` with an API key.
-    /// The framing, request-id header and projection stay this wire's, so
-    /// a platform that serves the Messages API at another address, with
-    /// other credentials or another body envelope, reads replies as this
-    /// wire does.
+    /// The framing and request-id header stay this wire's, so a platform
+    /// that serves the Messages API at another address, with other
+    /// credentials or another body envelope, reads replies as this wire
+    /// does.
     ///
     /// # Errors
     ///
@@ -690,8 +696,7 @@ impl Messages {
                 Mode::Streaming => Framing::Sse,
             },
         )
-        .with_request_id_header(self.provider.dialect.request_id_header)
-        .with_projection(MessagesDecoder::project))
+        .with_request_id_header(self.provider.dialect.request_id_header))
     }
 }
 

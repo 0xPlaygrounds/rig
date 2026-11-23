@@ -3,17 +3,26 @@
 //! client drives it ([`Driven`]). The lines libtest prints on stdout are not
 //! ACP, and both the router and the client skip them.
 
+#![allow(clippy::disallowed_methods, reason = "test fixtures")]
+
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use agent_client_protocol::schema::{ProtocolVersion, v1 as acp};
 use agent_client_protocol::{Agent, Client, ConnectionTo};
 use rig_basics::approval::{ApprovalPlugin, ApprovalSystems, NeedsApproval};
+use rig_core::catalog::{Catalog, ModelStatus, SignIn, Transport};
+use rig_core::operation::Completion;
+use rig_core::providers::registry::ConnectError;
+use rig_core::serve::ErasedHandler;
+use rig_core::serve::adapters::ModelAdapter;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
+use rig_harness::clock::WakeAt;
 use rig_harness::harness_protocol::Invocation;
+use rig_harness::host::pipes::Writer;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::ModelSpec;
 use rig_harness::rig_core::providers::registry::ProviderId;
@@ -33,6 +42,9 @@ const UNREACHABLE: &str = "acp-unreachable/model";
 /// Set in the environment of the agent this test binary runs as.
 const AGENT: &str = "RIG_ACP_TEST_AGENT";
 
+/// When set, the line limit of the router and its sessions, in bytes.
+const LINE_LIMIT_BYTES: &str = "RIG_ACP_TEST_LINE_LIMIT";
+
 /// Set in the environment of the MCP server this test binary runs as.
 const STUB: &str = "RIG_ACP_TEST_MCP";
 
@@ -43,6 +55,44 @@ const STAYS: &str = "RIG_ACP_TEST_MCP_STAYS";
 /// Set for the MCP stub to answer `initialize` only after this many
 /// milliseconds.
 const SLOW: &str = "RIG_ACP_TEST_MCP_SLOW";
+
+/// When set, the agent's catalog has [`HELD`], which a sign-in serves once
+/// it checked the account for [`HOLD`] after the process started.
+const HELD_SIGN_IN: &str = "RIG_ACP_TEST_HELD";
+
+/// The model the held sign-in serves.
+const HELD: &str = "acp-held/model";
+
+/// How long the held sign-in checks the account.
+const HOLD: Duration = Duration::from_secs(2);
+
+/// A sign-in that serves [`HELD`] on `model`, checking until `until`.
+struct HeldSignIn {
+    until: Instant,
+    model: MockCompletionModel,
+}
+
+impl SignIn for HeldSignIn {
+    fn handler(
+        &self,
+        spec: &ModelSpec,
+        _: &Transport,
+    ) -> Option<Result<ErasedHandler, ConnectError>> {
+        let adapter = ModelAdapter::<Completion>::new(spec.reference(), self.model.clone());
+        (spec.reference() == HELD).then(|| Ok(ErasedHandler::new(adapter)))
+    }
+
+    fn plan(&self, spec: &ModelSpec) -> Option<&'static str> {
+        (spec.reference() == HELD).then_some("Held")
+    }
+
+    fn offers(&self, _: &ModelSpec, _: &Transport) -> ModelStatus {
+        match Instant::now() < self.until {
+            true => ModelStatus::Checking,
+            false => ModelStatus::Usable,
+        }
+    }
+}
 
 /// The arguments that run this binary's ignored test `name` alone.
 fn libtest(name: &str) -> Vec<OsString> {
@@ -102,6 +152,13 @@ fn agent() {
         calls("g1", "read", json!({ "path": "guarded.txt" })),
         reply("read it for you"),
     ]);
+    // As `delegate`, for a subagent `twice` answers.
+    let task = json!({ "description": "Touch twice", "prompt": TWICE, "model": "test/reply" });
+    let delegate_twice = script(vec![
+        calls("d1", "task", task),
+        reply("delegated"),
+        reply("noted"),
+    ]);
     // A provider that fails every call, retries included.
     let fail = script(
         (0..8)
@@ -116,28 +173,61 @@ fn agent() {
         calls("w1", "shell", json!({ "command": "sleep 120" })),
         reply("waited"),
     ]);
+    // A `shell` call that ends at once.
+    let quick = script(vec![
+        calls("q1", "shell", json!({ "command": "true" })),
+        reply("ran"),
+    ]);
     let mcp = script(vec![
         calls("m1", "files__add", json!({ "a": 2, "b": 3 })),
         reply("added"),
     ]);
+    // A call of an MCP tool that answers with two text parts.
+    let pair = script(vec![calls("p1", "files__pair", json!({})), reply("paired")]);
     let mut models = scripted_models([
         ("test/reply", &replies),
         ("test/read", &read),
         ("test/again", &again),
         ("test/fail", &fail),
         ("test/delegate", &delegate),
+        ("test/delegate-twice", &delegate_twice),
         ("test/sub", &sub),
         ("test/guarded", &guarded),
         ("test/wait", &wait),
         ("test/mcp", &mcp),
+        ("test/shell", &quick),
+        ("test/pair", &pair),
     ]);
     // A model of the catalog no key reaches.
     if let Ok(nowhere) = ProviderId::declare("acp-unreachable") {
         let spec = ModelSpec::new(nowhere, "model").with_tools(true);
         models.0.catalog_mut().insert(spec);
     }
+    let held = std::env::var_os(HELD_SIGN_IN).is_some();
+    if held && let Ok(vendor) = ProviderId::declare("acp-held") {
+        let spec = ModelSpec::new(vendor, "model").with_tools(true);
+        models.0.catalog_mut().insert(spec);
+        // No key reaches it, so the sign-in serves it.
+        models
+            .0
+            .provide(vendor, |_: &ModelSpec, _: &Catalog, _: &Transport| {
+                Err(ConnectError::MissingKey {
+                    vendor: "acp-held".to_owned(),
+                    tried: Vec::new(),
+                })
+            });
+        let until = Instant::now() + HOLD;
+        let model = replies.clone();
+        models.0.add_sign_in(HeldSignIn { until, model });
+    }
+    // `--tools`, which the router hands each session after `--`.
+    let tools = std::env::args().filter_map(|arg| {
+        let tools = arg.strip_prefix(&format!("--{}=", rig_harness::run::TOOLS))?;
+        Some((rig_harness::run::TOOLS.to_owned(), Some(tools.to_owned())))
+    });
     let invoked = Invocation {
         command: Some(command.to_owned()),
+        flags: tools.collect(),
         ..Invocation::default()
     };
     let mut app = App::new();
@@ -151,12 +241,15 @@ fn agent() {
         AcpPlugin,
         ApprovalPlugin,
         rig_basics::models::ModelsPlugin,
+        rig_basics::models::defaults::DefaultsPlugin,
         rig_basics::sessions::SessionsPlugin,
+        rig_basics::sessions::forks::ForksPlugin,
         rig_basics::coding_tools::ReadTool,
         rig_basics::coding_tools::ShellTool,
         rig_basics::BasicCommandsPlugin,
         rig_basics::compaction::CompactionPlugin,
         rig_basics::subagents::SubagentsPlugin,
+        rig_basics::redact::RedactPlugin,
     ))
     .add_command("ask", "Ask a question", ask)
     .add_command("early", "Start a call early", early)
@@ -164,11 +257,35 @@ fn agent() {
     .add_observer(asked)
     .add_observer(carry_on)
     .add_observer(release)
-    .add_systems(AgentPass, guard.in_set(Stage::Gate).before(ApprovalSystems));
+    .add_systems(
+        AgentPass,
+        (guard.before(ApprovalSystems), twice, in_place).in_set(Stage::Gate),
+    )
+    .add_systems(
+        AgentPass,
+        (
+            stream_then_take_over
+                .in_set(PrepareSystems::Edit)
+                .before(PrepareSystems::Adapt),
+            take_over.in_set(Stage::Arrive),
+            give_text_in_review.in_set(ReviewSystems::Edit),
+        ),
+    );
+    let limit = std::env::var(LINE_LIMIT_BYTES).ok();
+    if let Some(limit) = limit.and_then(|limit| limit.parse().ok()) {
+        app.insert_resource(crate::LineLimit(limit));
+    }
     if !session {
         let program = std::env::current_exe().unwrap_or_default();
-        let args = libtest("agent");
+        // What the router adds after them is no test's filter.
+        let mut args = libtest("agent");
+        args.push("--".into());
         app.insert_resource(SessionCommand { program, args });
+    }
+    // A frame once the held sign-in answers, as a real one wakes the loop.
+    if held {
+        let after = SystemTime::now() + HOLD + Duration::from_millis(200);
+        app.world_mut().spawn(WakeAt(after));
     }
     let exit = rig_harness::run(app);
     std::process::exit(match exit {
@@ -229,10 +346,10 @@ fn hold(
     std::fs::write(root.0.join("held"), "").ok();
 }
 
-/// Ends `/hold`'s work as its agent is stopped.
-fn release(stop: On<StopTurn>, held: Query<(Entity, &Held)>, mut commands: Commands) {
+/// Ends `/hold`'s work as a stop reaches its agent.
+fn release(stop: On<StopReached>, held: Query<(Entity, &Held)>, mut commands: Commands) {
     for (work, Held(agent)) in &held {
-        if *agent == stop.entity {
+        if *agent == stop.event_target() {
             commands.entity(work).despawn();
         }
     }
@@ -256,14 +373,323 @@ fn asked(
     }
 }
 
-/// A call that reads `guarded.txt` needs the user's approval.
+/// A call that reads `guarded.txt`, or runs [`GUARDED`], needs the user's
+/// approval.
 fn guard(calls: Query<(Entity, &ToolRequest), (ReadyToStart, ToolCalls)>, mut commands: Commands) {
     for (call, request) in &calls {
         let args = request.call.function.arguments_value();
-        if args.get("path") == Some(&json!("guarded.txt")) {
+        if args.get("path") == Some(&json!("guarded.txt"))
+            || args.get("command") == Some(&json!(GUARDED))
+        {
             let reason = NeedsApproval::add("test", "It reads the guarded file.");
             commands.entity(call).queue(reason);
         }
+    }
+}
+
+/// What `test/delegate-twice` asks its subagent.
+const TWICE: &str = "Run the guarded command twice.";
+
+/// The command [`guard`] asks approval for.
+const GUARDED: &str = "touch guarded.out";
+
+/// Answers a model call asked [`TWICE`] with a reply that runs
+/// [`GUARDED`] twice under one id, as a plugin's answer may: a live stream
+/// renames a repeated id. Both change the same files, so the second waits
+/// for the first to settle.
+fn twice(mut calls: Query<(&ModelRequest, &mut Decision), (With<TurnCall>, ReadyToStart)>) {
+    use rig_harness::rig_core::completion::message::{
+        AssistantContent, Message, Origin, ToolCall, ToolFunction, ToolName, UserContent,
+    };
+    use rig_harness::rig_core::completion::{CompletionResponse, FinishReason, Usage};
+
+    for (request, mut decision) in &mut calls {
+        // Its first model call: no reply yet, and asked [`TWICE`].
+        let history = request
+            .history
+            .iter()
+            .flat_map(|history| history.messages());
+        let history = history.map(|message| &**message);
+        let asked = history.clone().any(|message| {
+            matches!(message, Message::User { content } if content.iter().any(|part|
+                matches!(part, UserContent::Text(text) if text.text.contains(TWICE))))
+        });
+        let mut replies = history.filter(|message| matches!(message, Message::Assistant(_)));
+        let asked = asked && replies.next().is_none();
+        let Ok(shell) = ToolName::new("shell") else {
+            return;
+        };
+        if !asked {
+            continue;
+        }
+        let run = ToolFunction::new(shell, json!({ "command": GUARDED }));
+        let run = AssistantContent::ToolCall(ToolCall::from_wire("s9", run));
+        let origin = Origin::new("test.api", "test", "model");
+        let reply = CompletionResponse::new(
+            vec![run.clone(), run],
+            Usage::default(),
+            origin,
+            Value::Null,
+        );
+        let reply = reply.with_finish_reason(FinishReason::ToolCalls);
+        let answer = rig_harness::rig_core::effect::Answered::Completion(Arc::new(reply));
+        decision.decide(Decider::plugin("test"), Ok(answer));
+    }
+}
+
+/// A prompt a plugin answers in place of the model.
+const IN_PLACE: &str = "Answer this in place.";
+
+/// Answers each model call of a prompt asked [`IN_PLACE`] with "hello in
+/// place", as a plugin standing in for the model does: nothing streams.
+fn in_place(mut calls: Query<(&ModelRequest, &mut Decision), (With<TurnCall>, ReadyToStart)>) {
+    use rig_harness::rig_core::completion::message::{
+        AssistantContent, Message, Origin, Text, UserContent,
+    };
+    use rig_harness::rig_core::completion::{CompletionResponse, Usage};
+
+    for (request, mut decision) in &mut calls {
+        let mut history = request
+            .history
+            .iter()
+            .flat_map(|history| history.messages());
+        let asked = history.any(|message| {
+            matches!(&**message, Message::User { content } if content.iter().any(|part|
+                matches!(part, UserContent::Text(text) if text.text.contains(IN_PLACE))))
+        });
+        if !asked {
+            continue;
+        }
+        let text = AssistantContent::Text(Text::new("hello in place".to_owned()));
+        let origin = Origin::new("test.api", "test", "model");
+        let reply = CompletionResponse::new(vec![text], Usage::default(), origin, Value::Null);
+        let answer = rig_harness::rig_core::effect::Answered::Completion(Arc::new(reply));
+        decision.decide(Decider::plugin("test"), Ok(answer));
+    }
+}
+
+/// Prompts whose model call streams only a text part's start, or only a
+/// reasoning part, then stalls until a plugin answers it in place.
+const OPEN_THEN_TAKEN: &str = "Open a part, then be taken over.";
+const THINK_THEN_TAKEN: &str = "Think, then be taken over.";
+
+/// A model that streams these events, then never finishes.
+struct Stalls(Vec<StreamEvent>);
+
+impl rig_harness::rig_core::serve::Serve for Stalls {
+    type Family = rig_harness::rig_core::effect::family::Dynamic;
+
+    fn descriptor(&self) -> rig_harness::rig_core::effect::HandlerDescriptor {
+        rig_harness::rig_core::effect::HandlerDescriptor {
+            key: rig_harness::rig_core::effect::HandlerKey::from("stalls"),
+            family: rig_harness::rig_core::effect::FamilyDescriptor::Custom {
+                kind: "test:stalls".into(),
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    async fn serve(
+        &self,
+        _: rig_harness::rig_core::effect::EffectKind,
+        _: rig_harness::rig_core::serve::Dispatch,
+    ) -> rig_harness::rig_core::serve::Reply {
+        use futures::StreamExt;
+        use rig_harness::rig_core::streaming::{Item, Relayed};
+
+        let events = self.0.iter().cloned();
+        let events = events.map(|event| Ok(Relayed::Item(Item::Event(event))));
+        let stalls =
+            futures::stream::iter(events.collect::<Vec<_>>()).chain(futures::stream::pending());
+        rig_harness::rig_core::serve::Reply::Stream(Box::pin(stalls))
+    }
+}
+
+/// Prompts whose model call streams a reasoning part, then ends with a
+/// reply holding only it, or fails; a reviewer then gives it text.
+const THINK_THEN_REVIEWED: &str = "Think, then be given text in review.";
+const THINK_THEN_FAIL: &str = "Think, then fail and be taken over.";
+
+/// A model that streams these events, then ends with a reply holding only
+/// the reasoning "pondering", or fails.
+struct Ends(Vec<StreamEvent>, bool);
+
+impl rig_harness::rig_core::serve::Serve for Ends {
+    type Family = rig_harness::rig_core::effect::family::Dynamic;
+
+    fn descriptor(&self) -> rig_harness::rig_core::effect::HandlerDescriptor {
+        rig_harness::rig_core::effect::HandlerDescriptor {
+            key: rig_harness::rig_core::effect::HandlerKey::from("ends"),
+            family: rig_harness::rig_core::effect::FamilyDescriptor::Custom {
+                kind: "test:ends".into(),
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    async fn serve(
+        &self,
+        _: rig_harness::rig_core::effect::EffectKind,
+        _: rig_harness::rig_core::serve::Dispatch,
+    ) -> rig_harness::rig_core::serve::Reply {
+        use rig_harness::rig_core::completion::message::{AssistantContent, Origin};
+        use rig_harness::rig_core::completion::{CompletionResponse, Usage};
+        use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
+        use rig_harness::rig_core::streaming::{Item, Relayed};
+
+        let events = self.0.iter().cloned();
+        let mut items: Vec<_> = events
+            .map(|event| Ok(Relayed::Item(Item::Event(event))))
+            .collect();
+        items.push(match self.1 {
+            true => {
+                let thought = vec![AssistantContent::reasoning("pondering")];
+                let origin = Origin::new("test.api", "test", "model");
+                let reply = CompletionResponse::new(thought, Usage::default(), origin, Value::Null);
+                Ok(Relayed::Done(Arc::new(reply)))
+            }
+            false => Err(ErrorReport::new(ErrorKind::Provider, "the stream broke")),
+        });
+        rig_harness::rig_core::serve::Reply::Stream(Box::pin(futures::stream::iter(items)))
+    }
+}
+
+/// On a model call a reviewer gives text.
+#[derive(Component)]
+struct GivenTextInReview;
+
+/// Gives each answered call [`stream_then_take_over`] marked the text
+/// "REVIEW-REPLY added in place" when it has none, in Review: added to an
+/// answer, or taking over a failure, as a reviewer does in place.
+fn give_text_in_review(mut calls: Query<&mut Outcome, (With<GivenTextInReview>, ReadyToSettle)>) {
+    use rig_harness::rig_core::completion::message::{AssistantContent, Origin};
+    use rig_harness::rig_core::completion::{CompletionResponse, Usage};
+    use rig_harness::rig_core::effect::Answered;
+
+    for mut outcome in &mut calls {
+        let mut choice = match &outcome.0 {
+            Ok(Answered::Completion(reply)) => reply.choice.clone(),
+            Err(_) => Vec::new(),
+            Ok(_) => continue,
+        };
+        if choice
+            .iter()
+            .any(|content| matches!(content, AssistantContent::Text(_)))
+        {
+            continue;
+        }
+        choice.push(AssistantContent::text("REVIEW-REPLY added in place"));
+        let origin = Origin::new("test.api", "test", "model");
+        let reply = CompletionResponse::new(choice, Usage::default(), origin, Value::Null);
+        outcome.0 = Ok(Answered::Completion(Arc::new(reply)));
+    }
+}
+
+/// On a model call a plugin takes over once its stream began.
+#[derive(Component)]
+struct TakenOver;
+
+/// Sends each model call of a prompt asked [`OPEN_THEN_TAKEN`] or
+/// [`THINK_THEN_TAKEN`] to a model that streams no text and stalls.
+fn stream_then_take_over(
+    mut calls: Query<(Entity, &mut ModelRequest, &ForAgent), (With<TurnCall>, Added<Admitted>)>,
+    agents: Query<&Connection>,
+    mut commands: Commands,
+) {
+    use rig_harness::rig_core::completion::message::{AssistantContent, Message, UserContent};
+    use rig_harness::rig_core::streaming::{Part, PartKind};
+
+    for (call, mut request, &ForAgent(agent)) in &mut calls {
+        let asked = |marker: &str| {
+            let mut history = request
+                .history
+                .iter()
+                .flat_map(|history| history.messages());
+            history.any(|message| {
+                matches!(&**message, Message::User { content } if content.iter().any(|part|
+                    matches!(part, UserContent::Text(text) if text.text.contains(marker))))
+            })
+        };
+        let part = Part::new(0);
+        let streamed = if asked(OPEN_THEN_TAKEN) {
+            vec![StreamEvent::Start {
+                part,
+                kind: PartKind::Text,
+                name: None,
+            }]
+        } else if asked(THINK_THEN_TAKEN) {
+            let reasoning = PartKind::Reasoning;
+            vec![
+                StreamEvent::Start {
+                    part,
+                    kind: reasoning,
+                    name: None,
+                },
+                StreamEvent::Reasoning {
+                    part,
+                    text: "pondering".to_owned(),
+                },
+                StreamEvent::End {
+                    part,
+                    content: AssistantContent::reasoning("pondering"),
+                },
+            ]
+        } else if asked(THINK_THEN_REVIEWED) || asked(THINK_THEN_FAIL) {
+            let Ok(connection) = agents.get(agent) else {
+                continue;
+            };
+            let thought = vec![
+                StreamEvent::Start {
+                    part,
+                    kind: PartKind::Reasoning,
+                    name: None,
+                },
+                StreamEvent::Reasoning {
+                    part,
+                    text: "pondering".to_owned(),
+                },
+                StreamEvent::End {
+                    part,
+                    content: AssistantContent::reasoning("pondering"),
+                },
+            ];
+            let ends = Ends(thought, asked(THINK_THEN_REVIEWED));
+            let handler = rig_harness::rig_core::serve::ErasedHandler::new(ends);
+            request.connection = Some(Connection {
+                spec: connection.spec.clone(),
+                handler: rig_harness::rig_ecs::effects::Handler(handler),
+            });
+            commands.entity(call).try_insert(GivenTextInReview);
+            continue;
+        } else {
+            continue;
+        };
+        let Ok(connection) = agents.get(agent) else {
+            continue;
+        };
+        let handler = rig_harness::rig_core::serve::ErasedHandler::new(Stalls(streamed));
+        request.connection = Some(Connection {
+            spec: connection.spec.clone(),
+            handler: rig_harness::rig_ecs::effects::Handler(handler),
+        });
+        commands.entity(call).try_insert(TakenOver);
+    }
+}
+
+/// Answers each call [`stream_then_take_over`] sent, once its stream began,
+/// with "hello in place", as a plugin taking a reply over does.
+fn take_over(
+    mut calls: Query<&mut Decision, (With<TakenOver>, With<StreamTiming>, Without<Outcome>)>,
+) {
+    use rig_harness::rig_core::completion::message::{AssistantContent, Origin, Text};
+    use rig_harness::rig_core::completion::{CompletionResponse, Usage};
+
+    for mut decision in &mut calls {
+        let text = AssistantContent::Text(Text::new("hello in place".to_owned()));
+        let origin = Origin::new("test.api", "test", "model");
+        let reply = CompletionResponse::new(vec![text], Usage::default(), origin, Value::Null);
+        let answer = rig_harness::rig_core::effect::Answered::Completion(Arc::new(reply));
+        decision.decide(Decider::plugin("test"), Ok(answer));
     }
 }
 
@@ -313,7 +739,17 @@ fn mcp_stub() {
                     "type": "object",
                     "properties": { "a": { "type": "number" }, "b": { "type": "number" } },
                 },
+            }, {
+                "name": "pair",
+                "inputSchema": { "type": "object" },
             }]}),
+            Some("tools/call") if request.pointer("/params/name") == Some(&json!("pair")) => {
+                // A key too, which reaches neither path.
+                json!({ "content": [
+                    { "type": "text", "text": "first" },
+                    { "type": "text", "text": "OPENAI_API_KEY=sk-proj-abcdefghijklmnop1234" },
+                ]})
+            }
             Some("tools/call") => {
                 let sum = number("a") + number("b");
                 json!({ "content": [{ "type": "text", "text": sum.to_string() }] })
@@ -352,6 +788,12 @@ struct Place {
     root: PathBuf,
     home: PathBuf,
     project: PathBuf,
+    /// The router's `--tools`, if any.
+    tools: Option<String>,
+    /// The line limit `rig acp` reads with, when not its own.
+    limit: Option<usize>,
+    /// Variables the router starts with besides its own.
+    env: Vec<(String, String)>,
 }
 
 impl Place {
@@ -370,7 +812,16 @@ impl Place {
             root,
             home,
             project,
+            tools: None,
+            limit: None,
+            env: Vec::new(),
         }
+    }
+
+    /// The same place, its router started with `--tools tools`.
+    fn with_tools(mut self, tools: &str) -> Self {
+        self.tools = Some(tools.to_owned());
+        self
     }
 }
 
@@ -405,7 +856,8 @@ struct Seen {
 #[derive(Clone, Debug)]
 enum Event {
     Update(acp::SessionId, acp::SessionUpdate),
-    /// The answer to `session/new`, where it came among the updates.
+    /// The answer to a request that opens the session, where it came among
+    /// the updates.
     Opened(acp::SessionId),
     /// The answer to a prompt of the session, where it came among them.
     Answered(acp::SessionId),
@@ -485,6 +937,33 @@ impl Driven {
             });
         ordered.ok()?;
         answer.await.ok()?.ok()
+    }
+
+    /// Sends `request`, which opens `session` again; the answer, once it
+    /// comes, noted where it came among the updates.
+    async fn reopen<Request>(
+        &self,
+        session: &acp::SessionId,
+        request: Request,
+    ) -> Result<Request::Response, agent_client_protocol::Error>
+    where
+        Request: agent_client_protocol::JsonRpcRequest,
+    {
+        let (answered, answer) = tokio::sync::oneshot::channel();
+        let (seen, id) = (self.seen.clone(), session.clone());
+        self.cx
+            .prepare_request(request)
+            .on_receiving_result(async move |result| {
+                let mut seen = seen
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                seen.events.push(Event::Opened(id));
+                answered.send(result).ok();
+                Ok(())
+            })?;
+        answer
+            .await
+            .map_err(|_| agent_client_protocol::Error::internal_error())?
     }
 
     /// Picks the model `model` for `session`.
@@ -574,12 +1053,23 @@ impl Router {
         tokio::process::ChildStdin,
         tokio::process::ChildStdout,
     )> {
+        let tools = place.tools.iter().flat_map(|tools| {
+            let flag = format!("--{}={tools}", rig_harness::run::TOOLS);
+            [OsString::from("--"), OsString::from(flag)]
+        });
         let mut process = tokio::process::Command::new(std::env::current_exe().ok()?)
             .args(libtest("agent"))
+            .args(tools)
             .env(AGENT, "1")
             .env("RIG_HOME", &place.home)
             .env_remove("RIG_RUN")
             .env_remove("RIG_SESSION")
+            .envs(
+                place
+                    .limit
+                    .map(|limit| (LINE_LIMIT_BYTES, limit.to_string())),
+            )
+            .envs(place.env.iter().map(|(name, value)| (name, value)))
             .current_dir(&place.project)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -676,19 +1166,28 @@ fn drive(
                 },
                 agent_client_protocol::on_receive_request!(),
             )
-            .connect_with(lines(input, output), async move |cx| {
-                let init = acp::InitializeRequest::new(ProtocolVersion::V1)
-                    .client_capabilities(capabilities);
-                cx.send_request(init).block_task().await?;
-                let driven = Driven {
-                    cx,
-                    seen,
-                    project,
-                    router: pid,
-                };
-                test(&driven).await;
-                Ok(())
-            })
+            .connect_with(
+                lines(
+                    input,
+                    output,
+                    Writer::inline(std::io::sink(), std::io::sink()),
+                    crate::LINE_LIMIT,
+                )
+                .0,
+                async move |cx| {
+                    let init = acp::InitializeRequest::new(ProtocolVersion::V1)
+                        .client_capabilities(capabilities);
+                    cx.send_request(init).block_task().await?;
+                    let driven = Driven {
+                        cx,
+                        seen,
+                        project,
+                        router: pid,
+                    };
+                    test(&driven).await;
+                    Ok(())
+                },
+            )
             .await;
         driven.ok()?;
         Some(router)
@@ -757,4 +1256,29 @@ fn sleeping(place: &Place) -> bool {
         std::fs::read(format!("/proc/{pid}/cmdline"))
             .is_ok_and(|line| String::from_utf8_lossy(&line).contains("sleep"))
     })
+}
+
+/// `rig acp --tools=read` is refused, saying to put options before `acp`:
+/// the router reads only the options before it, so one after it would be
+/// dropped.
+#[test]
+fn an_option_after_acp_is_refused() {
+    let args = Invocation::parse(&["acp", "--tools=read"]).unwrap_or_default();
+    assert_eq!(args.arguments, ["--tools=read"]);
+    let mut app = App::new();
+    app.insert_resource(Invoked {
+        args,
+        terminal: false,
+    });
+    crate::router::install(&mut app);
+    let refused = app
+        .world()
+        .get_resource::<rig_harness::host::launcher::Refused>();
+    let why = refused
+        .map(|refused| refused.0.as_str())
+        .unwrap_or_default();
+    assert!(
+        why.contains("`--tools=read`") && why.contains("before `acp`"),
+        "{why}"
+    );
 }

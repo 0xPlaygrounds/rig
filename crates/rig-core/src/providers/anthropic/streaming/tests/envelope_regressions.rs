@@ -1,6 +1,6 @@
 use super::*;
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 #[tokio::test]
 async fn raw_sse_unknown_preamble_and_fragmented_utf8_preserve_content() {
     use crate::test_utils::SequencedStreamingHttpClient;

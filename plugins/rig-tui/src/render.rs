@@ -12,6 +12,7 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::schedule::ScheduleLabel;
 use bevy_ecs::system::{SystemChangeTick, SystemParam};
 use crossterm::cursor::MoveTo;
+use crossterm::event::KeyCode;
 use ratatui::Frame;
 use ratatui::backend::Backend;
 use ratatui::buffer::{Buffer, Cell};
@@ -29,31 +30,35 @@ use super::pane::{PaneState, TranscriptPane};
 use super::panel::{
     self, PanelCanvas, PanelSpawns, Placement, RedrawArea, RequestRedraw, TerminalSize, TuiPanel,
 };
-use super::pick::{Choices, InlineStrip, Item, Listing, PickerInput, Row, detail_column};
+use super::pick::{
+    ChoiceAction, Choices, InlineStrip, Item, Listing, PickerInput, Row, detail_column,
+};
 use super::renderers::{
-    CallState, MessageView, Place, Renderers, Role, ToolCallView, UNNAMED_HOLD,
+    CallState, LookLine, Place, Renderers, ToolRender, UNNAMED_HOLD, reasoning_lines, reply_lines,
 };
 use super::status::{AppStatus, StatusItems, StatusLine};
-use super::terminal::{Tui, TuiTestScreen};
+use super::terminal::{CopyToClipboard, Tui, TuiTestScreen};
 use super::theme::Theme;
 use super::transcript::{
     CallFacts, CallTree, ChildCalls, Inside, Look, Marks, Part, Replaced, ShownAside, ShownEntries,
-    Stops, StreamingCalls, Transcript, live_call, notice_lines, on_band, plain_lines,
+    Stops, Transcript, live_call, notice_lines, on_band, plain_lines,
 };
 use super::view::{
-    DrawnTranscript, Highlight, MarkIn, Notices, RowWrap, ShownNotice, TranscriptItem,
+    CallItem, DrawnTranscript, Highlight, MarkIn, Notices, RowWrap, ShownNotice, TranscriptItem,
     TranscriptSlot, TranscriptView, TuiView, message_items,
 };
 use super::wrap::wrap_all;
 use rig_core::conversation;
-use rig_core::message::{CallId, ToolCall};
-use rig_ecs::agent::{ActiveTurn, AgentId, Calls, Conversation, Partial};
+use rig_core::conversation::CallRef;
+use rig_ecs::agent::{ActiveTurn, AgentId, Calls, Conversation, Partial, PartialCall};
+use rig_ecs::fork::ForkedFrom;
 use rig_ecs::inbox::{DeliveryMode, Incoming};
 use rig_ecs::stage::{Effect, ForAgent, Holds, Outcome, Settled, Started, SupersededBy};
-use rig_ecs::tools::ToolRequest;
+use rig_ecs::tasks::Wake;
+use rig_ecs::tools::{InReply, ToolRequest};
 use rig_ecs::turn::{ModelRequest, SentTo};
 use rig_harness::main_agent::ShownAgent;
-use rig_harness::pick::{PickPreview, Picker};
+use rig_harness::pick::{PickPreview, Picker, TickBox};
 use rig_harness::prelude::{CallOutput, ToolProgress};
 
 /// Most items the completion list shows at once.
@@ -103,7 +108,7 @@ pub(crate) fn needs_redraw(
             Changed<Picker>,
         )>,
     >,
-    partials: Query<(), Or<(Changed<Partial>, Changed<StreamingCalls>)>>,
+    partials: Query<(), Changed<Partial>>,
     messages: Query<(), (With<Incoming>, Or<(Added<Started>, Added<Outcome>)>)>,
     calls: Query<
         (),
@@ -117,7 +122,11 @@ pub(crate) fn needs_redraw(
             )>,
         ),
     >,
-    (app_status, test): (Option<Res<AppStatus>>, Option<Res<TuiTestScreen>>),
+    (app_status, hidden, test): (
+        Option<Res<AppStatus>>,
+        Option<Res<crate::status::StatusSettings>>,
+        Option<Res<TuiTestScreen>>,
+    ),
     (mut requests, mut repaints): (MessageReader<RequestRedraw>, MessageReader<RedrawArea>),
     revision: Res<crate::RenderRevision>,
     mut paced: Local<Paced>,
@@ -134,6 +143,7 @@ pub(crate) fn needs_redraw(
         || focus.is_changed()
         || screen.is_changed()
         || app_status.is_some_and(|status| status.is_changed())
+        || hidden.is_some_and(|hidden| hidden.is_changed())
         || test.is_some_and(|test| test.is_changed())
         || !changed.is_empty()
         || !messages.is_empty()
@@ -280,60 +290,54 @@ pub(crate) struct CallStates<'w, 's> {
         'w,
         's,
         (
-            &'static ToolRequest,
+            Option<&'static InReply>,
             Option<&'static Holds>,
             Has<Started>,
             Has<Outcome>,
             Option<&'static ToolProgress>,
         ),
+        With<ToolRequest>,
     >,
     names: Query<'w, 's, &'static Name>,
-    outputs: Query<
-        'w,
-        's,
-        (&'static ToolRequest, &'static CallOutput),
-        (With<Started>, Without<Outcome>),
-    >,
+    outputs:
+        Query<'w, 's, (&'static InReply, &'static CallOutput), (With<Started>, Without<Outcome>)>,
 }
 
 impl CallStates<'_, '_> {
-    /// Where each tool call of `calls` stands, by its id: held while it
-    /// has holds, else done once answered, running (with its progress
-    /// line) once started, else waiting.
+    /// Where each tool call of a reply among `calls` stands, by the call
+    /// ([`Self::state`]).
     pub(crate) fn of(
         &self,
         calls: impl IntoIterator<Item = Entity>,
-    ) -> BTreeMap<CallId, CallState> {
-        let found = calls
-            .into_iter()
-            .filter_map(|call| self.calls.get(call).ok());
-        found
-            .map(|(request, holds, started, answered, progress)| {
-                let state = match holds {
-                    Some(holds) => {
-                        CallState::Held(holds.iter().map(|hold| self.name(hold)).collect())
-                    }
-                    None if answered => CallState::Done,
-                    None if started => {
-                        CallState::Running(progress.map(|ToolProgress(line)| line.clone()))
-                    }
-                    None => CallState::Waiting,
-                };
-                (request.call.id.clone(), state)
-            })
-            .collect()
+    ) -> BTreeMap<CallRef, CallState> {
+        let found = calls.into_iter().filter_map(|call| self.state(call));
+        found.filter_map(|(at, state)| Some((at?, state))).collect()
     }
 
-    /// The output so far of each running call of `calls` whose tool
-    /// reported some, by its id.
+    /// Where the tool call `call` stands, with its place in its reply if
+    /// it has one: held while it has holds, else done once answered,
+    /// running (with its progress line) once started, else waiting.
+    pub(crate) fn state(&self, call: Entity) -> Option<(Option<CallRef>, CallState)> {
+        let (at, holds, started, answered, progress) = self.calls.get(call).ok()?;
+        let state = match holds {
+            Some(holds) => CallState::Held(holds.iter().map(|hold| self.name(hold)).collect()),
+            None if answered => CallState::Done,
+            None if started => CallState::Running(progress.map(|ToolProgress(line)| line.clone())),
+            None => CallState::Waiting,
+        };
+        Some((at.map(InReply::at), state))
+    }
+
+    /// The output so far of each running call of a reply among `calls`
+    /// whose tool reported some, by the call.
     pub(crate) fn outputs(
         &self,
         calls: impl IntoIterator<Item = Entity>,
-    ) -> BTreeMap<CallId, String> {
+    ) -> BTreeMap<CallRef, String> {
         let found = calls
             .into_iter()
             .filter_map(|call| self.outputs.get(call).ok());
-        let outputs = found.map(|(request, output)| (request.call.id.clone(), output.text()));
+        let outputs = found.map(|(at, output)| (at.at(), output.text()));
         outputs.filter(|(_, text)| !text.is_empty()).collect()
     }
 
@@ -350,6 +354,9 @@ pub(crate) struct ShownConversation<'a> {
     /// Its id; `None` for a conversation no agent of this app holds,
     /// which shows no notices.
     pub(crate) id: Option<&'a AgentId>,
+    /// The agents it was forked from, if it is a fork: their records say
+    /// how the calls it took over ran.
+    pub(crate) forked_from: Option<&'a ForkedFrom>,
     pub(crate) conversation: &'a conversation::Conversation,
     /// What entries of it stand for, drawn above them.
     pub(crate) replaced: Option<&'a Replaced>,
@@ -360,13 +367,11 @@ pub(crate) struct ShownConversation<'a> {
     /// came.
     pub(crate) inbox: Vec<&'a Incoming>,
     /// Where its running turn's calls stand.
-    pub(crate) calls: BTreeMap<CallId, CallState>,
+    pub(crate) calls: BTreeMap<CallRef, CallState>,
     /// The output so far of its running calls that report it.
-    pub(crate) outputs: BTreeMap<CallId, String>,
+    pub(crate) outputs: BTreeMap<CallRef, String>,
     /// The reply streaming in, if any, and the call streaming it.
     pub(crate) partial: Option<(Entity, &'a Partial)>,
-    /// The tool calls it streams.
-    pub(crate) streaming: Vec<ToolCall>,
     /// The asides in its conversation, in the order put.
     pub(crate) asides: Vec<ShownAside<'a>>,
     /// The calls under each of its tool calls that started any.
@@ -380,6 +385,7 @@ impl<'a> ShownConversation<'a> {
         Self {
             entity,
             id: None,
+            forked_from: None,
             conversation,
             replaced: None,
             changed: true,
@@ -387,7 +393,6 @@ impl<'a> ShownConversation<'a> {
             calls: BTreeMap::new(),
             outputs: BTreeMap::new(),
             partial: None,
-            streaming: Vec::new(),
             asides: asides(conversation),
             children: ChildCalls::default(),
         }
@@ -401,7 +406,7 @@ fn asides(conversation: &conversation::Conversation) -> Vec<ShownAside<'_>> {
 }
 
 /// An effect not settled yet, a tool or model call or any other, as
-/// [`TranscriptLayout`] reads it for [`ToolCallView::children`].
+/// [`TranscriptLayout`] reads it for [`ToolRender::children`].
 type LiveEffect = (
     Entity,
     &'static Effect,
@@ -410,23 +415,13 @@ type LiveEffect = (
         Option<&'static ModelRequest>,
         Option<&'static SentTo>,
     ),
-    (Option<&'static ForAgent>, Option<&'static Outcome>),
+    (
+        Option<&'static ForAgent>,
+        Option<&'static Outcome>,
+        Option<&'static InReply>,
+    ),
     (Has<Started>, Has<Partial>),
 );
-
-/// What the transcript is drawn from besides the agent.
-pub(crate) struct Sources<'a> {
-    /// The pane's view as plugins steer it: what is marked.
-    pub(crate) view: &'a TranscriptView,
-    /// The notices shown.
-    pub(crate) notices: &'a Notices,
-    /// The looks plugins added.
-    pub(crate) renderers: &'a Renderers,
-    /// What settled calls published and how long they ran.
-    pub(crate) facts: &'a CallFacts,
-    /// The transcript's colors.
-    pub(crate) theme: &'a Theme,
-}
 
 /// Lays out an agent's transcript through [`crate::TranscriptRender`],
 /// including pane-less exports. Call from an exclusive system so render
@@ -507,16 +502,10 @@ pub(crate) fn lay_out_rendered(
             }
             Showing::Nothing => None,
         };
-        let sources = Sources {
-            view,
-            notices: from.notices(),
-            renderers,
-            facts: from.facts(),
-            theme: from.theme(),
-        };
         Some(lay_out_transcript(
             transcript,
-            &sources,
+            &from,
+            (view, renderers),
             shown.as_ref(),
             width,
         ))
@@ -540,6 +529,8 @@ pub(crate) struct LayoutSources<'w, 's> {
             Option<&'static Replaced>,
         ),
     >,
+    /// The agents forked from another.
+    forks: Query<'w, 's, &'static ForkedFrom>,
     pub(crate) active: Query<'w, 's, &'static ActiveTurn>,
     turns: Query<'w, 's, &'static Calls>,
     /// The replies streaming in that nothing superseded, such as a race's
@@ -555,7 +546,6 @@ pub(crate) struct LayoutSources<'w, 's> {
     live: Query<'w, 's, LiveEffect, Without<Settled>>,
     names: Query<'w, 's, &'static Name>,
     facts: Res<'w, CallFacts>,
-    streaming: Query<'w, 's, &'static StreamingCalls>,
     notices: Res<'w, Notices>,
     theme: Res<'w, Theme>,
 }
@@ -575,7 +565,6 @@ impl LayoutSources<'_, '_> {
                 streams.filter_map(|call| Some((call, self.partials.get(call).ok()?)));
             streams.next_back()
         });
-        let streaming = partial.and_then(|(call, _)| self.streaming.get(call).ok());
         let mut inbox: Vec<(&Effect, &Incoming)> = self
             .accepted
             .iter()
@@ -583,6 +572,8 @@ impl LayoutSources<'_, '_> {
             .map(|(effect, message, _)| (effect, message))
             .collect();
         inbox.sort_by_key(|(effect, _)| effect.id());
+        let forked_from = self.forks.get(entity).ok();
+        let live = self.live_calls();
         Some(ShownConversation {
             entity,
             id: Some(id),
@@ -593,12 +584,9 @@ impl LayoutSources<'_, '_> {
             calls: self.calls.of(calls.into_iter().flat_map(Calls::iter)),
             outputs: self.calls.outputs(calls.into_iter().flat_map(Calls::iter)),
             partial,
-            streaming: streaming
-                .into_iter()
-                .flat_map(StreamingCalls::calls)
-                .collect(),
             asides: asides(conversation),
-            children: self.facts.children(&self.live_calls(), &id.0),
+            children: self.facts.children(&live, &id.0, forked_from),
+            forked_from,
         })
     }
 
@@ -606,9 +594,10 @@ impl LayoutSources<'_, '_> {
     /// calls standing as they stand now.
     fn live_calls(&self) -> CallTree {
         let mut live = CallTree::default();
-        for (entity, effect, requests, (agent, outcome), (started, streams)) in &self.live {
+        for (entity, effect, requests, (agent, outcome, in_reply), (started, streams)) in &self.live
+        {
             let state = match requests.0 {
-                Some(request) => self.calls.of([entity]).remove(&request.call.id),
+                Some(_) => self.calls.state(entity).map(|(_, state)| state),
                 None if outcome.is_some() => Some(CallState::Done),
                 None if streams => Some(CallState::Streaming),
                 None if started => Some(CallState::Running(None)),
@@ -620,26 +609,11 @@ impl LayoutSources<'_, '_> {
             let child = live_call(requests, (name, outcome), state);
             live.add(effect.parent, effect.id(), child, None);
             let id = agent.and_then(|agent| self.agents.get(agent).ok());
-            if let (Some(request), Some((id, ..))) = (requests.0, id) {
-                live.tool_call(effect.id(), &id.0, request.call.id.clone());
+            if let (Some(at), Some((id, ..))) = (in_reply, id) {
+                live.tool_call(effect.id(), &id.0, at.at());
             }
         }
         live
-    }
-
-    /// What settled calls published and how long they ran.
-    pub(crate) fn facts(&self) -> &CallFacts {
-        &self.facts
-    }
-
-    /// The notices shown.
-    pub(crate) fn notices(&self) -> &Notices {
-        &self.notices
-    }
-
-    /// The transcript's colors.
-    pub(crate) fn theme(&self) -> &Theme {
-        &self.theme
     }
 }
 
@@ -649,20 +623,22 @@ impl LayoutSources<'_, '_> {
 /// entries it stands for and a line saying how many; then those after the
 /// last message, the reply streaming in with the tool calls it streams,
 /// and the messages the agent accepted and has not sent yet. Without an
-/// agent, the notices about every agent.
+/// agent, the notices about every agent. `view` is what plugins mark and
+/// `renderers` the looks they added.
 pub(crate) fn lay_out_transcript(
     transcript: &mut Transcript,
-    sources: &Sources<'_>,
+    from: &LayoutSources<'_, '_>,
+    (view, renderers): (&TranscriptView, &Renderers),
     shown: Option<&ShownConversation<'_>>,
     width: u16,
 ) -> Vec<Part> {
-    sources.renderers.at(Place::default());
+    let (notices, facts, theme) = (&*from.notices, &*from.facts, &*from.theme);
+    renderers.at(Place::default());
     let wrap_width = usize::from(width.max(1));
     let mut parts = Vec::new();
-    let view = sources.view;
     let Some(shown) = shown else {
         let (mut extra, mut marks) = (Vec::new(), Marks::new());
-        let notices = sources.notices.numbered();
+        let notices = notices.numbered();
         for notice in notices.filter(|(_, notice)| notice.is_for_every_agent()) {
             notice_lines(notice, &mut extra, &mut marks);
         }
@@ -678,17 +654,19 @@ pub(crate) fn lay_out_transcript(
     let mut asides_after: Vec<Vec<&ShownAside<'_>>> = vec![Vec::new(); count + 1];
     let stops = Stops::of(conversation, &entries);
     let mut look = Look {
-        renderers: sources.renderers,
+        renderers,
+        agent: shown.id.map(|id| id.0.as_str()),
+        forked_from: shown.forked_from,
         calls: &shown.calls,
         outputs: &shown.outputs,
         inside: HashMap::new(),
-        facts: sources.facts,
-        theme: sources.theme,
+        facts,
+        theme,
         children: &shown.children,
         marks: &view.marks,
         stops: &stops,
     };
-    let notices = shown.id.map(|id| (id, sources.notices));
+    let notices = shown.id.map(|id| (id, notices));
     let notices = notices
         .into_iter()
         .flat_map(|(id, notices)| notices.numbered().map(move |(at, notice)| (id, at, notice)));
@@ -750,17 +728,17 @@ pub(crate) fn lay_out_transcript(
         }
     }
     transcript.update(shown.entity, &entries, shown.changed, &look, width);
-    sources.renderers.at(Place::default());
+    renderers.at(Place::default());
     let mut after = after.into_iter().zip(asides_after);
     for index in 0..=count {
         let (notices, asides) = after.next().unwrap_or_default();
         for aside in asides {
-            let drawn = aside.lines(sources.renderers, sources.theme);
+            let drawn = aside.lines(renderers, theme);
             if drawn.is_empty() {
                 continue;
             }
-            let mut lines = vec![Line::default()];
-            lines.extend(on_band(drawn, sources.theme.tool));
+            let mut lines = vec![LookLine::default()];
+            lines.extend(on_band(drawn, theme.tool));
             let marks = [(aside.item(), 0..lines.len())];
             parts.push(Part::rows(&lines, &marks, wrap_width));
         }
@@ -770,45 +748,41 @@ pub(crate) fn lay_out_transcript(
         }
         if index == count {
             if let Some((call, partial)) = shown.partial {
-                let view = |role, text, marks| MessageView {
-                    role,
-                    message: None,
-                    block: 0,
-                    text,
-                    marks,
-                    width: wrap_width,
-                    theme: *sources.theme,
-                };
-                let reasoning = view(Role::Reasoning, &partial.reasoning, &[]);
-                extra.extend(reasoning.default_lines());
+                extra.extend(reasoning_lines(&partial.reasoning, wrap_width, theme));
                 if !partial.text.is_empty() {
-                    extra.push(Line::default());
+                    extra.push(LookLine::default());
                     let marks = look.marks_in(MarkIn::Streaming(call));
-                    extra.extend(view(Role::Assistant, &partial.text, &marks).default_lines());
+                    extra.extend(reply_lines(&partial.text, &marks, wrap_width, theme));
                 }
             }
-            for (at, call) in shown.streaming.iter().enumerate() {
-                sources.renderers.at(Place::Outside(at));
-                let mut view = ToolCallView::new(call, None, CallState::Streaming);
-                view.theme = *sources.theme;
+            let streaming = shown
+                .partial
+                .into_iter()
+                .flat_map(|(_, partial)| &partial.calls);
+            for (at, call) in streaming.map(PartialCall::shown).enumerate() {
+                renderers.at(Place::Outside(at));
+                let item = CallItem::Streaming(at);
+                let call = || ToolRender {
+                    theme: *theme,
+                    item: Some(item),
+                    ..ToolRender::new(call, None, CallState::Streaming)
+                };
                 let start = extra.len();
-                let (drawn, decorated) = sources.renderers.call_decorated(&view);
-                extra.extend(on_band(drawn, sources.theme.tool));
-                marks.push((TranscriptItem::Call(call.id.clone()), start..extra.len()));
+                let (drawn, decorated) = renderers.call_decorated(call);
+                extra.extend(on_band(drawn, theme.tool));
+                marks.push((TranscriptItem::Call(item), start..extra.len()));
                 for (name, rows) in decorated {
-                    marks.push((
-                        TranscriptItem::Decoration(call.id.clone(), name),
-                        start + rows.start..start + rows.end,
-                    ));
+                    let decoration = TranscriptItem::Decoration(item, name);
+                    marks.push((decoration, start + rows.start..start + rows.end));
                 }
             }
-            inbox_lines(&shown.inbox, sources.theme, &mut extra);
+            inbox_lines(&shown.inbox, theme, &mut extra);
             parts.push(Part::rows(&extra, &marks, wrap_width));
             break;
         }
         let stands_for = entries.get(index).map_or(0, |entry| entry.stands_for);
         if stands_for > 0 {
-            extra.extend([Line::default(), compacted_line(stands_for)]);
+            extra.extend([LookLine::default(), compacted_line(stands_for).into()]);
         }
         if !extra.is_empty() {
             parts.push(Part::rows(&extra, &marks, wrap_width));
@@ -1064,14 +1038,14 @@ fn light_match(
 pub(crate) fn render(
     (mut tui, mut test): (Option<ResMut<Tui>>, Option<ResMut<TuiTestScreen>>),
     mut drew: ResMut<TuiFrame>,
-    view: Res<TuiView>,
+    mut view: ResMut<TuiView>,
     (state, focus, choices): (Res<InputContext>, Res<KeyFocus>, Choices),
     mut frame_layout: ResMut<FrameLayout>,
     (panels, carets): (Query<(Entity, &TuiPanel, &PanelCanvas)>, Query<&Caret>),
     (spawns, ticks): (PanelSpawns, SystemChangeTick),
     mut showing: Query<(Entity, &mut PickerInput, Option<&PickPreview>)>,
-    mut repaints: MessageReader<RedrawArea>,
-    theme: Res<Theme>,
+    (mut repaints, mut copies): (MessageReader<RedrawArea>, MessageWriter<CopyToClipboard>),
+    (theme, wake): (Res<Theme>, Option<Res<Wake>>),
 ) -> Result {
     if !std::mem::take(&mut frame_layout.due) {
         return Ok(());
@@ -1101,6 +1075,10 @@ pub(crate) fn render(
     let edit = edit.and_then(|(entity, ..)| choices.shown(entity));
     let cursor = carets.iter().find_map(|caret| caret.0);
     let cursor = cursor.map(|at| MoveTo(at.x, at.y));
+    // Copying it once is drawing's own bookkeeping, not a change to redraw for.
+    let selection = view.bypass_change_detection().selection.as_mut();
+    let released = selection.is_some_and(|selection| std::mem::take(&mut selection.up));
+    let mut copied = None;
     let mut areas = TuiFrame::default();
     let draw_frame = |frame: &mut Frame| {
         let screen = frame.area();
@@ -1144,6 +1122,10 @@ pub(crate) fn render(
         if theme.plain {
             strip_colors(frame.buffer_mut());
         }
+        if let Some(selection) = view.selection.filter(|drag| drag.from != drag.to) {
+            let text = selection.mark(frame.buffer_mut());
+            copied = released.then_some(text);
+        }
         areas = TuiFrame {
             screen,
             areas: drawn,
@@ -1170,6 +1152,17 @@ pub(crate) fn render(
         (None, None) => Ok(()),
     };
     drew.set_if_neq(areas);
+    // The status line, drawn already, says what was copied in the next
+    // frame, which this change to the view asks for.
+    if let Some(text) = copied.filter(|text| !text.is_empty()) {
+        if let Some(selection) = view.selection.as_mut() {
+            selection.copied = Some(text.lines().count());
+        }
+        if let Some(wake) = wake.as_deref() {
+            wake.wake();
+        }
+        copies.write(CopyToClipboard(text));
+    }
     drawn?;
     Ok(())
 }
@@ -1186,10 +1179,7 @@ fn cells_in(buffer: &Buffer, areas: &[Rect]) -> Vec<(u16, u16, Cell)> {
 /// Whether a selection moves through `item`: all but a decoration's rows,
 /// which belong to their call.
 pub(crate) fn selectable(item: &TranscriptItem) -> bool {
-    !matches!(
-        item,
-        TranscriptItem::Decoration(..) | TranscriptItem::MessageDecoration(..)
-    )
+    !matches!(item, TranscriptItem::Decoration(..))
 }
 
 /// Where the last frame drew each part of the screen: for a plugin that
@@ -1339,7 +1329,7 @@ fn draw_choice(
         &plain_lines(more.unwrap_or(shown.body), Style::new()),
         usize::from(width.saturating_sub(2).max(1)),
     );
-    let rows = shown.rows(&choosing.filter);
+    let rows = shown.rows(choosing);
     // Room for the body, the typed line and the rows, up to 3/4 of the
     // screen.
     let wanted = body.len() + usize::from(!body.is_empty()) + 1 + rows.len() + 2;
@@ -1376,11 +1366,21 @@ fn draw_choice(
     if body_height < body.len() {
         keys.push("Shift+↑↓ scrolls");
     }
-    if shown.ticks {
+    let enter_ticks = (shown.keys.iter())
+        .any(|(code, action)| *code == KeyCode::Enter && *action == ChoiceAction::Tick);
+    if shown.ticks && !enter_ticks {
         keys.push("Tab ticks");
     }
+    // A picker whose Enter ticks closes only to say what to do next.
+    let (enter, esc) = if enter_ticks {
+        ("Enter ticks", "Esc leaves")
+    } else {
+        ("Enter picks", "Esc closes")
+    };
     let width = usize::from(inner.width);
-    let ticks = if shown.ticks { "[ ] ".len() } else { 0 };
+    let tree = shown.tree();
+    // A tree's rows start with a fold mark, `▸ ` or `▾ `, or room for one.
+    let ticks = if shown.ticks { "[ ] ".len() } else { 0 } + if tree { 2 } else { 0 };
     let column = detail_column(&shown.items, width.saturating_sub(ticks));
     // A detail standing in for more says more only where its row cuts it.
     let room = width.saturating_sub(ticks + column);
@@ -1390,20 +1390,30 @@ fn draw_choice(
     };
     if more.is_some() {
         keys.push("← hides more");
+    } else if tree {
+        keys.push("→ opens ← closes");
     } else if shown.items.iter().any(says_more) {
         keys.push("→ shows more");
     }
     let title = theme.raised(shown.title);
     match boxed {
         Some((.., row)) => {
-            let keys = keys_hint(&keys, usize::from(row.width.saturating_sub(2)));
+            let keys = keys_hint(
+                &keys,
+                (enter, esc),
+                usize::from(row.width.saturating_sub(2)),
+            );
             let keys = Line::from(format!("{keys} ")).dim().right_aligned();
             let surface = Style::new().bg(theme.raised_surface);
             frame.render_widget(Paragraph::new(keys).style(surface), row);
             frame.render_widget(title, popup);
         }
         None => {
-            let keys = keys_hint(&keys, usize::from(popup.width.saturating_sub(2)));
+            let keys = keys_hint(
+                &keys,
+                (enter, esc),
+                usize::from(popup.width.saturating_sub(2)),
+            );
             frame.render_widget(with_keys(title, &keys), popup);
         }
     }
@@ -1418,24 +1428,38 @@ fn draw_choice(
     frame.render_widget(Paragraph::new(body).scroll((scroll, 0)), body_area);
     let typed_text = shown.typed(&choosing.filter);
     frame.render_widget(Line::from(format!("› {typed_text}▏")), typed);
-    let items: Vec<Line<'static>> = rows
-        .iter()
-        .map(|row| match row {
+    // A branch is drawn open while the row after it sits under it.
+    let opens = |at: usize, index: usize| matches!(rows.get(at + 1), Some(Row::Item(next)) if shown.parent(*next) == Some(index));
+    let items: Vec<Line<'static>> = (rows.iter().enumerate())
+        .map(|(at, row)| match row {
             Row::Item(index) => {
                 let Some(item) = shown.items.get(*index) else {
                     return Line::default();
                 };
-                if !shown.ticks {
-                    return item.line(width, column);
-                }
-                let tick = match (shown.multiple, choosing.ticked.contains(index)) {
-                    (true, true) => "[x] ",
-                    (true, false) => "[ ] ",
-                    (false, true) => "(x) ",
-                    (false, false) => "( ) ",
+                let depth = shown.branches(*index).count();
+                let fold = match (tree, shown.is_branch(*index)) {
+                    (false, _) => "",
+                    (true, false) => "  ",
+                    (true, true) if opens(at, *index) => "▾ ",
+                    (true, true) => "▸ ",
                 };
-                let mut line = item.line(width.saturating_sub(tick.len()), column);
-                line.spans.insert(0, Span::from(tick));
+                let tick = match (shown.ticks, shown.multiple) {
+                    (false, _) => "",
+                    (true, true) => match shown.tick(*index, &choosing.ticked) {
+                        TickBox::On => "[x] ",
+                        TickBox::Mixed => "[~] ",
+                        TickBox::Off => "[ ] ",
+                    },
+                    (true, false) if choosing.ticked.contains(index) => "(x) ",
+                    (true, false) => "( ) ",
+                };
+                let lead = format!("{}{fold}{tick}", "  ".repeat(depth));
+                let indent = lead.width().saturating_sub(ticks);
+                let mut line = item.line(
+                    width.saturating_sub(lead.width()),
+                    column.saturating_sub(indent),
+                );
+                line.spans.insert(0, Span::from(lead));
                 line
             }
             Row::Typed if choosing.filter.trim().is_empty() => {
@@ -1471,10 +1495,10 @@ fn strip_colors(buffer: &mut Buffer) {
 
 /// A picker's keys, `keys` then Enter's and Esc's, in at most `width`
 /// columns: the first of `keys` are left out while it is wider.
-fn keys_hint(keys: &[&str], width: usize) -> String {
+fn keys_hint(keys: &[&str], (enter, esc): (&str, &str), width: usize) -> String {
     let mut keys = keys;
     loop {
-        let all = keys.iter().copied().chain(["Enter picks", "Esc closes"]);
+        let all = keys.iter().copied().chain([enter, esc]);
         let hint = all.collect::<Vec<_>>().join(", ");
         match keys.split_first() {
             Some((_, rest)) if hint.width() > width => keys = rest,
@@ -1493,11 +1517,11 @@ fn with_keys<'a>(surface: Block<'a>, keys: &str) -> Block<'a> {
 
 /// The messages the agent accepted and has not sent yet, under the
 /// transcript, in the order they came.
-fn inbox_lines(inbox: &[&Incoming], theme: &Theme, lines: &mut Vec<Line<'static>>) {
+fn inbox_lines(inbox: &[&Incoming], theme: &Theme, lines: &mut Vec<LookLine>) {
     if inbox.is_empty() {
         return;
     }
-    lines.push(Line::default());
+    lines.push(LookLine::default());
     for message in inbox {
         let when = match message.mode {
             DeliveryMode::Steer => "steering",

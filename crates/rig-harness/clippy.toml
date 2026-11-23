@@ -1,0 +1,15 @@
+# The root clippy.toml, plus: every child process of the agent starts
+# through rig_tools::process (Process::start), which lists its group in the
+# ledger and ties it to the call that started it. Clippy reads the nearest
+# clippy.toml, so this covers this directory's crates alone; keep the
+# first two entries the same as the root's.
+disallowed-methods = [
+    { path = "serde_json::Map::remove", reason = "with preserve_order it moves the last key into the gap; use shift_remove to keep a provider item's key order" },
+    { path = "serde_json::Map::remove_entry", reason = "with preserve_order it moves the last key into the gap; use shift_remove_entry" },
+    { path = "std::process::Command::spawn", reason = "start it with rig_tools::process::Process::start, which owns it: listed in the ledger, tied to its call" },
+    { path = "std::process::Command::output", reason = "use rig_tools::process::Process::start(..).output(..), which owns the process" },
+    { path = "std::process::Command::status", reason = "use rig_tools::process::Process::start, or process::foreground for a program a person works in" },
+    { path = "tokio::process::Command::spawn", reason = "start it with rig_tools::process::Process::start_with_stdio and take its pipes", allow-invalid = true },
+    { path = "tokio::process::Command::output", reason = "use rig_tools::process::Process::start(..).output(..), which owns the process", allow-invalid = true },
+    { path = "tokio::process::Command::status", reason = "use rig_tools::process::Process::start, which owns the process", allow-invalid = true },
+]

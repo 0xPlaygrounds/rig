@@ -91,7 +91,7 @@ impl Session {
         collect::<Notice>(&mut app);
         tui_view(&mut app);
         if fresh {
-            app.world_mut().spawn((Agent, ModelChoice(MAIN.to_owned())));
+            spawn_root(app.world_mut(), ModelChoice(MAIN.to_owned()));
         }
         app.finish();
         app.update();
@@ -370,7 +370,4 @@ fn messages_from_the_user_and_the_parent_are_answered_one_at_a_time() {
     assert!(read_by(&sub, 7).contains("hello?"));
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(ResumeSubagentPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(ResumeSubagentPlugin);

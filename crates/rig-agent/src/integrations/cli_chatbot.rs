@@ -1,245 +1,77 @@
-//! Terminal chat loops for agents and custom chat implementations.
+//! A terminal chat loop over an agent.
 //!
 //! ```no_run
-//! use rig_agent::{Agent, completion::PromptError, integrations::cli_chatbot::ChatBotBuilder};
-//! async fn chat(agent: Agent) -> Result<(), PromptError> {
-//!     ChatBotBuilder::new().agent(agent).max_turns(3).build().run().await
+//! use rig_agent::{Agent, agent::StreamToStdoutError, integrations::cli_chatbot::ChatBot};
+//! async fn chat(agent: Agent) -> Result<(), StreamToStdoutError> {
+//!     ChatBot::new(agent).max_turns(3).run().await
 //! }
 //! ```
 
-use rig_core::error::ProviderError;
-use rig_core::{
-    markers::{Missing, Provided},
-    message::Message,
-};
-
-use crate::{
-    agent::{Agent, MultiTurnStreamItem},
-    completion::{PromptError, Usage},
-    streaming::{Item, StreamEvent},
-};
-use rig_core::wasm_compat::WasmCompatSend;
-
-/// One chat turn against caller-owned history, as the CLI chatbot drives it.
-///
-/// [`Agent`] implements it through [`Agent::chat`]; implement it on your own
-/// type to put something other than an agent behind
-/// [`ChatBotBuilder::chat`].
-pub trait Chat {
-    /// Execute one turn and append only committed messages to `history`.
-    fn chat(
-        &self,
-        prompt: impl Into<Message> + WasmCompatSend,
-        history: &mut Vec<Message>,
-    ) -> impl Future<Output = Result<String, PromptError>> + WasmCompatSend;
-}
-
-impl Chat for Agent {
-    async fn chat(
-        &self,
-        prompt: impl Into<Message> + WasmCompatSend,
-        history: &mut Vec<Message>,
-    ) -> Result<String, PromptError> {
-        Agent::chat(self, prompt, history)
-            .await
-            .map(|response| response.output())
-    }
-}
 use futures::StreamExt;
+use rig_core::message::Message;
 use std::io::{self, Write};
 
-/// A chatbot over any [`Chat`] implementation.
-pub struct ChatImpl<T>(T)
-where
-    T: Chat;
+use crate::{
+    agent::{Agent, MultiTurnStreamItem, PromptResponse, StreamToStdoutError},
+    streaming::{Item, StreamEvent},
+};
 
-/// A chatbot over an [`Agent`], streaming each answer as it is produced.
-pub struct AgentImpl {
+/// A terminal chat loop over an [`Agent`] that streams each answer as it is
+/// produced; see [`ChatBot::run`].
+pub struct ChatBot {
     agent: Agent,
     max_turns: usize,
     show_usage: bool,
-    usage: Usage,
 }
 
-/// Builds a [`ChatBot`]: give it an agent or a [`Chat`], then `build`.
-pub struct ChatBotBuilder<T = Missing>(T);
-
-/// A terminal chat loop over an agent or a [`Chat`]; see [`ChatBot::run`].
-pub struct ChatBot<T>(T);
-
-/// Execute and display turns with optional usage reporting.
-#[allow(private_interfaces)]
-trait CliChat {
-    async fn request(
-        &mut self,
-        prompt: &str,
-        history: &mut Vec<Message>,
-    ) -> Result<String, PromptError>;
-
-    fn show_usage(&self) -> bool {
-        false
-    }
-
-    fn usage(&self) -> Option<Usage> {
-        None
-    }
-}
-
-impl<T> CliChat for ChatImpl<T>
-where
-    T: Chat,
-{
-    async fn request(
-        &mut self,
-        prompt: &str,
-        history: &mut Vec<Message>,
-    ) -> Result<String, PromptError> {
-        let res = self.0.chat(prompt, history).await?;
-        println!("{res}");
-
-        Ok(res)
-    }
-}
-
-impl CliChat for AgentImpl {
-    async fn request(
-        &mut self,
-        prompt: &str,
-        history: &mut Vec<Message>,
-    ) -> Result<String, PromptError> {
-        let mut response_stream = self
-            .agent
-            .prompt(prompt)
-            .history(history.clone())
-            .max_turns(self.max_turns)
-            .stream();
-
-        let mut acc = String::new();
-        let mut messages = Vec::new();
-
-        let result = loop {
-            let Some(chunk) = response_stream.next().await else {
-                println!();
-                break Ok(acc);
-            };
-
-            match chunk {
-                Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text {
-                    text,
-                    ..
-                }))) => {
-                    print!("{text}");
-                    acc.push_str(&text);
-                }
-                Ok(MultiTurnStreamItem::FinalResponse(final_response)) => {
-                    self.usage = final_response.usage();
-                    messages = final_response.messages;
-                }
-                Err(e) => break Err(e),
-                _ => continue,
-            }
-        };
-
-        if result.is_ok() {
-            history.extend(messages);
-        }
-
-        result
-    }
-
-    fn show_usage(&self) -> bool {
-        self.show_usage
-    }
-
-    fn usage(&self) -> Option<Usage> {
-        Some(self.usage)
-    }
-}
-
-impl Default for ChatBotBuilder<Missing> {
-    fn default() -> Self {
-        Self(Missing)
-    }
-}
-
-impl ChatBotBuilder<Missing> {
-    /// A builder with nothing chosen yet.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Chat with `agent`.
-    pub fn agent(self, agent: Agent) -> ChatBotBuilder<Provided<AgentImpl>> {
-        ChatBotBuilder(Provided(AgentImpl {
+impl ChatBot {
+    /// A chatbot over `agent` with a budget of one model call per prompt.
+    pub fn new(agent: Agent) -> Self {
+        Self {
             agent,
             max_turns: 1,
             show_usage: false,
-            usage: Usage::default(),
-        }))
+        }
     }
 
-    /// Chat with any [`Chat`] implementation.
-    pub fn chat<T: Chat>(self, chatbot: T) -> ChatBotBuilder<Provided<ChatImpl<T>>> {
-        ChatBotBuilder(Provided(ChatImpl(chatbot)))
-    }
-}
-
-impl<T> ChatBotBuilder<Provided<ChatImpl<T>>>
-where
-    T: Chat,
-{
-    /// The chatbot.
-    pub fn build(self) -> ChatBot<ChatImpl<T>> {
-        ChatBot(self.0.0)
-    }
-}
-
-impl ChatBotBuilder<Provided<AgentImpl>> {
     /// Set the total model-call budget for each prompt, including the initial
     /// call and every retry or continuation. Zero emits no model calls.
     pub fn max_turns(self, max_turns: usize) -> Self {
-        ChatBotBuilder(Provided(AgentImpl {
-            max_turns,
-            ..self.0.0
-        }))
+        Self { max_turns, ..self }
     }
 
     /// Print the token usage after every answer.
     pub fn show_usage(self) -> Self {
-        ChatBotBuilder(Provided(AgentImpl {
+        Self {
             show_usage: true,
-            ..self.0.0
-        }))
+            ..self
+        }
     }
 
-    /// The chatbot.
-    pub fn build(self) -> ChatBot<AgentImpl> {
-        ChatBot(self.0.0)
+    /// Read prompts from stdin and print answers until `exit` or end of input.
+    /// Returns prompt failures, stdout flush errors, and
+    /// [`StreamToStdoutError::Incomplete`] when a stream ends without a final
+    /// response; input read errors are printed.
+    pub async fn run(self) -> Result<(), StreamToStdoutError> {
+        self.run_on(|line| io::stdin().read_line(line)).await
     }
-}
 
-#[allow(private_bounds)]
-impl<T> ChatBot<T>
-where
-    T: CliChat,
-{
-    /// Read prompts from stdin and print answers until `exit`.
-    /// Returns prompt failures and stdout flush errors; input read errors are printed.
-    pub async fn run(mut self) -> Result<(), PromptError> {
-        let stdin = io::stdin();
+    /// [`Self::run`] reading each prompt with `read_line`, which appends one
+    /// line to its buffer. Stdin is locked only while a line is read.
+    async fn run_on(
+        self,
+        mut read_line: impl FnMut(&mut String) -> io::Result<usize>,
+    ) -> Result<(), StreamToStdoutError> {
         let mut stdout = io::stdout();
         let mut history = vec![];
 
         loop {
             print!("> ");
-            stdout.flush().map_err(|e| {
-                PromptError::Provider(ProviderError::Response(format!(
-                    "failed to flush stdout: {e}"
-                )))
-            })?;
+            stdout.flush()?;
 
             let mut input = String::new();
-            match stdin.read_line(&mut input) {
+            match read_line(&mut input) {
+                Ok(0) => break,
                 Ok(_) => {
                     let input = input.trim();
                     if input == "exit" {
@@ -251,22 +83,17 @@ where
                     println!();
                     println!("========================== Response ============================");
 
-                    self.0.request(input, &mut history).await?;
+                    let response = self.request(input, &history).await?;
 
                     println!("================================================================");
                     println!();
 
-                    if self.0.show_usage()
-                        && let Some(Usage {
-                            input_tokens,
-                            output_tokens,
-                            ..
-                        }) = self.0.usage()
-                    {
-                        let input_tokens = input_tokens.unwrap_or(0);
-                        let output_tokens = output_tokens.unwrap_or(0);
+                    if self.show_usage {
+                        let input_tokens = response.usage.input_tokens.unwrap_or(0);
+                        let output_tokens = response.usage.output_tokens.unwrap_or(0);
                         println!("Input {input_tokens} tokens\nOutput {output_tokens} tokens");
                     }
+                    history.extend(response.messages);
                 }
                 Err(e) => println!("Error reading request: {e}"),
             }
@@ -274,4 +101,36 @@ where
 
         Ok(())
     }
+
+    /// Stream one answer's text to stdout and return the run's response.
+    async fn request(
+        &self,
+        prompt: &str,
+        history: &[Message],
+    ) -> Result<PromptResponse, StreamToStdoutError> {
+        let mut response_stream = self
+            .agent
+            .prompt(prompt)
+            .history(history.to_vec())
+            .max_turns(self.max_turns)
+            .stream();
+
+        while let Some(chunk) = response_stream.next().await {
+            match chunk? {
+                MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text {
+                    text,
+                    ..
+                })) => print!("{text}"),
+                MultiTurnStreamItem::FinalResponse(response) => {
+                    println!();
+                    return Ok(response);
+                }
+                _ => {}
+            }
+        }
+        Err(StreamToStdoutError::Incomplete)
+    }
 }
+
+#[cfg(test)]
+mod tests;

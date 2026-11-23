@@ -38,15 +38,12 @@ pub const WHISPER_LARGE_V3_TURBO: &str = "openai/whisper-large-v3-turbo";
 pub const WHISPER_SMALL: &str = "openai/whisper-small";
 
 /// Image-generation model identifiers, named as the model cards spell them.
-#[cfg(feature = "image")]
-#[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 #[allow(non_upper_case_globals)]
 pub mod image_generation_models {
     pub const Flux1: &str = "black-forest-labs/FLUX.1-dev";
     pub const Kolors: &str = "Kwai-Kolors/Kolors";
     pub const StableDiffusion3: &str = "stabilityai/stable-diffusion-3-medium-diffusers";
 }
-#[cfg(feature = "image")]
 pub use image_generation_models::*;
 
 /// The provider key: the dialect name, a reply's `Origin::provider` and

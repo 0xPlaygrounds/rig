@@ -5,23 +5,11 @@ use rig_core::effect::EffectKind;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness_test_support::{
     Collected, MemoryStore, ToolOutputs, app_on, calls, collect, log_tool_outputs, reply,
-    run_until, scripted_models,
+    run_until, scratch_dir, scripted_models,
 };
 use serde_json::json;
 
 use super::*;
-
-/// A directory of its own for this test, beside the test binary.
-fn scratch() -> PathBuf {
-    let exe = std::env::current_exe().unwrap_or_default();
-    let dir = exe
-        .parent()
-        .map(|deps| deps.join("corpus-oc-architect-editor-test"))
-        .unwrap_or_default();
-    std::fs::remove_dir_all(&dir).ok();
-    std::fs::create_dir_all(&dir).ok();
-    dir
-}
 
 fn tool_names(request: Option<&CompletionRequest>) -> Vec<String> {
     let tools = request.map(|request| request.tools.iter());
@@ -49,7 +37,7 @@ fn output(app: &App, id: &str) -> String {
 /// gives the agent its model and tools back.
 #[test]
 fn the_architect_plans_and_the_editor_edits() {
-    let dir = scratch();
+    let dir = scratch_dir("corpus-oc-architect-editor-test");
     let lib = dir.join("lib.rs");
     std::fs::write(&lib, "pub fn add(a: i32, b: i32) -> i32 {\n    a + b\n}\n").ok();
     std::fs::write(dir.join("Makefile"), "test:\n\tcargo test\n").ok();
@@ -107,13 +95,14 @@ fn the_architect_plans_and_the_editor_edits() {
         .add_plugins((UsagePlugin, ArchitectEditorPlugin));
     collect::<Notice>(&mut app);
     collect::<EffectRecorded>(&mut app);
-    let agent = app.world_mut().spawn(Agent).id();
+    let agent = spawn_root(app.world_mut(), ()).id();
     app.finish();
     app.update();
     let world = app.world_mut();
     world.trigger(SetModel {
         entity: agent,
         model: "test/main".to_owned(),
+        kind: ChoiceKind::ForThisRun,
     });
     world.trigger(RunCommand::new(agent, "architect on".to_owned()));
     let asked = "Please rename it, ARCHITECT-ONLY-WORDS";
@@ -213,7 +202,4 @@ fn the_architect_plans_and_the_editor_edits() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(ArchitectEditorPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(ArchitectEditorPlugin);

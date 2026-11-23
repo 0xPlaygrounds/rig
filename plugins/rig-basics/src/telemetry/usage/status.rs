@@ -5,7 +5,7 @@ use std::collections::HashSet;
 
 use rig_core::completion::{ContextUse, tokens_label};
 use rig_harness::prelude::*;
-use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
+use rig_tui::{AppStatusPartsExt, Side, StatusItem, StatusItems, StatusSystems, Tone};
 
 use super::{AgentUsage, InputLimit, TurnUsage};
 
@@ -13,7 +13,12 @@ pub(super) fn add(app: &mut App) {
     app.add_systems(
         PostUpdate,
         (show_meter, show_turn).in_set(StatusSystems::Show),
-    );
+    )
+    .add_status_part(&TURN, "This turn's spending")
+    .add_status_part(&TOKENS, "Tokens")
+    .add_status_part(&CACHE, "Cache reads")
+    .add_status_part(&COST, "Cost")
+    .add_status_part(&CONTEXT, "Context used");
 }
 
 /// Where what the running turn spent is in the status line.
@@ -27,12 +32,13 @@ const CONTEXT: StatusItem = StatusItem::new("context", Side::Right, 40, 5);
 
 /// Each agent's meter, once a model call of it finished: its uncached
 /// input and output tokens, cache reads, cost, then the context against
-/// the input limit of the model its last reply came from ([`InputLimit`]), yellow
+/// the input limit of the model its last reply came from ([`InputLimit`]),
+/// or `?` while that figure is stale ([`ContextStale`]), yellow
 /// past 70% and red past 90%. `/usage` details the cache writes and
 /// reasoning.
 fn show_meter(
     mut agents: Query<(
-        (&AgentUsage, &LastUsage, Has<ContextStale>),
+        (&AgentUsage, &LastUsage, Option<&ContextStale>),
         (Option<&Connection>, Option<&InputLimit>),
         &mut StatusItems,
     )>,
@@ -43,7 +49,7 @@ fn show_meter(
             Changed<LastUsage>,
             Changed<Connection>,
             Changed<InputLimit>,
-            Added<ContextStale>,
+            Changed<ContextStale>,
         )>,
     >,
     mut known: RemovedComponents<ContextStale>,
@@ -59,7 +65,7 @@ fn show_meter(
         let limit = InputLimit::of(limit, connection);
         let context = last
             .context()
-            .filter(|_| !stale)
+            .filter(|_| stale.is_none())
             .map(|tokens| ContextUse { tokens, limit });
         let tokens = format!(
             "↑{} ↓{}",
@@ -74,21 +80,21 @@ fn show_meter(
             Some(70..) => Tone::Yellow,
             _ => Tone::Dim,
         };
-        let context = if stale {
-            Some(format!(
+        let context = match stale {
+            Some(_) => Some(format!(
                 "ctx ?{}",
                 limit
                     .map(|limit| format!("/{}", tokens_label(u64::from(limit))))
                     .unwrap_or_default()
-            ))
-        } else {
-            context.map(|context| format!("ctx {context}"))
+            )),
+            None => context.map(|context| format!("ctx {context}")),
         };
         let text = |text: Option<String>| text.filter(|_| shown).unwrap_or_default();
         items.show(TOKENS.says(text(Some(tokens)), Tone::Dim));
         items.show(CACHE.says(text(cache), Tone::Dim));
         items.show(COST.says(text(spent.cost_label()), Tone::Dim));
-        items.show(CONTEXT.says(text(context), tone));
+        // A fork has a context before its first call.
+        items.show(CONTEXT.says(context.unwrap_or_default(), tone));
     }
 }
 

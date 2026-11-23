@@ -1,28 +1,19 @@
-//! CT-16: talk to a finished subagent.
+//! Talk to a finished subagent. `rig_basics::subagents` keeps a `task` subagent after it
+//! reports, restored on resume, and this plugin makes it usable. `/subagents` lists the
+//! subagents: short id, task, model, turns, tokens, and when each last finished. `/talk
+//! <id>` asks the terminal view to show that subagent and send what the user types to it
+//! ([`rig_tui::ShowAgent`]); `/talk main` goes back. Its replies to the user stay in its
+//! own conversation and are not reported to the parent.
 //!
-//! `rig_basics::subagents` already keeps a `task` subagent after it reports (its
-//! conversation, model, tools and saved state live on as an agent of the
-//! session, restored on resume). This plugin
-//! makes that usable:
-//!
-//! - `/subagents` lists the subagents: short id, task, model, turns,
-//!   tokens, and when each last finished.
-//! - `/talk <id>` asks the terminal view to show that subagent and send
-//!   what the user types to it ([`rig_tui::ShowAgent`]); `/talk main` goes
-//!   back. Its replies stay in its own conversation: a message from the
-//!   user opens no request, so `rig_basics::subagents` reports nothing to the parent.
-//! - `follow_up {agent_id, message}` sends one of the caller's own
-//!   subagents a queued message, marked with the call as its request, and
-//!   answers the call with the subagent's reply to it: the final text of
-//!   the step that message started, read from the subagent's conversation.
-//! - The user's messages to a subagent are queued rather than steered, so a
-//!   subagent answers the user and its parent one step at a time, in the
-//!   order the messages arrived.
-//! - At most [`KeptSubagents::keep`] finished subagents are kept; the ones
-//!   that finished longest ago are retired.
+//! `follow_up {agent_id, message}` sends one of the caller's own subagents a queued message
+//! and answers the call with the subagent's reply to it: the final text of the step that
+//! message started. The user's messages to a subagent are queued too, so a subagent answers
+//! the user and its parent one step at a time, in the order the messages arrived. At most
+//! [`KeptSubagents::keep`] finished subagents are kept; the ones that finished longest ago
+//! are retired.
 
 use bevy_reflect::Reflect;
-use rig_basics::subagents::{Lifecycle, OpenRequests, Subtask};
+use rig_basics::subagents::{Awaiting, Lifecycle, Subtask};
 use rig_basics::telemetry::usage::AgentUsage;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::Message;
@@ -119,14 +110,16 @@ fn names(id: &AgentId, wanted: &str) -> bool {
 /// Sends the follow-up to the caller's own subagent, or refuses the call.
 fn on_follow_up(
     called: On<ToolCalled<FollowUpArgs>>,
-    subagents: Query<(Entity, &AgentId, &SpawnedBy, Option<&OpenRequests>), With<Subtask>>,
+    subagents: Query<(Entity, &AgentId, &SpawnedBy), With<Subtask>>,
+    awaiting: Query<&Awaiting>,
     mut calls: Query<&mut Decision, ToolCalls>,
     mut commands: Commands,
 ) {
     let own: Vec<_> = subagents
         .iter()
-        .filter(|(_, _, by, _)| by.0 == called.agent)
+        .filter(|(_, _, by)| by.parent() == called.agent)
         .collect();
+    let owes = |id: &AgentId| awaiting.iter().flat_map(|a| &a.0).any(|r| r.to == *id);
     let target = own
         .iter()
         .find(|(_, id, ..)| names(id, &called.args.agent_id));
@@ -149,7 +142,7 @@ fn on_follow_up(
         Some(_) if called.args.message.trim().is_empty() => {
             Some("`message` must not be empty. Nothing was sent.".to_owned())
         }
-        Some((_, id, _, Some(open))) if !open.0.is_empty() => Some(format!(
+        Some((_, id, _)) if owes(id) => Some(format!(
             "`{}` is still working on its task; its report will come as a message. Nothing \
              was sent.",
             id.short()
@@ -275,10 +268,10 @@ fn answer_follow_ups(
             .final_answer()
             .ok_or_else(|| "The subagent ended without a final message.".to_owned()),
         Some(TurnOutcome::Failed(why)) => Err(format!("The subagent failed: {why}")),
-        Some(TurnOutcome::Stopped(why)) => Err(format!(
-            "The subagent was stopped: {}",
-            why.as_deref().unwrap_or("by the user")
-        )),
+        Some(TurnOutcome::Stopped(stop)) => Err(match stop.cause() {
+            StopCause::User => "The subagent was stopped: by the user".to_owned(),
+            cause => format!("The subagent was stopped: {cause}"),
+        }),
         None => Err("The subagent's turn ended without an outcome.".to_owned()),
     };
     let conversation = agents.get(agent).ok();
@@ -329,17 +322,19 @@ fn stamp_finished(
 /// that finished longest ago first; never one the user looks at.
 fn drop_oldest(
     changed: Query<(), Changed<FinishedAt>>,
-    kept: Query<(Entity, &FinishedAt, Has<ActiveTurn>, Option<&OpenRequests>), With<Subtask>>,
+    kept: Query<(Entity, &AgentId, &FinishedAt, Has<ActiveTurn>), With<Subtask>>,
+    awaiting: Query<&Awaiting>,
     (settings, shown): (Res<KeptSubagents>, Option<Res<ShownAgent>>),
     mut commands: Commands,
 ) {
     if changed.is_empty() {
         return;
     }
+    let owes = |id: &AgentId| awaiting.iter().flat_map(|a| &a.0).any(|r| r.to == *id);
     let mut finished: Vec<(u64, Entity)> = kept
         .iter()
-        .filter(|(_, _, busy, open)| !busy && open.is_none_or(|open| open.0.is_empty()))
-        .map(|(agent, at, ..)| (at.0, agent))
+        .filter(|(_, id, _, busy)| !busy && !owes(id))
+        .map(|(agent, _, at, _)| (at.0, agent))
         .collect();
     let excess = finished.len().saturating_sub(settings.keep);
     finished.sort_unstable();

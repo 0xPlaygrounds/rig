@@ -1,19 +1,11 @@
-//! Two complementary ways to drive the agent loop.
+//! Drives the agent loop two ways.
 //!
-//! ## Part 1 — hand-driven [`AgentRun`] state machine
-//!
-//! `agent.prompt(...)` runs this machine internally; stepping it yourself lets
-//! you inspect every model call, execute tools with your own policy, and —
-//! because the machine is fully serializable between steps — pause a run while
-//! tool calls are pending and resume it later (even in another process).
-//!
-//! ## Part 2 — high-level [`rig::agent::AgentRunner`] with hooks
-//!
-//! For the common case you don't need that level of control: attach an
-//! [`AgentHook`] to observe tool calls (and every other event) without
-//! hand-driving the loop. Use `agent.prompt(prompt).add_hook(h).run().await`.
-//!
-//! Both approaches are demonstrated in `main` below.
+//! Part 1 steps the [`AgentRun`] state machine by hand to inspect each model call
+//! and run tools under its own policy. The machine serializes between steps, so a
+//! run can pause with tool calls pending and resume later. Part 2 attaches an
+//! [`AgentHook`] through [`rig::agent::AgentRunner`] with
+//! `agent.prompt(prompt).add_hook(h).run().await`, which observes the same events
+//! without driving the loop.
 //!
 //! Requires `OPENAI_API_KEY`.
 

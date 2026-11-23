@@ -3,6 +3,10 @@
 //! the agent over it is verified in `crates/rig-cassette`; provider behaviour
 //! in `tests/providers`; anything needing crate-private types stays a unit
 //! test in its crate.
+//!
+//! Run them with `cargo nextest run -p rig --test integration -E
+//! 'test(/^core::/)'`, and one with `cargo test -p rig --test integration
+//! core::prompt_response_messages::standard_prompt_returns_string`.
 
 mod agent_run_stepper;
 mod catalog_constants;
@@ -25,16 +29,15 @@ mod golden_recovery;
 mod history_conformance;
 mod history_conformance_registry;
 mod loaders;
-mod no_random_ids;
 mod prompt_response_messages;
 mod provider_keys;
 mod reasoning_stream_stats;
-mod request_bodies;
 #[cfg(feature = "derive")]
 mod rig_tool_facade;
 mod streaming_conformance;
 mod streaming_conformance_registry;
 mod streaming_conformance_suites;
+mod user_agent;
 #[allow(dead_code)]
 #[path = "../../xtask/src/verify/checks.rs"]
 mod verification_checks;

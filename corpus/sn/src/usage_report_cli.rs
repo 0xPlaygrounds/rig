@@ -1,11 +1,9 @@
-//! SN-24: `rig usage`, what the saved sessions spent on models, from the
-//! shell. The command reads each saved session's effect log through the
-//! session's store ([`StoreOpener`]), read-only and without a model
-//! call, and sums every model request a handler ran (the turns', the
-//! subagents' and the plugins' own) and every tool call, by day, project,
-//! model or session ([`report`]). A request saved without a price is priced
-//! at the current catalog's and its cost marked approximate. A damaged
-//! session is skipped with a warning on stderr; `--fail-over` exits with
+//! `rig usage`: what the saved sessions spent on models, from the shell. The command reads each
+//! saved session's effect log through the session's store ([`StoreOpener`]), read-only and
+//! without a model call, and sums every model request a handler ran (the turns', the subagents'
+//! and the plugins' own) and every tool call, by day, project, model or session ([`report`]). A
+//! request saved without a price is priced at the current catalog's and its cost marked
+//! approximate. A damaged session is skipped with a warning on stderr; `--fail-over` exits with
 //! status 3 when the total cost is over it, and a bad option with status 2.
 
 pub mod options;
@@ -94,7 +92,7 @@ fn usage(sources: Sources, mut commands: Commands) {
     std::io::stdout().flush().ok();
     let reason = match run.status {
         0 => ExitReason::Quit,
-        status => ExitReason::Failed(status),
+        status => ExitReason::Failed(FailCode::or_failure(status)),
     };
     commands.insert_resource(run);
     commands.trigger(Exit(reason));

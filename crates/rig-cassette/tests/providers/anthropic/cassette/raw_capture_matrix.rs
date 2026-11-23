@@ -1,51 +1,20 @@
 //! Matrix for raw provider response capture on the blocking path:
 //! `CompletionResponse::raw` beside the normalized fields.
 //!
-//! # The feature
+//! Capture is always on. Every response `completion` returns carries `raw`, Anthropic's reply
+//! document verbatim: `driver::call` deserializes the response body onto it, so `raw` keeps
+//! every field the provider sent. `raw` is `Value::Null` only on a `CompletionResponse` built
+//! by hand; it never means "not requested".
 //!
-//! Capture is always on. Every response `completion` returns carries `raw`:
-//! Anthropic's reply document, verbatim — `driver::call` deserializes the
-//! response body onto it, so `raw` keeps every field the provider sent
-//! (`type`, `stop_details`, the usage tier among them). `raw` is `Value::Null`
-//! only on a `CompletionResponse` built by hand, with no provider response
-//! behind it; `Value::Null` never means "not requested". This matrix pins
-//! three properties against live recordings: presence as the document, a
-//! provider-specific field the normalized response provably lacks
-//! (`stop_sequence`), and that `raw` and the normalized fields tell one story
-//! (the provider-native fields are what the decoder mapped) — then repeats
-//! the round trip on the two turn shapes where a lossy `raw` would show
-//! first: an extended-thinking turn (signed `thinking` block) and a forced
-//! tool call (`tool_use` block).
-//!
-//! # Matrix
-//!
-//! | # | Cell | Dimension | expected | Status |
-//! |---|------|-----------|----------|--------|
-//! | 1 | `raw_round_trips_into_provider_type` | plain text request | `raw` populated; is the recorded document, envelope included | recorded |
-//! | 2 | `raw_exposes_stop_sequence` | `stop_sequences: ["alpha"]` request | `raw["stop_sequence"] == "alpha"`; normalized response has no such field | recorded |
-//! | 3 | `normalized_fields_match_raw_renormalized` | plain text request | `raw`'s provider-native `id`, `stop_reason`, `model`, `usage` and text are the normalized response's `identity()`, `finish_reason()`, `model`, `usage`, `choice` | recorded |
-//! | 4 | `raw_exposes_thinking_block_and_signature` | extended thinking (`thinking.enabled`, budget 1024) | `raw` round-trips; `raw["content"]` carries a `type: "thinking"` block with `thinking` + `signature` and `usage.output_tokens_details.thinking_tokens`, verbatim; the normalized response re-spells both (`type: "reasoning"`, `reasoning_tokens`) and has no `"thinking"` key at all | recorded |
-//! | 5 | `raw_exposes_tool_use_block` | forced tool call (`tool_choice: required`, one tool) | `raw` round-trips; `raw["content"]` carries a `type: "tool_use"` block with an `input` *object*, `raw["stop_reason"] == "tool_use"` verbatim; normalized `finish_reason() == ToolCalls`, `type: "toolcall"`, `function.arguments` — no `"tool_use"` spelling anywhere | recorded |
-//!
-//! Every recorded cell re-derives its premise from its own fixture after the
-//! wrapper returns: the recorded body names a `msg_…` id, the response carries
-//! a `request-id` header, and the recorded stop reason is the one the cell is
-//! about. Cell 2 reuses the `stop_sequences: ["alpha"]` request shape from
-//! `empty_stop_sequence_matrix.rs`, where a one-word reply matches the
-//! sequence and Anthropic reports it back on `stop_sequence`. Cell 3 is not
-//! cell 1 restated: cell 1 proves `raw` is the provider's whole document and
-//! reads back into the *provider* type; cell 3 proves the provider-native
-//! fields of that value are exactly what the decoder delivered beside them —
-//! the single-response form of the parity contract
-//! `raw_completion_parity_matrix.rs` records across two
-//! exchanges. Cells 4 and 5 take the round trip off the text-only path: cell 4
-//! reuses the `thinking.enabled` request from `reasoning_usage_matrix.rs`
-//! (the wire shape with a `signature`, where a lossy re-serialization would
-//! show first) and premise-asserts the fixture body actually carries a
-//! `thinking` block; cell 5 reuses the `weather_tool` + `tool_choice` pattern
-//! from `empty_stop_sequence_matrix.rs` so the turn is a `tool_use` terminal
-//! by construction, and premise-asserts the fixture body carries the
-//! `tool_use` block.
+//! The cells pin presence as the document (`raw_round_trips_into_provider_type`), a
+//! provider-specific field the normalized response lacks (`raw_exposes_stop_sequence`), and
+//! that the provider-native fields are exactly what the decoder mapped
+//! (`normalized_fields_match_raw_renormalized`, the single-response form of the contract
+//! `raw_completion_parity_matrix.rs` records across two exchanges). They then repeat the round
+//! trip on the turn shapes where a lossy `raw` would show first: a signed `thinking` block
+//! (`raw_exposes_thinking_block_and_signature`) and a forced `tool_use` block
+//! (`raw_exposes_tool_use_block`). Every cell re-derives its premise from its own fixture
+//! after the wrapper returns.
 
 use rig::completion::{CompletionResponse as RigCompletionResponse, FinishReason, ToolDefinition};
 use rig::message::{AssistantContent, ToolChoice};
@@ -55,8 +24,7 @@ use rig::providers::minimax::extension::MiniMaxExt;
 use serde_json::{Value, json};
 
 use super::super::support::{
-    assert_ids_match_recording, recorded_request_id_headers, recorded_response_body,
-    with_anthropic_cassette,
+    assert_ids_match_recording, recorded_request_id_headers, with_anthropic_cassette,
 };
 
 use super::super::support::canonical_without_raw;
@@ -160,7 +128,7 @@ fn assert_matches_fixture(scenario: &str, response: &RigCompletionResponse) {
 /// fixture's. Returns the recorded body for the cell's own premise checks.
 fn assert_identity_matches_fixture(scenario: &str, response: &RigCompletionResponse) -> Value {
     let identity = response.identity();
-    let body = recorded_response_body(scenario);
+    let body = crate::cassettes::recorded_json_response("anthropic", scenario);
     assert_ids_match_recording(
         std::slice::from_ref(&identity.response_id),
         &[body["id"].as_str().map(str::to_string)],
@@ -242,7 +210,7 @@ async fn raw_round_trips_into_provider_type() {
 
     // `raw` is Anthropic's reply document, verbatim: every field the recorded
     // body carries is on it.
-    let body = recorded_response_body(ROUND_TRIP_SCENARIO);
+    let body = crate::cassettes::recorded_json_response("anthropic", ROUND_TRIP_SCENARIO);
     assert_ids_match_recording(
         &[raw["id"].as_str().map(str::to_string)],
         &[body["id"].as_str().map(str::to_string)],
@@ -297,7 +265,7 @@ async fn raw_exposes_stop_sequence() {
 
     // Premise, from the fixture: the recorded turn stopped on the sequence and
     // named it — the shape `empty_stop_sequence_matrix.rs` established.
-    let body = recorded_response_body(STOP_SEQUENCE_SCENARIO);
+    let body = crate::cassettes::recorded_json_response("anthropic", STOP_SEQUENCE_SCENARIO);
     assert_eq!(
         body["stop_reason"], "stop_sequence",
         "premise: the recorded turn stopped on a sequence"

@@ -36,4 +36,4 @@ thiserror = { workspace = true }
 [dev-dependencies]
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-harness = { path = "../../crates/rig-harness" }
-rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support", default-features = false }

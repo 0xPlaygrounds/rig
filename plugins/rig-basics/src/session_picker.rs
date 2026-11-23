@@ -2,7 +2,9 @@
 //! sessions, or the entries of one agent's conversation, in a plain
 //! [`Picker`] that [`SessionPickerPlugin`] fills in place as items are
 //! read off the main thread, newest first, and previews the highlighted item
-//! ([`PickPreview`]). A plugin opens one with its
+//! ([`PickPreview`]). `/resume` and `/fork at` are this view; a program
+//! without Bevy reads the same with `Home::saved_sessions`,
+//! `SessionMeta::read` and `read_conversation`. A plugin opens one with its
 //! own source, filter, labels and command:
 //!
 //! ```no_run
@@ -78,8 +80,8 @@ impl SessionEntry {
             ms => Ok(UNIX_EPOCH + Duration::from_millis(ms)),
         };
         Self {
-            name: dir.name(),
-            directory: dir.working_directory(),
+            name: dir.name().ok().flatten(),
+            directory: dir.working_directory().ok().flatten(),
             updated: updated.unwrap_or(UNIX_EPOCH),
             running: dir.runs_elsewhere(),
             meta,
@@ -152,7 +154,7 @@ fn compact(path: &Path) -> String {
 }
 
 /// `path` with the home directory shown as `~`.
-fn tilde(path: &Path) -> String {
+pub(crate) fn tilde(path: &Path) -> String {
     match std::env::home_dir().and_then(|home| path.strip_prefix(home).ok().map(Path::to_owned)) {
         Some(rest) if rest.as_os_str().is_empty() => "~".to_owned(),
         Some(rest) => format!("~{}{}", path::MAIN_SEPARATOR, rest.display()),
@@ -551,6 +553,7 @@ fn fill_one(
                 detail,
                 more,
                 checked: false,
+                parent: None,
             },
             picked,
             at,

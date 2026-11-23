@@ -34,17 +34,12 @@ pub use chat::Chat;
 pub use dialects::*;
 pub use modality::{
     AcceptedWidths, DimensionsField, EmbeddingQuirks, Embeddings, EmbeddingsDecoder, ImageBody,
-    ModelEntry, ModelWidth, Models, ModelsReply, Rerank, RerankQuirks, RerankReply,
-    RerankResultEntry, RerankUsage, SpeechBody, TranscriptionBody, Transcriptions, Verify,
-    VerifyDecoder,
+    ImageDatum, Images, ImagesDecoder, ImagesEvent, ImagesReply, ModelEntry, ModelWidth, Models,
+    ModelsDecoder, ModelsReply, Rerank, RerankQuirks, RerankReply, RerankResultEntry, RerankUsage,
+    Speech, SpeechBody, SpeechDecoder, TranscriptionBody, Transcriptions, Verify, VerifyDecoder,
 };
 pub use route::{OpenAiDecoder, OpenAiEvent, OpenAiReassembler, OpenAiWire, Route};
 
-#[cfg(feature = "image")]
-pub use modality::{ImageDatum, Images, ImagesDecoder, ImagesEvent, ImagesReply};
-#[cfg(feature = "audio")]
-pub use modality::{Speech, SpeechDecoder};
-#[cfg(feature = "audio")]
 pub(crate) use modality::{encoded, json_post};
 
 /// Backend selected through the Hugging Face router.
@@ -58,7 +53,7 @@ pub enum SubRoute {
     Together,
     /// SambaNova, through the router.
     SambaNova,
-    /// Fireworks AI, which addresses models by a qualified id.
+    /// Fireworks AI, through the router.
     Fireworks,
     /// Hyperbolic, through the router.
     Hyperbolic,
@@ -74,10 +69,10 @@ impl SubRoute {
     /// The router's slug for this sub-provider.
     pub fn slug(&self) -> &str {
         match self {
-            Self::HFInference => "hf-inference/models",
+            Self::HFInference => "hf-inference",
             Self::Together => "together",
             Self::SambaNova => "sambanova",
-            Self::Fireworks => "fireworks-ai",
+            Self::Fireworks => "fireworks",
             Self::Hyperbolic => "hyperbolic",
             Self::Nebius => "nebius",
             Self::Novita => "novita",
@@ -85,15 +80,13 @@ impl SubRoute {
         }
     }
 
-    /// Qualify Fireworks model identifiers unless already prefixed.
-    /// Return other sub-routes' identifiers unchanged.
+    /// The router's model id that selects this sub-provider: `model:slug`.
+    /// A model already ending in `:slug` is returned unchanged.
     pub fn model_identifier(&self, model: &str) -> String {
-        const FIREWORKS_PREFIX: &str = "accounts/fireworks/models/";
-        match self {
-            Self::Fireworks if !model.starts_with(FIREWORKS_PREFIX) => {
-                format!("{FIREWORKS_PREFIX}{model}")
-            }
-            _ => model.to_owned(),
+        let slug = self.slug();
+        match model.strip_suffix(slug) {
+            Some(rest) if rest.ends_with(':') => model.to_owned(),
+            _ => format!("{model}:{slug}"),
         }
     }
 }
@@ -253,7 +246,8 @@ pub struct DialectHooks {
     /// Derive a default endpoint from a credential. `None` uses the dialect's
     /// static URL. Called only at construction, never on credential replacement.
     pub default_endpoint: Option<fn(&str) -> Option<String>>,
-    /// Select the default route for a model, unless configuration chose a route.
+    /// Select the default route for a model, unless configuration or, for a
+    /// dialect that routes by catalog, the model's catalog row chose one.
     pub model_route: Option<fn(&str) -> Route>,
     /// Apply the completion envelope after shared authentication and identity.
     /// Called once by either completion encoder; builder errors remain attached
@@ -264,11 +258,17 @@ pub struct DialectHooks {
     /// request. Runs after shared authentication, so a hook may replace the
     /// credential header rather than add a second one.
     pub modality_envelope: Option<ModalityEnvelope>,
+    /// Read the models from the listing reply's JSON body. `None` reads the
+    /// shared `{ "data": [...] }` entries.
+    pub model_listing: Option<ModelCatalogue>,
 }
 
 /// A dialect's modality-request headers, applied to the built request.
 pub type ModalityEnvelope =
     fn(&OpenAIConfig, &mut http::Request<crate::wire::Body>) -> Result<(), http::Error>;
+
+/// A dialect's reading of its model catalogue, given the listing reply's body.
+pub type ModelCatalogue = fn(serde_json::Value) -> crate::model::ModelList;
 
 /// A dialect's completion headers, applied to the authenticated request builder.
 pub type CompletionEnvelope = fn(
@@ -307,7 +307,7 @@ pub struct Quirks {
     pub completion_route: Route,
     /// Whether a model's catalog row picks
     /// [`OpenAI::completion`](crate::providers::openai::OpenAI::completion)'s
-    /// route when neither the configuration nor a hook does, for a gateway
+    /// route when the configuration does not, before any hook, for a gateway
     /// that serves each model on the API models.dev lists for it.
     pub routes_by_catalog: bool,
     /// The chat-completions path, relative to the base URL.
@@ -397,6 +397,10 @@ pub struct Quirks {
     /// A second environment variable naming the base URL, kept because the
     /// provider documents both spellings.
     pub base_url_env_alias: Option<&'static str>,
+    /// The path the API is served at under the address the base-URL
+    /// variable names, when that variable names the server's root, as
+    /// Ollama's does; empty when it names the API itself.
+    pub base_url_env_path: &'static str,
     /// The environment variable naming the account a credential belongs to,
     /// sent as `ChatGPT-Account-Id`.
     pub account_id_env: Option<&'static str>,
@@ -462,6 +466,7 @@ impl Quirks {
             speech_body: SpeechBody::OpenAi,
             transcription_body: TranscriptionBody::Multipart,
             base_url_env_alias: None,
+            base_url_env_path: "",
             account_id_env: None,
             default_instructions: None,
             instructions_env: None,
@@ -603,9 +608,10 @@ pub struct OpenAIConfig {
     /// [`alternate_auth`](Dialect::alternate_auth) variable, which has its
     /// own header.
     pub auth: Auth,
-    /// Which sub-provider the Hugging Face router forwards to. `None` behaves
-    /// as [`SubRoute::HFInference`], the router's own default. `None` for
-    /// every other dialect, which routes nothing.
+    /// Which sub-provider the Hugging Face router forwards to. `None` leaves
+    /// Chat to the router's own routing and sends the model-addressed
+    /// endpoints to [`SubRoute::HFInference`]. `None` for every other
+    /// dialect, which routes nothing.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sub_route: Option<SubRoute>,
     /// The account the credential belongs to, when the gateway asks which
@@ -695,7 +701,10 @@ impl OpenAIConfig {
             .flatten()
         {
             if let Some(base_url) = env::optional(name)? {
-                provider.base_url = base_url;
+                provider.base_url = match quirks.base_url_env_path {
+                    "" => base_url,
+                    path => format!("{}{path}", base_url.trim_end_matches('/')),
+                };
                 break;
             }
         }
@@ -736,7 +745,8 @@ impl OpenAIConfig {
         Self::with_key(dialect, self.api_key)
     }
 
-    /// Route through a Hugging Face sub-provider.
+    /// Route through a Hugging Face sub-provider. Chat sends the model as
+    /// `model:slug`, which the router reads as an explicit selection.
     pub fn with_sub_route(mut self, sub_route: SubRoute) -> Self {
         self.sub_route = Some(sub_route);
         self
@@ -872,8 +882,8 @@ impl OpenAIConfig {
         base
     }
 
-    /// The sub-provider the Hugging Face router forwards to. `None` on the
-    /// configuration means the router's own default.
+    /// The sub-provider the Hugging Face router's model-addressed endpoints
+    /// use. `None` on the configuration means HF Inference.
     pub(crate) fn route(&self) -> std::borrow::Cow<'_, SubRoute> {
         match &self.sub_route {
             Some(route) => std::borrow::Cow::Borrowed(route),

@@ -354,7 +354,7 @@ fn the_wire_reads_only_base64_user_images() {
 /// sending something else, when handed an unprepared history.
 #[test]
 fn unprepared_content_is_refused() {
-    use crate::message::{Audio, Document, Video};
+    use crate::message::{Audio, DocumentContent, Video};
     let unprepared = |content: UserContent| {
         let mut request = CompletionRequest::new("hi");
         request.chat_history = vec![
@@ -377,7 +377,7 @@ fn unprepared_content_is_refused() {
     };
     assert!(unprepared(UserContent::Image(image.clone())).contains("an image"));
     assert!(
-        unprepared(UserContent::Document(Document {
+        unprepared(UserContent::Document(DocumentContent {
             data: url.clone().into(),
             media_type: None,
             additional_params: None,

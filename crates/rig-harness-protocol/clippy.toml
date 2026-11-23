@@ -1,0 +1,36 @@
+# The root clippy.toml, plus: every file access goes through crate::fs, so
+# its error names the path and the step, and only a missing file reads as
+# absent (fs::optional). Clippy reads the nearest clippy.toml, so this covers
+# this crate alone; keep the first two entries the same as the root's, and
+# the rest the same as rig-cli's.
+disallowed-methods = [
+    { path = "serde_json::Map::remove", reason = "with preserve_order it moves the last key into the gap; use shift_remove to keep a provider item's key order" },
+    { path = "serde_json::Map::remove_entry", reason = "with preserve_order it moves the last key into the gap; use shift_remove_entry" },
+    { path = "std::fs::read", reason = "use rig_harness_protocol::fs, whose error names the path" },
+    { path = "std::fs::read_to_string", reason = "use rig_harness_protocol::fs, whose error names the path" },
+    { path = "std::fs::write", reason = "use rig_harness_protocol::fs, whose error names the path" },
+    { path = "std::fs::rename", reason = "use rig_harness_protocol::fs, whose error names the paths" },
+    { path = "std::fs::copy", reason = "use rig_harness_protocol::fs, whose error names the paths" },
+    { path = "std::fs::hard_link", reason = "use rig_harness_protocol::fs, whose error names the paths" },
+    { path = "std::fs::remove_file", reason = "use rig_harness_protocol::fs, whose error names the path" },
+    { path = "std::fs::remove_dir", reason = "use rig_harness_protocol::fs, whose error names the path" },
+    { path = "std::fs::remove_dir_all", reason = "use rig_harness_protocol::fs, whose error names the path" },
+    { path = "std::fs::create_dir", reason = "use rig_harness_protocol::fs::create_dir, whose error names the path" },
+    { path = "std::fs::create_dir_all", reason = "use rig_harness_protocol::fs, whose error names the path" },
+    { path = "std::fs::read_dir", reason = "use rig_harness_protocol::fs, whose error names the path" },
+    { path = "std::fs::metadata", reason = "use rig_harness_protocol::fs, whose error names the path" },
+    { path = "std::fs::symlink_metadata", reason = "use rig_harness_protocol::fs, whose error names the path" },
+    { path = "std::fs::read_link", reason = "use rig_harness_protocol::fs, whose error names the path" },
+    { path = "std::fs::canonicalize", reason = "use rig_harness_protocol::fs, whose error names the path" },
+    { path = "std::fs::set_permissions", reason = "use rig_harness_protocol::fs, whose error names the path" },
+    { path = "std::fs::File::open", reason = "use rig_harness_protocol::fs::open, whose error names the path" },
+    { path = "std::fs::File::create", reason = "use rig_harness_protocol::fs::open, whose error names the path" },
+    { path = "std::fs::File::create_new", reason = "use rig_harness_protocol::fs::open, whose error names the path" },
+    { path = "std::fs::OpenOptions::open", reason = "use rig_harness_protocol::fs::open, whose error names the path" },
+    { path = "std::fs::DirBuilder::create", reason = "use rig_harness_protocol::fs::create_dir, whose error names the path" },
+    { path = "std::path::Path::canonicalize", reason = "use rig_harness_protocol::fs, whose error names the path" },
+    { path = "std::path::Path::metadata", reason = "use rig_harness_protocol::fs, whose error names the path" },
+    { path = "std::path::Path::read_dir", reason = "use rig_harness_protocol::fs, whose error names the path" },
+    { path = "std::path::Path::read_link", reason = "use rig_harness_protocol::fs, whose error names the path" },
+    { path = "std::path::Path::symlink_metadata", reason = "use rig_harness_protocol::fs, whose error names the path" },
+]

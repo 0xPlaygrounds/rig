@@ -16,7 +16,7 @@ use rig_agent::agent::{
 };
 use rig_cassette::http::CassetteClock;
 use rig_core::completion::Message;
-use rig_core::message::{Document, DocumentData, DocumentMediaType, UserContent};
+use rig_core::message::{DocumentContent, DocumentData, DocumentMediaType, UserContent};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -259,7 +259,7 @@ pub fn policy_document(citations: bool) -> UserContent {
             "citations": { "enabled": true }
         })
     });
-    UserContent::Document(Document {
+    UserContent::Document(DocumentContent {
         data: DocumentData::Text(policy_text()),
         media_type: Some(DocumentMediaType::TXT),
         additional_params: params,

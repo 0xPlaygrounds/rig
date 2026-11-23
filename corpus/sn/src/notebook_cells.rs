@@ -1,21 +1,17 @@
-//! Jupyter notebooks as cells (held-out spec 07).
+//! Jupyter notebooks as cells. A `read` of a `.ipynb` file gets a handler of this plugin's, in
+//! [`NotebookSystems::Handlers`]: it shows the notebook's cells, each as `[3] code (exec 7)` or
+//! `[4] markdown`, its source, then its outputs, text cut at 40 lines, images and other rich
+//! data as `[image/png, 34 KB]`, an error as its name and message; a file that is no notebook
+//! is shown as text, with a note saying so.
 //!
-//! A `read` of a `.ipynb` file gets a handler of this plugin's, in
-//! [`NotebookSystems::Handlers`]: it shows the notebook's cells, each as
-//! `[3] code (exec 7)` or `[4] markdown`, its source, then its outputs,
-//! text cut at 40 lines, images and other rich data as `[image/png, 34
-//! KB]`, an error as its name and message; a file that is no notebook is
-//! shown as text, with a note saying so. The `notebook_edit` tool replaces,
-//! inserts or deletes one cell by index or id, changing only that cell's
-//! bytes in the file, so every other cell, the metadata, key order,
-//! indentation and the trailing newline stay as they were; a replaced or
-//! new code cell has no outputs and a null execution count, a new cell a
-//! fresh id. `insert_after` of cell -1 on a missing file creates the
-//! notebook. `edit` and `write` calls on a `.ipynb` path are refused in
+//! The `notebook_edit` tool replaces, inserts or deletes one cell by index or id, changing only
+//! that cell's bytes in the file, so every other cell, the metadata, key order, indentation and
+//! the trailing newline stay as they were. A replaced or new code cell has no outputs and a
+//! null execution count, a new cell a fresh id. `insert_after` of cell -1 on a missing file
+//! creates the notebook. `edit` and `write` calls on a `.ipynb` path are refused in
 //! [`NotebookSystems::Guard`].
 
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::path::Path;
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::ToolAnnotations;
@@ -24,7 +20,7 @@ use rig_harness::rig_core::serve::adapters::ToolAdapter;
 use rig_harness::rig_core::tool::{FileRead, FilesChanged, FilesRead, ToolContext, content_hash};
 use rig_harness::rig_ecs::effects::Handler;
 use rig_tools::fs::{file_change, io_error};
-use rig_tools::workspace::{Local, Stat, Workspace};
+use rig_tools::workspace::{Root, Stat};
 use rig_tools::{Edit, Read, ReadArgs, Write};
 
 mod notebook;
@@ -100,7 +96,7 @@ fn give_handlers(
             continue;
         }
         let dir = dirs.get(agent).ok();
-        let place = Place {
+        let place = Root {
             workspace: workspace.0.clone(),
             base: Some(dir.map_or_else(|| root.0.clone(), |dir| dir.0.clone())),
             confine: dir.is_some(),
@@ -129,41 +125,8 @@ fn refuse_text_edits(mut calls: Query<(&ToolRequest, &mut Decision), (ReadyToSta
     }
 }
 
-/// Where a call works: the workspace, the directory its relative paths
-/// start from (`None`: the process's), and whether a path outside it is
-/// refused.
-#[derive(Clone, Debug)]
-struct Place {
-    workspace: Arc<dyn Workspace>,
-    base: Option<PathBuf>,
-    confine: bool,
-}
-
-impl Default for Place {
-    fn default() -> Self {
-        Self {
-            workspace: Arc::new(Local),
-            base: None,
-            confine: false,
-        }
-    }
-}
-
-impl Place {
-    /// `path` as the call opens it, refused outside a confining base.
-    fn open(&self, path: &str) -> Result<PathBuf, ToolExecutionError> {
-        self.workspace
-            .place(self.base.as_deref(), self.confine, path)
-    }
-
-    /// `path` as the call's footprint names it.
-    fn resolve(&self, path: &str) -> PathBuf {
-        self.workspace.resolve(self.base.as_deref(), path)
-    }
-}
-
 /// `read` of a notebook: its cells rendered, paged as `read` pages a file.
-struct NotebookRead(Place);
+struct NotebookRead(Root);
 
 impl Tool for NotebookRead {
     const NAME: &'static str = Read::NAME;
@@ -192,7 +155,7 @@ impl Tool for NotebookRead {
         context: &mut ToolContext,
         args: ReadArgs,
     ) -> Result<String, ToolExecutionError> {
-        let path = self.0.open(&args.path)?;
+        let path = self.0.place(&args.path)?;
         let workspace = self.0.workspace.clone();
         let (output, read) = blocking(move || {
             let shown = path.to_string_lossy().into_owned();
@@ -216,7 +179,7 @@ impl Tool for NotebookRead {
 
 /// The `notebook_edit` tool.
 #[derive(Default)]
-struct NotebookEdit(Place);
+struct NotebookEdit(Root);
 
 impl Tool for NotebookEdit {
     const NAME: &'static str = "notebook_edit";
@@ -258,7 +221,7 @@ impl Tool for NotebookEdit {
                 args.path
             )));
         }
-        let path = self.0.open(&args.path)?;
+        let path = self.0.place(&args.path)?;
         let workspace = self.0.workspace.clone();
         let (output, change) = blocking(move || {
             let shown = path.to_string_lossy().into_owned();

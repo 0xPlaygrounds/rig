@@ -5,31 +5,66 @@ use std::ops::{Deref, DerefMut};
 
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
-use rig_core::completion::{Message, Usage};
-use rig_core::conversation::{self, MessageId, short_id};
+use rig_core::completion::{AssistantContent, Message, Usage};
+use rig_core::conversation::{self, MessageId, StopCause, short_id};
 use rig_core::effect::EffectId;
+use rig_core::message::{CallId, LocalCallId, ToolCall, ToolFunction, ToolName};
+use rig_core::streaming::{Part, PartKind, StreamEvent, parse_partial_arguments};
 use rig_memory::Anchor;
 use serde::{Deserialize, Serialize};
 
 use super::model::ReasoningSetting;
-use super::session_log::{ReflectSaved, save_discarded};
+use super::session_log::{ReflectSaved, Reset, save_discarded};
 use super::stage::moved;
 use super::turn::{NO_MODEL, Recovery, start_turn};
 
 /// Marks an agent. Spawning it adds every per-agent component with its
-/// default, including a fresh [`AgentId`]. An agent has no
+/// default, including a fresh [`AgentId`] and the name `agent`. An agent has no
 /// [`ModelChoice`](super::model::ModelChoice) until one is picked.
-#[derive(Component, Reflect, Default)]
+///
+/// Only the kernel makes one, with the settings [`spawn`](super::spawn)
+/// gives it, so a plugin spawns an agent through a
+/// [`Spawner`](super::spawn::Spawner):
+///
+/// ```compile_fail,E0423
+/// use bevy_ecs::prelude::*;
+/// use rig_ecs::agent::Agent;
+///
+/// let mut world = World::new();
+/// world.spawn((Name::new("a"), Agent));
+/// ```
+///
+/// Nor can a component require it, as it has no default:
+///
+/// ```compile_fail,E0277
+/// use bevy_ecs::prelude::*;
+/// use rig_ecs::agent::Agent;
+///
+/// #[derive(Component)]
+/// #[require(Agent)]
+/// struct Reviewer;
+/// ```
+#[derive(Component, Reflect)]
+#[component(clone_behavior = Ignore)]
 #[reflect(Component)]
 #[require(
     AgentId,
+    Name = Name::new("agent"),
     Conversation,
     ReasoningSetting,
     LastUsage,
     SystemPrompt,
     ToolAccess
 )]
-pub struct Agent;
+pub struct Agent {
+    _kernel: (),
+}
+
+impl Agent {
+    pub(crate) fn new() -> Self {
+        Self { _kernel: () }
+    }
+}
 
 /// The agent's stable id, used in its log's name, effect scopes and logs.
 /// `Entity` ids are not stable across a restart; this one is. It never
@@ -95,10 +130,34 @@ impl CacheKey {
 /// parent is spawned without it. The kernel gives it no other meaning: a
 /// restore links the agents again by their logs' headers, and views list
 /// agents by it.
+///
+/// A [`Spawner`](super::spawn::Spawner) links a child, and a restore links
+/// them again. Its constructor is private; a link made through Bevy's
+/// `Relationship::from` is not checked. Its field is private:
+///
+/// ```compile_fail,E0423
+/// use bevy_ecs::prelude::*;
+/// use rig_ecs::agent::SpawnedBy;
+///
+/// let mut world = World::new();
+/// let parent = world.spawn_empty().id();
+/// world.spawn(SpawnedBy(parent));
+/// ```
 #[derive(Component, Reflect, Debug)]
 #[reflect(Component)]
 #[relationship(relationship_target = Spawned)]
-pub struct SpawnedBy(pub Entity);
+pub struct SpawnedBy(Entity);
+
+impl SpawnedBy {
+    pub(crate) fn new(parent: Entity) -> Self {
+        Self(parent)
+    }
+
+    /// The agent that spawned this one.
+    pub fn parent(&self) -> Entity {
+        self.0
+    }
+}
 
 /// The agents this one spawned, in the order it spawned them.
 #[derive(Component, Reflect, Debug)]
@@ -122,7 +181,10 @@ pub struct EffectParent(pub EffectId);
 ///
 /// Each change waits in the conversation's outbox until the kernel saves it
 /// and announces it as a
-/// [`ConversationChanged`](super::session_log::ConversationChanged). A value
+/// [`ConversationChanged`](super::session_log::ConversationChanged): right
+/// before `Update`, between the stages of each pass, at the end of the
+/// frame, before a tool call that may change something starts, and when a
+/// turn stops. A value
 /// inserted in place of the agent's own is saved as one reset, after the
 /// changes the old one had not saved. Saved through serde.
 ///
@@ -169,9 +231,19 @@ impl From<conversation::Conversation> for Conversation {
 /// The usage of the agent's last model reply that reported its tokens,
 /// with the last entry of the conversation it counts (rig-memory's
 /// [`Anchor`]), `None` before one did. Only the kernel writes it, from
-/// what the provider reported. Saved with the session.
+/// what the provider reported. Saved with the session; a fork has it only
+/// when it has the whole conversation it measures
+/// ([`ForkAgent`](super::fork::ForkAgent)).
 #[derive(Component, Reflect, Clone, Copy, Debug, Default, Serialize, Deserialize)]
-#[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
+#[reflect(
+    opaque,
+    Component,
+    Saved(Reset),
+    Default,
+    Clone,
+    Serialize,
+    Deserialize
+)]
 #[serde(transparent)]
 pub struct LastUsage(pub Option<Anchor>);
 
@@ -190,7 +262,8 @@ impl LastUsage {
 }
 
 /// The agent's [`LastUsage`] no longer counts its conversation after a
-/// compaction summarized, cleared or restored part of it. The kernel removes
+/// compaction summarized, cleared or restored part of it, or on a fork cut
+/// before its source's end, whose conversation no reply measured. The kernel removes
 /// this marker when a reply reports a new context figure. Saved with the session.
 #[derive(Component, Reflect, Clone, Copy, Debug, Default, Serialize, Deserialize)]
 #[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
@@ -221,25 +294,186 @@ impl From<Option<String>> for SystemPrompt {
     }
 }
 
-/// Which registered tools the agent may call. Saved with the session.
-#[derive(Component, Reflect, Clone, Default, Serialize, Deserialize)]
+/// Which registered tools the agent may call: those it keeps, saved with
+/// the session, within this run's tools ([`RunTools`]), which the session
+/// never saves.
+/// [`within`](Self::within), [`narrow`](Self::narrow) and
+/// [`grant`](Self::grant) build a narrower one, so an access made from
+/// another never has a tool that one lacks. [`only`](Self::only) builds an
+/// allow-list from no other access. Before it admits anything the kernel
+/// keeps each agent's access within the run's tools and the access of
+/// every agent above it ([`SpawnedBy`]), whatever made or restored it.
+/// It is the hard limit: a tool a Prepare system takes out of a request's
+/// `tools` is not offered, but a call of it still runs when the access
+/// keeps it.
+#[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
-pub enum ToolAccess {
+#[serde(transparent)]
+pub struct ToolAccess {
+    kept: Kept,
+    /// This run's tools, which only the kernel sets.
+    #[serde(skip)]
+    run: Option<Granted>,
+}
+
+/// What the session saves of a [`ToolAccess`].
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+enum Kept {
     /// Every registered tool.
     #[default]
     All,
     /// Only the tools named.
-    Only(Vec<String>),
+    Only(Granted),
+}
+
+/// Tool names, each once, in the order given.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+struct Granted(Vec<String>);
+
+impl Granted {
+    fn has(&self, name: &str) -> bool {
+        self.0.iter().any(|it| it == name)
+    }
+
+    /// These names that `allows` allows.
+    fn within(&self, allows: impl Fn(&str) -> bool) -> Self {
+        Self(self.0.iter().filter(|name| allows(name)).cloned().collect())
+    }
+}
+
+/// The tools this run leaves every agent, such as `--tools` names: the
+/// kernel keeps each agent's [`ToolAccess`] within them, and the session
+/// never saves them, so a later run has every tool the session kept.
+/// Without it, a run leaves every tool.
+#[derive(Resource, Clone, Debug, PartialEq, Eq)]
+pub struct RunTools(Granted);
+
+impl RunTools {
+    /// The tools `names`, each once.
+    pub fn new<'a>(names: impl IntoIterator<Item = &'a str>) -> Self {
+        Self(Granted(unique(names)))
+    }
+}
+
+/// Why [`ToolAccess::grant`] refused: `name` is not one of the tools the
+/// granting access keeps, `yours`.
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
+#[error("`{name}` is not one of your tools ({})", .yours.join(", "))]
+pub struct NotYours {
+    /// The tool asked for.
+    pub name: String,
+    /// The registered tools the granting access keeps, sorted.
+    pub yours: Vec<String>,
 }
 
 impl ToolAccess {
-    /// Whether the tool `name` may be called.
-    pub fn allows(&self, name: &str) -> bool {
-        match self {
-            Self::All => true,
-            Self::Only(names) => names.iter().any(|allowed| allowed == name),
+    /// Every registered tool.
+    pub fn all() -> Self {
+        Self::default()
+    }
+
+    /// Only the tools `names`, each once, in the order given. An agent
+    /// given it still uses no tool the run or an agent above it lacks, as
+    /// the kernel keeps every access within those.
+    pub fn only<'a>(names: impl IntoIterator<Item = &'a str>) -> Self {
+        Self {
+            kept: Kept::Only(Granted(unique(names))),
+            run: None,
         }
     }
+
+    /// Whether the tool `name` may be called in this run. A child's tools
+    /// are built with [`keeps`](Self::keeps), so they outlive the run.
+    pub fn allows(&self, name: &str) -> bool {
+        self.keeps(name) && self.run.as_ref().is_none_or(|run| run.has(name))
+    }
+
+    /// Whether the agent keeps the tool `name`, whatever this run's tools:
+    /// what the session saves, and what a child it starts may be given.
+    pub fn keeps(&self, name: &str) -> bool {
+        match &self.kept {
+            Kept::All => true,
+            Kept::Only(granted) => granted.has(name),
+        }
+    }
+
+    /// The names it keeps, in the order granted; `None` for every tool.
+    pub fn names(&self) -> Option<&[String]> {
+        match &self.kept {
+            Kept::All => None,
+            Kept::Only(granted) => Some(&granted.0),
+        }
+    }
+
+    /// This access kept within `other`: the tools both allow, in this
+    /// one's order, or `other`'s when this one allows every tool.
+    pub fn within(&self, other: &Self) -> Self {
+        let kept = match (&self.kept, &other.kept) {
+            (_, Kept::All) => self.kept.clone(),
+            (Kept::All, Kept::Only(_)) => other.kept.clone(),
+            (Kept::Only(mine), Kept::Only(theirs)) => Kept::Only(mine.within(|it| theirs.has(it))),
+        };
+        let run = match (&self.run, &other.run) {
+            (Some(mine), Some(theirs)) => Some(mine.within(|it| theirs.has(it))),
+            (mine, theirs) => mine.as_ref().or(theirs.as_ref()).cloned(),
+        };
+        Self { kept, run }
+    }
+
+    /// This access kept to `names`, each once: never more than it was, such
+    /// as for an agent profile. Narrowing an access that lacks a name drops
+    /// it; build an allow-list with [`only`](Self::only).
+    pub fn narrow<'a>(&self, names: impl IntoIterator<Item = &'a str>) -> Self {
+        self.within(&Self::only(names))
+    }
+
+    /// A child's access: the tools `asked`, each once, every one a tool of
+    /// `registered` this access keeps; or why not, for the first that is
+    /// not. The child keeps them and, as every agent, uses them within this
+    /// run's tools, so a later run gives it what it was given.
+    pub fn grant<'a>(
+        &self,
+        asked: &[String],
+        registered: impl IntoIterator<Item = &'a str>,
+    ) -> Result<Self, NotYours> {
+        let mut yours: Vec<&str> = registered
+            .into_iter()
+            .filter(|name| self.keeps(name))
+            .collect();
+        yours.sort_unstable();
+        yours.dedup();
+        match asked.iter().find(|name| !yours.contains(&name.as_str())) {
+            Some(name) => Err(NotYours {
+                name: name.clone(),
+                yours: yours.into_iter().map(str::to_owned).collect(),
+            }),
+            None => Ok(Self {
+                kept: Kept::Only(Granted(unique(asked.iter().map(String::as_str)))),
+                run: self.run.clone(),
+            }),
+        }
+    }
+
+    /// This access within the run's tools `run`, the kernel's to set.
+    pub(crate) fn for_run(&self, run: Option<&RunTools>) -> Self {
+        let run = run.map(|run| run.0.clone());
+        Self {
+            kept: self.kept.clone(),
+            run,
+        }
+    }
+}
+
+/// `names` in their order, each once.
+fn unique<'a>(names: impl IntoIterator<Item = &'a str>) -> Vec<String> {
+    let mut unique: Vec<String> = Vec::new();
+    for name in names {
+        if !unique.iter().any(|kept| kept == name) {
+            unique.push(name.to_owned());
+        }
+    }
+    unique
 }
 
 /// A running turn of the agent it names, from a user message to the reply
@@ -247,7 +481,9 @@ impl ToolAccess {
 /// Commit then removes this, so the agent is idle, and marks the turn
 /// [`Settled`](super::stage::Settled). The turn stays [`ForAgent`] its agent,
 /// and goes with it. Its retries are counted in a [`Recovery`]; its `Name` is
-/// `turn` unless spawned with another.
+/// `turn` unless spawned with another. It is spawned before its first
+/// request is built, so an `On<Add<TurnOf>>` observer's edit is in that
+/// request.
 ///
 /// [`ForAgent`]: super::stage::ForAgent
 #[derive(Component, Reflect, Debug)]
@@ -256,7 +492,9 @@ impl ToolAccess {
 #[require(Recovery, Turn, Name = Name::new("turn"))]
 pub struct TurnOf(pub Entity);
 
-/// Where a turn stands, on the turn. The kernel fills it in when the turn
+/// Where a turn stands, on the turn. A turn runs from the message that
+/// asked for it to the reply that ends it, and an agent runs at most one
+/// at a time ([`ActiveTurn`]). The kernel fills it in when the turn
 /// is spawned, from the turn's record in its agent's conversation
 /// ([`TurnRecord`](conversation::TurnRecord)), and keeps it.
 #[derive(Component, Reflect, Clone, Debug, Default)]
@@ -311,10 +549,12 @@ pub struct CallOf(pub Entity);
 #[relationship_target(relationship = CallOf, linked_spawn)]
 pub struct Calls(Vec<Entity>);
 
-/// Text streamed so far by an in-flight model call, for views. A plugin
-/// that continues a reply in a successor call may start the successor's
-/// `Partial` with the text so far: views show one growing reply, and a
-/// stop saves what the user saw.
+/// What an in-flight model call streamed so far: its text, reasoning and
+/// tool calls, the one record of the reply in flight that views, the
+/// status and a stop read. The kernel follows the stream into it
+/// ([`Partial::follow`]). A plugin that continues a reply in a successor
+/// call may start the successor's `Partial` with what came so far: views
+/// show one growing reply, and a stop saves what the user saw.
 #[derive(Component, Reflect, Default)]
 #[reflect(Component, Default)]
 pub struct Partial {
@@ -322,59 +562,282 @@ pub struct Partial {
     pub text: String,
     /// Reasoning text.
     pub reasoning: String,
+    /// The tool calls the reply opened, in the order they opened.
+    #[reflect(ignore)]
+    pub calls: Vec<PartialCall>,
+}
+
+impl Partial {
+    /// Adds what `event` streamed: a text or reasoning fragment, a tool
+    /// call opening under its tool's name, a fragment of its arguments, or
+    /// its end with the finished call.
+    pub fn follow(&mut self, event: &StreamEvent) {
+        match event {
+            StreamEvent::Text { text, .. } => self.text.push_str(text),
+            StreamEvent::Reasoning { text, .. } => self.reasoning.push_str(text),
+            StreamEvent::Start {
+                part,
+                kind: PartKind::ToolCall,
+                name: Some(name),
+            } => self.calls.push(PartialCall::new(*part, name.clone())),
+            StreamEvent::Arguments { part, json } => {
+                let call = self.calls.iter_mut().find(|call| call.streams_in(*part));
+                if let Some((_, arguments)) = call.and_then(|call| call.streaming.as_mut()) {
+                    arguments.push_str(json);
+                }
+            }
+            StreamEvent::End {
+                part,
+                content: AssistantContent::ToolCall(done),
+            } => {
+                if let Some(call) = self.calls.iter_mut().find(|call| call.streams_in(*part)) {
+                    call.call = done.clone();
+                    call.streaming = None;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// What a stop keeps of the reply, as an aborted message's content: the
+    /// reasoning and text unless blank, then each tool call as
+    /// [`PartialCall::stopped`] keeps it. None of the calls ever runs.
+    pub fn stopped(&self) -> Vec<AssistantContent> {
+        let reasoning = (!self.reasoning.trim().is_empty())
+            .then(|| AssistantContent::reasoning(self.reasoning.clone()));
+        let text =
+            (!self.text.trim().is_empty()).then(|| AssistantContent::text(self.text.clone()));
+        let calls = self.calls.iter().map(PartialCall::stopped);
+        reasoning
+            .into_iter()
+            .chain(text)
+            .chain(calls.map(AssistantContent::ToolCall))
+            .collect()
+    }
+}
+
+/// A tool call of a reply in flight ([`Partial::calls`]). One a plugin
+/// carries over from an earlier reply, such as a continuation's, is
+/// `PartialCall::from` the finished call.
+#[derive(Clone, Debug)]
+pub struct PartialCall {
+    /// While it streams, its tool's name, no arguments and an id rig
+    /// issued, as the provider's comes with its end; once it ended, the
+    /// finished call.
+    pub call: ToolCall,
+    /// While it streams, the part of the reply it streams in and its
+    /// argument JSON so far, as the provider sent it; `None` once it ended.
+    pub streaming: Option<(Part, String)>,
+}
+
+impl PartialCall {
+    /// A call to `name` that opened in `part`, with no arguments yet.
+    pub fn new(part: Part, name: ToolName) -> Self {
+        let id = CallId::Local(LocalCallId::new());
+        let function = ToolFunction::new(name, serde_json::Value::Null);
+        Self {
+            call: ToolCall::new(id, function),
+            streaming: Some((part, String::new())),
+        }
+    }
+
+    /// Whether it is still streaming in `part`.
+    fn streams_in(&self, part: Part) -> bool {
+        self.streaming.as_ref().is_some_and(|(at, _)| *at == part)
+    }
+
+    /// The call as a view shows it: while it streams, with the arguments
+    /// that its JSON so far states. For display only.
+    pub fn shown(&self) -> ToolCall {
+        let mut call = self.call.clone();
+        if let Some((_, arguments)) = &self.streaming {
+            call.function.arguments = parse_partial_arguments(arguments);
+        }
+        call
+    }
+
+    /// The call as a stop keeps it, never run. While it streams, its
+    /// arguments are what [`ToolFunction::parse`] reads from the JSON so
+    /// far, and the text as it came goes in `invalid_arguments` unless it is
+    /// a whole object, also when none came, so nothing is invented. Once it
+    /// ended, it is as it ended.
+    pub fn stopped(&self) -> ToolCall {
+        let mut call = self.call.clone();
+        if let Some((_, arguments)) = &self.streaming {
+            call.function = ToolFunction::parse(call.function.name.clone(), arguments);
+            if arguments.trim().is_empty() {
+                call.function.invalid_arguments = Some(arguments.clone());
+            }
+        }
+        call
+    }
+}
+
+impl From<ToolCall> for PartialCall {
+    fn from(call: ToolCall) -> Self {
+        Self {
+            call,
+            streaming: None,
+        }
+    }
 }
 
 /// Stop the agent's running turn at once, and the running turns of every
 /// agent below it in [`Spawned`], even when the agent itself is idle:
 /// stopping follows ancestry, so work meant to outlive its parent is
-/// spawned without [`SpawnedBy`]. Each turn ends [`TurnOutcome::Stopped`]
-/// with `reason`, the text its reply streamed so far is kept, every call of
-/// it that has not settled is answered as stopped (rig-core's
+/// spawned without [`SpawnedBy`]; each agent it reached then gets a
+/// [`StopReached`]. [`plugin_alone`](Self::plugin_alone) stops the agent's
+/// turn only and sends none. Each turn ends [`TurnOutcome::Stopped`] with
+/// the stop's cause, the text its reply streamed so far is kept, every
+/// call of it that has not settled is answered as stopped (rig-core's
 /// [`not_finished`](rig_core::tool::feedback::not_finished)), and whatever
 /// held them is despawned. It cannot be reviewed or held.
+///
+/// Its fields are private, so the cause is the user's or a plugin's:
+///
+/// ```compile_fail,E0451
+/// use bevy_ecs::prelude::*;
+/// use rig_ecs::agent::StopTurn;
+/// use rig_ecs::prelude::StopCause;
+///
+/// let agent = World::new().spawn_empty().id();
+/// let stop = StopTurn { entity: agent, cause: StopCause::User, below: true, carries: false };
+/// ```
 #[derive(EntityEvent, Reflect, Clone, Debug)]
-#[reflect(Event, Clone, Debug)]
+#[reflect(opaque, Event, Clone, Debug)]
 pub struct StopTurn {
-    /// The agent.
-    pub entity: Entity,
-    /// Why, when it is not the user who stops it.
-    pub reason: Option<String>,
+    entity: Entity,
+    pub(crate) cause: StopCause,
+    /// Whether the stop reaches the agents below the agent.
+    pub(crate) below: bool,
+    /// Whether what the agent accepted meanwhile carries the turn on
+    /// instead ([`Self::plugin_done`]).
+    pub(crate) carries: bool,
 }
 
 impl StopTurn {
-    /// The user stopping `agent`'s turn.
+    /// The user stopping `agent`'s turn, and those below it. The kernel
+    /// tells the user `Stopped.`.
     pub fn new(agent: Entity) -> Self {
         Self {
             entity: agent,
-            reason: None,
+            cause: StopCause::User,
+            below: true,
+            carries: false,
+        }
+    }
+
+    /// The plugin `by` stopping `agent`'s turn, and those below it, for
+    /// `why`. The request the turn answers is halted
+    /// [`Kept`](conversation::Halt::Kept), left for the next turn. The
+    /// kernel shows no notice for it: the plugin says why itself.
+    pub fn plugin(agent: Entity, by: &str, why: &str) -> Self {
+        Self {
+            entity: agent,
+            cause: StopCause::Plugin {
+                by: by.to_owned(),
+                why: why.to_owned(),
+            },
+            below: true,
+            carries: false,
+        }
+    }
+
+    /// The plugin `by` ending only `agent`'s own turn, for `why`, as its
+    /// decision about that turn: the agents below go on, and no
+    /// [`StopReached`] is sent. The user's stop always reaches below:
+    ///
+    /// ```compile_fail,E0599
+    /// use bevy_ecs::prelude::*;
+    /// use rig_ecs::agent::StopTurn;
+    ///
+    /// let agent = World::new().spawn_empty().id();
+    /// let stop = StopTurn::new(agent).alone();
+    /// ```
+    pub fn plugin_alone(agent: Entity, by: &str, why: &str) -> Self {
+        Self {
+            below: false,
+            ..Self::plugin(agent, by, why)
+        }
+    }
+
+    /// The plugin `by` ending a turn it ran on `agent` for work of its own,
+    /// such as a summary, now done, for `why`. When the agent accepted
+    /// messages meanwhile that carry a turn on (steering ones, else the
+    /// queued ones, with the Inform ones), they go into the conversation as
+    /// they are, in the order they were sent, and the turn goes on with a
+    /// model call, as after a reply. Otherwise, and for a turn already failed
+    /// or stopped, it ends as [`plugin_alone`](Self::plugin_alone).
+    pub fn plugin_done(agent: Entity, by: &str, why: &str) -> Self {
+        Self {
+            carries: true,
+            ..Self::plugin_alone(agent, by, why)
         }
     }
 }
 
-/// How a [`Notice`] is shown and logged.
-#[derive(Reflect, Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// On each agent a [`StopTurn`] reached, idle or not, once, after its turn
+/// is gone: the stop's cause. Only the kernel makes it, so an observer
+/// reads one per agent instead of walking [`Spawned`] itself. Idle agents
+/// get theirs after every running agent the stop reached. React to an
+/// agent being stopped with this, not [`StopTurn`], which is only a
+/// request. A [`StopTurn::plugin_alone`] sends none, and neither do the
+/// stops of the app's exit and of a restart.
+///
+/// ```compile_fail,E0451
+/// use bevy_ecs::prelude::*;
+/// use rig_ecs::agent::StopReached;
+/// use rig_ecs::prelude::StopCause;
+///
+/// let agent = World::new().spawn_empty().id();
+/// let reached = StopReached { entity: agent, cause: StopCause::User, idle: true };
+/// ```
+#[derive(EntityEvent, Clone, Debug)]
+pub struct StopReached {
+    pub(crate) entity: Entity,
+    pub(crate) cause: StopCause,
+    pub(crate) idle: bool,
+}
+
+impl StopReached {
+    /// Who or what stopped it.
+    pub fn cause(&self) -> &StopCause {
+        &self.cause
+    }
+
+    /// Whether the agent had no running turn for the stop to end. The
+    /// stopped turn is gone when this is sent, so [`ActiveTurn`] cannot say.
+    pub fn idle(&self) -> bool {
+        self.idle
+    }
+}
+
+/// How a [`Notice`] is shown and logged. It is saved as `info`, `warn` or
+/// `error`, and any other word reads as `info`.
+#[derive(Reflect, Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum NoticeLevel {
-    /// Information.
-    #[default]
-    Info,
     /// Something went wrong that did not stop anything, such as a refused
     /// key with another one used instead: shown like an error, but never a
     /// failure.
     Warn,
     /// Something failed or was refused.
     Error,
+    /// Information.
+    #[default]
+    #[serde(other)]
+    Info,
 }
 
-/// A line for the user, shown by views. A system reads the notices sent
+/// A line for the user, shown by views and never saved. A system reads the notices sent
 /// before it in the frame and, from the frame before, those sent after it.
-/// So one sent in `Last`, such as the session log's write failure (in
-/// [`WriteLogs`](crate::WriteLogs)), is read a frame late and, on the exit
-/// frame, only by a system ordered after its sender.
+/// So one sent late, such as the session log's write failure (in
+/// [`WriteLogs`](crate::WriteLogs), after `Last`), is read a frame late
+/// and, on the exit frame, only by a system ordered after its sender.
 #[derive(Message, Clone, Debug)]
 pub struct Notice {
     /// The agent it is about, or `None` when it is about the whole app.
     pub agent: Option<Entity>,
-    /// The text.
     pub text: String,
     /// Whether it informs, warns or reports a failure.
     pub level: NoticeLevel,
@@ -404,9 +867,10 @@ impl Notice {
 
     /// The refusal of what would change `agent`, or the whole app with
     /// `None`, while a turn runs: the rest of the turn would go on with
-    /// something it did not start with.
+    /// something it did not start with. An error, so a refused command
+    /// comes back in the input.
     pub fn turn_running(agent: impl Into<Option<Entity>>) -> Self {
-        Self::info(agent, "A turn is running; stop it first.")
+        Self::error(agent, "A turn is running; stop it first.")
     }
 
     /// The refusal of what needs a model when `agent` has none.
@@ -424,10 +888,12 @@ impl Notice {
 ///   message the agent accepts takes an `Answered` proposal away, and its
 ///   next [`TurnCall`](super::turn::TurnCall), once admitted, takes any;
 ///   the holds on a proposal taken away are despawned with it.
-/// - **Stopped:** a plugin may insert `Failed` or `Stopped` at any time with
-///   a plain `insert`, so no pending proposal loses it. The turn's calls not
+/// - **Failed:** a plugin may insert `Failed` at any time with a plain
+///   `insert`, so no pending proposal loses it. The turn's calls not
 ///   started never start, the others are answered as stopped, and the turn
 ///   ends once they settled.
+/// - **Stopped:** only a [`StopTurn`], an exit or a restart stops a turn,
+///   at once ([`Stop`]).
 ///
 /// A turn that ended is [`Settled`](super::stage::Settled) with it until the
 /// next frame: `On<Add<Settled>>` or `Added<Settled>` readers of
@@ -439,9 +905,37 @@ pub enum TurnOutcome {
     Answered(Message),
     /// The turn failed, for the reason given.
     Failed(String),
-    /// The turn was stopped before an answer: by the user when no reason
-    /// is given, or on exit.
-    Stopped(Option<String>),
+    /// The turn was stopped before an answer.
+    Stopped(Stop),
+}
+
+/// How a turn was stopped. Only the kernel makes one, as it stops the
+/// turn, so a plugin stops a turn with a [`StopTurn`]:
+///
+/// ```compile_fail,E0451
+/// use rig_ecs::agent::{Stop, TurnOutcome};
+/// use rig_ecs::prelude::StopCause;
+///
+/// let stopped = TurnOutcome::Stopped(Stop { cause: StopCause::User, alone: false });
+/// ```
+#[derive(Clone, Debug)]
+pub struct Stop {
+    pub(crate) cause: StopCause,
+    pub(crate) alone: bool,
+}
+
+impl Stop {
+    /// Who or what stopped the turn.
+    pub fn cause(&self) -> &StopCause {
+        &self.cause
+    }
+
+    /// Whether a plugin ended only this turn, as its decision about it
+    /// ([`StopTurn::plugin_alone`]): no stop reached the agent. Never so
+    /// for the user's stop, the app's exit or a restart.
+    pub fn alone(&self) -> bool {
+        self.alone
+    }
 }
 
 impl TurnOutcome {
@@ -453,8 +947,16 @@ impl TurnOutcome {
         match self {
             Self::Answered(_) => None,
             Self::Failed(why) => Some(format!("the turn failed: {why}")),
-            Self::Stopped(None) => Some("the user stopped the turn".to_owned()),
-            Self::Stopped(Some(why)) => Some(why.clone()),
+            Self::Stopped(stop) => Some(stop.cause.to_string()),
         }
     }
+
+    /// Whether a turn that ends this way stops its calls, as
+    /// [`stops`](Self::stops) is `Some`, without forming the text.
+    pub(crate) fn is_stopping(&self) -> bool {
+        !matches!(self, Self::Answered(_))
+    }
 }
+
+#[cfg(test)]
+mod tests;

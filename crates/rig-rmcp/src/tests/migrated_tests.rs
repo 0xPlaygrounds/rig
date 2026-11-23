@@ -1,15 +1,8 @@
-#[allow(unused_imports)]
 use crate::handler::MAX_CONCURRENT_REFRESHES;
 #[allow(unused_imports)]
 use crate::*;
 use crate::{McpClientError, McpClientHandler};
 use rig_agent::tool::{DynamicTool, ToolOutput, server::ToolServer};
-#[allow(unused_imports)]
-use rig_agent::tool::{ToolContext, ToolResult};
-#[allow(unused_imports)]
-use rig_core::message::ImageMediaType;
-#[allow(unused_imports)]
-use rig_core::tool::ToolExecutionError;
 use rmcp::{
     RoleServer, ServerHandler, ServiceExt, handler::client::ClientHandler, model::*,
     service::RequestContext,
@@ -756,8 +749,8 @@ async fn builder_rmcp_tools_thread_timeout_into_registered_tools() {
 
     // The default, and a disabled timeout, both reach the built tool verbatim.
     let built = McpTool::new(tool("a"), &client);
-    assert_eq!(built.timeout(), Some(DEFAULT_MCP_TOOL_TIMEOUT));
-    assert_eq!(built.with_timeout(None).timeout(), None);
+    assert_eq!(built.timeout, Some(DEFAULT_MCP_TOOL_TIMEOUT));
+    assert_eq!(built.with_timeout(None).timeout, None);
 
     // Every requested tool is registered against the shared client...
     let agent = AgentBuilder::new(MockCompletionModel::text("ok"))

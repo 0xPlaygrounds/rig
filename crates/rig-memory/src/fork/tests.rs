@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
 use rig_core::completion::Message;
-use rig_core::conversation::{Author, Conversation, MessageId};
+use rig_core::conversation::{Conversation, MessageId};
 
 use crate::{
-    MemoryStore, Session, SummaryState, Writer, apply_summary, as_of, history, load, undo_summary,
+    MemoryStore, Session, SummaryState, Writer, apply_summary, as_of, history, load,
+    summarized_in_log,
 };
 
 /// A running writer on a fresh store, started.
@@ -79,10 +80,10 @@ fn a_fork_copies_the_log_up_to_a_turn_boundary_and_goes_on_by_itself() {
     assert_eq!(read.agents.len(), 5);
 }
 
-/// A fork made after a compaction undoes it: the copy holds the records
-/// that made the summary, with their stamps.
+/// A fork made after a compaction holds what it replaced: the copy has
+/// the records that made the summary, with their stamps.
 #[test]
-fn a_fork_made_after_a_compaction_can_undo_it() {
+fn a_fork_made_after_a_compaction_holds_what_it_replaced() {
     let (store, writer) = writer();
     let mut main = Conversation::new();
     let turns = [
@@ -92,23 +93,26 @@ fn a_fork_made_after_a_compaction_can_undo_it() {
         Message::assistant("two."),
     ];
     say(&writer, "main", &mut main, &turns);
-    let kept = main.id(2);
+    let read = main.messages().get(..2).unwrap_or_default().to_vec();
     let state = SummaryState {
         summary: "Asked one.".to_owned(),
         ..SummaryState::default()
     };
-    assert!(apply_summary(&mut main, kept, &state).is_some());
+    assert!(apply_summary(&mut main, &read, &state).is_some());
     writer.save("main", &mut main);
     say(&writer, "main", &mut main, &[Message::user("three?")]);
     say(&writer, "main", &mut main, &[Message::assistant("three.")]);
 
-    let mut copy = writer.fork_log("main", "fork", None).expect("forked");
+    let copy = writer.fork_log("main", "fork", None).expect("forked");
     assert_eq!(copy.conversation.messages(), main.messages());
-    let by = Author::plugin("test");
-    let undone = undo_summary(&mut copy.conversation, &*store, "fork", by);
-    assert!(undone.is_ok(), "{undone:?}");
-    let all = ["one?", "one.", "two?", "two.", "three?", "three."];
-    assert_eq!(copy.conversation.messages(), said(&all));
+    let found = summarized_in_log(&*store, "fork").expect("read");
+    let replaced = copy
+        .conversation
+        .id(0)
+        .and_then(|summary| found.get(&summary));
+    let replaced = replaced.map(|entries| entries.iter().map(|entry| entry.message.clone()));
+    let replaced: Option<Vec<_>> = replaced.map(Iterator::collect);
+    assert_eq!(replaced.as_deref(), Some(&*said(&["one?", "one."])));
     // The copy's history reads as the source's did, record for record.
     let copied = history(&*store, "fork").expect("history");
     let source = history(&*store, "main").expect("history");

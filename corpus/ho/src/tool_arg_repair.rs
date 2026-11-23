@@ -1,17 +1,14 @@
-//! Plugin corpus (held-out): H31: Repair broken tool-call arguments (spec
-//! `H31-tool-arg-repair.md`).
+//! Repairs broken tool-call arguments. A model's reply is reviewed before it is committed: each
+//! call whose arguments are no JSON object is read leniently (trailing commas, single quotes,
+//! unquoted keys, raw newlines and tabs in strings, a missing final bracket, Python's literals, an
+//! object sent as a string), and each value is fitted to the tool's schema where that is
+//! unambiguous. The repaired reply is what the conversation keeps and what its calls run with. With
+//! `store = "original"` the reply is kept as the model sent it and each call is repaired as it is
+//! admitted instead.
 //!
-//! Cheap models break tool-call JSON. A model's reply is reviewed before
-//! it is committed: each call whose arguments are no JSON object is read
-//! leniently (trailing commas, single quotes, unquoted keys, raw newlines
-//! and tabs in strings, a missing final bracket, Python's literals, an
-//! object sent as a string), and each value is fitted to the tool's schema
-//! where that is unambiguous. The repaired reply is what the conversation
-//! keeps and what its calls run with. With `store = "original"` the reply
-//! is kept as the model sent it and each call is repaired as it is
-//! admitted instead. A call beyond repair gets the usual error plus a hint
-//! of the arguments the tool takes. `/repairs` counts the repairs per model
-//! and kind; the before and after of each go to the debug log.
+//! A call beyond repair gets the usual error plus a hint of the arguments the tool takes.
+//! `/repairs` counts the repairs per model and kind; the before and after of each go to the debug
+//! log.
 
 mod repair;
 
@@ -70,7 +67,10 @@ impl Plugin for ToolArgRepairPlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<ArgRepairSettings>("tool_arg_repair")
             .init_resource::<Repairs>()
-            .configure_sets(AgentPass, ArgRepairSystems::Reply.in_set(Stage::Review))
+            .configure_sets(
+                AgentPass,
+                ArgRepairSystems::Reply.in_set(ReviewSystems::Edit),
+            )
             .configure_sets(
                 AgentPass,
                 ArgRepairSystems::Call.in_set(PrepareSystems::Input),

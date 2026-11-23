@@ -1,6 +1,7 @@
-//! Copilot's dialect of the OpenAI wires. Completion selects the
-//! Responses route for Codex model identifiers and Chat Completions
-//! otherwise; every request carries the editor envelope. Credentials must be
+//! Copilot's dialect of the OpenAI wires. Completion takes the route the
+//! model catalog lists for the model, else the Responses route for Codex
+//! model identifiers and Chat Completions otherwise; every request carries
+//! the editor envelope. Credentials must be
 //! exchanged before encoding (see [`auth`](super::auth)).
 //!
 //! ```no_run
@@ -15,11 +16,15 @@
 //! ```
 
 use crate::completion::CompletionRequest;
+use crate::json_utils::Lenient;
+use crate::model::{ModelInfo, ModelList};
+use crate::providers::internal::credential_header;
 use crate::providers::openai::responses_api::SystemInstructionsPlacement;
 use crate::providers::openai::wire::{
     Dialect, DialectHooks, EmbeddingQuirks, OpenAIConfig, Quirks, ResponsesQuirks, Route,
 };
 use crate::wire::Body;
+use serde_json::Value;
 
 use super::PROVIDER_NAME;
 
@@ -27,7 +32,8 @@ use super::PROVIDER_NAME;
 /// OpenAI's wire on both routes, header included.
 pub(super) const REQUEST_ID_HEADER: Option<&str> = Some("x-request-id");
 
-/// Copilot dialect with model-based routing and editor-identity headers.
+/// Copilot dialect with catalog- and model-based routing and editor-identity
+/// headers.
 /// Responses requests place system messages in `input`. Verification uses
 /// token exchange rather than a dedicated endpoint.
 pub const DIALECT: Dialect = Dialect {
@@ -42,6 +48,9 @@ pub const DIALECT: Dialect = Dialect {
         // Copilot keeps no files, so no file id resolves there.
         accepts_file_ids: false,
         short_lived_key: true,
+        // Copilot serves some models only on `/responses`, and the catalog
+        // says which.
+        routes_by_catalog: true,
         embedding: EmbeddingQuirks {
             requires_usage: false,
             ..EmbeddingQuirks::openai()
@@ -74,7 +83,32 @@ static HOOKS: DialectHooks = DialectHooks {
     modality_envelope: Some(|provider, request| {
         stamp(request, provider.api_key.expose(), "user", false)
     }),
+    model_listing: Some(catalogue),
 };
+
+/// The `GET /models` catalogue's `data`, each entry naming its id, its name,
+/// its vendor, its modality under `capabilities.type` and its tool-call
+/// support under `capabilities.supports.tool_calls`. The whole catalogue
+/// comes in one reply.
+fn catalogue(event: Value) -> ModelList {
+    let text =
+        |entry: &Value, pointer: &str| entry.at(pointer).and_then(Value::as_str).map(str::to_owned);
+    let models = event
+        .arr("data")
+        .iter()
+        .filter_map(|entry| {
+            let mut model = ModelInfo::from_id(entry.str("id")?);
+            model.name = text(entry, "/name");
+            model.owned_by = text(entry, "/vendor");
+            model.r#type = text(entry, "/capabilities/type");
+            model.supports_tool_calls = entry
+                .at("/capabilities/supports/tool_calls")
+                .and_then(Value::as_bool);
+            Some(model)
+        })
+        .collect();
+    ModelList::new(models)
+}
 
 /// The editor envelope of a completion request: the initiator and vision
 /// flag follow the request's history.
@@ -91,12 +125,17 @@ fn completion_envelope(
         if let Some(headers) = builder.headers_mut() {
             headers.remove(name);
         }
-        builder = builder.header(name, value);
+        builder = if name == http::header::AUTHORIZATION {
+            credential_header(builder, name, &value)
+        } else {
+            builder.header(name, value)
+        };
     }
     builder
 }
 
-/// Return whether `model` contains `codex`, case-insensitively, selecting `/responses`.
+/// Return whether `model` contains `codex`, case-insensitively, selecting
+/// `/responses` for a model the catalog does not route.
 pub fn routes_through_responses(model: &str) -> bool {
     model.to_ascii_lowercase().contains("codex")
 }
@@ -114,10 +153,10 @@ pub(super) fn stamp(
 ) -> Result<(), http::Error> {
     let map = request.headers_mut();
     for (name, value) in super::default_headers(api_key, initiator, has_vision) {
-        map.insert(
-            http::HeaderName::from_bytes(name.as_bytes())?,
-            http::HeaderValue::from_str(&value)?,
-        );
+        let name = http::HeaderName::from_bytes(name.as_bytes())?;
+        let mut value = http::HeaderValue::from_str(&value)?;
+        value.set_sensitive(name == http::header::AUTHORIZATION);
+        map.insert(name, value);
     }
     Ok(())
 }

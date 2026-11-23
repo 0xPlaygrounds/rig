@@ -1,29 +1,25 @@
-//! Plugin corpus: 17. Conversation bookmarks (held-out spec `17-bookmarks.md`).
+//! Conversation bookmarks. `/bookmark [label]` marks the latest message of the agent the line was
+//! typed for, labelled with its first words when no label is given; `/bookmark rm <label>` takes
+//! one away, and `/bookmarks` lists them in a picker, where choosing one scrolls the terminal view
+//! to the message and selects it.
 //!
-//! `/bookmark [label]` marks the latest message of the agent the line was
-//! typed for, labelled with its first words when no label is given;
-//! `/bookmark rm <label>` takes one away, and `/bookmarks` lists them in a
-//! picker, where choosing one scrolls the terminal view to the message and
-//! selects it.
-//!
-//! A bookmark is a saved aside of kind [`KIND`] after its message: it is
-//! saved and restored with the conversation, never reaches a model, and is
-//! drawn as the marker. A condensing leaves the aside in place; opening
-//! it reads the agent's log as it was just before the splice that took
-//! the message out (`rig_memory::as_of`) and shows that in a transcript
-//! pane over the screen, scrolled to the message.
+//! A bookmark is a saved aside of kind [`KIND`] after its message: it is saved and restored with
+//! the conversation, never reaches a model, and is drawn as the marker. A condensing leaves the
+//! aside in place. Opening it then shows the agent's log as it was just before the message was
+//! taken out, in a transcript pane over the screen, scrolled to the message.
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::{Change, Conversation as Saved};
 use rig_harness::rig_core::message::{Message, UserContent};
 use rig_harness::rig_ecs::session_log::SessionStore;
 use rig_harness::rig_memory::{LogRecord, SessionError, as_of, history};
+use rig_harness::rig_tools::ago;
 use rig_tui::crossterm::event::KeyCode;
 use rig_tui::ratatui::layout::Constraint;
 use rig_tui::ratatui::style::Style;
 use rig_tui::ratatui::text::Line;
 use rig_tui::{
-    AsideView, ItemRow, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope, MainPane, PaneKeys,
+    AsideRender, ItemRow, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope, MainPane, PaneKeys,
     Placement, RenderBatch, RenderSystems, ScrollTo, ShowAgent, TranscriptItem, TranscriptPane,
     TranscriptRender, TranscriptSource, TranscriptView, TuiPanel,
 };
@@ -52,9 +48,7 @@ pub struct Bookmark {
 impl Bookmark {
     /// The bookmark `aside` holds, if it holds one.
     pub fn of(aside: &Aside) -> Option<Self> {
-        (aside.kind == KIND)
-            .then(|| serde_json::from_value(aside.value.clone()).ok())
-            .flatten()
+        aside.read(KIND)
     }
 }
 
@@ -85,13 +79,13 @@ struct HistoryPane;
 /// Draws the bookmarks' asides.
 fn draw(mut batch: ResMut<RenderBatch>) {
     for (aside, output) in batch.asides_mut(KIND) {
-        output.lines = marker(&aside.view());
+        output.lines = marker(aside).into_iter().map(Into::into).collect();
     }
 }
 
 /// The marker's look: a line naming the bookmark.
-fn marker(view: &AsideView<'_>) -> Vec<Line<'static>> {
-    let label = Bookmark::of(view.aside).map(|bookmark| bookmark.label);
+fn marker(view: &AsideRender) -> Vec<Line<'static>> {
+    let label = Bookmark::of(&view.aside).map(|bookmark| bookmark.label);
     let label = label.unwrap_or_default();
     vec![Line::styled(
         format!("◆ bookmark: {label}"),
@@ -121,10 +115,7 @@ fn text_of(message: &Message) -> String {
         Message::System { content } => content.clone(),
         Message::User { content } => content
             .iter()
-            .filter_map(|item| match item {
-                UserContent::Text(text) => Some(text.text.as_str()),
-                _ => None,
-            })
+            .filter_map(UserContent::as_text)
             .collect::<Vec<_>>()
             .join("\n"),
         Message::Assistant(reply) => reply.text(),
@@ -204,16 +195,6 @@ fn bookmark(
     notices.write(Notice::info(args.agent, format!("Bookmarked `{label}`.")));
 }
 
-/// How long ago, roughly.
-fn age(elapsed_ms: u64) -> String {
-    match elapsed_ms / 1000 {
-        0..60 => "just now".to_owned(),
-        seconds @ 60..3600 => format!("{}m ago", seconds / 60),
-        seconds @ 3600..86_400 => format!("{}h ago", seconds / 3600),
-        seconds => format!("{}d ago", seconds / 86_400),
-    }
-}
-
 /// `/bookmarks`: a picker of every bookmark, with when it was made, the
 /// agent and the first line of its message.
 fn list(
@@ -236,14 +217,11 @@ fn list(
         let name = agents.get(*agent).map_or("", |(_, _, id, name)| {
             name.map_or(id.0.as_str(), Name::as_str)
         });
-        let when = age(now.saturating_sub(bookmark.at_ms));
-        picker.items.push(PickItem {
-            label: bookmark.label.clone(),
-            command: String::new(),
-            detail: Some(format!("{when} · {name} · {}", bookmark.first_line)),
-            more: None,
-            checked: false,
-        });
+        let when = ago(Duration::from_millis(now.saturating_sub(bookmark.at_ms)));
+        let detail = format!("{when} · {name} · {}", bookmark.first_line);
+        picker
+            .items
+            .push(PickItem::new(bookmark.label.clone(), "").detail(detail));
     }
     let choices = bookmarks.iter().map(|(agent, id, ..)| (*agent, *id));
     commands

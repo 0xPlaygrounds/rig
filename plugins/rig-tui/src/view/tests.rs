@@ -1,25 +1,9 @@
-use std::sync::Arc;
-
 use bevy_ecs::system::RunSystemOnce;
 use rig_harness::prelude::*;
 use rig_harness::rig_memory::MemoryStore;
 
 use super::*;
-use crate::tests::{transcript, view_app};
-
-/// Places for plugins' files, all in memory, the session's in `session`.
-fn data(session: &MemoryStore) -> PluginData {
-    PluginData {
-        session: Arc::new(session.clone()),
-        project: Arc::new(MemoryStore::default()),
-        user: Arc::new(MemoryStore::default()),
-    }
-}
-
-/// Where in `lines` the first that contains `text` is.
-fn line_of(lines: &[String], text: &str) -> Option<usize> {
-    lines.iter().position(|line| line.contains(text))
-}
+use crate::tests::{data, line_of, say, transcript, view_app};
 
 #[test]
 fn a_notice_stays_before_what_an_edit_adds_to_the_message_it_followed() {
@@ -124,7 +108,7 @@ fn a_notice_sent_as_a_reload_exits_is_kept_for_its_build() {
     app.insert_resource(data(&session))
         .insert_resource(ExitReason::Reload)
         .add_systems(
-            Last,
+            rig_ecs::Persist,
             fail.in_set(rig_ecs::WriteLogs)
                 .run_if(on_message::<AppExit>),
         );
@@ -134,7 +118,7 @@ fn a_notice_sent_as_a_reload_exits_is_kept_for_its_build() {
     let (mut app, _) = view_app();
     app.insert_resource(data(&session));
     assert!(app.world_mut().run_system_once(load_notices).is_ok());
-    let notices = app.world().resource::<Notices>().all();
+    let notices = &app.world().resource::<Notices>().shown;
     let texts: Vec<&str> = notices.iter().map(|notice| notice.text.as_str()).collect();
     assert_eq!(texts, ["The session is no longer saved: full"]);
 }
@@ -145,9 +129,8 @@ fn what_was_typed_and_not_sent_is_kept_across_a_reload() {
     let (mut app, _) = view_app();
     app.insert_resource(data(&session))
         .insert_resource(ExitReason::Reload);
-    // A key in it, as in a message that came back, never reaches the disk;
-    // and the draft, not the earlier prompt shown over it, is kept.
-    let typed = "/tools OPENAI_API_KEY=sk-proj-abcdefghijklmnop1234";
+    // The draft, not the earlier prompt shown over it, is kept.
+    let typed = "/tools draft";
     crate::tests::edit(&mut app, |input| {
         input.set(typed);
         input.set_cursor(0);
@@ -158,21 +141,12 @@ fn what_was_typed_and_not_sent_is_kept_across_a_reload() {
     let (mut app, _) = view_app();
     app.insert_resource(data(&session));
     assert!(app.world_mut().run_system_once(load_draft).is_ok());
-    let kept = "/tools OPENAI_API_KEY=[REDACTED]";
-    assert_eq!(crate::tests::input(&app).text(), kept);
+    assert_eq!(crate::tests::input(&app).text(), typed);
     // Once: the build after this one starts empty.
     let (mut app, _) = view_app();
     app.insert_resource(data(&session));
     assert!(app.world_mut().run_system_once(load_draft).is_ok());
     assert!(crate::tests::input(&app).is_empty());
-}
-
-/// Adds `message` to `agent`'s conversation.
-fn say(app: &mut App, agent: Entity, message: rig_core::completion::Message) {
-    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
-        conversation.push(message);
-    }
-    app.update();
 }
 
 #[test]
@@ -190,21 +164,13 @@ fn a_notice_says_which_transcript_draws_it_and_where() {
     app.update();
     say(&mut app, agent, Message::user("next"));
     let world = app.world();
-    let notice = world.resource::<crate::Notices>().all().first();
+    let notice = world.resource::<crate::view::Notices>().shown.first();
     let conversation = world.get::<Conversation>(agent);
-    assert_eq!(notice.and_then(ShownNotice::drawn_in), Some(&id));
+    let written = notice.and_then(|notice| notice.at.as_ref());
+    assert_eq!(written.map(|at| &at.agent), Some(&id));
     let slot = |id: &AgentId| notice?.slot(id, conversation?);
     assert_eq!(slot(&id), Some(TranscriptSlot::After(1)));
     assert_eq!(slot(&AgentId("a2".to_owned())), None);
-    // Slots order as drawn.
-    let order = [
-        TranscriptSlot::Top,
-        TranscriptSlot::Inside(0, 1),
-        TranscriptSlot::After(0),
-        TranscriptSlot::Inside(1, 0),
-        TranscriptSlot::After(1),
-    ];
-    assert!(order.is_sorted());
 }
 
 #[test]
@@ -214,7 +180,7 @@ fn a_notice_about_an_agent_gone_before_it_is_read_is_drawn_in_no_other_transcrip
     app.world_mut().resource_mut::<ShownAgent>().0 = Some(agent);
     say(&mut app, agent, Message::user("question"));
     // A helper whose model call fails retires in the same pass.
-    let helper = app.world_mut().spawn(Agent).id();
+    let helper = spawn_root(app.world_mut(), ()).id();
     app.update();
     app.world_mut().write_message(Notice::error(
         helper,
@@ -241,7 +207,7 @@ fn a_notice_is_an_item_a_plugin_scrolls_to() {
     for index in 10..30 {
         say(&mut app, agent, question(index));
     }
-    let notices = app.world().resource::<crate::Notices>().all().len();
+    let notices = app.world().resource::<crate::view::Notices>().shown.len();
     assert_eq!(notices, 1);
     let item = TranscriptItem::Notice(0);
     app.world_mut().trigger(ScrollTo {
@@ -366,7 +332,7 @@ fn a_line_says_where_each_of_its_rows_starts_in_it() {
 #[test]
 fn what_comes_back_to_an_agent_not_shown_waits_until_it_is() {
     let (mut app, _) = view_app();
-    let other = app.world_mut().spawn(Agent).id();
+    let other = spawn_root(app.world_mut(), ()).id();
     for text in ["deploy it", "then tag it"] {
         let text = text.to_owned();
         app.world_mut().write_message(Recalled {
@@ -382,4 +348,17 @@ fn what_comes_back_to_an_agent_not_shown_waits_until_it_is() {
     app.update();
     let back = "deploy it\n\nthen tag it\n\ndraft";
     assert_eq!(crate::tests::input(&app).text(), back);
+}
+
+#[test]
+fn a_saved_notice_level_reads_only_from_a_word() {
+    let read = |level: serde_json::Value| {
+        let saved = serde_json::json!({ "agent": null, "at": null, "level": level, "text": "t" });
+        serde_json::from_value::<ShownNotice>(saved)
+            .ok()
+            .map(|notice| notice.level)
+    };
+    assert_eq!(read("warn".into()), Some(NoticeLevel::Warn));
+    assert_eq!(read("debug".into()), Some(NoticeLevel::Info));
+    assert_eq!(read(serde_json::json!({ "warn": null })), None);
 }

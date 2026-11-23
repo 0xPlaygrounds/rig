@@ -3,12 +3,13 @@
 use bevy_ecs::query::QueryData;
 use bevy_ecs::system::SystemParam;
 use rig_core::completion::Message;
+use rig_core::conversation::TurnEnd;
 use rig_core::tool::feedback::not_finished;
 
-use super::tools::{PEER_ROLE, SUBAGENT_ROLE};
+use super::tools::{MESSAGE, PEER_ROLE, SUBAGENT_ROLE, WAIT};
 use super::{
-    AwaitedBy, Awaits, Environment, Lifecycle, ORIGIN, OpenRequests, Peers, Report, Request,
-    Subtask, answered,
+    AwaitedBy, Awaiting, Awaits, Environment, Lifecycle, ORIGIN, Peers, Report, Request, Subtask,
+    answered,
 };
 use rig_harness::prelude::*;
 
@@ -18,16 +19,21 @@ const NO_ANSWER: &str = "No answer will come for this request; send a `message` 
 pub(super) fn add(app: &mut App) {
     app.add_observer(name_subagent)
         .add_observer(brief_subagent)
-        .add_observer(brief_peer)
+        .add_observer(|added: On<Add<Peers>>, mut commands: Commands| {
+            brief_peer(added.entity, &mut commands);
+        })
+        .add_observer(|set: On<Insert<ToolAccess>>, mut commands: Commands| {
+            brief_peer(set.entity, &mut commands);
+        })
         .add_observer(brief_environment)
         .add_observer(work_on_turn_start)
         .add_observer(step_on_turn_end)
         .add_observer(report_when_finished)
+        .add_observer(settle_report::<Started>)
+        .add_observer(settle_report::<Outcome>)
         .add_observer(end_waits)
-        .add_observer(note_stops)
-        .init_resource::<Stopping>()
-        .add_systems(Last, forget_stops)
-        .add_observer(end_waits_on_turn_end);
+        .add_observer(end_waits_on_turn_end)
+        .add_systems(PostStartup, report_after_restore);
 }
 
 /// An agent as the subagent tools see it.
@@ -45,12 +51,11 @@ pub(super) struct AgentData {
     effect_parent: Option<&'static EffectParent>,
 }
 
-/// The agents, their open requests and the open `wait` calls: who waits on
-/// whom, and the reports.
+/// The agents, the reports they wait for and the open `wait` calls.
 #[derive(SystemParam)]
 pub(super) struct Agents<'w, 's> {
     pub(super) agents: Query<'w, 's, AgentData>,
-    pub(super) open: Query<'w, 's, &'static mut OpenRequests>,
+    awaiting: Query<'w, 's, (Entity, &'static Awaiting)>,
     /// The messages to each agent its model has not read yet: accepted
     /// (`true`), or on their way.
     pub(super) inboxes:
@@ -61,6 +66,8 @@ pub(super) struct Agents<'w, 's> {
     /// The open tool calls' answers.
     calls: Query<'w, 's, &'static mut Decision, ToolCalls>,
     wake: Res<'w, Wake>,
+    /// Where each reply call is, which names its request.
+    pub(super) places: Query<'w, 's, &'static InReply>,
     pub(super) commands: Commands<'w, 's>,
 }
 
@@ -105,18 +112,37 @@ impl Agents<'_, '_> {
             .collect()
     }
 
+    /// The requests `agent` awaits, oldest first, but those a report on its way answers.
+    fn open(&self, agent: Entity) -> Vec<Request> {
+        let Ok((_, awaiting)) = self.awaiting.get(agent) else {
+            return Vec::new();
+        };
+        let mut open = awaiting.clone();
+        for (message, ..) in self.inboxes.iter().filter(|(_, to, _)| to.0 == agent) {
+            open.settle(&message.author);
+        }
+        open.0
+    }
+
+    /// The agents awaiting a report from `owing`, each with its last request.
+    pub(super) fn askers(&self, owing: Entity) -> Vec<(Entity, RequestId)> {
+        let Ok(id) = self.agents.get(owing).map(|agent| agent.id) else {
+            return Vec::new();
+        };
+        let askers = self.awaiting.iter().filter_map(|(asker, _)| {
+            let open = self.open(asker);
+            let last = open.into_iter().rev().find(|request| request.to == *id)?;
+            Some((asker, last.id))
+        });
+        askers.collect()
+    }
+
     /// The agents `agent` waits on: with `owing`, those that owe it a
     /// report, as it waits for them once its turn ends; then those its
     /// open `wait` calls wait for.
     fn awaited(&self, agent: Entity, owing: bool) -> Vec<Entity> {
-        let Ok(id) = self.agents.get(agent).map(|agent| agent.id) else {
-            return Vec::new();
-        };
-        let asked = |open: &OpenRequests| open.0.iter().any(|request| request.asker == *id);
-        let agents = self.agents.iter().map(|agent| agent.entity);
-        let mut awaited: Vec<Entity> = agents
-            .filter(|&other| owing && self.open.get(other).is_ok_and(asked))
-            .collect();
+        let open = if owing { self.open(agent) } else { Vec::new() };
+        let mut awaited: Vec<Entity> = open.iter().filter_map(|r| self.find(&r.to)).collect();
         let calls = self
             .waits
             .iter()
@@ -151,30 +177,25 @@ impl Agents<'_, '_> {
         inboxes.any(|(sent, at, _)| at.0 == to && sent.author.from.as_deref() == from)
     }
 
-    /// Reports `text` from `agent` on `requests`: one message per asker, in
-    /// the order of each asker's first request, naming its last one, and
-    /// marked [`Report`], with the asker's next model call. A `note`, the
-    /// report of a stopped agent, is a note from this plugin that starts no
-    /// turn.
+    /// Reports `text` from `agent` to each of `askers`: one message naming
+    /// the last request the asker waits on, marked [`Report`], with the
+    /// asker's next model call. A `note`, the report of a stopped agent, is
+    /// a note from this plugin that starts no turn.
     pub(super) fn report(
         &mut self,
         agent: Entity,
-        mut requests: Vec<Request>,
+        askers: Vec<(Entity, RequestId)>,
         text: &str,
         note: bool,
     ) {
         let from = self.author(agent).unwrap_or_default();
-        while let Some(asker) = requests.first().map(|first| first.asker.clone()) {
-            let asked: Vec<Request> = requests.extract_if(.., |r| r.asker == asker).collect();
-            let (Some(last), Some(asker)) = (asked.last(), self.find(&asker)) else {
-                continue;
-            };
+        for (asker, last) in askers {
             let mode = match note {
                 true => DeliveryMode::Inform,
                 false => DeliveryMode::Steer,
             };
             let mut author = from.clone();
-            author.request = Some(last.id.clone());
+            author.request = Some(last);
             if note {
                 author.kind = AuthorKind::Plugin(ORIGIN.to_owned());
             }
@@ -209,10 +230,38 @@ fn brief_subagent(added: On<Add<Subtask>>, mut commands: Commands) {
     commands.spawn(role(added.entity, 0, "subagent_role", SUBAGENT_ROLE));
 }
 
-/// Tells a subagent with [`Peers`] about them, as [`brief_subagent`] does.
-fn brief_peer(added: On<Add<Peers>>, mut commands: Commands) {
-    commands.spawn(role(added.entity, 1, "peer_role", PEER_ROLE));
+/// Tells `agent`, a subagent with [`Peers`], about them, as
+/// [`brief_subagent`] does, while it has `message` and `wait` to reach them:
+/// again whenever its access is set, as when a restore inserts the saved one
+/// after its other components, or the kernel keeps it within its parent's.
+/// Decided as the commands apply, so two calls in one flush give one role.
+fn brief_peer(agent: Entity, commands: &mut Commands) {
+    commands.queue(move |world: &mut World| {
+        let reaches = world
+            .get::<ToolAccess>(agent)
+            .filter(|_| world.get::<Peers>(agent).is_some())
+            .is_some_and(|access| access.allows(MESSAGE) && access.allows(WAIT));
+        let mut roles = world.query::<(Entity, &Name, &SectionOf)>();
+        let shown: Vec<Entity> = (roles.iter(world))
+            .filter(|(_, name, of)| of.0 == agent && name.as_str() == PEER_TAG)
+            .map(|(section, ..)| section)
+            .collect();
+        match (reaches, shown.is_empty()) {
+            (true, true) => {
+                world.spawn(role(agent, 1, PEER_TAG, PEER_ROLE));
+            }
+            (false, false) => {
+                for section in shown {
+                    world.despawn(section);
+                }
+            }
+            _ => {}
+        }
+    });
 }
+
+/// The tag of the peer role's prompt section.
+const PEER_TAG: &str = "peer_role";
 
 /// Tells a subagent its [`Environment`] in a prompt section of its own,
 /// after the app's facts about the machine.
@@ -247,43 +296,19 @@ fn work_on_turn_start(
     }
 }
 
-/// The agents a [`StopTurn`] stopped this frame: the agent it names and
-/// every agent below it, as the kernel stops them.
-#[derive(Resource, Default)]
-pub(super) struct Stopping(Vec<Entity>);
-
-/// Notes the agents a [`StopTurn`] stops, before their turns end.
-fn note_stops(stop: On<StopTurn>, spawned: Query<&Spawned>, mut stopping: ResMut<Stopping>) {
-    let below = spawned.iter_descendants::<Spawned>(stop.entity);
-    stopping.0.extend(std::iter::once(stop.entity).chain(below));
-}
-
-/// Forgets the agents stopped this frame, whose turns ended by now.
-fn forget_stops(mut stopping: ResMut<Stopping>) {
-    stopping.0.clear();
-}
-
-/// On a [`Lifecycle::Finished`] subagent whose turn a [`StopTurn`] stopped,
-/// of it or of an agent above it: its report is a note that starts no turn
-/// of the agent it goes to.
+/// On a [`Lifecycle::Finished`] subagent a stop reached, not one a plugin
+/// ended alone: its report is a note that starts no turn.
 #[derive(Component)]
 pub(super) struct StoppedEarly;
 
 /// A subagent whose turn ended, and that has not started another, is
-/// [`Lifecycle::WaitingOn`] an agent that owes it a report, unless a
-/// [`StopTurn`], the app's exit or a restart stopped it, else
-/// [`Lifecycle::Finished`] with its answer, or why there is none and what
-/// it said last. A stopped turn reports as rig-core's [`not_finished`] says
-/// a stopped call that may have partly run does: a turn a plugin stops,
-/// such as for a budget, reports `Stopped: <reason>. It may have partly
-/// run; …`, and one the user, the exit or a restart stopped is
-/// [`StoppedEarly`].
+/// [`Lifecycle::WaitingOn`] an agent that owes it a report, else
+/// [`Lifecycle::Finished`] with what it [`finished`] with. One a stop
+/// reached is [`StoppedEarly`] and waits on no one.
 fn step_on_turn_end(
     settled: On<Add<Settled>>,
     turns: Query<(&TurnOutcome, &ForAgent, Has<Restored>)>,
     idle: Query<&Conversation, (With<Subtask>, Without<ActiveTurn>)>,
-    stopping: Res<Stopping>,
-    exiting: Option<Res<Exiting>>,
     mut agents: Agents,
 ) {
     let Ok((outcome, &ForAgent(agent), restored)) = turns.get(settled.entity) else {
@@ -292,31 +317,12 @@ fn step_on_turn_end(
     let Ok(conversation) = idle.get(agent) else {
         return;
     };
-    let said = last_words(conversation).map(|said| format!("\n\nIt had said: {said}\n\n"));
-    let said = said.unwrap_or_else(|| " ".to_owned());
-    let failed = |why: &str| format!("{why}{said}{NO_ANSWER}");
-    let stopped = |why: &str| failed(&not_finished(why, true, &Touches::Independent));
-    // A restart or a stop ends it for good: it waits on no one.
-    // A restored turn that ends stopped, by the kernel or a plugin, ended
-    // with the restart.
-    let restarted = matches!(outcome, TurnOutcome::Stopped(Some(why)) if why == RESTARTED);
-    let early = matches!(outcome, TurnOutcome::Stopped(_))
-        && (stopping.0.contains(&agent) || exiting.is_some() || restarted || restored);
+    // A restored turn that ends stopped ended with the restart.
+    let early = matches!(outcome, TurnOutcome::Stopped(stop)
+        if restored || !stop.alone());
     let step = match agents.awaited(agent, true).first().filter(|_| !early) {
         Some(&owing) => Lifecycle::WaitingOn(owing),
-        None => Lifecycle::Finished(match outcome {
-            TurnOutcome::Answered(message) => message
-                .final_answer()
-                .unwrap_or_else(|| failed("Failed: the subagent ended without a final message.")),
-            TurnOutcome::Failed(why) => failed(&format!("Failed: {why}")),
-            TurnOutcome::Stopped(None) => {
-                stopped("the user stopped the subagent before it answered")
-            }
-            TurnOutcome::Stopped(Some(why)) if why == RESTARTED => {
-                stopped("the session restarted before the subagent answered")
-            }
-            TurnOutcome::Stopped(Some(why)) => stopped(why),
-        }),
+        None => Lifecycle::Finished(finished(conversation).0),
     };
     let mut agent = agents.commands.entity(agent);
     match early {
@@ -326,9 +332,8 @@ fn step_on_turn_end(
 }
 
 /// Reports a [`Lifecycle::Finished`] agent's answer on every request it
-/// owes. An idle subagent that waited on a stopped one, its lifecycle
-/// [`Lifecycle::WaitingOn`] it or lost to a restart, is stopped with it:
-/// it reports so as a note too, and no turn of it starts.
+/// owes. An idle subagent waiting on a stopped one ([`waits_on`]) is
+/// stopped with it.
 fn report_when_finished(
     inserted: On<Insert<Lifecycle>>,
     early: Query<(), With<StoppedEarly>>,
@@ -340,18 +345,11 @@ fn report_when_finished(
         return;
     };
     let text = text.clone();
-    let requests = match agents.open.get_mut(agent) {
-        Ok(mut open) => std::mem::take(&mut open.0),
-        Err(_) => Vec::new(),
-    };
-    let mut waiting: Vec<Entity> = requests
-        .iter()
-        .filter_map(|request| agents.find(&request.asker))
+    let askers = agents.askers(agent);
+    let waiting: Vec<Entity> = (askers.iter().map(|&(asker, _)| asker))
         .filter(|&asker| note && waits_on(&agents, asker, agent))
         .collect();
-    waiting.sort_unstable();
-    waiting.dedup();
-    agents.report(agent, requests, &text, note);
+    agents.report(agent, askers, &text, note);
     let why = "the agent it waited on stopped before it answered";
     let stopped = format!(
         "{} {NO_ANSWER}",
@@ -397,16 +395,12 @@ fn end_waits_on_turn_end(
     ) else {
         return;
     };
-    let owed: Vec<AgentId> = match agents.open.get(agent) {
-        Ok(open) => open.0.iter().map(|request| request.asker.clone()).collect(),
-        Err(_) => Vec::new(),
-    };
+    let owed = agents.askers(agent);
     for call in by.iter() {
         let Some(waiter) = agents.waiter(call) else {
             continue;
         };
-        let waiter_id = agents.agents.get(waiter).map(|a| a.id.clone());
-        let reports = waiter_id.is_ok_and(|waiter| owed.contains(&waiter));
+        let reports = owed.iter().any(|&(asker, _)| asker == waiter);
         if reports || agents.on_its_way(waiter, &id) {
             continue;
         }
@@ -447,6 +441,93 @@ fn end_waits(accepted: On<Add<Started>>, mut agents: Agents) {
     }
 }
 
+/// Takes the requests a report answers off its addressee's [`Awaiting`] as
+/// it arrives in its inbox or conversation, or is taken over.
+fn settle_report<C: Component>(
+    arrived: On<Add<C>>,
+    messages: Query<(&Incoming, &ForAgent)>,
+    mut awaiting: Query<&mut Awaiting>,
+) {
+    if let Ok((message, &ForAgent(to))) = messages.get(arrived.entity)
+        && let Ok(mut awaiting) = awaiting.get_mut(to)
+    {
+        awaiting.settle(&message.author);
+    }
+}
+
+/// After a restore, takes off each agent's [`Awaiting`] the requests whose
+/// report is in its conversation (those in its inbox settled as they came
+/// back) or whose agent is gone. An idle subagent that owes a report and
+/// waits on no one reports again.
+fn report_after_restore(
+    mut agents: Query<(&AgentId, &Conversation, Option<&mut Awaiting>)>,
+    idle: Query<(Entity, &AgentId, &Conversation), (With<Subtask>, Without<ActiveTurn>)>,
+    mut commands: Commands,
+) {
+    let ids: Vec<AgentId> = agents.iter().map(|(id, ..)| id.clone()).collect();
+    let mut owing = Vec::new();
+    let mut waits = Vec::new();
+    for (id, conversation, awaiting) in &mut agents {
+        let Some(mut awaiting) = awaiting else {
+            continue;
+        };
+        let mut open = awaiting.clone();
+        for author in conversation.entries().filter_map(|entry| entry.author) {
+            open.settle(author);
+        }
+        open.0.retain(|request| ids.contains(&request.to));
+        if open.0 != awaiting.0 {
+            *awaiting = open;
+        }
+        owing.extend(awaiting.0.iter().map(|request| request.to.clone()));
+        if !awaiting.0.is_empty() {
+            waits.push(id.clone());
+        }
+    }
+    for (agent, id, conversation) in &idle {
+        if owing.contains(id) && !waits.contains(id) {
+            let (text, stopped) = finished(conversation);
+            let mut agent = commands.entity(agent);
+            agent.insert_if(StoppedEarly, || stopped);
+            agent.insert(Lifecycle::Finished(text));
+        }
+    }
+}
+
+/// What a subagent whose last turn ended as `conversation` reports: its
+/// answer, or why there is none and what it said last, and whether a stop
+/// ended the turn, worded as rig-core's [`not_finished`].
+fn finished(conversation: &Conversation) -> (String, bool) {
+    let said = last_words(conversation).map(|said| format!("\n\nIt had said: {said}\n\n"));
+    let said = said.unwrap_or_else(|| " ".to_owned());
+    let failed = |why: &str| format!("{why}{said}{NO_ANSWER}");
+    let end = conversation
+        .turns()
+        .next_back()
+        .and_then(|(_, turn)| turn.end);
+    let by = match end {
+        Some(TurnEnd::Answered { answer }) => {
+            let at = answer.and_then(|id| conversation.index_of(id));
+            let answer = at.and_then(|at| conversation.messages().get(at)?.final_answer());
+            let none = "Failed: the subagent ended without a final message.";
+            return (answer.unwrap_or_else(|| failed(none)), false);
+        }
+        Some(TurnEnd::Failed { why }) => return (failed(&format!("Failed: {why}")), false),
+        Some(TurnEnd::Stopped { by, .. }) => by,
+        None => Some(StopCause::Restarted),
+    };
+    let why = match by {
+        Some(StopCause::User) => "the user stopped the subagent before it answered".to_owned(),
+        Some(StopCause::Restarted) => {
+            "the session restarted before the subagent answered".to_owned()
+        }
+        Some(cause) => cause.to_string(),
+        None => "the subagent was stopped before it answered".to_owned(),
+    };
+    let why = not_finished(&why, true, &Touches::Independent);
+    (failed(&why), true)
+}
+
 /// What the model said last in the conversation's last request: the text
 /// of its last message with text since the last message that was not a
 /// tool's result.
@@ -454,11 +535,11 @@ fn last_words(conversation: &Conversation) -> Option<String> {
     for message in conversation.messages().iter().rev() {
         match &**message {
             Message::Assistant(reply) => {
-                let parts = reply.content.iter().filter_map(|part| match part {
-                    AssistantContent::Text(text) => Some(text.text.trim()),
-                    _ => None,
-                });
-                let text: Vec<&str> = parts.filter(|text| !text.is_empty()).collect();
+                let parts = reply.content.iter().filter_map(AssistantContent::as_text);
+                let text: Vec<&str> = parts
+                    .map(str::trim)
+                    .filter(|text| !text.is_empty())
+                    .collect();
                 if !text.is_empty() {
                     return Some(text.join("\n\n"));
                 }

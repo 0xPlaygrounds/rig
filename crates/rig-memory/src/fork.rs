@@ -1,8 +1,9 @@
 //! Forking an agent's log: [`Writer::fork_log`](crate::Writer::fork_log)
 //! starts a log as a copy of another, up to a turn boundary ([`turn_cut`]).
-//! The copied records keep their stamps, so [`as_of`](crate::as_of) and
-//! [`history`](crate::history) read the copy as they read its source, and a
-//! compaction made before the cut can be undone in the copy.
+//! The copied records keep their stamps, so [`as_of`](crate::as_of),
+//! [`history`](crate::history) and
+//! [`summarized_in_log`](crate::summarized_in_log) read the copy as they
+//! read its source.
 
 use std::io;
 
@@ -41,11 +42,7 @@ pub(crate) fn turn_cut(
         return Ok(0);
     };
     read_header(name, first)?;
-    let refuse = |line, why| SessionError::Record {
-        log: name.to_owned(),
-        line,
-        why,
-    };
+    let refuse = |line, why| SessionError::record(name, line, why);
     let mut conversation = Conversation::new();
     let mut held = false;
     for (line, end, bytes) in records {

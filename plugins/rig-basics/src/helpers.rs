@@ -1,38 +1,57 @@
 //! The `helper` tool: the model hands tasks to other rig agents, each a
 //! one-shot `rig -p --json` child process, and gets back each one's final
-//! answer, or why it failed. `tasks` run side by side ([`AT_ONCE`] at a
-//! time), a `chain` runs in order with `{previous}` standing for the answer
-//! before, and `task` is one.
+//! answer, or why it failed. `tasks` run side by side, `[helpers] at_once`
+//! of them at a time (4 by default) while the rest wait their turn, a
+//! `chain` runs in order with `{previous}` standing for the answer before,
+//! and `task` is one.
 //!
 //! A child works in its parent's directory, or one inside it, on its
 //! parent's model, with its parent's tools or fewer (never `helper` unless
 //! named), of those registered as the parent started: a fresh rig of the
 //! same build has those, and refuses a `--tools` name it has not. A child
 //! built from a plugin list changed since the parent started may lack one:
-//! its refusal names it, and the model can name the tools it needs. It runs [`HelperCommand`] through [`Processes`], with an empty
-//! stdin. Past its timeout or dead, it fails its task; stopping the turn
-//! kills every child, so none outlives the call.
+//! its refusal names it, and the model can name the tools it needs. It
+//! runs [`HelperCommand`] through [`Processes`], with an empty stdin. Past
+//! the call's `timeout`, else `[helpers] timeout_secs` (600 s by default),
+//! or dead, it fails its task; stopping the turn stops every child, so none
+//! outlives the call: on unix, while the run goes on, each gets the time a
+//! launcher takes to end ([`STOP_WINDOW`]) before it is killed, so its own
+//! helpers are stopped in turn; as the run exits, the usual grace.
+//!
+//! What a child spends is the calling agent's, as purpose `helper`: each
+//! `usage` line it writes is recorded as a [`Spent`] as it arrives, and
+//! its own helpers' are among them. A child that is not on this protocol
+//! version, that ended before its `exit` line, one of whose `usage` lines
+//! did not read, whose `exit` line says its spend is not all known, or
+//! that failed to start in a way that may come after its process was
+//! made, counts in
+//! [`UnknownSpend`], and its result says so; one that never started, such
+//! as after its call was stopped, spent nothing. With a
+//! [`budget`](crate::budget), a child is started with what is left of it.
 
 use std::ffi::OsString;
+use std::num::{NonZeroU64, NonZeroUsize};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, PoisonError, Weak};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use rig_harness::harness_protocol;
+use rig_harness::harness_protocol::{self, STOP_WINDOW};
 use rig_harness::prelude::*;
-use rig_harness::rig_core::completion::UsageTotals;
+use rig_harness::rig_core::completion::{Usage, UsageTotals};
 use rig_harness::rig_core::tool::{ToolExecutionError, ToolOutput, ToolResult};
-use rig_tools::process::{Ended, KillOnDrop, OutputLine, Spawn};
+use rig_tools::process::{Ended, Launcher, OutputLine, Scope, Spawn};
 use rig_tools::workspace::{Local, Workspace};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::Value;
 
+use crate::budget::{Budget, HandedDown, hand_down};
+use crate::print::VERSION;
+use crate::telemetry::usage::{SessionUsage, Spent, UnknownSpend, UsagePlugin};
+
 /// The tool's name.
 pub const HELPER: &str = "helper";
-
-/// How many helpers run at once; a call takes at most twice as many.
-pub const AT_ONCE: usize = 4;
 
 /// The program a helper runs, before `-p --json …`: the launcher that
 /// started this agent, else `rig` on the `PATH`.
@@ -53,30 +72,67 @@ impl Default for HelperCommand {
     }
 }
 
-/// Adds the `helper` tool.
+/// Adds the `helper` tool, and [`UsagePlugin`] when it is missing.
 #[derive(Default)]
 pub struct HelpersPlugin;
 
+/// `[helpers]` in `settings.toml`: how long a helper may take when its call
+/// gives no `timeout`, and how many of a call's `tasks` run at once, the
+/// rest waiting their turn. 0 does not read for either.
+#[derive(Resource, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+struct HelperSettings {
+    /// Seconds, 600 by default.
+    #[serde(deserialize_with = "deadline_secs")]
+    timeout_secs: NonZeroU64,
+    /// Tasks at once, 4 by default.
+    at_once: NonZeroUsize,
+}
+
+impl Default for HelperSettings {
+    fn default() -> Self {
+        Self {
+            timeout_secs: NonZeroU64::new(600).unwrap_or(NonZeroU64::MIN),
+            at_once: NonZeroUsize::new(4).unwrap_or(NonZeroUsize::MIN),
+        }
+    }
+}
+
 impl Plugin for HelpersPlugin {
     fn build(&self, app: &mut App) {
+        let set = *app
+            .add_setting::<HelperSettings>("helpers")
+            .world()
+            .resource::<HelperSettings>();
         let description = format!(
             "Hand tasks to helpers: other rig agents that start fresh, without this \
-             conversation, so a task says all it needs. `tasks` run side by side ({AT_ONCE} \
-             at a time, {} at most), `chain` in order (`{{previous}}` in a task is the answer \
-             before it), `task` alone. The call returns once every helper finished, and you \
+             conversation, so a task says all it needs. `tasks` run side by side, {} at a \
+             time while the rest wait their turn, `chain` in order (`{{previous}}` in a task is \
+             the answer before it), `task` alone. Each may take {} s unless `timeout` says \
+             otherwise. The call returns once every helper finished, and you \
              wait until then: give work that should run alongside, such as a slow test, to a \
              helper of the same call. Each works in `dir` (default: yours) with your tools \
-             or the `tools` named; helpers in one directory see each other's edits, so give \
-             them separate files or directories (such as git worktrees). Helpers pay for \
-             independent parts and for slow work beside yours, not for edits you already \
-             know. You get back each one's final answer, or why it failed, its session and \
-             what it cost.",
-            2 * AT_ONCE
+             but `helper`, or the `tools` named; helpers in one directory see each other's \
+             edits, so give them separate files or directories (such as git worktrees). \
+             Helpers suit independent parts and slow work beside yours, not edits you \
+             already know. You get back each one's final answer, or why it failed, its \
+             session and what it cost, or that some of that is unknown.",
+            set.at_once, set.timeout_secs
         );
+        rig_harness::load::<UsagePlugin>(app, "rig-basics", "");
         app.init_resource::<HelperCommand>()
             .init_resource::<Processes>()
             .init_resource::<ProjectRoot>()
-            .add_open_tool(HELPER, &description, ToolOptions::default(), start);
+            .init_resource::<Reported>()
+            .add_open_tool(HELPER, &description, ToolOptions::default(), start)
+            .add_systems(AgentPass, record.in_set(Stage::Review))
+            .add_systems(Update, record.before(AgentLoop))
+            .add_systems(
+                Last,
+                record_at_exit
+                    .after(rig_ecs::StopTurnsOnExit)
+                    .run_if(on_message::<AppExit>),
+            );
     }
 
     /// Notes the tools every plugin registered by now, which a child has
@@ -89,6 +145,86 @@ impl Plugin for HelpersPlugin {
         let lendable = Lendable(names.collect());
         world.insert_resource(lendable);
     }
+}
+
+/// What children reported and is not yet recorded, sent from their
+/// threads, and how many have not settled what they spent: still running,
+/// or ended with some of it unknown, which is not recorded yet.
+#[derive(Resource)]
+struct Reported {
+    sender: async_channel::Sender<Heard>,
+    receiver: async_channel::Receiver<Heard>,
+    unsettled: Arc<AtomicU64>,
+}
+
+/// A child's report: a call's spend, or that it ended with all of its
+/// spend known, or some of it unknown.
+enum Heard {
+    Spent(Spent),
+    Known,
+    Unknown,
+}
+
+impl Default for Reported {
+    fn default() -> Self {
+        let (sender, receiver) = async_channel::unbounded();
+        Self {
+            sender,
+            receiver,
+            unsettled: Arc::default(),
+        }
+    }
+}
+
+/// Records what children reported: in the pass a call's result arrives,
+/// which comes after everything its children reported, so the spend is
+/// in before the next model call; and before the agent loop, for what came
+/// while no call ended, such as from a stopped call's children.
+fn record(reported: Res<Reported>, mut unknown: ResMut<UnknownSpend>, mut commands: Commands) {
+    let unknowns = drain(&reported, &mut commands);
+    if unknowns > 0 {
+        unknown.0 += unknowns;
+    }
+}
+
+/// On the exit, before the session is saved and the `exit` line written:
+/// records what came, such as from the turns the exit stopped, then counts
+/// each child that has not settled what it spent, which it would report
+/// after this run is gone, as spend unknown: each child once.
+fn record_at_exit(
+    reported: Res<Reported>,
+    mut unknown: ResMut<UnknownSpend>,
+    mut commands: Commands,
+) {
+    let unknowns = drain(&reported, &mut commands);
+    unknown.0 += unknowns + reported.unsettled.swap(0, Ordering::SeqCst);
+}
+
+/// Records each report that came: a spend, or how a child ended, which
+/// settles it; so at the exit a child whose end was not recorded yet,
+/// with the spend it reported before it, is counted as unknown. How many
+/// children ended with some of their spend unknown.
+fn drain(reported: &Reported, commands: &mut Commands) -> u64 {
+    let mut unknowns = 0;
+    while let Ok(heard) = reported.receiver.try_recv() {
+        match heard {
+            Heard::Spent(spent) => commands.trigger(spent),
+            Heard::Known => settle(&reported.unsettled),
+            Heard::Unknown => {
+                unknowns += 1;
+                settle(&reported.unsettled);
+            }
+        }
+    }
+    unknowns
+}
+
+/// One child fewer that has not settled what it spent.
+fn settle(unsettled: &AtomicU64) {
+    let fewer = |count: u64| count.checked_sub(1);
+    unsettled
+        .try_update(Ordering::SeqCst, Ordering::SeqCst, fewer)
+        .ok();
 }
 
 /// The tools a child has: those registered as the app started.
@@ -128,44 +264,58 @@ struct Args {
     /// Tasks in order, stopping at the first that fails.
     #[serde(default)]
     chain: Option<Vec<Job>>,
-    /// Seconds each helper may take: 600 by default, 3600 at most.
+    /// Seconds each helper may take, at least 1; `[helpers] timeout_secs`
+    /// when absent.
     #[serde(default)]
     timeout: Option<u64>,
 }
 
+/// The lines of a failed child's stderr its failure quotes, its last.
+const STDERR_LINES: usize = 5;
+
 /// A child's task, and its arguments and directory.
 type Planned = (String, (Vec<OsString>, PathBuf));
 
-/// What the caller lends its helpers.
+/// What the caller lends its helpers: its model, and its access to the
+/// tools a helper may have.
 struct Lent {
     model: Option<String>,
-    tools: Vec<String>,
+    access: ToolAccess,
+    lendable: Vec<String>,
     base: PathBuf,
 }
 
 impl Lent {
     /// The arguments and directory of `job`'s child, or why it cannot run.
     fn child(&self, job: &Job) -> Result<(Vec<OsString>, PathBuf), String> {
-        let tools = match &job.tools {
-            None => self
-                .tools
-                .iter()
-                .filter(|tool| *tool != HELPER)
-                .cloned()
+        let lendable = self.lendable.iter().map(String::as_str);
+        let tools: Vec<String> = match &job.tools {
+            None => lendable
+                .filter(|tool| *tool != HELPER && self.access.allows(tool))
+                .map(str::to_owned)
                 .collect(),
-            Some(asked) => match asked.iter().find(|tool| !self.tools.contains(tool)) {
-                Some(tool) => {
-                    let yours = self.tools.join(", ");
-                    return Err(format!("`{tool}` is not one of your tools ({yours})"));
+            Some(asked) => {
+                let granted = self.access.grant(asked, lendable);
+                let granted = granted.map_err(|refused| refused.to_string())?;
+                // A child is a run of its own, so it gets only this run's tools.
+                if let Some(tool) = asked.iter().find(|tool| !granted.allows(tool)) {
+                    return Err(format!(
+                        "`{tool}` is not one of this run's tools (`--tools`)"
+                    ));
                 }
-                None => asked.clone(),
-            },
+                granted.names().unwrap_or_default().to_vec()
+            }
         };
         let dir = Local.join(&self.base, Path::new(job.dir.as_deref().unwrap_or(".")));
         let dir = dir
             .canonicalize()
             .map_err(|error| format!("no directory {}: {error}", dir.display()))?;
-        if !dir.starts_with(&self.base) {
+        // Resolved as `dir` is, so a base reached through a symlink holds it.
+        let base = self
+            .base
+            .canonicalize()
+            .unwrap_or_else(|_| self.base.clone());
+        if !dir.starts_with(base) {
             return Err(format!("{} is outside your directory", dir.display()));
         }
         let mut args: Vec<OsString> = vec!["-p".into(), "--json".into()];
@@ -183,22 +333,29 @@ impl Lent {
 /// Starts a `helper` call, whose children run off the main thread.
 fn start(
     called: On<ToolCalled<Args>>,
-    agents: Query<(Option<&ModelChoice>, Option<&ToolAccess>, Option<&WorkDir>)>,
+    (agents, turns): (
+        Query<(Option<&ModelChoice>, Option<&ToolAccess>, Option<&WorkDir>)>,
+        Query<&CallOf>,
+    ),
     lendable: Option<Res<Lendable>>,
     (root, processes, command): (Res<ProjectRoot>, Res<Processes>, Res<HelperCommand>),
-    wake: Res<Wake>,
+    (budget, handed, spent): (
+        Option<Res<Budget>>,
+        Option<Res<HandedDown>>,
+        Res<SessionUsage>,
+    ),
+    (wake, reported, set): (Res<Wake>, Res<Reported>, Res<HelperSettings>),
     mut commands: Commands,
 ) {
     let Ok((model, access, dir)) = agents.get(called.agent) else {
         return;
     };
-    let names = lendable.iter().flat_map(|lendable| lendable.0.iter());
     let lent = Lent {
         model: model.map(|model| model.0.clone()),
-        tools: names
-            .filter(|name| access.is_none_or(|access| access.allows(name)))
-            .cloned()
-            .collect(),
+        access: access.cloned().unwrap_or_default(),
+        lendable: lendable
+            .map(|lendable| lendable.0.clone())
+            .unwrap_or_default(),
         base: dir.map_or(&root.0, |dir| &dir.0).clone(),
     };
     let args = called.args.clone();
@@ -215,26 +372,34 @@ fn start(
         (None, None, Some(jobs)) => (true, jobs),
         _ => (false, Vec::new()),
     };
-    let planned: Result<Vec<Planned>, String> = match jobs.len() {
-        0 => Err("give one of `task`, `tasks` or `chain`".to_owned()),
-        many if many > 2 * AT_ONCE => {
-            Err(format!("give at most {} tasks, not {many}", 2 * AT_ONCE))
-        }
+    let timeout = timeout(args.timeout, set.timeout_secs);
+    let planned: Result<Vec<Planned>, String> = match (jobs.len(), &timeout) {
+        (0, _) => Err("give one of `task`, `tasks` or `chain`".to_owned()),
+        (_, Err(why)) => Err(why.clone()),
         _ => jobs
             .iter()
             .map(|job| Ok((job.task.clone(), lent.child(job)?)))
             .collect(),
     };
-    let children = Arc::new(Children::default());
+    let mut launcher = processes.launcher();
+    for (name, left) in hand_down(budget.as_deref(), handed.as_deref(), &spent) {
+        launcher = launcher.with_env(name, left);
+    }
     let runner = Runner {
         command: command.clone(),
-        processes: processes.clone(),
-        timeout: Duration::from_secs(args.timeout.unwrap_or(600).clamp(1, 3600)),
-        children: Arc::downgrade(&children),
+        launcher,
+        timeout: timeout.unwrap_or_default(),
+        at_once: set.at_once,
+        reports: Reports {
+            agent: called.agent,
+            turn: turns.get(called.call).ok().map(|&CallOf(turn)| turn),
+            sender: reported.sender.clone(),
+            unsettled: reported.unsettled.clone(),
+            wake: wake.clone(),
+        },
     };
+    // Dropped with the call, as a stop drops it: every child dies.
     let work = async move {
-        // Dropped with the call, as a stop drops it: every child dies.
-        let _children = children;
         let planned = planned.map_err(ToolExecutionError::refused)?;
         let ran = rig_tools::blocking(move || Ok(runner.run(chain, planned))).await?;
         ran.map(|text| ToolResult::success(ToolOutput::text(text)))
@@ -247,17 +412,80 @@ fn start(
         .insert(Running::answering(pool, &wake, work));
 }
 
-/// The children of a call, killed when it is dropped; one that ended is
-/// left alone.
-#[derive(Default)]
-struct Children(Mutex<Vec<KillOnDrop>>);
+/// How long each helper of a call may take: the call's `timeout`, at least
+/// 1 second and at most [`MOST_SECS`], else `default`.
+fn timeout(asked: Option<u64>, default: NonZeroU64) -> Result<Duration, String> {
+    match asked {
+        Some(0) => Err(format!(
+            "`timeout` must be at least 1 second; leave it out for {default} s (`[helpers] \
+             timeout_secs`)"
+        )),
+        asked => deadline(asked.unwrap_or(default.get())),
+    }
+}
+
+/// The longest a helper may take, about 136 years, which any clock adds to now.
+const MOST_SECS: u64 = u32::MAX as u64;
+/// `secs` as a helper's time limit, refused past [`MOST_SECS`].
+fn deadline(secs: u64) -> Result<Duration, String> {
+    if secs > MOST_SECS {
+        return Err(format!("a timeout of {secs} s is over {MOST_SECS} s"));
+    }
+    Ok(Duration::from_secs(secs))
+}
+
+/// A `timeout_secs` that [`deadline`] takes.
+fn deadline_secs<'de, D: serde::Deserializer<'de>>(read: D) -> Result<NonZeroU64, D::Error> {
+    let secs = NonZeroU64::deserialize(read)?;
+    deadline(secs.get()).map_err(serde::de::Error::custom)?;
+    Ok(secs)
+}
 
 /// Runs a call's children, on a thread of its own.
 struct Runner {
     command: HelperCommand,
-    processes: Processes,
+    /// The call's launcher: what [`Processes`] gives, with what is left of
+    /// the budget.
+    launcher: Launcher,
     timeout: Duration,
-    children: Weak<Children>,
+    /// How many children run at once.
+    at_once: NonZeroUsize,
+    reports: Reports,
+}
+
+/// Where a call's children's spend goes: the calling agent's, in its turn.
+#[derive(Clone)]
+struct Reports {
+    agent: Entity,
+    turn: Option<Entity>,
+    sender: async_channel::Sender<Heard>,
+    unsettled: Arc<AtomicU64>,
+    wake: Wake,
+}
+
+impl Reports {
+    /// Records `usage`, answered by `model`, as soon as the app can.
+    fn send(&self, model: Option<String>, usage: Usage) {
+        let spent = Spent {
+            agent: Some(self.agent),
+            turn: self.turn,
+            model,
+            purpose: Some(HELPER.to_owned()),
+            usage,
+        };
+        self.send_heard(Heard::Spent(spent));
+    }
+
+    /// Records that a child ended with all its spend `known`, or not.
+    fn ended(&self, known: bool) {
+        self.send_heard(if known { Heard::Known } else { Heard::Unknown });
+    }
+
+    fn send_heard(&self, heard: Heard) {
+        if self.sender.try_send(heard).is_ok() {
+            self.wake.wake();
+        }
+    }
 }
 
 /// How a child ended: its answer or why it has none, and a note of its
@@ -280,19 +508,39 @@ impl Runner {
             }
             return Ok(previous + &notes);
         }
-        let mut reports: Vec<Report> = Vec::new();
-        for jobs in jobs.chunks(AT_ONCE) {
-            std::thread::scope(|scope| {
-                let started: Vec<_> = jobs
-                    .iter()
-                    .map(|(_, (args, dir))| scope.spawn(move || self.child(args, dir)))
-                    .collect();
-                for thread in started {
-                    let crashed = || (Err("its thread crashed".to_owned()), String::new());
-                    reports.push(thread.join().unwrap_or_else(|_| crashed()));
-                }
-            });
-        }
+        // The call's, so a stop reaches the children of every thread.
+        let call = Scope::current().unwrap_or_default();
+        // `at_once` threads each take the next task until none is left.
+        let next = AtomicUsize::new(0);
+        let done: Vec<Mutex<Option<Report>>> = jobs.iter().map(|_| Mutex::new(None)).collect();
+        std::thread::scope(|scope| {
+            let mut workers = Vec::new();
+            for _ in 0..self.at_once.get().min(jobs.len()) {
+                let (call, next, done, jobs) = (&call, &next, &done, &jobs);
+                let worker = move || loop {
+                    let at = next.fetch_add(1, Ordering::Relaxed);
+                    let (Some((_, (args, dir))), Some(slot)) = (jobs.get(at), done.get(at)) else {
+                        break;
+                    };
+                    let report = call.enter(|| self.child(args, dir));
+                    if let Ok(mut slot) = slot.lock() {
+                        *slot = Some(report);
+                    }
+                };
+                workers.extend(std::thread::Builder::new().spawn_scoped(scope, worker).ok());
+            }
+            // Joined, so a task's crash fails only that task.
+            for worker in workers {
+                worker.join().ok();
+            }
+        });
+        let reports: Vec<Report> = (done.into_iter())
+            .map(|slot| slot.into_inner().ok().flatten())
+            .map(|report| {
+                let crashed = "its thread crashed or could not start".to_owned();
+                report.unwrap_or_else(|| (Err(crashed), String::new()))
+            })
+            .collect();
         if let [(answer, note)] = reports.as_slice() {
             return answer
                 .clone()
@@ -323,29 +571,53 @@ impl Runner {
 
     /// Runs one child to its end.
     fn child(&self, args: &[OsString], dir: &Path) -> Report {
-        let Some(children) = self.children.upgrade() else {
-            return (Err("stopped".to_owned()), String::new());
-        };
         let args = self.command.args.iter().chain(args);
-        let launcher = self.processes.launcher().in_dir(dir);
-        let mut process = match launcher.spawn(&self.command.program, args, Spawn::default()) {
-            Ok(process) => process,
-            Err(error) => return (Err(format!("it could not start: {error}")), String::new()),
+        let launcher = self.launcher.clone().in_dir(dir);
+        let how = Spawn {
+            grace: Some(STOP_WINDOW),
+            ..Spawn::default()
         };
-        let mut held = children.0.lock().unwrap_or_else(PoisonError::into_inner);
-        held.push(KillOnDrop(process.group()));
-        drop(held);
-        // Only the call holds them, so that a stop drops them.
-        drop(children);
+        let Some(deadline) = Instant::now().checked_add(self.timeout) else {
+            return (Err("no deadline".to_owned()), String::new());
+        };
+        // Unsettled from before it can spend until what it spent is known.
+        self.reports.unsettled.fetch_add(1, Ordering::SeqCst);
+        let mut process = match launcher.spawn(&self.command.program, args, how) {
+            Ok(process) => process,
+            Err(error) => {
+                // A program that was not found or may not run, arguments too
+                // long to start it with, or a start the stopped call refused,
+                // never ran; one whose process was made before another error
+                // may have spent.
+                let ran = !matches!(
+                    error.kind(),
+                    std::io::ErrorKind::NotFound
+                        | std::io::ErrorKind::PermissionDenied
+                        | std::io::ErrorKind::ArgumentListTooLong
+                        | std::io::ErrorKind::Interrupted
+                );
+                self.reports.ended(!ran);
+                let why = format!("it could not start: {error}");
+                let note = if ran { "\n[helper spend unknown]" } else { "" };
+                return (Err(why), note.to_owned());
+            }
+        };
         let mut read = Read::default();
-        let ended = process.run(Some(Instant::now() + self.timeout), |line| {
-            read.line(line);
+        let ended = process.run(Some(deadline), |piece| {
+            read.piece(piece, &self.reports);
             true
         });
+        read.flush(&self.reports);
         let note = read.note();
+        // It stays unsettled until how it ended is recorded, after the
+        // spend it reported.
+        self.reports.ended(read.known());
         let answer = match ended {
-            Ok(Ended::Exited(status)) => read.answer(status.code()),
-            Ok(Ended::TimedOut) => Err(format!("it timed out after {}s", self.timeout.as_secs())),
+            Ok(Ended::Exited(status) | Ended::EndedJobs(status)) => read.answer(status.code()),
+            Ok(Ended::TimedOut) => Err(format!(
+                "it timed out after {} s (the call's `timeout`, else `[helpers] timeout_secs`)",
+                self.timeout.as_secs()
+            )),
             Ok(_) => Err("stopped".to_owned()),
             Err(error) => Err(error.to_string()),
         };
@@ -353,39 +625,72 @@ impl Runner {
     }
 }
 
-/// What a child wrote: its `exit` line's code and answer, its last error,
-/// its last lines on stderr, its session and its usage.
+/// What a child wrote: its lines' version, its `exit` line's code and
+/// answer, its last error, its last [`STDERR_LINES`] lines on stderr and how
+/// many came before them, its session, and the spend it reported, each
+/// `usage` line recorded as it is read. A line comes in pieces past 64 KB,
+/// so a line of stdout is held until it ends.
 #[derive(Default)]
 struct Read {
+    version: Option<u64>,
     exit: Option<(u64, Option<String>)>,
+    /// Whether its `exit` line says its spend is all known.
+    complete: bool,
+    /// Whether a `usage` line of it did not read.
+    unread: bool,
     error: Option<String>,
     stderr: Vec<String>,
+    dropped: usize,
+    held: Vec<u8>,
     session: Option<String>,
-    usage: Option<UsageTotals>,
+    spent: UsageTotals,
 }
 
 impl Read {
-    fn line(&mut self, line: OutputLine) {
-        let text = match line {
-            OutputLine::Out(text) => text,
-            OutputLine::Err(text) => {
-                self.stderr.push(text.trim_end().to_owned());
-                let cut = self.stderr.len().saturating_sub(5);
-                self.stderr.drain(..cut);
-                return;
-            }
-        };
-        let Ok(event) = serde_json::from_str::<Value>(&text) else {
+    /// Takes a piece of output: a piece of stderr as a line of its own, so
+    /// at most [`STDERR_LINES`] pieces are held, and stdout's pieces until
+    /// its line ended.
+    fn piece(&mut self, piece: OutputLine, reports: &Reports) {
+        if let OutputLine::Err(_) = piece {
+            self.stderr.push(piece.text().trim_end().to_owned());
+            let cut = self.stderr.len().saturating_sub(STDERR_LINES);
+            self.stderr.drain(..cut);
+            self.dropped += cut;
+            return;
+        }
+        self.held.extend_from_slice(piece.bytes());
+        if self.held.ends_with(b"\n") {
+            self.flush(reports);
+        }
+    }
+
+    /// Takes the line of stdout held, as one ended or the child did.
+    fn flush(&mut self, reports: &Reports) {
+        let line = std::mem::take(&mut self.held);
+        if line.is_empty() {
+            return;
+        }
+        let Ok(event) = serde_json::from_slice::<Value>(&line) else {
             return;
         };
         let field = |key: &str| event.get(key).and_then(Value::as_str).map(str::to_owned);
+        self.version = self.version.or(event.get("v").and_then(Value::as_u64));
         match field("type").as_deref() {
             Some("ready") => self.session = field("session"),
-            Some("exit") => {
+            Some("usage") if self.version == Some(VERSION) => {
                 let usage = event.get("usage").cloned().unwrap_or_default();
-                self.usage = serde_json::from_value(usage).ok();
+                match rig_core::json_utils::from_value::<Usage>(&usage) {
+                    Ok(usage) => {
+                        self.spent.record(&usage);
+                        reports.send(field("model"), usage);
+                    }
+                    Err(_) => self.unread = true,
+                }
+            }
+            Some("exit") => {
                 let code = event.get("code").and_then(Value::as_u64).unwrap_or(1);
                 self.exit = Some((code, field("answer")));
+                self.complete = event.get("usage_complete") == Some(&Value::Bool(true));
                 self.error = field("error").or(self.error.take());
             }
             Some("notice") if field("level").as_deref() == Some("error") => {
@@ -405,8 +710,13 @@ impl Read {
                 .unwrap_or_else(|| format!("it failed with exit code {code}"))),
             None => {
                 let code = code.map_or("a signal".to_owned(), |code| format!("exit code {code}"));
+                let dropped = match self.dropped {
+                    0 => String::new(),
+                    1 => "[1 earlier line of stderr dropped]\n".to_owned(),
+                    dropped => format!("[{dropped} earlier lines of stderr dropped]\n"),
+                };
                 let said = format!(
-                    "it stopped with {code} before it answered\n{}",
+                    "it stopped with {code} before it answered\n{dropped}{}",
                     self.stderr.join("\n")
                 );
                 Err(said.trim_end().to_owned())
@@ -414,18 +724,26 @@ impl Read {
         }
     }
 
-    /// Its session and cost, for the end of its text.
+    /// Whether all it spent is known: once it wrote its `exit` line on
+    /// this protocol version, saying so, and every `usage` line read.
+    fn known(&self) -> bool {
+        self.version == Some(VERSION) && self.exit.is_some() && self.complete && !self.unread
+    }
+
+    /// Its session and what it spent, for the end of its text.
     fn note(&self) -> String {
         let session = self
             .session
             .as_ref()
             .map(|session| format!("session {session}"));
-        let cost = self.usage.map(|usage| usage.cost_or_tokens());
-        let said: Vec<String> = session.into_iter().chain(cost).collect();
-        match said.is_empty() {
-            true => String::new(),
-            false => format!("\n[helper {}]", said.join(", ")),
-        }
+        let spent = match (self.known(), self.spent.calls) {
+            (true, 0) => "no model call".to_owned(),
+            (true, _) => self.spent.cost_or_tokens(),
+            (false, 0) => "spend unknown".to_owned(),
+            (false, _) => format!("at least {}, the rest unknown", self.spent.cost_or_tokens()),
+        };
+        let said: Vec<String> = session.into_iter().chain([spent]).collect();
+        format!("\n[helper {}]", said.join(", "))
     }
 }
 

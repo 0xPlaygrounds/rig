@@ -1,8 +1,8 @@
 //! Slash commands. A command is an entity: its [`Name`] is the `/name`
 //! typed, its [`SlashCommand`] says what it does, and it is the one-shot
 //! system that runs it, so despawning it unregisters both. A plugin adds
-//! one with [`AppCommandsExt::add_command`], a system that reads the
-//! [`CommandArgs`], such as one that triggers an event.
+//! one with [`AppCommandsExt::add_command`]. Its system takes
+//! [`CommandArgs`] to read text after the name, or [`NoArgs`] to refuse it.
 //!
 //! What the user types that starts with `/` runs as a command: a Gate
 //! system in [`CommandSystems`] takes the user's line over
@@ -13,11 +13,24 @@
 //! unknown command, or an error notice about the agent, such as one
 //! refusing arguments, refuses the line: it comes back whole as
 //! [`Recalled`] with the reason, in place of that notice, so nothing typed
-//! is lost.
+//! is lost. A command another command runs refuses that one's line, so what
+//! comes back is what was typed. A line picked from a list or bound to a
+//! key runs with [`run_chosen`]: nobody typed it, so a refusal is only an
+//! error notice.
+//!
+//! ```
+//! use rig_harness::prelude::*;
+//!
+//! App::new().add_command("hello", "Say hello", greet);
+//! fn greet(In(args): In<NoArgs>, mut notices: MessageWriter<Notice>) {
+//!     notices.write(Notice::info(args.agent, "Hello."));
+//! }
+//! ```
 
 use std::mem;
 
 use bevy_app::prelude::*;
+use bevy_ecs::error::BevyError;
 use bevy_ecs::message::Messages;
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemId;
@@ -34,13 +47,58 @@ use rig_ecs::stage::{
 /// the text after the command name, and how its line was sent.
 #[derive(Clone, Debug)]
 pub struct CommandArgs {
-    /// The agent.
     pub agent: Entity,
     /// The arguments, trimmed.
     pub args: String,
     /// How the line was sent, such as queued, for a command that sends
     /// text on: as [`RunCommand::mode`] says.
     pub mode: DeliveryMode,
+}
+
+/// What a command system receives when it accepts no text after its name.
+#[derive(Clone, Debug)]
+pub struct NoArgs {
+    pub agent: Entity,
+    /// How the line was sent, as [`RunCommand::mode`] says.
+    pub mode: DeliveryMode,
+}
+
+impl From<CommandArgs> for NoArgs {
+    fn from(args: CommandArgs) -> Self {
+        Self {
+            agent: args.agent,
+            mode: args.mode,
+        }
+    }
+}
+
+/// The text a slash command accepts after its name.
+#[derive(Reflect, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Args {
+    /// No text. Extra text refuses the line before the system runs.
+    None,
+    /// Optional text, passed to the system trimmed.
+    Text,
+}
+
+mod sealed {
+    pub trait Sealed {}
+}
+
+/// A slash command's input, either [`NoArgs`] or [`CommandArgs`].
+pub trait CommandInput: sealed::Sealed + From<CommandArgs> + 'static {
+    /// The text the input accepts after the command name.
+    const ARGS: Args;
+}
+
+impl sealed::Sealed for CommandArgs {}
+impl CommandInput for CommandArgs {
+    const ARGS: Args = Args::Text;
+}
+
+impl sealed::Sealed for NoArgs {}
+impl CommandInput for NoArgs {
+    const ARGS: Args = Args::None;
 }
 
 /// A slash command, on the entity of the one-shot system it runs, whose
@@ -50,6 +108,8 @@ pub struct CommandArgs {
 pub struct SlashCommand {
     /// One line of help.
     pub help: String,
+    /// The text accepted after the command name, set by its system's input.
+    pub args: Args,
 }
 
 /// Runs slash commands: what the user types as one, and each
@@ -119,21 +179,22 @@ fn run_typed(
 /// on its entity first, which frees its name.
 pub trait AppCommandsExt {
     /// Register `/name`, described by `help`, that runs `system` with the
-    /// [`CommandArgs`] of each use.
-    fn add_command<M>(
+    /// [`CommandArgs`] or [`NoArgs`] of each use. The input type declares
+    /// whether text after the command name is accepted.
+    fn add_command<A: CommandInput, M>(
         &mut self,
         name: &str,
         help: &str,
-        system: impl IntoSystem<In<CommandArgs>, (), M> + 'static,
+        system: impl IntoSystem<In<A>, (), M> + 'static,
     ) -> &mut Self;
 }
 
 impl AppCommandsExt for App {
-    fn add_command<M>(
+    fn add_command<A: CommandInput, M>(
         &mut self,
         name: &str,
         help: &str,
-        system: impl IntoSystem<In<CommandArgs>, (), M> + 'static,
+        system: impl IntoSystem<In<A>, (), M> + 'static,
     ) -> &mut Self {
         runner(self);
         let name = format!("/{name}");
@@ -143,23 +204,30 @@ impl AppCommandsExt for App {
         }
         let system = self.register_system(system);
         let help = help.to_owned();
-        let command = (Name::new(name), SlashCommand { help });
+        let command = (
+            Name::new(name),
+            SlashCommand {
+                help,
+                args: A::ARGS,
+            },
+        );
         self.world_mut().entity_mut(system.entity()).insert(command);
         self
     }
 }
 
 /// The command named `name`, with its `/`.
-fn find(world: &mut World, name: &str) -> Option<Entity> {
+fn find(world: &mut World, name: &str) -> Option<(Entity, Args)> {
     world
-        .query_filtered::<(Entity, &Name), With<SlashCommand>>()
+        .query::<(Entity, &Name, &SlashCommand)>()
         .iter(world)
-        .find(|(_, command)| command.as_str() == name)
-        .map(|(entity, _)| entity)
+        .find(|(_, command, _)| command.as_str() == name)
+        .map(|(entity, _, command)| (entity, command.args))
 }
 
 /// Run the slash command `line` (without its `/`) for the agent: its name,
-/// then its arguments.
+/// then its arguments. A refused line comes back in the input; run a line the
+/// user did not type with [`run_chosen`] instead.
 #[derive(EntityEvent, Reflect, Clone, Debug)]
 #[reflect(Event, Clone, Debug)]
 pub struct RunCommand {
@@ -168,12 +236,13 @@ pub struct RunCommand {
     /// The command line after the `/`.
     pub line: String,
     /// How the line was sent: the mode of the message typed, else
-    /// [`DeliveryMode::Steer`], as by a key or a picker.
+    /// [`DeliveryMode::Steer`].
     pub mode: DeliveryMode,
 }
 
 impl RunCommand {
-    /// Run `line` for `agent`, as if typed and sent at once.
+    /// Run `line`, the command line without its `/`, for `agent`, sent at
+    /// once.
     pub fn new(agent: Entity, line: impl Into<String>) -> Self {
         Self {
             entity: agent,
@@ -186,27 +255,48 @@ impl RunCommand {
 /// Runs the command a [`RunCommand`] names, with everything it triggers.
 fn on_run_command(run: On<RunCommand>, mut commands: Commands) {
     let (agent, line, mode) = (run.entity, run.line.clone(), run.mode);
-    commands.queue(move |world: &mut World| run_command(world, agent, line, mode));
+    commands.queue(move |world: &mut World| run_command(world, agent, line, mode, true));
+}
+
+/// Runs `line` (without its `/`) for `agent`, as a [`RunCommand`] does, for
+/// a line the user picked or bound to a key rather than typed: a refusal is
+/// an error notice, and nothing comes back in the input.
+pub fn run_chosen(agent: Entity, line: impl Into<String>) -> impl Command {
+    let line = line.into();
+    move |world: &mut World| run_command(world, agent, line, DeliveryMode::Steer, false)
 }
 
 /// Runs `line` for `agent`, sent as `mode`, keeping the notices written
-/// meanwhile apart, and recalls it when refused.
-fn run_command(world: &mut World, agent: Entity, line: String, mode: DeliveryMode) {
+/// meanwhile apart, and recalls it when refused if `recall`. A line another
+/// command runs is refused with an error notice instead, which refuses that
+/// command's line, so the line recalled is the one typed.
+fn run_command(world: &mut World, agent: Entity, line: String, mode: DeliveryMode, recall: bool) {
+    let outer = world.contains_resource::<CommandRuns>();
     let typed = line.trim();
     let (name, args) = typed.split_once(char::is_whitespace).unwrap_or((typed, ""));
+    let args = args.trim();
     let name = format!("/{name}");
     let refusals = match find(world, &name) {
         None => vec![format!("Unknown command {name}.")],
-        Some(system) => {
+        Some((_, Args::None)) if !args.is_empty() => {
+            vec![format!("{name} takes no text after it: “{args}”.")]
+        }
+        Some((system, kind)) => {
             let earlier = swap_notices(world, Messages::default());
-            let ran = world.run_system_with(
-                SystemId::<In<CommandArgs>>::from_entity(system),
-                CommandArgs {
-                    agent,
-                    args: args.trim().to_owned(),
-                    mode,
-                },
-            );
+            let args = CommandArgs {
+                agent,
+                args: args.to_owned(),
+                mode,
+            };
+            // A command a command runs leaves the outer one's mark.
+            world.insert_resource(CommandRuns);
+            let ran = match kind {
+                Args::None => run::<NoArgs>(world, system, args),
+                Args::Text => run::<CommandArgs>(world, system, args),
+            };
+            if !outer {
+                world.remove_resource::<CommandRuns>();
+            }
             let mut reply = swap_notices(world, earlier);
             let mut refusals: Vec<String> =
                 ran.err().map(|ran| ran.to_string()).into_iter().collect();
@@ -222,13 +312,33 @@ fn run_command(world: &mut World, agent: Entity, line: String, mode: DeliveryMod
             refusals
         }
     };
-    if !refusals.is_empty() {
+    if refusals.is_empty() {
+        return;
+    }
+    if outer || !recall {
+        world.write_message(Notice::error(agent, refusals.join(" ")));
+    } else {
         world.write_message(Recalled {
             agent,
             text: format!("/{line}"),
             why: Some(refusals.join(" ")),
         });
     }
+}
+
+/// While it exists, a command runs, with everything it triggers.
+#[derive(Resource)]
+pub(crate) struct CommandRuns;
+
+/// Runs the registered system with its declared input type.
+fn run<A: CommandInput>(
+    world: &mut World,
+    system: Entity,
+    args: CommandArgs,
+) -> Result<(), BevyError> {
+    world
+        .run_system_with(SystemId::<In<A>>::from_entity(system), A::from(args))
+        .map_err(BevyError::from)
 }
 
 /// Puts `notices` in place of the world's, and returns those.

@@ -16,12 +16,10 @@ use super::completion::blocked_prompt_error;
 use super::completion::{map_google_finish_reason, usage_of};
 use crate::error::ProviderError;
 use crate::json_utils::Lenient;
-use crate::message::{CallId, DocumentSourceKind, Image, MediaType, MimeType, ToolName};
+use crate::message::{CallId, DocumentSourceKind, Image, ImageMediaType, MimeType, ToolName};
 use crate::operation::{Block, Completion, Finish};
 use crate::providers::internal::wire;
-use crate::wire::{
-    AdapterVerdict, Decoder, Flow, ObservationSink, Out, WireCitation, WireEvent, WireFrame,
-};
+use crate::wire::{Decoder, Flow, Out, WireCitation, WireEvent, WireFrame};
 
 /// The recognizability markers of a `streamGenerateContent` chunk: every
 /// genuine frame carries `candidates`, `usageMetadata` and/or
@@ -119,7 +117,9 @@ impl<'id> Decoder<'id, Completion> for GenerateContentDecoder {
             self.model_version = Some(model.to_owned());
         }
         if let Some(usage) = data.get_mut("usageMetadata") {
-            self.usage = Some(usage.take());
+            let usage = usage.take();
+            out.usage(usage_of(&usage));
+            self.usage = Some(usage);
         }
         if let Some(error) = data.at("/error") {
             // An in-band failure is a provider error, not a truncation.
@@ -266,10 +266,7 @@ impl GenerateContentDecoder {
                 .or_insert(Value::String(signature));
         }
         self.last = Some(index);
-        self.signed = item
-            .get("thoughtSignature")
-            .and_then(Value::as_str)
-            .is_some_and(|signature| !signature.is_empty());
+        self.signed = signature(&item).is_some();
         if matches!(block, Block::Text) {
             self.answer.open(index, text);
             self.placement = Some((index, 0));
@@ -295,9 +292,7 @@ impl GenerateContentDecoder {
             return self.open(Block::Opaque { replay: false }, part, "", out);
         };
         let thought = part.bool("thought") == Some(true);
-        let signature = part
-            .str("thoughtSignature")
-            .filter(|signature| !signature.is_empty());
+        let signature = signature(&part);
         if let Some(text) = part.str("text") {
             // An empty part without a signature carries nothing.
             if text.is_empty() && signature.is_none() {
@@ -342,7 +337,7 @@ impl GenerateContentDecoder {
             && let (Some(mime_type), Some(data)) =
                 (part.at("/inlineData/mimeType"), part.at("/inlineData/data"))
             && let (Some(mime_type), Some(data)) = (mime_type.as_str(), data.as_str())
-            && let Some(MediaType::Image(media_type)) = MediaType::from_mime_type(mime_type)
+            && let Some(media_type) = ImageMediaType::from_mime_type(mime_type)
         {
             let image = Image {
                 data: DocumentSourceKind::Base64(data.to_owned()),
@@ -352,8 +347,7 @@ impl GenerateContentDecoder {
             };
             return self.open(Block::Image(image), part, "", out);
         }
-        let bare = ["thought", "thoughtSignature", "partMetadata"];
-        let data = fields.keys().any(|key| !bare.contains(&key.as_str()));
+        let data = !is_bare(fields);
         if !data && let Some(signature) = signature {
             let Some(index) = self.open.map(|(index, _)| index).or(self.last) else {
                 self.signature = Some(signature.to_owned());
@@ -370,7 +364,7 @@ impl GenerateContentDecoder {
 
     /// Whether `frame` carries a response id and nothing else, a repeated
     /// key included.
-    pub(crate) fn is_analysis_only(frame: &WireFrame) -> bool {
+    fn is_analysis_only(frame: &WireFrame) -> bool {
         #[derive(serde::Deserialize)]
         #[serde(deny_unknown_fields)]
         struct ResponseIdOnly {
@@ -382,31 +376,19 @@ impl GenerateContentDecoder {
             WireEvent::Known(_)
         )
     }
+}
 
-    /// Project provider verdicts, response identity, and errors
-    /// before normalization. A field of another type is left out, and a
-    /// payload that is not JSON projects nothing.
-    pub(crate) fn project(payload: &[u8], sink: &mut ObservationSink<'_>) {
-        let Ok(reply) = serde_json::from_slice::<Value>(payload) else {
-            return;
-        };
-        let candidate = reply.arr("candidates").first().unwrap_or(&Value::Null);
-        let scrub = |value: Option<&str>| value.map(|value| sink.scrub(value));
-        let block = reply
-            .at("/promptFeedback/blockReason")
-            .and_then(Value::as_str);
-        let verdict = AdapterVerdict {
-            finish_reason: scrub(candidate.str("finishReason")),
-            block_reason: scrub(block),
-            detail: scrub(candidate.str("finishMessage")),
-            model: scrub(reply.str("modelVersion")),
-        };
-        let response_id = scrub(reply.str("responseId"));
-        sink.provider(verdict, response_id);
-        if let Some(error) = crate::observe::ObservedError::of(&reply) {
-            error.emit(sink);
-        }
-    }
+/// A part's thought signature, when it is not empty.
+fn signature(part: &Value) -> Option<&str> {
+    part.str("thoughtSignature")
+        .filter(|signature| !signature.is_empty())
+}
+
+/// Whether a part holds nothing but its thought flag, signature and
+/// metadata.
+fn is_bare(part: &Map<String, Value>) -> bool {
+    let bare = ["thought", "thoughtSignature", "partMetadata"];
+    part.keys().all(|key| bare.contains(&key.as_str()))
 }
 
 fn malformed(what: &str) -> ProviderError {

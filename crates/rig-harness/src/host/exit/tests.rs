@@ -5,6 +5,7 @@ use rig_ecs::AgentPlugin;
 use rig_ecs::agent::Notice;
 use rig_ecs::stage::{AgentPass, Decision, HoldOf, Outcome, PluginEffects, ReadyToStart, Stage};
 use rig_harness_protocol::RELOAD_EXIT_CODE;
+use rig_harness_protocol::end::FailCode;
 
 use super::{Exit, ExitPlugin, ExitReason, ExitRequest};
 
@@ -49,24 +50,35 @@ fn the_first_reason_stands_and_writes_the_launchers_exit_code() {
     );
 }
 
+/// A plain exit gets the reason its code stands for, and that reason exits
+/// with the same code, but never a reload: the reload code written as a
+/// plain exit, such as a plugin passing on a child's code 75, is a failure.
 #[test]
 fn a_plain_exit_gets_the_reason_its_code_stands_for() {
-    for (exit, reason) in [
-        (AppExit::Success, ExitReason::Quit),
-        (AppExit::from_code(RELOAD_EXIT_CODE), ExitReason::Reload),
-        (AppExit::from_code(130), ExitReason::Signal),
-        (AppExit::from_code(2), ExitReason::Failed(2)),
-    ] {
-        assert_eq!(reason.exit(), exit);
+    let plain = |exit: AppExit| {
         let mut app = app();
         app.world_mut().write_message(exit);
         app.update();
-        assert_eq!(app.world().get_resource::<ExitReason>(), Some(&reason));
+        app.world().get_resource::<ExitReason>().cloned()
+    };
+    for (exit, reason) in [
+        (AppExit::Success, ExitReason::Quit),
+        (AppExit::from_code(130), ExitReason::Signal),
+        (
+            AppExit::from_code(2),
+            ExitReason::Failed(FailCode::or_failure(2)),
+        ),
+    ] {
+        assert_eq!(reason.exit(), exit);
+        assert_eq!(plain(exit), Some(reason));
     }
     assert_eq!(
-        ExitReason::Switch(None).exit(),
-        AppExit::from_code(RELOAD_EXIT_CODE)
+        plain(AppExit::from_code(RELOAD_EXIT_CODE)),
+        Some(ExitReason::Failed(FailCode::FAILURE))
     );
+    for reason in [ExitReason::Reload, ExitReason::Switch(None)] {
+        assert_eq!(reason.exit(), AppExit::from_code(RELOAD_EXIT_CODE));
+    }
 }
 
 #[test]
@@ -146,10 +158,68 @@ fn a_refused_exit_still_exits() {
         })
         .in_set(Stage::Gate),
     );
-    app.world_mut().trigger(Exit(ExitReason::Failed(3)));
+    app.world_mut()
+        .trigger(Exit(ExitReason::Failed(FailCode::or_failure(3))));
     app.update();
     assert_eq!(
         app.world().resource::<Seen>().exits,
         [AppExit::from_code(3)]
+    );
+}
+
+/// Exiting for good ends what the calls the exit stopped still run, also a
+/// process that ignores the request to stop: the exit does not leave it to a
+/// later kill that would die with the agent.
+#[cfg(target_os = "linux")]
+#[test]
+fn an_exit_ends_what_the_calls_it_stopped_still_run() {
+    use rig_tools::process::{Launcher, Scope, Spawn};
+
+    let call = Scope::default();
+    let ready = std::env::temp_dir().join(format!("rig-exit-stubborn-{}", std::process::id()));
+    let script = format!(
+        "trap '' TERM; echo $$ > '{}'; exec sleep 30",
+        ready.display()
+    );
+    let started = call.enter(|| Launcher::default().spawn("sh", ["-c", &script], Spawn::default()));
+    let Ok(mut process) = started else {
+        return assert!(started.is_ok());
+    };
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !ready.exists() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    let pid = std::fs::read_to_string(&ready).unwrap_or_default();
+    std::fs::remove_file(&ready).ok();
+    // The call's thread goes on waiting for it, as a stopped call's does.
+    let waiting = std::thread::spawn(move || process.run(None, |_| true));
+    let mut app = app();
+    app.add_systems(Last, (move || call.stop()).in_set(rig_ecs::StopTurnsOnExit));
+    app.world_mut().trigger(Exit(ExitReason::Quit));
+    app.update();
+    let alive = || {
+        let stat = std::fs::read_to_string(format!("/proc/{}/stat", pid.trim()));
+        stat.is_ok_and(|stat| {
+            !stat
+                .rsplit(')')
+                .next()
+                .unwrap_or_default()
+                .trim_start()
+                .starts_with('Z')
+        })
+    };
+    // Shorter than the stopped call's own delayed kill, which would end it
+    // anyway.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+    while alive() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let left = alive();
+    assert!(waiting.join().is_ok());
+    assert!(
+        !pid.trim().is_empty() && !left,
+        "{} outlived the exit",
+        pid.trim()
     );
 }

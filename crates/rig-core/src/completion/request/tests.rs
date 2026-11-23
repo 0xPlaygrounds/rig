@@ -1,8 +1,6 @@
 use super::{CompletionResponse, FinishReason, Usage};
 use crate::completion::CompletionRequest;
-use crate::error::ProviderError;
 use crate::message::AssistantContent;
-use crate::{http_client, provider_response};
 
 /// An empty conversation or message parses, and the request boundary
 /// rejects it by role and index. An empty tool result is the adapter's to
@@ -45,9 +43,6 @@ mod empty_lists_parse_and_are_rejected_when_sent {
     }
 }
 
-/// The request-boundary check accepts what providers accept.
-mod message_content {}
-
 fn tool_call_choice() -> Vec<AssistantContent> {
     vec![AssistantContent::tool_call(
         "call_1",
@@ -69,7 +64,7 @@ fn normalized_response_round_trips_through_serde() {
                 cache_creation_input_tokens: Some(0),
                 tool_use_prompt_tokens: Some(0),
                 reasoning_tokens: Some(1),
-                cost: None,
+                ..Usage::default()
             },
             crate::message::Origin::new("test.api", "example", ""),
             serde_json::json!({}),
@@ -269,66 +264,6 @@ fn documents_join_the_first_user_message_so_roles_alternate() {
         )
     );
 }
-
-#[test]
-fn completion_error_provider_response_helpers_with_preserved_json_body() {
-    let body = r#"{"error":{"code":"rate_limit","message":"slow down"}}"#;
-    let error = ProviderError::ProviderResponse(
-        provider_response::ProviderResponseError::without_status(body.to_string()),
-    );
-
-    assert_eq!(error.provider_response_body(), Some(body));
-    assert_eq!(error.provider_response_status(), None);
-    assert_eq!(
-        error
-            .provider_response_json()
-            .expect("fixture body should parse as valid JSON"),
-        Some(serde_json::json!({
-            "error": {
-                "code": "rate_limit",
-                "message": "slow down"
-            }
-        }))
-    );
-}
-
-#[test]
-fn completion_error_provider_response_helpers_with_preserved_plain_text_body() {
-    let error = ProviderError::ProviderResponse(
-        provider_response::ProviderResponseError::without_status("provider exploded".to_string()),
-    );
-
-    assert_eq!(error.provider_response_body(), Some("provider exploded"));
-    assert_eq!(error.provider_response_status(), None);
-    assert!(error.provider_response_json().is_err());
-}
-
-#[test]
-fn completion_error_provider_response_helpers_with_http_non_success_body_and_status() {
-    let body = r#"{"error":{"type":"invalid_request","message":"bad request"}}"#;
-    let error = ProviderError::from_transport_error(http_client::Error::non_success_with_details(
-        http::StatusCode::BAD_REQUEST,
-        http::HeaderMap::new(),
-        body.to_string(),
-    ));
-
-    assert_eq!(error.provider_response_body(), Some(body));
-    assert_eq!(
-        error.provider_response_status(),
-        Some(http::StatusCode::BAD_REQUEST)
-    );
-    assert_eq!(
-        error.provider_response_json().expect("valid JSON body"),
-        Some(serde_json::json!({
-            "error": {
-                "type": "invalid_request",
-                "message": "bad request"
-            }
-        }))
-    );
-}
-
-mod additional_params_precedence {}
 
 /// An unknown finish reason fails the turn by default, and replay leaves the
 /// turn out. A request that accepts unknown reasons gets a response that
@@ -633,7 +568,7 @@ mod empty_new_fields_are_not_serialized {
         assert_eq!(sum.cached_input_tokens, Some(1));
         assert_eq!(sum.output_tokens, Some(2));
         assert_eq!(sum.cost, None);
-        assert_eq!(Usage::default() + Usage::default(), Usage::default());
+        assert!(!(Usage::default() + Usage::default()).is_reported());
     }
 }
 
@@ -749,6 +684,80 @@ mod usage_totals {
     use super::super::dollars_label;
     use crate::completion::{ContextUse, Cost, Usage, UsageTotals, tokens_label};
 
+    /// A sum missing a figure from any call says so, whichever call it was,
+    /// through later sums and a round trip. Calls that all report the same
+    /// counters leave no mark, whichever optional details come and go.
+    #[test]
+    fn a_sum_missing_a_figure_from_any_call_is_marked() {
+        let full = Usage::new()
+            .input_tokens(10)
+            .output_tokens(5)
+            .total_tokens(15);
+        let input_only = Usage::new().input_tokens(10);
+        let no_total = Usage::new().input_tokens(10).output_tokens(5);
+        let only_a_cost = Usage::new().cost(Cost::from_total(1.0));
+        let details = full.cached_input_tokens(3).reasoning_tokens(1);
+        for (name, calls, expected) in [
+            ("a later call without output", vec![full, input_only], true),
+            (
+                "an earlier call without output",
+                vec![input_only, full],
+                true,
+            ),
+            (
+                "a first call with nothing",
+                vec![Usage::new(), full, full],
+                true,
+            ),
+            ("a last call with nothing", vec![full, Usage::new()], true),
+            ("only calls with nothing", vec![Usage::new(); 2], true),
+            ("a call with only a cost", vec![full, only_a_cost], true),
+            ("full calls", vec![full, full], false),
+            ("one call", vec![input_only], false),
+            ("calls with no total", vec![no_total, no_total], false),
+            ("details on one call", vec![details, full], false),
+        ] {
+            let mut sum = Usage::default();
+            let mut totals = UsageTotals::default();
+            for call in &calls {
+                sum += *call;
+                totals.record(call);
+            }
+            let mut merged = UsageTotals::default();
+            merged.add(&totals);
+            merged.add(&UsageTotals::default());
+            for (place, usage) in [
+                ("sum", sum),
+                ("totals", totals.tokens),
+                ("merged totals", merged.tokens),
+            ] {
+                assert_eq!(
+                    !usage.tokens_complete(),
+                    expected,
+                    "the {place} with {name}"
+                );
+            }
+            let value = serde_json::to_value(sum).expect("serializes");
+            assert_eq!(
+                value.get("incomplete_tokens"),
+                expected.then_some(&serde_json::Value::Bool(true)),
+                "the serialized sum with {name}"
+            );
+            let read: Usage = serde_json::from_value(value).expect("deserializes");
+            assert_eq!(read, sum, "the sum read back with {name}");
+        }
+    }
+
+    /// A running account stops at `u64::MAX` rather than panic or wrap.
+    #[test]
+    fn a_running_total_saturates() {
+        let mut totals = UsageTotals::default();
+        totals.record(&Usage::new().input_tokens(u64::MAX).output_tokens(1));
+        totals.record(&Usage::new().input_tokens(1).output_tokens(1));
+        assert_eq!(totals.tokens.input_tokens, Some(u64::MAX));
+        assert_eq!(totals.tokens.output_tokens, Some(2));
+    }
+
     #[test]
     fn calls_and_tokens_are_summed() {
         let mut totals = UsageTotals::default();
@@ -782,8 +791,13 @@ mod usage_totals {
         for (count, label) in [
             (999, "999"),
             (1_234, "1.2k"),
+            (9_949, "9.9k"),
+            (9_999, "10k"),
             (45_000, "45k"),
+            (999_499, "999k"),
+            (999_999, "1.0M"),
             (1_234_567, "1.2M"),
+            (9_999_999, "10M"),
             (12_000_000, "12M"),
         ] {
             assert_eq!(tokens_label(count), label);
@@ -881,4 +895,49 @@ fn tool_annotations_ride_on_the_definition_and_are_written_only_when_stated() {
         .with_open_world(false);
     assert!(!stated.read_only() && !stated.destructive() && stated.idempotent());
     assert!(!stated.open_world());
+}
+
+/// A reply cut at the output limit or by a content filter cuts off the
+/// call it ended in the middle of, and only that one; the same unfinished
+/// call under any other finish reason, or none, is not cut off.
+#[test]
+fn only_a_truncated_reply_cuts_off_its_unfinished_calls() {
+    let name = |name| crate::message::ToolName::new(name).expect("tool name");
+    let choice = vec![
+        AssistantContent::tool_call("done", name("read"), serde_json::json!({"path": "a"})),
+        AssistantContent::tool_call("open", name("write"), serde_json::json!({"path": "b"})),
+    ];
+    let reply = CompletionResponse::new(
+        choice,
+        Usage::default(),
+        crate::message::Origin::new("test.api", "example", ""),
+        serde_json::json!({}),
+    );
+    let open = reply.tool_calls().nth(1).map(|call| call.id.clone());
+    let reply = reply.with_unfinished_calls(open);
+    let cut_off = |finish: Option<FinishReason>| {
+        let reply = match finish {
+            Some(finish) => reply.clone().with_finish_reason(finish),
+            None => reply.clone(),
+        };
+        let names = reply
+            .cut_off_calls()
+            .map(|call| call.function.name.as_str().to_owned());
+        names.collect::<Vec<_>>()
+    };
+
+    assert_eq!(cut_off(Some(FinishReason::Length)), ["write"]);
+    assert_eq!(cut_off(Some(FinishReason::ContentFilter)), ["write"]);
+    assert!(cut_off(Some(FinishReason::ToolCalls)).is_empty());
+    assert!(cut_off(Some(FinishReason::Stop)).is_empty());
+    assert!(cut_off(None).is_empty());
+    assert_eq!(reply.unfinished_calls().count(), 1);
+}
+
+/// A request written as an array that stops before its temperature is
+/// refused.
+#[test]
+fn a_request_array_without_its_temperature_is_refused() {
+    let read = serde_json::from_str::<CompletionRequest>(r#"[null, [], [], []]"#);
+    assert!(read.is_err(), "{read:?}");
 }

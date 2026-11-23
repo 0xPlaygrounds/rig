@@ -23,7 +23,12 @@ async fn generated_image_as_user_content() {
             )
             .image_generation(xai::image_generation::GROK_IMAGINE_IMAGE);
             let bytes = image_inputs::generate(&generator, None, None).await;
-            image_inputs::as_user_content(&client.completion(xai::GROK_4), &bytes, None).await;
+            image_inputs::as_user_content(
+                &client.completion(xai::GROK_4),
+                &bytes,
+                Some(serde_json::json!({ "store": false })),
+            )
+            .await;
         },
     )
     .await;

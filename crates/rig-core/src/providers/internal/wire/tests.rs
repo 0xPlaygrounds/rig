@@ -41,7 +41,7 @@ fn chat_unrecognizable_json_is_unknown() {
 /// Valid JSON that is not an object — a gateway keep-alive `null`, a
 /// bare array or scalar — is Unknown (warn-and-skip) on every
 /// classifier, never routed into a typed decode whose guaranteed
-/// failure would fatal the stream as Corrupt (#2258 B5).
+/// failure would fatal the stream as Corrupt.
 #[test]
 fn non_object_json_is_unknown_never_corrupt() {
     for frame in ["null", "[]", "42", r#""ping""#] {

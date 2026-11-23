@@ -222,7 +222,11 @@ impl Template {
             None => None,
             Some(model) => {
                 let models = models.ok_or_else(|| format!("No models to run {model} on."))?;
-                Some(TemplateModel(models.connect(model)?))
+                Some(TemplateModel(
+                    models
+                        .connect(model)
+                        .map_err(|why| Models::cannot_use(model, why))?,
+                ))
             }
         };
         Ok((incoming, model))
@@ -311,7 +315,14 @@ fn sync(world: &mut World) {
         let help = template.help.clone();
         let system = world.register_system(command(template));
         let mut command = world.entity_mut(system.entity());
-        command.insert((Name::new(name), SlashCommand { help }, TemplateCommand));
+        command.insert((
+            Name::new(name),
+            SlashCommand {
+                help,
+                args: Args::Text,
+            },
+            TemplateCommand,
+        ));
         if let Some(plugin) = plugin {
             command.insert(ProvidedBy(plugin));
         }
@@ -328,9 +339,9 @@ fn reload(
     watches: Query<(), With<TemplateWatch>>,
     mut commands: Commands,
 ) {
-    let mine = changes
-        .read()
-        .fold(false, |mine, change| mine | watches.contains(change.watch));
+    let mine = changes.read().fold(false, |mine, change| {
+        mine | (watches.contains(change.watch) && change.event.names_files())
+    });
     if mine {
         commands.queue(sync);
     }

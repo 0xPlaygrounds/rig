@@ -1,16 +1,12 @@
-//! Plugin corpus: 16. Custom provider registration (spec `16-custom-provider.md`).
-//!
-//! Providers listed in `RIG_HOME/providers.toml` (a company gateway, say)
-//! become catalog vendors: each is declared, its models are added to the
-//! catalog in [`Models`] as `<name>/<model>`, and the vendor is reached
-//! through this plugin's [`Provide`], never the environment's keys for a
-//! built-in vendor. So `--model`, `/model`, its picker and completions
-//! (with "no key: set …" for one whose `key_env` is unset), the remembered
-//! default, subagents and session restore take them like any built-in
-//! model. Each is reached on the wire of its `api`, at its `base_url`, with
-//! its extra `headers` and its key from `key_env` or `key_command` (run
-//! again once the token it printed expired), and priced and windowed by its
-//! own entry. `/reload` restarts the process, so it re-reads the file.
+//! Custom provider registration. Providers listed in `RIG_HOME/providers.toml` (a company
+//! gateway, say) become catalog vendors: each is declared, its models are added to the catalog
+//! in [`Models`] as `<name>/<model>`, and the vendor is reached through this plugin's
+//! [`Provide`], never the environment's keys for a built-in vendor. So `--model`, `/model`, its
+//! picker and completions (which leave out one whose `key_env` is unset), the remembered
+//! default, subagents and session restore take them like any built-in model. Each is reached on
+//! the wire of its `api`, at its `base_url`, with its extra `headers` and its key from
+//! `key_env` or `key_command` (run again once the token it printed expired), and priced and
+//! windowed by its own entry. `/reload` restarts the process, so it re-reads the file.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -398,7 +394,7 @@ impl HttpMiddleware for Gateway {
         headers: &'a mut HeaderMap,
     ) -> WasmBoxedFuture<'a, http_client::Result<()>> {
         Box::pin(async move {
-            let failed = |why: String| http_client::Error::Instance(why.into());
+            let failed = |why: String| http_client::Error::permanent(why);
             let key = self.key().await.map_err(failed)?;
             let (name, value) = self.provider.auth(&key).map_err(failed)?;
             for (name, value) in &self.provider.headers {

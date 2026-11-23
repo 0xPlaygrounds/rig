@@ -53,12 +53,13 @@ impl Session {
         world.trigger(SetModel {
             entity: worker,
             model,
+            kind: ChoiceKind::ForThisRun,
         });
         world.trigger(Deliver::new(worker, typed, DeliveryMode::Steer));
         run_until(&mut app, &wakes, |world| {
             let mut supervisors = world.try_query_filtered::<&SpawnedBy, With<Supervisor>>();
             let mut supervisors = supervisors.iter_mut().flat_map(|query| query.iter(world));
-            supervisors.any(|&SpawnedBy(of)| of == worker)
+            supervisors.any(|of| of.parent() == worker)
         });
         let asked = "The parser drops trailing commas; fix it.";
         app.world_mut()
@@ -157,8 +158,8 @@ fn the_supervisor_checks_the_worker_and_steers_or_stops_it() {
     let stopped = |world: &World| {
         let ended = &world.resource::<Ended>().0;
         ended.iter().any(|outcome| {
-            matches!(outcome, TurnOutcome::Stopped(Some(why))
-                if why.contains("it reads files in circles"))
+            matches!(outcome, TurnOutcome::Stopped(stop)
+                if stop.cause().to_string().contains("it reads files in circles"))
         })
     };
     session.run_until(stopped);
@@ -180,7 +181,4 @@ fn the_supervisor_checks_the_worker_and_steers_or_stops_it() {
     assert!(checked.contains("contents of src/parser.rs"), "{checked}");
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(SupervisorPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(SupervisorPlugin);

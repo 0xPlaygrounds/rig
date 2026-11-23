@@ -1,7 +1,7 @@
 //! DeepSeek model listing smoke test.
 //!
 //! Run with:
-//! `cargo test -p rig --test deepseek list_models_smoke -- --ignored --nocapture`
+//! `cargo test -p rig-cassette --test integration deepseek::models::list_models_smoke -- --ignored --nocapture`
 
 use rig::error::ProviderError;
 
@@ -36,7 +36,7 @@ async fn list_models_smoke() {
     .await;
 }
 
-/// rig#2079 — the shared fetch path classifies a rejected listing as
+/// The shared fetch path classifies a rejected listing as
 /// the provider's reply, with its status and a route naming provider and path.
 #[tokio::test]
 async fn list_models_rejected_key_reports_api_error_with_context() -> anyhow::Result<()> {

@@ -1,34 +1,21 @@
-//! Edge matrix for items a stateless Responses client must send back
-//! unchanged (rig#2269).
+//! Edge matrix for items a stateless Responses client must send back unchanged.
 //!
-//! **Bug.** Things a client that manages its own conversation state could
-//! not do: (a) send a `compaction` item back, which the input side rejected;
-//! (b) re-send an output message's `phase` — `OutputMessage` dropped it, a
-//! streamed turn never stamped it, and a turn with several message items
-//! replayed as one item under one id and one `phase`. OpenAI documents a
-//! dropped `phase` as a quality regression on follow-ups.
+//! A client that manages its own conversation state must be able to send back a
+//! `compaction` item and each output message's `phase`, which OpenAI documents
+//! as affecting follow-up quality. Every output item is one block of history
+//! holding the item verbatim: a compaction item is an opaque block that replays,
+//! and each message item, `phase` and id included, goes back as it came, even
+//! when a turn has several message items.
 //!
-//! **Fix.** Every output item is one block of history holding the item
-//! verbatim: a compaction item is an opaque block that replays, and each
-//! message item, `phase` and id included, goes back as it came.
-//!
-//! **Fixtures.** Cell 2 is hand-derived from a recorded `gpt-5.6-sol` turn: a
-//! `compaction` item is inserted at the head of turn 2's *request* `input[]`
-//! and at the head of turn 1's *response* `output[]` (the shape
-//! `/responses/compact` returns), with every other byte identical. Rig has no
-//! `/responses/compact` client method, so the item cannot be obtained live
-//! through rig; the cell asserts the item is present in both places so a
-//! re-record cannot silently drop it. Cells 3 to 5 are recorded live and
-//! streamed: `gpt-5.4-nano` answers with `final_answer`, and `gpt-5.3-codex`
-//! sends a `commentary` message before its answer or before a tool call.
-//!
-//! | # | cell | transport | proves | fixture |
-//! |---|------|-----------|--------|---------|
-//! | 2 | `compaction_item_decodes_on_the_response` | blocking | compaction on `output[]` decodes typed; the same item re-serialized is accepted on the input side verbatim | derived |
-//! | 3 | `streamed_phase_round_trips_on_follow_up` | streamed, 2 turns | a streamed turn's `phase` reaches its text and the follow-up, as unary text carries it | recorded |
-//! | 4 | `commentary_and_final_answer_replay_as_two_items` | streamed, 2 turns | two message items keep their own id and `phase`, in order, and the follow-up is accepted | recorded |
-//! | 5 | `commentary_before_a_tool_call_replays_with_its_phase` | streamed, 2 turns | a commentary message keeps its `phase` and its place before the call | recorded |
-//! | 6 | `caller_built_input_goes_first_as_given` | blocking, 2 turns | a client holding turn 1 as raw items sends them as `input`, verbatim and ahead of the new prompt, and is answered from them | recorded |
+//! The compaction cell's fixture is derived from a recorded `gpt-5.6-sol` turn:
+//! a `compaction` item is inserted at the head of turn 2's request `input[]` and
+//! turn 1's response `output[]`, the shape `/responses/compact` returns, with
+//! every other byte identical. Rig has no `/responses/compact` client method, so
+//! the item cannot be obtained live, and the cell asserts it is present in both
+//! places so a re-record cannot silently drop it. The streamed phase cells are
+//! recorded live: `gpt-5.4-nano` answers with `final_answer`, and
+//! `gpt-5.3-codex` sends a `commentary` message before its answer or before a
+//! tool call.
 
 use futures::StreamExt;
 use rig::completion::ToolDefinition;

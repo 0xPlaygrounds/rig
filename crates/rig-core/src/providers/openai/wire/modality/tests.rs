@@ -255,11 +255,29 @@ fn a_transcription_request_is_multipart() {
     );
 }
 
+/// Azure transcribes at `/audio/transcriptions`, keeping the spoken
+/// language; `/audio/translations` would answer in English.
+#[test]
+fn azure_transcribes_rather_than_translates() {
+    let encoded = OpenAIConfig::with_key(&AZURE, "k")
+        .with_base_url("https://example.openai.azure.com")
+        .with_api_version("2024-10-21")
+        .transcription("whisper")
+        .encode(
+            crate::transcription::TranscriptionRequestBuilder::new(b"RIFF".to_vec()).build(),
+            Mode::Unary,
+        )
+        .expect("the request encodes");
+    assert_eq!(
+        encoded.request.uri().to_string(),
+        "https://example.openai.azure.com/openai/deployments/whisper/audio/transcriptions?api-version=2024-10-21"
+    );
+}
+
 // ── the dialect-specific modality bodies ────────────────────────────────
 
 /// xAI's image endpoint takes no `size` and must be asked for base64, which
 /// is the only form this wire decodes.
-#[cfg(feature = "image")]
 #[tokio::test]
 async fn the_xai_image_body_and_reply_differ_from_openais() {
     use crate::providers::xai::DIALECT as XAI;
@@ -309,7 +327,6 @@ async fn the_xai_image_body_and_reply_differ_from_openais() {
 }
 
 /// xAI spells its speech endpoint `/v1/tts` and takes a body of its own.
-#[cfg(feature = "audio")]
 #[test]
 fn the_xai_speech_body_differs_from_openais() {
     use crate::providers::xai::DIALECT as XAI;
@@ -352,13 +369,12 @@ fn the_xai_speech_body_differs_from_openais() {
 
 /// Azure versions its speech endpoint separately from every other route, so
 /// a speech request must not carry the general `api-version`.
-#[cfg(feature = "audio")]
 #[test]
 fn azure_speech_carries_its_own_api_version() {
-    let provider = OpenAIConfig::with_key(&AZURE, "k")
+    let mut provider = OpenAIConfig::with_key(&AZURE, "k")
         .with_base_url("https://example.openai.azure.com")
-        .with_api_version("2024-10-21")
-        .with_audio_api_version("2025-04-01-preview");
+        .with_api_version("2024-10-21");
+    provider.audio_api_version = Some("2025-04-01-preview".to_owned());
     let encoded = provider
         .audio_generation("my-tts")
         .encode(
@@ -476,7 +492,6 @@ fn a_rerank_request_is_the_jina_shape() {
 /// Hyperbolic's image endpoint names the model `model_name`, takes the size
 /// as two fields, and answers under `images[].image` — none of which the
 /// OpenAI shape would have matched.
-#[cfg(feature = "image")]
 #[tokio::test]
 async fn the_hyperbolic_image_body_and_reply_differ_from_openais() {
     use crate::providers::openai::wire::HYPERBOLIC;
@@ -522,7 +537,6 @@ async fn the_hyperbolic_image_body_and_reply_differ_from_openais() {
 /// Hugging Face's router takes the prompt as `inputs` and the size nested
 /// under `parameters`, and the model is the path rather than a body field —
 /// the OpenAI body would have been rejected outright.
-#[cfg(feature = "image")]
 #[test]
 fn the_huggingface_image_body_is_the_routers_own_shape() {
     use crate::providers::openai::wire::HUGGINGFACE;
@@ -541,10 +555,10 @@ fn the_huggingface_image_body_is_the_routers_own_shape() {
         )
         .expect("the request encodes");
     let http_request = &encoded.request;
-    // The model is the path, at the router root rather than under `/v1`.
+    // The model is the path, under HF Inference's own `models` root.
     assert_eq!(
         http_request.uri().to_string(),
-        "https://router.huggingface.co/stabilityai/stable-diffusion-3-medium-diffusers"
+        "https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-3-medium-diffusers"
     );
     let body = json_body(&encoded.request);
     assert_eq!(body["inputs"], "a cat");
@@ -564,7 +578,6 @@ fn the_huggingface_image_body_is_the_routers_own_shape() {
 
 /// No wire of this family sends reference images, so a request with one is
 /// refused before anything is sent.
-#[cfg(feature = "image")]
 #[test]
 fn reference_images_are_refused() {
     let request = crate::image_generation::ImageGenerationRequestBuilder::new("a cat")
@@ -578,7 +591,6 @@ fn reference_images_are_refused() {
 
 /// The router answers with the image bytes and no JSON envelope at all, so
 /// the reply neither classifies nor decodes as JSON: the frame is the image.
-#[cfg(feature = "image")]
 #[tokio::test]
 async fn the_huggingface_image_reply_is_the_image_bytes() {
     use crate::providers::openai::wire::HUGGINGFACE;
@@ -607,7 +619,6 @@ async fn the_huggingface_image_reply_is_the_image_bytes() {
 
 /// Hyperbolic addresses speech by language and answers with base64 in a JSON
 /// envelope rather than the audio bytes OpenAI's endpoint returns.
-#[cfg(feature = "audio")]
 #[tokio::test]
 async fn the_hyperbolic_speech_body_and_reply_differ_from_openais() {
     use crate::providers::openai::wire::HYPERBOLIC;
@@ -676,31 +687,27 @@ fn a_dialects_width_table_supplies_the_default_and_suppresses_the_field() {
         "the dialect's table is the only place this model's width is written down"
     );
 
-    // At the native width the field is redundant: the model emits 4096
-    // unasked, so the vector is identical either way.
-    for wire in [
-        &unasked,
-        &OpenAIConfig::with_key(&DOUBLEWORD, "k").embedding(QWEN3_EMBEDDING_8B, Some(4_096)),
-    ] {
-        let encoded = wire
+    // Unasked, the model emits 4096, so the request names no width.
+    let encoded = unasked
+        .encode(documents(), Mode::Unary)
+        .expect("the native width encodes");
+    assert!(
+        json_body(&encoded.request).get("dimensions").is_none(),
+        "{}",
+        json_body(&encoded.request)
+    );
+
+    // A width the caller names goes out as asked, the native one included.
+    for ndims in [512, 4_096] {
+        let encoded = OpenAIConfig::with_key(&DOUBLEWORD, "k")
+            .embedding(QWEN3_EMBEDDING_8B, Some(ndims))
             .encode(documents(), Mode::Unary)
-            .expect("the native width encodes");
-        assert!(
-            json_body(&encoded.request).get("dimensions").is_none(),
-            "{}",
-            json_body(&encoded.request)
+            .expect("a width inside the documented range encodes");
+        assert_eq!(
+            json_body(&encoded.request)["dimensions"],
+            serde_json::json!(ndims)
         );
     }
-
-    // A truncating width is a real request and goes out.
-    let encoded = OpenAIConfig::with_key(&DOUBLEWORD, "k")
-        .embedding(QWEN3_EMBEDDING_8B, Some(512))
-        .encode(documents(), Mode::Unary)
-        .expect("a width inside the documented range encodes");
-    assert_eq!(
-        json_body(&encoded.request)["dimensions"],
-        serde_json::json!(512)
-    );
 
     // Mistral's fixed-width model is the same mechanism with a different
     // table: 1024 reported, and no `output_dimension` on the wire.
@@ -716,6 +723,30 @@ fn a_dialects_width_table_supplies_the_default_and_suppresses_the_field() {
         "{}",
         json_body(&encoded.request)
     );
+}
+
+/// Codestral Embed answers a request naming no width with
+/// 1536-wide vectors, under both its ids, so that is the width a handle
+/// naming none reports, and the request still names none. A caller who
+/// names 1536 still sends it.
+#[test]
+fn codestral_embed_reports_the_width_it_returns_unasked() {
+    for model in [CODESTRAL_EMBED, "codestral-embed-2505"] {
+        let unasked = OpenAIConfig::with_key(&MISTRAL, "k").embedding(model, None);
+        assert_eq!(unasked.describe().capabilities.ndims, 1_536, "{model}");
+        let encoded = unasked
+            .encode(documents(), Mode::Unary)
+            .expect("the native width encodes");
+        let body = json_body(&encoded.request);
+        assert!(body.get("output_dimension").is_none(), "{body}");
+
+        let encoded = OpenAIConfig::with_key(&MISTRAL, "k")
+            .embedding(model, Some(1_536))
+            .encode(documents(), Mode::Unary)
+            .expect("the native width encodes");
+        let body = json_body(&encoded.request);
+        assert_eq!(body["output_dimension"], serde_json::json!(1_536), "{body}");
+    }
 }
 
 /// A width the dialect cannot honour is refused before the request is built.

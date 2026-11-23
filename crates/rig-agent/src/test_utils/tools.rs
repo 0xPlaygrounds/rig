@@ -91,19 +91,12 @@ pub struct MockContextProbeTool {
 impl MockContextProbeTool {
     /// What the tool observed on its most recent call, if it has been called.
     pub fn observed(&self) -> Option<String> {
-        self.seen
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .last()
-            .cloned()
+        crate::lock(&self.seen).last().cloned()
     }
 
     /// Everything the tool observed, one entry per call in call order.
     pub fn observations(&self) -> Vec<String> {
-        self.seen
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone()
+        crate::lock(&self.seen).clone()
     }
 }
 
@@ -130,10 +123,7 @@ impl Tool for MockContextProbeTool {
             Some(session) => format!("session:{}", session.0),
             None => "no-session".to_string(),
         };
-        self.seen
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .push(observed.clone());
+        crate::lock(&self.seen).push(observed.clone());
         Ok(observed)
     }
 }
@@ -480,5 +470,35 @@ impl Tool for MockMetadataTool {
             .insert_result(MockRequestId("req-7".to_string()))
             .map_err(|_| MockToolError)?;
         Ok("done".to_string())
+    }
+}
+
+/// Wraps a tool and counts how many times its body runs.
+#[cfg(test)]
+#[derive(Clone)]
+pub(crate) struct Counted<T>(pub T, pub Arc<std::sync::atomic::AtomicU32>);
+
+#[cfg(test)]
+impl<T: Tool> Tool for Counted<T> {
+    const NAME: &'static str = T::NAME;
+    type Error = T::Error;
+    type Args = T::Args;
+    type Output = T::Output;
+
+    fn description(&self) -> String {
+        self.0.description()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        self.0.parameters()
+    }
+
+    async fn call(
+        &self,
+        context: &mut crate::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
+        self.1.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.0.call(context, args).await
     }
 }

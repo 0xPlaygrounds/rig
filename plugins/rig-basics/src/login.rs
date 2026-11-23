@@ -9,7 +9,8 @@
 //! - The ChatGPT sign-in runs on the IO pool: in the browser, which it
 //!   opens and whose URL it shows as a notice, or with a device code when
 //!   no browser can be assumed (no graphical session, or SSH), when the
-//!   callback ports are taken, or with `--device`.
+//!   callback ports are taken, or with `--device`. The browser starts
+//!   without the plugins' secrets in its environment.
 //! - `/logout` lets the user pick what to remove of what `/login` stored,
 //!   or takes its name. Signing out of ChatGPT asks OpenAI to revoke the
 //!   credential's tokens, then deletes it, whether or not OpenAI
@@ -19,30 +20,39 @@
 //!   has expired. Calls and sign-ins share one authenticator, and every rig
 //!   process holds the file's lock while it refreshes or signs in, so a
 //!   refresh never overwrites a newer sign-in. The file is replaced whole.
+//! - The plan's models are those the backend lists for the signed-in
+//!   account, asked once per run when first needed.
+//! - `[login] app_name` in `settings.toml` names the app the browser
+//!   sign-in pages send the user back to; they say `rig` without it. An
+//!   empty name refuses the run.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_tasks::{IoTaskPool, TaskPool};
 use crossbeam_channel::{Receiver, Sender};
-use rig_core::catalog::{ModelSpec, SignIn, Transport};
+use rig_core::catalog::{ModelSpec, ModelStatus, SignIn, Transport};
 use rig_core::client::signed_in::SignedInModel;
+use rig_core::providers::auth::{AuthError, DeviceCodeHandler, DeviceCodePrompt, FileTokenStore};
 use rig_core::providers::chatgpt::{
     self,
-    auth::{
-        AuthError, AuthSource, Authenticator, DeviceCodeHandler, DeviceCodePrompt, FileTokenStore,
-        SignInMethod, SignInPrompt, SignedOut,
-    },
+    auth::{AuthSource, Authenticator, SignInMethod, SignInPrompt, SignedOut},
 };
 use rig_core::providers::registry::ConnectError;
 use rig_core::serve::ErasedHandler;
+use rig_harness::secrets::browser_opener;
 use rig_harness::services::RigHome;
+use rig_harness::settings::AppSettingsExt;
+use serde::Deserialize;
 
-use rig_ecs::agent::{ActiveTurn, Agent, Notice, StopTurn};
-use rig_ecs::model::{Connection, ModelChoice, Models, SetModel};
+use rig_ecs::agent::{ActiveTurn, Agent, Notice};
+use rig_ecs::model::{ChoiceKind, Connection, ModelChoice, Models, SetModel};
+use rig_ecs::requests::RequestOf;
 use rig_ecs::tasks::{Done, PollTasks, Running, Wake};
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
+use rig_tools::process::Process;
 
 /// The provider `/login` signs in to: the ChatGPT plan, the catalog's
 /// `chatgpt` vendor, which is also what `/login` and `/logout` take for it.
@@ -51,7 +61,17 @@ const PROVIDER: &str = chatgpt::PROVIDER_NAME;
 /// How the user knows [`PROVIDER`].
 const TITLE: &str = chatgpt::PLAN_TITLE;
 
-mod keys;
+/// The model a usable ChatGPT sign-in starts a run on, by reference: the
+/// plan's default, after a fresh `/login` as at a start with nothing
+/// chosen ([`FirstPick`](crate::models::FirstPick)).
+pub(crate) fn default_model() -> String {
+    format!("{PROVIDER}/{}", chatgpt::DEFAULT_MODEL)
+}
+
+pub(crate) mod keys;
+mod offered;
+
+use offered::Offered;
 
 /// Adds `/login` and `/logout`, and connects the plan's models with the
 /// signed-in credential and each provider's models with its saved key.
@@ -64,18 +84,34 @@ impl Plugin for LoginPlugin {
         // calls refresh it once. It never starts a sign-in on its own.
         let store = FileTokenStore::new(RigHome::of(app.world()).auth());
         let file = store.path(PROVIDER);
-        let auth = Authenticator::new(
+        let mut auth = Authenticator::new(
             AuthSource::OAuth,
             store,
             DeviceCodeHandler::default(),
             false,
-        );
-        let session = Session { auth, file };
+        )
+        .with_browser_opener(open_browser);
+        let settings = app.add_setting::<LoginSettings>("login");
+        if let Some(AppName(name)) = settings
+            .world()
+            .resource::<LoginSettings>()
+            .app_name
+            .clone()
+        {
+            auth = auth.with_app_name(name);
+        }
+        let offered = Arc::new(Offered::default());
+        let session = Session {
+            auth,
+            file,
+            offered,
+        };
         app.world_mut()
             .get_resource_or_init::<Models>()
             .0
             .add_sign_in(ChatGptSignIn(session.clone()));
         app.insert_resource(session);
+        crate::models::word_refusals(app);
         keys::add(app);
         app.add_command(
             "login",
@@ -88,23 +124,58 @@ impl Plugin for LoginPlugin {
             "Remove what /login stored: pick it, or /logout chatgpt or /logout <provider>",
             on_logout,
         )
+        .add_systems(PreStartup, wake_on_answers)
         .add_systems(Update, show_login_prompts.in_set(PollTasks))
+        .add_systems(First, offered::show_answers)
+        .add_systems(Update, offered::refuse_unoffered)
         .add_observer(on_signed_in)
         .add_observer(on_signed_out)
-        .add_observer(cancel_on_interrupt);
+        .add_observer(say_cancelled);
     }
 }
 
-/// The authenticator every call and sign-in of the plan goes through, and
-/// the file it keeps the credential in.
+/// `[login]` in `settings.toml`.
+#[derive(Resource, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+struct LoginSettings {
+    /// The app the browser sign-in pages send the user back to.
+    app_name: Option<AppName>,
+}
+
+/// An app's name: not empty or blank.
+#[derive(Deserialize, Clone)]
+#[serde(try_from = "String")]
+struct AppName(String);
+
+impl TryFrom<String> for AppName {
+    type Error = &'static str;
+
+    fn try_from(name: String) -> Result<Self, Self::Error> {
+        if name.trim().is_empty() {
+            return Err("an app name must not be empty");
+        }
+        Ok(Self(name))
+    }
+}
+
+/// The authenticator every call and sign-in of the plan goes through, the
+/// file it keeps the credential in, and the models the account may use.
 #[derive(Resource, Clone)]
 struct Session {
     auth: Authenticator,
     file: PathBuf,
+    offered: Arc<Offered>,
 }
 
-/// The plan's models, connected with the signed-in credential while it is
-/// kept.
+/// Has the app's loop woken when the account's models are known.
+fn wake_on_answers(session: Res<Session>, wake: Option<Res<Wake>>) {
+    if let Some(wake) = wake {
+        session.offered.wake_with(wake.clone());
+    }
+}
+
+/// The plan's models the account may use, connected with the signed-in
+/// credential while it is kept.
 struct ChatGptSignIn(Session);
 
 impl SignIn for ChatGptSignIn {
@@ -113,26 +184,44 @@ impl SignIn for ChatGptSignIn {
         spec: &ModelSpec,
         transport: &Transport,
     ) -> Option<Result<ErasedHandler, ConnectError>> {
-        let model = || {
-            let http = transport.shared().ok_or(ConnectError::NoHttpClient)?;
-            SignedInModel::new(spec.clone(), self.0.auth.clone(), http)
+        if self.plan(spec).is_none() || !self.0.file.is_file() {
+            return None;
+        }
+        let Some(http) = transport.shared() else {
+            return Some(Err(ConnectError::NoHttpClient));
         };
-        let signed_in = self.plan(spec).is_some() && self.0.file.is_file();
-        signed_in.then(|| model().map(ErasedHandler::new))
+        let Session { auth, offered, .. } = &self.0;
+        if let Some(why) = offered.refused(spec, auth, &http) {
+            return Some(Err(ConnectError::Provider(why)));
+        }
+        let model = SignedInModel::new(spec.clone(), auth.clone(), http.clone());
+        let gate = offered::Gate {
+            offered: Arc::clone(offered),
+            spec: spec.clone(),
+            auth: auth.clone(),
+            http,
+        };
+        Some(model.map(|model| ErasedHandler::new(model).layered(gate)))
     }
 
     fn plan(&self, spec: &ModelSpec) -> Option<&'static str> {
         (spec.provider.vendor() == PROVIDER).then_some(TITLE)
     }
+
+    fn offers(&self, spec: &ModelSpec, transport: &Transport) -> ModelStatus {
+        match transport.shared() {
+            Some(http) => self.0.offered.status(spec, &self.0.auth, &http),
+            None => ModelStatus::Usable,
+        }
+    }
 }
 
-/// A sign-in waiting for the user, on an entity of its own whose
-/// [`Running`] task is the flow until it ends; `--print` waits for it as
-/// for any `Running` task. Despawning it cancels the flow.
+/// A sign-in waiting for the user, on an entity of its own, a
+/// [`RequestOf`] the agent that asked, whose [`Running`] task is the flow
+/// until it ends; `--print` waits for it as for any `Running` task.
+/// Despawning it cancels the flow, as a stop that reaches the agent does.
 #[derive(Component)]
 pub struct PendingLogin {
-    /// The agent that asked.
-    pub agent: Entity,
     /// What the flow asks the user to do, worded for a notice.
     prompts: Receiver<String>,
 }
@@ -172,7 +261,6 @@ fn on_login(
         && (named.is_empty() || named == PROVIDER)
     {
         commands.entity(login).despawn();
-        notices.write(Notice::info(agent, format!("{TITLE} sign-in cancelled.")));
         return;
     }
     if named.is_empty() {
@@ -197,7 +285,8 @@ fn on_login(
     let pool = IoTaskPool::get_or_init(TaskPool::default);
     commands.spawn((
         Name::new(format!("login:{PROVIDER}")),
-        PendingLogin { agent, prompts },
+        PendingLogin { prompts },
+        RequestOf(agent),
         Running::spawn(
             pool,
             &wake,
@@ -253,14 +342,35 @@ async fn sign_in_flow(
     SignInEnded(signed_in.map(drop).map_err(|error| error.to_string()))
 }
 
+/// Asks the desktop to open the sign-in page `url` without waiting, and
+/// without the plugins' secrets in the opener's environment, so the
+/// browser never inherits one. The opener is handed over as it starts, so
+/// the browser it starts stays as rig goes on or exits. Returns whether
+/// the opener started.
+fn open_browser(url: &str) -> bool {
+    let Ok(mut opener) = Process::start_with_stdio(browser_opener(url)) else {
+        return false;
+    };
+    opener.release();
+    // Reap the opener when it exits.
+    std::thread::Builder::new()
+        .name("browser-opener".into())
+        .spawn(move || opener.wait_for(std::time::Duration::MAX).ok())
+        .ok();
+    true
+}
+
 /// The line after a sign-in prompt.
 const WAITING: &str = "Waiting for it; Esc or /login cancels.";
 
 /// Shows what a sign-in asks the user to do.
-fn show_login_prompts(logins: Query<&PendingLogin>, mut notices: MessageWriter<Notice>) {
-    for login in &logins {
+fn show_login_prompts(
+    logins: Query<(&PendingLogin, &RequestOf)>,
+    mut notices: MessageWriter<Notice>,
+) {
+    for (login, &RequestOf(agent)) in &logins {
         for text in login.prompts.try_iter() {
-            notices.write(Notice::info(login.agent, text));
+            notices.write(Notice::info(agent, text));
         }
     }
 }
@@ -269,20 +379,21 @@ fn show_login_prompts(logins: Query<&PendingLogin>, mut notices: MessageWriter<N
 /// it serves and could not connect before.
 fn on_signed_in(
     done: On<Add<Done<SignInEnded>>>,
-    logins: Query<(&PendingLogin, &Done<SignInEnded>)>,
+    logins: Query<(&RequestOf, &Done<SignInEnded>), With<PendingLogin>>,
     unconnected: Query<(Entity, &ModelChoice), (With<Agent>, Without<Connection>)>,
     (models, session): (Res<Models>, Res<Session>),
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Ok((login, Done(SignInEnded(result)))) = logins.get(done.entity) else {
+    let Ok((&RequestOf(asked), Done(SignInEnded(result)))) = logins.get(done.entity) else {
         return;
     };
     match result {
         Ok(()) => {
-            let model = format!("{PROVIDER}/{}", chatgpt::DEFAULT_MODEL);
+            session.offered.forget();
+            let model = default_model();
             notices.write(Notice::info(
-                login.agent,
+                asked,
                 format!(
                     "Signed in to {TITLE}; switching to {model}. /model lists its \
                      other models; the credential is in {}.",
@@ -294,18 +405,19 @@ fn on_signed_in(
                 let of_plan = catalog
                     .resolve(&choice.0)
                     .is_ok_and(|found| found.spec.provider.vendor() == PROVIDER);
-                if agent != login.agent && of_plan {
+                if agent != asked && of_plan {
                     commands.entity(agent).insert(choice.clone());
                 }
             }
             commands.trigger(SetModel {
-                entity: login.agent,
+                entity: asked,
                 model,
+                kind: ChoiceKind::ForThisRun,
             });
         }
         Err(why) => {
             notices.write(Notice::error(
-                login.agent,
+                asked,
                 format!("{TITLE} sign-in failed: {why}"),
             ));
         }
@@ -313,21 +425,15 @@ fn on_signed_in(
     commands.entity(done.entity).despawn();
 }
 
-/// Esc cancels the agent's waiting sign-ins.
-fn cancel_on_interrupt(
-    interrupt: On<StopTurn>,
-    pending: Query<(Entity, &PendingLogin)>,
-    mut commands: Commands,
+/// Says a sign-in was cancelled as it goes before it ended: by `/login`, or
+/// by a stop that reaches its agent, such as Esc.
+fn say_cancelled(
+    gone: On<Remove<PendingLogin>>,
+    logins: Query<&RequestOf, Without<Done<SignInEnded>>>,
     mut notices: MessageWriter<Notice>,
 ) {
-    for (login, pending) in &pending {
-        if pending.agent == interrupt.entity {
-            commands.entity(login).despawn();
-            notices.write(Notice::info(
-                pending.agent,
-                format!("{TITLE} sign-in cancelled."),
-            ));
-        }
+    if let Ok(&RequestOf(agent)) = logins.get(gone.entity) {
+        notices.write(Notice::info(agent, format!("{TITLE} sign-in cancelled.")));
     }
 }
 
@@ -405,6 +511,7 @@ fn on_signed_out(
         return;
     };
     let agent = logout.agent;
+    session.offered.forget();
     notices.write(match ended {
         Ok(SignedOut::NotSignedIn) => Notice::info(agent, format!("Not signed in to {TITLE}.")),
         Ok(SignedOut::Forgotten { revoked: Ok(()) }) => Notice::info(
@@ -428,3 +535,6 @@ fn on_signed_out(
     });
     commands.entity(done.entity).despawn();
 }
+
+#[cfg(test)]
+mod tests;

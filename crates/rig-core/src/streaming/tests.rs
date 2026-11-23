@@ -56,3 +56,62 @@ async fn a_partial_turn_after_an_error_is_marked_failed() {
         turn.stop
     );
 }
+
+/// A usage-only frame leaves the relay before the transport sends anything
+/// more.
+#[tokio::test]
+async fn anthropic_partial_usage_reaches_the_relay_before_content() {
+    use crate::providers::anthropic::streaming::MessagesDecoder;
+    use crate::providers::anthropic::wire::Quirks;
+    use crate::wire::{Decoder, Out, WireEvent, WireFrame};
+
+    let shared = Arc::new(Mutex::new(Shared::new(ReplyFold::relayed("anthropic"))));
+    let writer = Arc::clone(&shared);
+    let reading = async_stream::stream! {
+        let mut decoder = MessagesDecoder::new(Quirks::anthropic());
+        for frame in [
+            serde_json::json!({"type": "message_start", "message": {
+                "id": "msg_1", "type": "message", "role": "assistant",
+                "model": "claude-sonnet-4-6", "content": [],
+                "usage": {"input_tokens": 10, "output_tokens": 0}
+            }}),
+            serde_json::json!({"type": "message_delta", "delta": {}, "usage": {"output_tokens": 3}}),
+        ] {
+            if let WireEvent::Known(event) = decoder.classify(WireFrame::Text(frame.to_string())) {
+                let result = decoder.decode(event, Out::new(&writer));
+                assert!(result.is_ok(), "{result:?}");
+            }
+            yield ();
+        }
+        futures::future::pending::<()>().await;
+    };
+    let stream = CompletionStream::new(
+        Box::pin(reading),
+        shared,
+        tracing::Span::none(),
+        "anthropic",
+    );
+    let mut relay = stream.into_relay();
+    assert!(matches!(relay.next().await, Some(Ok(Relayed::Origin(_)))));
+    for output in [0, 3] {
+        let item = tokio::time::timeout(std::time::Duration::from_secs(1), relay.next()).await;
+        assert!(
+            matches!(item, Ok(Some(Ok(Relayed::Usage(usage))))
+            if usage.input_tokens == Some(10) && usage.output_tokens == Some(output)),
+            "{item:?}"
+        );
+    }
+}
+
+/// Intermediate relays retain reports even when the provider has not ended the reply.
+#[tokio::test]
+async fn partial_usage_survives_a_relay_round_trip() {
+    let usage = crate::completion::Usage::new()
+        .input_tokens(10)
+        .output_tokens(2);
+    let events =
+        futures::stream::iter([Ok(Relayed::Usage(usage))]).chain(futures::stream::pending());
+    let mut relay = CompletionStream::relay("test", Box::pin(events)).into_relay();
+    assert!(matches!(relay.next().await, Some(Ok(Relayed::Origin(_)))));
+    assert_eq!(relay.next().await, Some(Ok(Relayed::Usage(usage))));
+}

@@ -18,13 +18,16 @@ use serde::{Deserialize, Serialize};
 use crate::{
     completion::UnsupportedOption,
     http_client,
-    observe::AdapterErrorBoundary,
     provider_response::ProviderResponseError,
     tool::{ToolErrorKind, ToolExecutionError},
     vector_store::VectorStoreError,
 };
 
+mod rate_limits;
 mod retry;
+
+pub(crate) use rate_limits::rfc3339;
+pub use rate_limits::{Allowance, RateLimits};
 
 /// Normalized classification of an [`ErrorReport`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -222,54 +225,17 @@ impl fmt::Display for ErrorReport {
 
 impl std::error::Error for ErrorReport {}
 
-/// The one status → retryable table.
-///
-/// Request Timeout (408), Too Early (425), Too Many Requests (429) and every
-/// server error (5xx) are retryable; every other status is not. A missing
-/// status decides nothing here: a failure with no status is classified by
-/// what it is ([`transient_transport`]), not by what it lacks.
-pub const fn retryable_status(status: Option<u16>) -> bool {
-    match status {
-        None => false,
-        Some(408 | 425 | 429) => true,
-        Some(s) => s >= 500 && s <= 599,
-    }
-}
-
-/// Classifies `StreamEnded` and backend `Instance` errors as retryable.
-/// Protocol, header, and content-type errors, and a client that could not be
-/// built (`Unbuilt`), are not retryable. Errors carrying
-/// an HTTP status use [`retryable_status`]. This does not guarantee the server
-/// has not processed the request.
-pub fn transient_transport(error: &http_client::Error) -> bool {
-    match error {
-        http_client::Error::StreamEnded | http_client::Error::Instance(_) => true,
-        http_client::Error::InvalidStatusCodeWithDetails { status, .. } => {
-            retryable_status(Some(status.as_u16()))
-        }
-        _ => false,
-    }
-}
+pub use crate::http_client::retryable_status;
 
 /// Collect the `Display` of each `source()` link below `error`, outermost
 /// first.
 pub(crate) fn source_chain(error: &(dyn std::error::Error + 'static)) -> Vec<String> {
-    let mut chain = Vec::new();
-    let mut current = error.source();
-    while let Some(source) = current {
-        chain.push(source.to_string());
-        current = source.source();
-    }
-    chain
+    std::iter::successors(error.source(), |source| source.source())
+        .map(ToString::to_string)
+        .collect()
 }
 
-/// A boxed request-building failure.
-#[cfg(not(target_family = "wasm"))]
-pub type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
-
-/// A boxed request-building failure.
-#[cfg(target_family = "wasm")]
-pub type BoxError = Box<dyn std::error::Error + 'static>;
+pub use crate::http_client::BoxError;
 
 /// A request-building failure shared by every clone of the error that holds
 /// it.
@@ -359,8 +325,10 @@ pub enum ProviderError {
     /// The reply stopped before the provider ended it: its frames ran out,
     /// or the runtime stopped, without the provider's end.
     Truncated,
-    /// A streamed reply sent nothing for this long, before its first frame
-    /// or between two, and was dropped. Retryable.
+    /// A streamed reply sent no frame for this long, from when it was sent
+    /// to its first frame or between two, and was dropped. Bytes that are
+    /// no frame, such as an event stream's comments, do not count.
+    /// Retryable.
     Stalled(std::time::Duration),
     /// A [`GenerationOptions`](crate::completion::GenerationOptions) field
     /// the wire or model cannot honour, under
@@ -402,7 +370,7 @@ impl fmt::Display for ProviderError {
             }
             Self::Stalled(idle) => write!(
                 f,
-                "TimeoutError: the streamed reply sent nothing for {}s",
+                "TimeoutError: the streamed reply sent no event for {}s",
                 idle.as_secs_f64()
             ),
             Self::UnsupportedOption(option) => write!(f, "RequestError: {option}"),
@@ -480,13 +448,14 @@ impl ProviderError {
         }
     }
 
-    /// Classifies transport failures with [`transient_transport`] and
+    /// Classifies transport failures with
+    /// [`http_client::Error::is_transient`] and
     /// preserved replies with [`ProviderResponseError::is_retryable`]; a
     /// truncated or stalled reply is retryable. Every other failure, rejected
     /// credentials and expired caches included, is not retryable.
     pub fn is_retryable(&self) -> bool {
         match self {
-            Self::Http(error) => transient_transport(error),
+            Self::Http(error) => error.is_transient(),
             Self::ProviderResponse(response) => response.is_retryable(),
             Self::Relayed(report) => report.retryable,
             // A reply cut short, by its transport or its runtime, may end on
@@ -536,20 +505,14 @@ impl ProviderError {
 
     /// The preserved reply's headers. `None` means not captured, as for
     /// non-HTTP transports and replies built from only a status and body.
-    /// This example reads the seconds form of `Retry-After`:
+    /// For the wait a provider asked for, use
+    /// [`ErrorReport::retry_after`], which reads every form it sends:
     ///
-    /// ```no_run
+    /// ```
     /// # use rig_core::error::ProviderError;
-    /// # use std::time::Duration;
+    /// # use std::time::{Duration, SystemTime};
     /// fn backoff(error: &ProviderError) -> Option<Duration> {
-    ///     let seconds = error
-    ///         .provider_response_headers()?
-    ///         .get(http::header::RETRY_AFTER)?
-    ///         .to_str()
-    ///         .ok()?
-    ///         .parse()
-    ///         .ok()?;
-    ///     Some(Duration::from_secs(seconds))
+    ///     error.report().retry_after(SystemTime::now())
     /// }
     /// ```
     pub fn provider_response_headers(&self) -> Option<&http::HeaderMap> {
@@ -595,19 +558,6 @@ impl ProviderError {
     /// The wire form of this error.
     pub fn report(&self) -> ErrorReport {
         ErrorReport::from(self)
-    }
-
-    /// Which boundary produced this error, by its classification.
-    pub(crate) fn boundary(&self) -> AdapterErrorBoundary {
-        match (self, self.kind()) {
-            (Self::Http(error), _) => AdapterErrorBoundary::from_http(error),
-            (Self::Stalled(_), _) => AdapterErrorBoundary::Transport,
-            (_, ErrorKind::Json | ErrorKind::Response) => AdapterErrorBoundary::Decode,
-            (_, ErrorKind::Provider | ErrorKind::ProviderResponse) => {
-                AdapterErrorBoundary::ProviderResponse
-            }
-            _ => AdapterErrorBoundary::Request,
-        }
     }
 
     fn map_response(
@@ -706,12 +656,6 @@ impl From<http::Error> for EncodeError {
 
 impl From<serde_json::Error> for EncodeError {
     fn from(error: serde_json::Error) -> Self {
-        Self::request(error)
-    }
-}
-
-impl From<crate::message::MessageError> for EncodeError {
-    fn from(error: crate::message::MessageError) -> Self {
         Self::request(error)
     }
 }
@@ -878,7 +822,7 @@ impl From<&VectorStoreError> for ErrorReport {
             .as_ref()
             .and_then(|response| response.status.map(|status| status.as_u16()));
         let retryable = match error {
-            VectorStoreError::Http(inner) => transient_transport(inner),
+            VectorStoreError::Http(inner) => inner.is_transient(),
             VectorStoreError::ExternalAPIError(..) => retryable_status(http_status),
             _ => false,
         };

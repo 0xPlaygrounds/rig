@@ -363,7 +363,11 @@ impl rig_agent::agent::AgentHook for LookupBeforeRun {
         _event: rig_agent::agent::RunStart<'_>,
     ) -> rig_agent::agent::RunStartAction {
         let tool = ctx
-            .tool(&rig_core::effect::HandlerKey::from(LOOKUP_KEY))
+            .bind(
+                &rig_core::effect::Key::<rig_core::effect::family::Tool>::new_unchecked(
+                    rig_core::effect::HandlerKey::from(LOOKUP_KEY),
+                ),
+            )
             .expect("the run's bus serves add");
         let answer = tool
             .dispatch(rig_core::effect::ToolCallRequest {
@@ -539,11 +543,6 @@ pub async fn tool_index(
     .index(model)
 }
 
-#[derive(Debug, thiserror::Error)]
-#[error("init error")]
-/// Initialization error type for the retrievable arithmetic tools.
-pub struct NoInit;
-
 macro_rules! retrievable_operation {
     ($name:ident, $tool_name:literal, $description:literal, $embedding_doc:literal, $op:expr) => {
         #[derive(Clone, Default, serde::Deserialize, serde::Serialize)]
@@ -575,13 +574,7 @@ macro_rules! retrievable_operation {
         }
 
         impl rig_core::tool::ToolEmbedding for $name {
-            type InitError = NoInit;
             type Context = ();
-            type State = ();
-
-            fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
-                Ok(Self)
-            }
 
             fn embedding_docs(&self) -> Vec<String> {
                 vec![$embedding_doc.into()]

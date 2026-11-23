@@ -34,9 +34,10 @@ use bevy_ecs::system::IntoObserverSystem;
 use bevy_log::warn;
 use bevy_reflect::prelude::*;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use rig_harness::commands::RunCommand;
+use rig_harness::commands::run_chosen;
+use rig_harness::prelude::{Notice, NoticeLevel};
 
-use super::view::TuiView;
+use super::view::{Notices, TuiView};
 
 /// One key with its modifiers, as the terminal reports it. A character
 /// carries its case instead of Shift (`A` is Shift+a); Shift+Tab is
@@ -72,11 +73,6 @@ impl KeyPress {
     /// Alt+`character`.
     pub fn alt(character: char) -> Self {
         Self::new(KeyCode::Char(character), KeyModifiers::ALT)
-    }
-
-    /// `code` with Shift.
-    pub fn shift(code: KeyCode) -> Self {
-        Self::new(code, KeyModifiers::SHIFT)
     }
 
     /// The press `event` reports.
@@ -396,7 +392,7 @@ pub trait AppKeyBindingsExt {
     /// Spawns `binding` with `on_press`, an observer of the [`KeyPressed`]
     /// it triggers, and returns its entity, unless another binding
     /// conflicts with it ([`KeyBinding::conflicts`]): that one stays, with
-    /// a warning.
+    /// a warning, which the terminal view shows as it starts.
     fn add_key_binding<M>(
         &mut self,
         binding: KeyBinding,
@@ -417,30 +413,52 @@ impl AppKeyBindingsExt for App {
 }
 
 /// Spawns `binding`, unless one conflicts with it: that one stays, with a
-/// warning. A query skips a disabled binding.
+/// warning, which the view also shows as it starts ([`tell_refused`]). A
+/// query skips a disabled binding.
 fn bind(world: &mut World, binding: KeyBinding) -> Option<EntityWorldMut<'_>> {
     let mut bindings = world.query::<&KeyBinding>();
     if let Some(taken) = bindings.iter(world).find(|bound| bound.conflicts(&binding)) {
-        warn!(
-            "key binding `{}` ({}) not added: `{}` ({}) is bound; insert `Disabled` on it to \
-             replace it",
+        let why = format!(
+            "Key `{}` ({}) is not bound: `{}` ({}) has it.",
             binding.keys, binding.label, taken.keys, taken.label
         );
+        warn!("{why} Insert `Disabled` on that binding to replace it.");
+        world.get_resource_or_init::<RefusedKeys>().0.push(why);
         return None;
     }
     let name = Name::new(format!("key:{}", binding.keys));
     Some(world.spawn((name, binding)))
 }
 
+/// Why [`bind`] refused each binding, until the view says it.
+#[derive(Resource, Default)]
+pub(crate) struct RefusedKeys(Vec<String>);
+
+/// Says each refused binding as a warning in the view, once: a copy the
+/// build before a reload kept goes, so the view shows one per refusal of
+/// this build, as the latest, within the notices it keeps.
+pub(crate) fn tell_refused(
+    refused: Option<ResMut<RefusedKeys>>,
+    mut shown: ResMut<Notices>,
+    mut notices: MessageWriter<Notice>,
+) {
+    let Some(mut refused) = refused else {
+        return;
+    };
+    shown.forget(|notice| notice.level == NoticeLevel::Warn && refused.0.contains(&notice.text));
+    notices.write_batch(refused.0.drain(..).map(|why| Notice::warn(None, why)));
+}
+
 /// An observer for [`AppKeyBindingsExt::add_key_binding`] that runs the
-/// slash command `line` (without its `/`) for the shown agent.
+/// slash command `line` (without its `/`) for the shown agent. A refusal
+/// shows why and leaves the input as it is.
 pub fn run_command(
     line: impl Into<String>,
 ) -> impl FnMut(On<KeyPressed>, Commands) + Send + Sync + 'static {
     let line = line.into();
     move |pressed: On<KeyPressed>, mut commands: Commands| {
         if let (Some(entity), false) = (pressed.agent, pressed.released) {
-            commands.trigger(RunCommand::new(entity, line.clone()));
+            commands.queue(run_chosen(entity, line.clone()));
         }
     }
 }
@@ -617,8 +635,8 @@ fn built_in() -> Vec<(Keys, &'static str, InputAction)> {
             "Scroll down",
             Do::ScrollDown,
         ),
-        (key(K::PageUp), "Scroll a page up", Do::PageUp),
-        (key(K::PageDown), "Scroll a page down", Do::PageDown),
+        (key(K::PageUp), "Scroll half a page up", Do::PageUp),
+        (key(K::PageDown), "Scroll half a page down", Do::PageDown),
         (key(K::Tab), "Complete, or send after this turn", Do::Tab),
         (key(K::Enter), "Send, or steer the running turn", Do::Send),
         (

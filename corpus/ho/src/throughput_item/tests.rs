@@ -5,7 +5,7 @@ use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     Collected, Ended, app_on, calls, collect, connect, log_ended, run_until,
 };
-use rig_tui::TuiPlugin;
+use rig_tui::TuiPlugins;
 
 use super::*;
 
@@ -40,14 +40,14 @@ fn a_turns_call_shows_its_speed_and_a_plugins_call_only_counts() {
         return;
     };
     let (mut app, wakes) = app_on(&MemoryStore::default());
-    app.add_plugins((AgentPlugin, SessionLogPlugin, TuiPlugin, ThroughputPlugin))
+    app.add_plugins((AgentPlugin, SessionLogPlugin, TuiPlugins, ThroughputPlugin))
         .insert_resource(TimeUpdateStrategy::ManualDuration(FRAME))
         .init_resource::<Ended>()
         .add_observer(log_ended);
     collect::<Notice>(&mut app);
     app.finish();
     app.update();
-    let agent = app.world_mut().spawn((Agent, connection)).id();
+    let agent = spawn_root(app.world_mut(), connection).id();
     app.world_mut()
         .trigger(Deliver::new(agent, "hello", DeliveryMode::Steer));
     run_until(&mut app, &wakes, |world| {
@@ -94,7 +94,4 @@ fn a_turns_call_shows_its_speed_and_a_plugins_call_only_counts() {
     assert!(listed, "{notices:?}");
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(ThroughputPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(ThroughputPlugin);

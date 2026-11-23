@@ -100,8 +100,7 @@ pub(crate) fn add(app: &mut App) {
     if !app.runs_front(FRONT) {
         return;
     }
-    app.add_setting::<GitStatusSettings>("git_status")
-        .init_resource::<ProjectRoot>()
+    app.init_resource::<ProjectRoot>()
         .init_resource::<Processes>()
         .init_resource::<AppStatus>()
         .init_resource::<GitRunner>()

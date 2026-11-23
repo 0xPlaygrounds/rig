@@ -36,7 +36,8 @@ fn a_clients_mcp_servers_go_to_rig_as_written_and_an_sse_one_holds_its_name_refu
     };
     let expected_http = ServerSpec::Http {
         url: "https://example.com/mcp?k=${KEY}".to_owned(),
-        headers: BTreeMap::from([("Authorization".to_owned(), "Bearer ${TOKEN}".to_owned())]),
+        // Lowercase, as it goes out.
+        headers: BTreeMap::from([("authorization".to_owned(), "Bearer ${TOKEN}".to_owned())]),
     };
     assert_eq!(specs.first(), Some(&Ok(expected_stdio)));
     assert_eq!(specs.get(1), Some(&Ok(expected_http)));
@@ -45,6 +46,52 @@ fn a_clients_mcp_servers_go_to_rig_as_written_and_an_sse_one_holds_its_name_refu
             .get(2)
             .is_some_and(|spec| spec.as_ref().is_err_and(|why| why.contains("SSE")))
     );
+}
+
+#[test]
+fn lists_that_start_the_same_servers_run_alike() {
+    let stdio = |args: &[&str], env: &[(&str, &str)]| {
+        let args = args.iter().map(|arg| (*arg).to_owned()).collect();
+        let env = env
+            .iter()
+            .map(|(name, value)| acp::EnvVariable::new(*name, *value));
+        let stdio = acp::McpServerStdio::new("files", "/bin/files-mcp").args(args);
+        acp::McpServer::Stdio(stdio.env(env.collect()))
+    };
+    let http = |headers: &[(&str, &str)]| {
+        let headers = headers
+            .iter()
+            .map(|(name, value)| acp::HttpHeader::new(*name, *value));
+        let http = acp::McpServerHttp::new("web", "https://example.com/mcp");
+        acp::McpServer::Http(http.headers(headers.collect()))
+    };
+    let (key, auth, lower) = (
+        ("X-Key", "1"),
+        ("Authorization", "Bearer t"),
+        ("authorization", "Bearer t"),
+    );
+    let first = running(&[
+        stdio(&["a", "b"], &[("X", "1"), ("Y", "2")]),
+        http(&[key, auth, lower]),
+    ]);
+    // Another order of servers, variables and headers, a header's name in
+    // another case, and one given twice: the same servers.
+    let turned = [
+        http(&[lower, auth, ("x-key", "1")]),
+        stdio(&["a", "b"], &[("Y", "2"), ("X", "1")]),
+    ];
+    assert_eq!(running(&turned), first);
+    // Arguments in another order, or another value, are other servers.
+    let swapped = [
+        stdio(&["b", "a"], &[("X", "1"), ("Y", "2")]),
+        http(&[key, auth]),
+    ];
+    assert_ne!(running(&swapped), first);
+    let changed = [
+        stdio(&["a", "b"], &[("X", "1"), ("Y", "3")]),
+        http(&[key, auth]),
+    ];
+    assert_ne!(running(&changed), first);
 }
 
 #[test]
@@ -81,12 +128,49 @@ fn a_prompt_ends_as_its_last_turn_did_and_a_plugins_stop_is_no_cancel() {
         Some(acp::StopReason::MaxTokens)
     );
     assert_eq!(stop(true, Some(cut)), Some(acp::StopReason::Cancelled));
-    let compacted = TurnOutcome::Stopped(Some("compacted".to_owned()));
-    assert_eq!(stop(false, Some(compacted)), Some(acp::StopReason::EndTurn));
-    assert_eq!(
-        stop(false, Some(TurnOutcome::Stopped(None))),
-        Some(acp::StopReason::Cancelled)
-    );
+    let compacted = StopCause::Plugin {
+        by: "compaction".to_owned(),
+        why: "compacted".to_owned(),
+    };
+    assert_eq!(stopped(&compacted), acp::StopReason::EndTurn);
+    assert_eq!(stopped(&StopCause::User), acp::StopReason::Cancelled);
+    let exit = StopCause::Exit("the run ended".to_owned());
+    assert_eq!(stopped(&exit), acp::StopReason::Cancelled);
     assert_eq!(stop(false, None), Some(acp::StopReason::EndTurn));
     assert!(stop_reason(false, Some(&TurnOutcome::Failed("why".to_owned()))).is_err());
+}
+
+#[test]
+fn a_reasoning_budget_set_by_hand_is_shown_as_itself() {
+    use bevy_ecs::system::RunSystemOnce;
+    use rig_harness::rig_core::catalog::{Catalog, Connector};
+    use rig_harness::rig_core::completion::Reasoning;
+
+    let mut world = World::new();
+    world.insert_resource(Models(Connector::new(Catalog::builtin().clone())));
+    // The current value of the reasoning option, and the values offered.
+    let mut shown = |tokens| {
+        let agent = world
+            .spawn((
+                ModelChoice("anthropic/claude-sonnet-4-5".to_owned()),
+                ReasoningSetting(Some(Reasoning::Budget { tokens })),
+            ))
+            .id();
+        let options = world.run_system_once(move |options: options::Options| options.of(agent));
+        let options = serde_json::to_value(options.unwrap_or_default()).unwrap_or_default();
+        let reasoning = options.get(1).cloned().unwrap_or_default();
+        let current = reasoning.get("currentValue").cloned().unwrap_or_default();
+        let offered = reasoning
+            .get("options")
+            .and_then(|offered| offered.as_array());
+        let values = offered.into_iter().flatten();
+        let values = values.filter_map(|offered| offered.get("value")?.as_str());
+        (current, values.map(str::to_owned).collect::<Vec<_>>())
+    };
+    let (current, values) = shown(4096);
+    assert_eq!(current, "4096 tokens", "{values:?}");
+    assert_eq!(values.last().map(String::as_str), Some("4096 tokens"));
+    let (current, values) = shown(16384);
+    assert_eq!(current, "high");
+    assert_eq!(values, ["default", "off", "low", "medium", "high"]);
 }

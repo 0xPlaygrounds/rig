@@ -7,6 +7,7 @@ use std::{
 
 use crate::driver::{Exchange, Model, Opened, Opening, Transport};
 use crate::error::{EncodeError, ProviderError};
+use crate::lock;
 use crate::operation::Completion;
 use crate::wire::{Capabilities, Descriptor, Mode, Wire};
 use crate::{
@@ -23,9 +24,9 @@ pub enum MockError {
     Provider(String),
     /// Request construction error.
     Request(String),
-    /// A preserved provider error response (rig#2314), id included.
+    /// A preserved provider error response, id included.
     ProviderResponse(crate::provider_response::ProviderResponseError),
-    /// A streamed reply that sent nothing for this long.
+    /// A streamed reply that sent no frame for this long.
     Stalled(std::time::Duration),
 }
 
@@ -114,8 +115,8 @@ impl MockTurn {
         }
     }
 
-    /// Create a provider-response error turn carrying a transport request id
-    /// (rig#2314): the scripted failure a test uses to assert error-identity
+    /// Create a provider-response error turn carrying a transport request id:
+    /// the scripted failure a test uses to assert error-identity
     /// attribution.
     pub fn provider_response_error(
         status: http::StatusCode,
@@ -209,7 +210,7 @@ impl MockTurn {
     /// Set the terminal finish reason for this turn.
     ///
     /// Without this, a mocked blocking turn always reports `None`, which
-    /// leaves the whole blocking half of the truncation contract (rig#2322)
+    /// leaves the whole blocking half of the truncation contract
     /// unexercisable — the streamed mock could script a reason and the
     /// blocking one could not.
     pub fn with_finish_reason(mut self, finish_reason: crate::completion::FinishReason) -> Self {
@@ -247,13 +248,11 @@ impl MockTurn {
     }
 }
 
-type MockInvocation = (CompletionRequest, Option<crate::observe::AdapterContext>);
-
 #[derive(Default)]
 struct MockScriptState {
     turns: Mutex<VecDeque<MockTurn>>,
     stream_turns: Mutex<VecDeque<Vec<MockStreamEvent>>>,
-    requests: Mutex<Vec<MockInvocation>>,
+    requests: Mutex<Vec<CompletionRequest>>,
 }
 
 /// The scripted completion wire: its payload is the request, and each frame
@@ -449,20 +448,7 @@ impl MockCompletionModel {
 
     /// Return cloned requests received by this model.
     pub fn requests(&self) -> Vec<CompletionRequest> {
-        self.transport
-            .requests_guard()
-            .iter()
-            .map(|(request, _)| request.clone())
-            .collect()
-    }
-
-    /// Return invocation contexts in the same order as the captured requests.
-    pub fn contexts(&self) -> Vec<Option<crate::observe::AdapterContext>> {
-        self.transport
-            .requests_guard()
-            .iter()
-            .map(|(_, context)| context.clone())
-            .collect()
+        self.transport.requests_guard().clone()
     }
 
     /// Return the number of requests received by this model.
@@ -478,22 +464,15 @@ impl MockCompletionModel {
 }
 
 impl MockRuntime {
-    fn requests_guard(&self) -> MutexGuard<'_, Vec<MockInvocation>> {
+    fn requests_guard(&self) -> MutexGuard<'_, Vec<CompletionRequest>> {
         lock(&self.state.requests)
-    }
-}
-
-fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    match mutex.lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => poisoned.into_inner(),
     }
 }
 
 impl Transport<MockScript> for MockRuntime {
     fn send(&self, request: CompletionRequest, exchange: Exchange) -> Opening<MockFrame> {
         let mode = exchange.mode;
-        self.requests_guard().push((request, exchange.observation));
+        self.requests_guard().push(request);
         match mode {
             // A whole turn is one response, its document the response's
             // `raw`; a scripted failure fails the reply.

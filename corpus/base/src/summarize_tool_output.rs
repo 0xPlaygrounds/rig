@@ -15,7 +15,6 @@
 
 use std::path::{Path, PathBuf};
 
-use rig_basics::coding_tools::ShellOutput;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::CompletionRequest;
 use rig_harness::rig_core::effect::Answered;
@@ -208,7 +207,9 @@ fn summarize(
         let connection = match (saved, &config.model) {
             (Err(why), _) => Err(format!("the output could not be saved ({why})")),
             (Ok(_), None) => Err("no summarizer model is configured".to_owned()),
-            (Ok(_), Some(model)) => models.connect(model),
+            (Ok(_), Some(model)) => models
+                .connect(model)
+                .map_err(|why| Models::cannot_use(model, why)),
         };
         let connection = match connection {
             Ok(connection) => connection,

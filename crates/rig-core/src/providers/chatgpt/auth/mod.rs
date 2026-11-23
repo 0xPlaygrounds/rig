@@ -1,23 +1,21 @@
 //! ChatGPT access-token configuration and native OAuth authentication.
 //!
 //! ```no_run
-//! use rig_core::providers::chatgpt::auth::{AuthSource, Authenticator, DeviceCodeHandler, FileTokenStore};
+//! use rig_core::providers::auth::{DeviceCodeHandler, FileTokenStore};
+//! use rig_core::providers::chatgpt::auth::{AuthSource, Authenticator};
 //!
 //! let store = FileTokenStore::new("/path/to/credentials");
 //! let auth = Authenticator::new(AuthSource::OAuth, store, DeviceCodeHandler::default(), true);
 //! ```
 
 use crate::http_client::HttpClientExt;
+use crate::providers::auth::{AuthContext, AuthError, DeviceCodeHandler, Shell, TokenStore};
 use std::fmt;
 
 #[cfg(not(target_family = "wasm"))]
-pub use crate::providers::internal::auth::FileTokenStore;
-pub use crate::providers::internal::auth::{
-    DeviceCodeHandler, DeviceCodePrompt, MemoryTokenStore, StoreLock, TokenStore,
-};
-
-#[cfg(not(target_family = "wasm"))]
 mod native;
+#[cfg(not(target_family = "wasm"))]
+pub use native::browser_command;
 
 /// The key the sign-in is kept under in the store.
 #[cfg(not(target_family = "wasm"))]
@@ -90,18 +88,18 @@ impl fmt::Debug for AuthSource {
 }
 
 /// Signs in to ChatGPT and keeps the stored credential fresh. Clones share
-/// the store and the refresh lock.
+/// the store, the refresh lock and the browser opener.
 #[derive(Clone)]
-pub struct Authenticator(Shell<AuthSource>);
+pub struct Authenticator(
+    Shell<AuthSource>,
+    #[cfg(not(target_family = "wasm"))] native::BrowserSignIn,
+);
 
 impl fmt::Debug for Authenticator {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.fmt(f)
     }
 }
-
-use crate::providers::internal::auth::Shell;
-pub use crate::providers::internal::auth::{AuthContext, AuthError};
 
 impl Authenticator {
     /// An authenticator over `source`, keeping an OAuth sign-in in `store`
@@ -114,12 +112,11 @@ impl Authenticator {
         device_code_handler: DeviceCodeHandler,
         allow_device_flow: bool,
     ) -> Self {
-        Self(Shell::new(
-            source,
-            store,
-            device_code_handler,
-            allow_device_flow,
-        ))
+        Self(
+            Shell::new(source, store, device_code_handler, allow_device_flow),
+            #[cfg(not(target_family = "wasm"))]
+            native::BrowserSignIn::default(),
+        )
     }
 
     /// Forget the credential held in memory, so the next request reads the

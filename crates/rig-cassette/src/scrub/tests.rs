@@ -914,7 +914,7 @@ async fn url_keys_and_json_authorization_are_private_in_live_and_cassette_output
     let client = log.wrap_http(rig_reqwest::ReqwestClient::from(raw.clone()));
     let request = json!({"authorization":auth,"headers":{"Authorization":format!("Bearer {header_auth}")},"echo":format!("{key_password} {signed} {nested}"),"fingerprint":"local"});
     let response = client
-        .send::<_, Bytes>(
+        .send(
             Request::post(format!("{}/submit", session.base_url()))
                 .header("authorization", "Bearer local")
                 .body(Bytes::from(request.to_string()))
@@ -1104,7 +1104,7 @@ async fn raw_multipart_capture_keeps_only_metadata_and_omits_request_bytes() {
                 .expect("client"),
         ));
         let response = client
-            .send::<_, Bytes>(
+            .send(
                 Request::post(format!("{}/submit", session.base_url()))
                     .header("content-type", "multipart/form-data; boundary=sample")
                     .header("authorization", format!("Bearer {secret}"))
@@ -1286,7 +1286,7 @@ async fn short_password_and_header_echoes_are_private_in_both_output_files() {
             let response = client.send_streaming(request).await.expect("reply");
             let _: Vec<_> = response.into_body().collect().await;
         } else {
-            assert!(client.send::<_, Bytes>(request).await.is_err());
+            assert!(client.send(request).await.is_err());
         }
         log.flush();
         session.try_finish().await.expect("safe recording");
@@ -1605,7 +1605,7 @@ async fn capture_scrub_request_with_header_map(
                 let _: Vec<_> = reply.into_body().collect().await;
             } else {
                 client
-                    .send::<_, Bytes>(request)
+                    .send(request)
                     .await
                     .expect("reply")
                     .into_body()
@@ -1616,7 +1616,7 @@ async fn capture_scrub_request_with_header_map(
         RequestBodyRef::Multipart(form) => {
             assert!(!streaming, "typed multipart uses unary replies");
             client
-                .send_multipart::<Bytes>(builder.body(form.clone()).expect("request"))
+                .send_multipart(builder.body(form.clone()).expect("request"))
                 .await
                 .expect("reply")
                 .into_body()
@@ -2628,6 +2628,48 @@ async fn duplicate_json_credentials_and_parents_withhold_both_values_in_both_fil
     }
 }
 
+/// A body whose frame the live reader refuses as too large is no complete
+/// stopped body, though its framer then holds nothing.
+#[test]
+fn a_frame_past_the_limit_is_no_frame_boundary() {
+    let mut body = b"{\"done\":true}\n".to_vec();
+    body.resize(
+        body.len() + rig_core::http_client::framing::FRAME_LIMIT + 1,
+        b' ',
+    );
+    body.push(b'\n');
+    assert!(!stopped_at_frame_boundary(
+        [("content-type", "application/x-ndjson")],
+        &body
+    ));
+}
+
+/// A large id before many events, each arriving on its own as a stream
+/// does, is a complete recording: its id is copied once per event.
+#[test]
+fn a_large_id_before_many_events_still_ends_at_a_frame_boundary() {
+    let mut body = format!("id: {}\n", "x".repeat(1024 * 1024)).into_bytes();
+    for _ in 0..80 {
+        body.extend(b"data: {}\n\n");
+    }
+    assert!(stopped_at_frame_boundary(
+        [("content-type", "text/event-stream")],
+        &body
+    ));
+}
+
+/// Scrubbing a recording keeps every event, however often a large id is
+/// copied into them: the recording is in memory already.
+#[test]
+fn scrubbing_keeps_every_event_after_a_large_id() {
+    let mut text = format!("id: {}\n", "x".repeat(1024 * 1024));
+    for _ in 0..80 {
+        text.push_str("data: {}\n\n");
+    }
+    let events = super::parse_sse(&text, true).map(|events| events.len());
+    assert_eq!(events, Some(80));
+}
+
 #[test]
 fn frame_boundaries_use_the_same_inspected_format_and_reject_partial_records() {
     for content_type in [None, Some("text/plain"), Some("text/event-stream")] {
@@ -3412,6 +3454,55 @@ async fn raw_multipart_header_credentials_withhold_both_sinks_before_normalizati
                 .fixture
                 .pointer("/then/body")
                 .is_none_or(Value::is_null)
+        );
+    }
+}
+
+#[cfg(feature = "http")]
+#[test]
+fn cassettes_scrub_quoted_team_ids_and_refuse_unscrubbed_ones() {
+    let team = "0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d";
+    let other = "11111111-2222-3333-4444-555555555555";
+    let fixture = |reply: &str| {
+        format!(
+            "when:\n  path: /v1/responses\n  method: POST\n  body: '{{\"metadata\":{{\"run\":\"{other}\"}}}}'\nthen:\n  status: 404\n  body: '{reply}'\n"
+        )
+    };
+    for reply in [
+        format!(r#"{{"error":"your team {team} does not have access to it"}}"#),
+        format!(r#"{{"error":"quote your team ID {team}"}}"#),
+        format!(r#"{{"error":"GET /v1/teams/{team}/usage"}}"#),
+        format!(r#"{{"error":"team-{team}"}}"#),
+        format!(r#"{{"team_id":"{team}"}}"#),
+        format!(r#"{{"error":"Team=(`{}`)"}}"#, team.to_ascii_uppercase()),
+        format!(r#"{{"error":"see /billing?a=1&teamId={team}"}}"#),
+        format!(r#"{{"team_uuid":"{team}"}}"#),
+        format!(r#"{{"error":"team%20{team} and team%3D{team}"}}"#),
+    ] {
+        let raw = fixture(&reply);
+        let scrubbed = crate::http::scrub_cassette_contents(&raw);
+        assert!(
+            !scrubbed.to_ascii_lowercase().contains(team) && scrubbed.contains("team_REDACTED_1"),
+            "{reply}: {scrubbed}"
+        );
+        // A UUID nobody names as a team is provider data.
+        assert!(scrubbed.contains(other), "{scrubbed}");
+        assert_eq!(crate::http::scrub_cassette_contents(&scrubbed), scrubbed);
+        assert!(
+            !crate::http::cassette_safety_failures(std::path::Path::new("x.yaml"), &raw).is_empty(),
+            "a fixture holding a team id passes the safety check: {reply}"
+        );
+    }
+    for kept in [
+        format!("steam {team}"),
+        format!("teammate {team}"),
+        format!("team idea {team}"),
+        format!("myteam/{team}"),
+    ] {
+        let raw = fixture(&kept);
+        assert!(
+            crate::http::scrub_cassette_contents(&raw).contains(team),
+            "{kept}"
         );
     }
 }

@@ -10,6 +10,7 @@ description = "Workspace maintenance tasks for rig. Not published."
 workspace = true
 
 [dependencies]
+rig-harness-protocol = { path = "../crates/rig-harness-protocol" }
 syn = { workspace = true, features = ["full", "visit"] }
 quote = { workspace = true }
 proc-macro2 = { workspace = true, features = ["span-locations"] }
@@ -17,3 +18,8 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["preserve_order"] }
 serde_yaml = { workspace = true }
 thiserror = { workspace = true }
+
+# Only for the test that the catalog guard reads rows as rig-core does;
+# `cargo xtask` itself does not build rig-core.
+[dev-dependencies]
+rig-core = { path = "../crates/rig-core", default-features = false }

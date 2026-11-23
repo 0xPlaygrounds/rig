@@ -75,23 +75,15 @@ impl<Op: Operation> ModelAdapter<Op> {
     }
 
     /// How the model sends for `dispatch` under `handler`: its HTTP request
-    /// carries the [`Serving`], observed under `observation`.
-    fn sending(
-        &self,
-        handler: HandlerKey,
-        dispatch: &Dispatch,
-        observation: Option<crate::observe::AdapterContext>,
-    ) -> Sending {
+    /// carries the [`Serving`].
+    fn sending(&self, handler: HandlerKey, dispatch: &Dispatch) -> Sending {
         let mut extensions = http::Extensions::new();
         extensions.insert(Serving {
             effect: dispatch.id(),
             handler,
             provider: self.model.spec().map(|spec| spec.provider),
         });
-        Sending {
-            observation,
-            extensions,
-        }
+        Sending { extensions }
     }
 }
 
@@ -187,11 +179,7 @@ impl Serve for ModelAdapter<Completion> {
 
     async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
         let model = &self.model;
-        let sending = self.sending(
-            crate::effect::model_key(self.label.as_str()),
-            &dispatch,
-            dispatch.adapter_context(),
-        );
+        let sending = self.sending(crate::effect::model_key(self.label.as_str()), &dispatch);
         match kind {
             EffectKind::Completion {
                 request,
@@ -229,7 +217,7 @@ impl Serve for ModelAdapter<Embedding> {
             key: crate::effect::embed_key(self.label.as_str()),
             family: FamilyDescriptor::Embed {
                 model: self.label.to_string(),
-                dims: Some(capabilities.ndims),
+                dims: (capabilities.ndims != 0).then_some(capabilities.ndims),
                 max_documents: capabilities.max_documents,
                 modality: EmbedModality::Text,
             },
@@ -239,11 +227,7 @@ impl Serve for ModelAdapter<Embedding> {
 
     async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
         let model = &self.model;
-        let sending = self.sending(
-            crate::effect::embed_key(self.label.as_str()),
-            &dispatch,
-            None,
-        );
+        let sending = self.sending(crate::effect::embed_key(self.label.as_str()), &dispatch);
         match kind {
             EffectKind::Embed {
                 inputs: EmbedInputs::Texts(texts),
@@ -288,11 +272,7 @@ impl Serve for ModelAdapter<Rerank> {
 
     async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
         let model = &self.model;
-        let sending = self.sending(
-            crate::effect::rerank_key(self.label.as_str()),
-            &dispatch,
-            None,
-        );
+        let sending = self.sending(crate::effect::rerank_key(self.label.as_str()), &dispatch);
         match kind {
             EffectKind::Rerank { request } => Reply::Outcome(
                 model
@@ -426,8 +406,8 @@ impl<T: Tool> ToolAdapter<T> {
         }
     }
 
-    /// Wraps a tool with embedding descriptions and serialized reconstruction
-    /// context. Returns an error if context serialization fails.
+    /// Wraps a tool with its embedding documents and serialized context.
+    /// Returns an error if context serialization fails.
     pub fn retrievable(tool: T) -> Result<Self, serde_json::Error>
     where
         T: ToolEmbedding,
@@ -650,51 +630,38 @@ where
     async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> Reply {
         match kind {
             EffectKind::Retrieve { query } => {
-                let outcome = match query {
-                    RetrieveQuery::TopN { req } => {
-                        match req.try_map_filter(F::from_dynamic_filter) {
-                            Ok(req) => self
-                                .index
-                                .top_n::<serde_json::Value>(req)
-                                .await
-                                .map(|results| {
-                                    Answered::Documents(RetrievedDocuments::Scored(
-                                        results
-                                            .into_iter()
-                                            .map(|result| {
-                                                (
-                                                    result.score,
-                                                    result.id,
-                                                    F::normalize_dynamic_document(result.document),
-                                                )
-                                            })
-                                            .collect(),
-                                    ))
-                                })
-                                .map_err(ErrorReport::from),
-                            Err(error) => Err(ErrorReport::from(VectorStoreError::from(error))),
-                        }
-                    }
-                    RetrieveQuery::TopNIds { req } => {
-                        match req.try_map_filter(F::from_dynamic_filter) {
-                            Ok(req) => self
-                                .index
-                                .top_n_ids(req)
-                                .await
-                                .map(|results| {
-                                    Answered::Documents(RetrievedDocuments::Ids(
-                                        results
-                                            .into_iter()
-                                            .map(|result| (result.score, result.id))
-                                            .collect(),
-                                    ))
-                                })
-                                .map_err(ErrorReport::from),
-                            Err(error) => Err(ErrorReport::from(VectorStoreError::from(error))),
-                        }
-                    }
+                let ids = matches!(query, RetrieveQuery::TopNIds { .. });
+                let (RetrieveQuery::TopN { req } | RetrieveQuery::TopNIds { req }) = query;
+                let outcome = match req.try_map_filter(F::from_dynamic_filter) {
+                    Ok(req) if ids => self.index.top_n_ids(req).await.map(|results| {
+                        RetrievedDocuments::Ids(
+                            results
+                                .into_iter()
+                                .map(|result| (result.score, result.id))
+                                .collect(),
+                        )
+                    }),
+                    Ok(req) => self
+                        .index
+                        .top_n::<serde_json::Value>(req)
+                        .await
+                        .map(|results| {
+                            RetrievedDocuments::Scored(
+                                results
+                                    .into_iter()
+                                    .map(|result| {
+                                        (
+                                            result.score,
+                                            result.id,
+                                            F::normalize_dynamic_document(result.document),
+                                        )
+                                    })
+                                    .collect(),
+                            )
+                        }),
+                    Err(error) => Err(VectorStoreError::from(error)),
                 };
-                Reply::Outcome(outcome)
+                Reply::Outcome(outcome.map(Answered::Documents).map_err(ErrorReport::from))
             }
             other @ (EffectKind::Completion { .. }
             | EffectKind::ToolCall { .. }

@@ -5,14 +5,14 @@ use serde_json::json;
 
 /// The request every stream test below sends. The decoder is what they
 /// exercise, so the request only has to be well-formed.
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 fn streaming_request() -> crate::completion::CompletionRequest {
     crate::completion::CompletionRequest::new("hello")
 }
 
 /// The GenerateContent wire for `model`, bound to a transport that answers
 /// with `frames` as one SSE body.
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 fn streamed(
     model: &str,
     frames: &[&str],
@@ -43,34 +43,6 @@ fn decoded(
         crate::wire::Mode::Unary,
         [WireFrame::Text(reply.to_string())],
     )
-}
-
-#[test]
-fn test_deserialize_stream_response_with_single_text_part() {
-    let json_data = json!({
-        "candidates": [{
-            "content": {
-                "parts": [
-                    {"text": "Hello, world!"}
-                ],
-                "role": "model"
-            },
-            "finishReason": "STOP",
-            "index": 0
-        }],
-        "usageMetadata": {
-            "promptTokenCount": 10,
-            "candidatesTokenCount": 5,
-            "totalTokenCount": 15
-        }
-    });
-
-    let response = decoded(json_data).expect("the reply decodes");
-    assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
-    let [AssistantContent::Text(text)] = response.choice.as_slice() else {
-        panic!("Expected one text block: {:?}", response.choice);
-    };
-    assert_eq!(text.text, "Hello, world!");
 }
 
 #[test]
@@ -141,61 +113,6 @@ fn test_deserialize_stream_response_with_multiple_text_parts() {
     assert_eq!(
         text.native.as_ref().map(|native| &native.item),
         Some(&json!({ "text": "Hello, world! How are you?" }))
-    );
-}
-
-#[test]
-fn test_deserialize_stream_response_with_multiple_tool_calls() {
-    let json_data = json!({
-        "candidates": [{
-            "content": {
-                "parts": [
-                    {
-                        "functionCall": {
-                            "name": "get_weather",
-                            "args": {"city": "San Francisco"},
-                            "id": "call-weather"
-                        }
-                    },
-                    {
-                        "functionCall": {
-                            "name": "get_temperature",
-                            "args": {"location": "New York"},
-                            "id": "call-temperature"
-                        }
-                    }
-                ],
-                "role": "model"
-            },
-            "finishReason": "STOP",
-            "index": 0
-        }],
-        "usageMetadata": {
-            "promptTokenCount": 50,
-            "candidatesTokenCount": 20,
-            "totalTokenCount": 70
-        }
-    });
-
-    let response = decoded(json_data).expect("the reply decodes");
-    let [
-        AssistantContent::ToolCall(weather),
-        AssistantContent::ToolCall(temperature),
-    ] = response.choice.as_slice()
-    else {
-        panic!("Expected two function calls: {:?}", response.choice);
-    };
-    assert_eq!(weather.function.name, "get_weather");
-    assert_eq!(weather.id.wire(), "call-weather");
-    assert_eq!(
-        weather.function.arguments_value(),
-        json!({"city": "San Francisco"})
-    );
-    assert_eq!(temperature.function.name, "get_temperature");
-    assert_eq!(temperature.id.wire(), "call-temperature");
-    assert_eq!(
-        temperature.function.arguments_value(),
-        json!({"location": "New York"})
     );
 }
 
@@ -279,12 +196,9 @@ fn test_deserialize_stream_response_with_empty_parts() {
     assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
 }
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-mod terminal_emission {}
-
 /// Open a `streamGenerateContent` stream over the given SSE frames and
 /// collect every item the consumer sees, and whether the reply ended.
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 async fn collect_stream(
     frames: &[&str],
 ) -> (
@@ -305,7 +219,7 @@ async fn collect_stream(
     (items, finished)
 }
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 #[tokio::test]
 async fn blocked_prompt_is_a_provider_error_naming_the_block_reason() {
     // Gemini answers a blocked prompt on the streaming wire with one chunk
@@ -348,7 +262,7 @@ async fn blocked_prompt_is_a_provider_error_naming_the_block_reason() {
     assert!(!finished, "a blocked prompt has no terminal record");
 }
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 #[tokio::test]
 async fn blocked_prompt_without_usage_is_still_recognised_and_ends_the_stream() {
     // The block chunk may carry no `usageMetadata` at all (proto3 JSON omits
@@ -369,7 +283,7 @@ async fn blocked_prompt_without_usage_is_still_recognised_and_ends_the_stream() 
     assert!(!finished);
 }
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 #[tokio::test]
 async fn blocked_prompt_with_an_unrecognised_safety_category_still_names_the_block() {
     // Google adds harm categories without notice. The block chunk carries
@@ -405,7 +319,7 @@ async fn blocked_prompt_with_an_unrecognised_safety_category_still_names_the_blo
     assert!(!finished);
 }
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 #[tokio::test]
 async fn in_band_http_errors_match_unary_classification_and_preserve_the_envelope() {
     for code in [400, 401, 404, 429, 500, 503] {
@@ -429,7 +343,7 @@ async fn in_band_http_errors_match_unary_classification_and_preserve_the_envelop
     }
 }
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_family = "wasm"))]
 #[tokio::test]
 async fn in_band_opaque_or_invalid_codes_do_not_invent_http_status() {
     for code in [
@@ -456,7 +370,7 @@ async fn in_band_opaque_or_invalid_codes_do_not_invent_http_status() {
     }
 }
 
-/// Round 4 NEW-3: a part that carries only a thought signature, as a
+/// A part that carries only a thought signature, as a
 /// stream's last chunk can, joins the text before it, so the signature
 /// replays to the same model.
 #[test]
@@ -630,4 +544,39 @@ fn two_signed_thought_parts_keep_both_signatures() {
         .filter_map(|item| item["thoughtSignature"].as_str())
         .collect();
     assert_eq!(signatures, ["b25l", "dHdv"], "{:?}", response.choice);
+}
+
+/// A reply cut short still relays the usage its chunks reported, the
+/// latest replacing the first.
+#[cfg(not(target_family = "wasm"))]
+#[tokio::test]
+async fn a_reply_cut_short_relays_the_usage_its_chunks_reported() {
+    use crate::streaming::Relayed;
+    use futures::StreamExt;
+    let chunk = |text: &str, output: u64| {
+        json!({
+            "candidates": [{ "content": { "parts": [{ "text": text }], "role": "model" } }],
+            "usageMetadata": { "promptTokenCount": 23, "candidatesTokenCount": output }
+        })
+        .to_string()
+    };
+    let (first, second) = (chunk("The answer", 2), chunk(" is", 4));
+    let model = streamed("gemini-2.5-flash", &[&first, &second]);
+    let Ok(stream) = model.stream(streaming_request()) else {
+        return;
+    };
+    let relayed: Vec<_> = stream.into_relay().collect().await;
+    let reported: Vec<(Option<u64>, Option<u64>)> = (relayed.iter())
+        .filter_map(|item| match item {
+            Ok(Relayed::Usage(usage)) => Some((usage.input_tokens, usage.output_tokens)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(reported.last(), Some(&(Some(23), Some(4))), "{relayed:?}");
+    assert!(
+        !relayed
+            .iter()
+            .any(|item| matches!(item, Ok(Relayed::Done(_)))),
+        "the reply never ended: {relayed:?}"
+    );
 }

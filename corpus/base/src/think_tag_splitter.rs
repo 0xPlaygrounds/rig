@@ -1,18 +1,15 @@
-//! Plugin corpus: 60. Reasoning tag splitter (spec `60-think-tag-splitter.md`).
+//! Reasoning tag splitter. Open reasoning models behind plain OpenAI-compatible endpoints
+//! send their thinking inline, as `<think>…</think>` in the answer text. This plugin adapts
+//! every model call ([`Adapted`]), on the model the call finally goes to, whatever routed
+//! it there; for a listed model, or any model while `detect` is on, it rewrites the reply
+//! stream so the thinking streams as reasoning and the rest as text, and the response the
+//! reply ends with is split the same way. The kernel, the fronts and other plugins only
+//! ever see the split reply, and so does the conversation.
 //!
-//! Open reasoning models behind plain OpenAI-compatible endpoints send their
-//! thinking inline, as `<think>…</think>` in the answer text. This plugin
-//! adapts every model call ([`Adapted`]), on the model the call finally
-//! goes to, whatever routed it there; for a listed model,
-//! or any model while `detect` is on, it rewrites the reply stream so the
-//! thinking streams as reasoning and the rest as text, and the response the
-//! reply ends with is split the same way. The kernel, the fronts and other
-//! plugins only ever see the split reply, and so does the conversation.
-//! A reply that was split says so on its call ([`Published`]); the model it
-//! went to ([`SentTo`]) is then known to send tags, and requests to it
-//! leave prior reasoning out unless `resend_reasoning` is set.
-//!
-//! Settings, `[think_tags]` in `RIG_HOME/settings.toml`:
+//! A reply that was split says so on its call ([`Published`]); the model it went to
+//! ([`SentTo`]) is then known to send tags, and requests to it leave prior reasoning out
+//! unless `resend_reasoning` is set. The settings are the `[think_tags]` table in
+//! `RIG_HOME/settings.toml`:
 //!
 //! ```toml
 //! [think_tags]
@@ -25,10 +22,9 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use rig_harness::prelude::*;
-use rig_harness::rig_core::effect::{Answered, EffectId, EffectKind};
-use rig_harness::rig_core::error::ErrorReport;
+use rig_harness::rig_core::effect::{EffectId, EffectKind};
 use rig_harness::rig_core::message::{Reasoning, Text};
-use rig_harness::rig_core::serve::{AfterServe, BeforeServe, Intercept};
+use rig_harness::rig_core::serve::{BeforeServe, Intercept};
 use rig_harness::rig_core::streaming::{Item, Part, PartKind, Relayed, StreamEvent};
 use rig_harness::rig_core::tool::{ContextValue, PublishedContext};
 use rig_harness::rig_ecs::effects::Handler;
@@ -184,15 +180,6 @@ impl Intercept for LeaveOutReasoning {
             request: request.into(),
             stream,
         })
-    }
-
-    async fn after(
-        &self,
-        _: EffectId,
-        _: &EffectKind,
-        _: &Result<Answered, ErrorReport>,
-    ) -> AfterServe {
-        AfterServe::Keep
     }
 }
 

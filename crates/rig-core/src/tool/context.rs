@@ -17,6 +17,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use super::ToolExecutionError;
+use crate::conversation::CallRef;
 
 /// Context passed to every tool execution.
 ///
@@ -70,10 +71,90 @@ impl std::fmt::Debug for ToolResultContext {
     }
 }
 
+/// The key [`ToolResultContext::with_at`] keeps its call under.
+const AT: &str = "rig.at";
+
 impl ToolResultContext {
     /// Read a published value without exposing ambient execution inputs.
     pub fn get<T: ContextValue>(&self) -> Result<Option<T>, ToolContextError> {
         get_slot(&self.0)
+    }
+
+    /// Whether nothing was published.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// The call these values were kept for with its result
+    /// ([`with_at`](Self::with_at)); `None` when no call was recorded, as
+    /// in a session saved before calls were.
+    pub fn at(&self) -> Option<CallRef> {
+        crate::json_utils::from_value(self.0.get(AT)?).ok()
+    }
+
+    /// These values, kept for the call `at`, so a reply that repeats a
+    /// call id still finds each call's own.
+    #[must_use]
+    pub fn with_at(mut self, at: CallRef) -> Self {
+        if let Ok(value) = serde_json::to_value(at) {
+            self.0.insert(AT.to_owned(), value);
+        }
+        self
+    }
+
+    /// These values as a conversation keeps them with the call's result
+    /// ([`ResultFacts`](crate::conversation::ResultFacts)), for a view to
+    /// draw the call from after a resume: the whole old text of each
+    /// changed file ([`FileChange::before_text`]) left out, since the hunks
+    /// show the change, and, past `max_bytes` of JSON, the largest values
+    /// left out, so a small one such as an exit status stays. The result
+    /// encodes to at most `max_bytes.max(2)`: an empty map's `{}` is the
+    /// floor, kept for any smaller budget.
+    ///
+    /// ```
+    /// use rig_core::tool::{ExitStatus, FileChange, FilesChanged, ToolContext};
+    ///
+    /// let mut context = ToolContext::new();
+    /// context.insert_result(ExitStatus::Exited(0))?;
+    /// let change = FileChange::modified("a.rs", 1, 1).with_before_text("old\n");
+    /// context.insert_result(FilesChanged(vec![change]))?;
+    /// let kept = context.result_context().kept(64 * 1024);
+    /// assert_eq!(kept.get::<ExitStatus>()?, Some(ExitStatus::Exited(0)));
+    /// let changed = kept.get::<FilesChanged>()?.unwrap_or_default();
+    /// assert_eq!(changed.0.first().map(|change| change.before_text.is_none()), Some(true));
+    /// # Ok::<(), rig_core::tool::ToolContextError>(())
+    /// ```
+    ///
+    /// [`FileChange::before_text`]: super::FileChange::before_text
+    #[must_use]
+    pub fn kept(&self, max_bytes: usize) -> Self {
+        let mut kept = self.0.clone();
+        if let Ok(Some(mut changed)) = get_slot::<super::FilesChanged>(&kept) {
+            for change in &mut changed.0 {
+                change.before_text = None;
+            }
+            // A value that decoded encodes again; one that did not stays.
+            insert_slot(&mut kept, changed).ok();
+        }
+        // Each entry's JSON with its `:` and a `,`; the map's braces first.
+        let mut sized: Vec<(usize, String, serde_json::Value)> = kept
+            .into_iter()
+            .filter_map(|(key, value)| {
+                let key_size = serde_json::to_vec(&key).ok()?.len();
+                let size = serde_json::to_vec(&value).ok()?.len();
+                Some((key_size.saturating_add(size).saturating_add(2), key, value))
+            })
+            .collect();
+        sized.sort_by_key(|(size, ..)| *size);
+        let mut room = max_bytes.saturating_sub(2);
+        let mut fits = BTreeMap::new();
+        for (size, key, value) in sized {
+            if size <= room {
+                room = room.saturating_sub(size);
+                fits.insert(key, value);
+            }
+        }
+        Self(fits)
     }
 }
 
@@ -106,7 +187,7 @@ fn encode<T: ContextValue>(value: &T) -> Result<serde_json::Value, ToolContextEr
 }
 
 fn decode<T: ContextValue>(value: &serde_json::Value) -> Result<T, ToolContextError> {
-    T::deserialize(value).map_err(|error| ToolContextError::Decode {
+    crate::json_utils::from_value(value).map_err(|error| ToolContextError::Decode {
         key: T::KEY,
         source: error,
     })
@@ -284,9 +365,7 @@ impl PublishedContext {
     /// The recorder's non-consuming snapshot. Publish before resolving the
     /// sink; values published after resolution are not part of that outcome.
     pub fn result_context(&self) -> Option<ToolResultContext> {
-        self.0
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+        crate::lock(&self.0)
             .as_ref()
             .map(ToolContext::result_context)
     }
@@ -297,10 +376,7 @@ impl PublishedContext {
     /// observe different versions. The slot does not enforce this ordering.
     pub fn publish(&self, mut context: ToolContext) {
         context.clear_scope();
-        *self
-            .0
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(context);
+        *crate::lock(&self.0) = Some(context);
     }
 
     /// Adds `value` to what is published, beside what is there, as
@@ -312,19 +388,14 @@ impl PublishedContext {
     ///
     /// When `value` cannot be encoded; nothing changes then.
     pub fn insert<T: ContextValue>(&self, value: T) -> Result<Option<T>, ToolContextError> {
-        self.0
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+        crate::lock(&self.0)
             .get_or_insert_with(ToolContext::new)
             .insert_result(value)
     }
 
     /// The driver's read: what was published, if anything, leaving nothing.
     pub fn take(&self) -> Option<ToolContext> {
-        self.0
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .take()
+        crate::lock(&self.0).take()
     }
 }
 

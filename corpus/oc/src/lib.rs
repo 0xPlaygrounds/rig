@@ -1,7 +1,5 @@
-//! The plugins of the one-conversation series (OC): one plugin per module, each written only against the harness's public API.
-//!
-//! Each module was its own package; they share a crate so their tests
-//! link one binary instead of one each.
+//! The plugins of the one-conversation series: one plugin per module, each written only against
+//! the harness's public API. They share a crate so their tests link one binary instead of one each.
 
 pub mod approval_batching;
 pub mod architect_editor;

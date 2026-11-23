@@ -1,10 +1,8 @@
 //! Test utilities for the classic runtime and its provider-facing acceptance tests.
 
-mod hook_harness;
 mod model_conformance;
 mod tools;
 
-pub use hook_harness::HookTestHarness;
 pub use model_conformance::{
     COMPLEX_ARGUMENTS_RAW_PROMPT, ConformanceToolError, ScenarioError, ScenarioReport,
     buffered_streaming_text_parity, cancellation_and_max_turns, complex_tool_arguments,
@@ -24,9 +22,31 @@ pub use rig_core::test_utils::*;
 pub fn without_temperature(builder: crate::agent::AgentBuilder) -> crate::agent::AgentBuilder {
     builder.clear_temperature()
 }
+#[cfg(test)]
+pub(crate) use tools::Counted;
 pub use tools::{
     MockAddTool, MockContextProbeTool, MockDeniedTool, MockExampleTool, MockFailingTool,
     MockFailure, MockHandledFailureTool, MockImageGeneratorTool, MockMetadataTool,
     MockObjectOutputTool, MockOperationArgs, MockRequestId, MockSubtractTool, MockToolError,
     MockToolIndex, SessionId, mock_math_toolset,
 };
+
+/// Drive a stream to completion, panicking on any stream error, and return
+/// its final response.
+#[cfg(test)]
+pub(crate) async fn drive_to_final_response(
+    mut stream: impl futures::Stream<
+        Item = Result<crate::agent::MultiTurnStreamItem, crate::completion::PromptError>,
+    > + Unpin,
+) -> crate::agent::PromptResponse {
+    use futures::StreamExt;
+    let mut final_response = None;
+    while let Some(item) = stream.next().await {
+        if let crate::agent::MultiTurnStreamItem::FinalResponse(response) =
+            item.unwrap_or_else(|err| panic!("stream item errored: {err}"))
+        {
+            final_response = Some(response);
+        }
+    }
+    final_response.expect("stream should yield a final response")
+}

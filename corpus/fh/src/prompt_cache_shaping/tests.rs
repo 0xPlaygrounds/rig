@@ -4,7 +4,7 @@ use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_core::wire::{Body, Mode, Wire};
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{Collected, Ended, app_on, collect, connect, log_ended, run_until};
-use rig_tui::TuiPlugin;
+use rig_tui::TuiPlugins;
 use serde_json::Value;
 
 use super::*;
@@ -83,12 +83,17 @@ fn requests_keep_their_prefix_and_breaks_are_named() {
         return;
     };
     let (mut app, wakes) = app_on(&MemoryStore::default());
-    app.add_plugins((AgentPlugin, SessionLogPlugin, TuiPlugin, CacheShapingPlugin))
-        .add_open_tool("zoom", "Zoom in.", ToolOptions::default(), noop)
-        .add_open_tool("aim", "Aim.", ToolOptions::default(), noop)
-        .init_resource::<Ended>()
-        .add_observer(log_ended)
-        .add_observer(tick);
+    app.add_plugins((
+        AgentPlugin,
+        SessionLogPlugin,
+        TuiPlugins,
+        CacheShapingPlugin,
+    ))
+    .add_open_tool("zoom", "Zoom in.", ToolOptions::default(), noop)
+    .add_open_tool("aim", "Aim.", ToolOptions::default(), noop)
+    .init_resource::<Ended>()
+    .add_observer(log_ended)
+    .add_observer(tick);
     collect::<Notice>(&mut app);
     let clock = app
         .world_mut()
@@ -106,7 +111,7 @@ fn requests_keep_their_prefix_and_breaks_are_named() {
     app.insert_resource(Clock(clock, 0));
     app.finish();
     app.update();
-    let agent = app.world_mut().spawn((Agent, connection)).id();
+    let agent = spawn_root(app.world_mut(), connection).id();
     for (turn, text) in ["one", "two", "three"].into_iter().enumerate() {
         if turn == 2 {
             app.add_open_tool("lsp_hover", "Hover.", ToolOptions::default(), noop);
@@ -196,7 +201,4 @@ fn requests_keep_their_prefix_and_breaks_are_named() {
     assert_eq!(why, "request 3: tool list changed: `lsp_hover` added");
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(CacheShapingPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(CacheShapingPlugin);

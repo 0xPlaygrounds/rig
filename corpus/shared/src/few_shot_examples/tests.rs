@@ -123,7 +123,4 @@ fn a_fitting_example_goes_first_in_the_request_and_nowhere_else() {
     std::fs::remove_dir_all(root).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(FewShotExamplesPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(FewShotExamplesPlugin);

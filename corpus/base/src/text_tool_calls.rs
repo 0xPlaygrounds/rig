@@ -1,25 +1,20 @@
-//! Tool calls for models without native tool calling (spec `59-text-tool-calls.md`).
+//! Tool calls for models without native tool calling. A model call is adapted ([`Adapted`])
+//! when the model it finally goes to cannot call tools by its catalog entry, or the
+//! `[text_tools]` settings name it.
 //!
-//! Every model call is adapted ([`Adapted`]): on the model the call finally
-//! goes to, it acts when that model's catalog entry says it
-//! cannot call tools, or the `[text_tools]` settings name it: the model is
-//! then said to take tools, and its handler is wrapped. The request side
-//! (an [`Intercept`]) describes the offered tools in the system prompt with
-//! the `<tool name="…">{…}</tool>` format and sends no native tool, and
-//! writes earlier tool calls as those blocks and tool results as user text
-//! ("Result of read: …"). The reply side (`map_stream`) cuts the blocks out
-//! of the streamed text and turns them into real tool calls, with ids rig
-//! issues. The kernel then checks and runs those calls like any other, and
-//! the conversation keeps real calls and results.
+//! The adapted request describes the offered tools in the system prompt in the `<tool
+//! name="…">{…}</tool>` format and sends no native tool. Earlier tool calls are written as
+//! those blocks and tool results as user text ("Result of read: …"). The blocks are cut out
+//! of the streamed reply and become real tool calls with ids rig issues, so the kernel
+//! checks and runs them like any other and the conversation keeps real calls and results.
 
 use std::sync::Arc;
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{CompletionResponse, Message, ToolDefinition};
-use rig_harness::rig_core::effect::{Answered, EffectId, EffectKind};
-use rig_harness::rig_core::error::ErrorReport;
-use rig_harness::rig_core::message::{ToolFunction, ToolName, ToolResultContent};
-use rig_harness::rig_core::serve::{AfterServe, BeforeServe, Intercept};
+use rig_harness::rig_core::effect::{EffectId, EffectKind};
+use rig_harness::rig_core::message::{ToolFunction, ToolName};
+use rig_harness::rig_core::serve::{BeforeServe, Intercept};
 use rig_harness::rig_core::streaming::{Item, Part, Relayed, StreamEvent};
 use rig_harness::rig_ecs::effects::Handler;
 use serde::Deserialize;
@@ -131,15 +126,6 @@ impl Intercept for WriteAsText {
             stream: *stream,
         })
     }
-
-    async fn after(
-        &self,
-        _id: EffectId,
-        _kind: &EffectKind,
-        _outcome: &Result<Answered, ErrorReport>,
-    ) -> AfterServe {
-        AfterServe::Keep
-    }
 }
 
 /// The system prompt's section on `tools` and how to call them, each with
@@ -196,11 +182,7 @@ fn result_text(result: &message::ToolResult) -> String {
     let body: Vec<String> = result
         .content
         .iter()
-        .map(|content| match content {
-            ToolResultContent::Text(text) => text.text().to_owned(),
-            ToolResultContent::Json { value } => value.to_string(),
-            _ => "[an image]".to_owned(),
-        })
+        .map(|content| content.to_text("[an image]"))
         .collect();
     let (name, body) = (result.name.as_str(), body.join("\n"));
     match result.is_error {

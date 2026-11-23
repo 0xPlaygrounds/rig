@@ -1,15 +1,12 @@
-//! CT-17: turn navigation and a sticky prompt header in the terminal view.
-//!
-//! `Ctrl+Up` and `Ctrl+Down` scroll the transcript of the agent shown to
-//! the prompt before or after the top row, `Ctrl+Home` to the first prompt
-//! and `Ctrl+End` back to the live bottom; the `[turn-navigation]` table of
-//! the settings rebinds them ([`NavigationKeys`]). While the view is
-//! scrolled up, a one-row panel over the transcript shows the prompt the
-//! top row belongs to ([`PromptHeader`]): its turn number, its first line
-//! cut to the width, how long the turn took and how many tools it called.
-//! A prompt is a request by the user or by an agent (a subagent's task),
-//! never a plugin's message. The view itself keeps a scrolled view where it
-//! is as output arrives and marks the new output below it.
+//! Turn navigation and a sticky prompt header in the terminal view. `Ctrl+Up` and
+//! `Ctrl+Down` scroll the transcript of the agent shown to the prompt before or after the
+//! top row, `Ctrl+Home` to the first prompt and `Ctrl+End` back to the live bottom; the
+//! `[turn-navigation]` table of the settings rebinds them ([`NavigationKeys`]). While the
+//! view is scrolled up, a one-row panel over the transcript shows the prompt the top row
+//! belongs to ([`PromptHeader`]): its turn number, its first line cut to the width, how
+//! long the turn took and how many tools it called. A prompt is a request by the user or by
+//! an agent (a subagent's task), never a plugin's message. The view itself keeps a scrolled
+//! view where it is as output arrives and marks the new output below it.
 
 use std::collections::HashSet;
 use std::str::FromStr;
@@ -17,6 +14,7 @@ use std::str::FromStr;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::{self, AuthorKind, EntryRef};
 use rig_harness::rig_core::message::Message as Said;
+use rig_harness::rig_tools::shorten;
 use rig_tui::ratatui::layout::Constraint;
 use rig_tui::ratatui::style::Style;
 use rig_tui::ratatui::text::Line;
@@ -89,8 +87,8 @@ impl TurnHeader {
         let head = format!("▸ {} · ", self.turn);
         let tail = format!(" · {} · {calls}", short_time(self.elapsed));
         let room = usize::from(width).saturating_sub(columns(&head) + columns(&tail));
-        let text = format!("{head}{}{tail}", cut(&self.first_line, room));
-        Line::styled(cut(&text, usize::from(width)), Style::new().reversed())
+        let text = format!("{head}{}{tail}", shorten(&self.first_line, room));
+        Line::styled(shorten(&text, usize::from(width)), Style::new().reversed())
     }
 }
 
@@ -118,9 +116,7 @@ pub struct TurnNavigationPlugin;
 
 impl Plugin for TurnNavigationPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<TuiPlugin>() {
-            app.add_plugins(TuiPlugin);
-        }
+        rig_harness::load::<TuiPlugin>(app, "rig-tui", "");
         app.add_setting::<NavigationKeys>("turn-navigation")
             .init_resource::<PromptHeader>()
             .add_systems(
@@ -197,10 +193,7 @@ fn first_line(message: &Said) -> String {
     let Said::User { content } = message else {
         return String::new();
     };
-    let texts = content.iter().filter_map(|item| match item {
-        UserContent::Text(text) => Some(text.text.as_str()),
-        _ => None,
-    });
+    let texts = content.iter().filter_map(UserContent::as_text);
     let mut lines = texts.flat_map(str::lines).map(str::trim);
     lines
         .find(|line| !line.is_empty())
@@ -336,27 +329,6 @@ fn draw_header(header: Res<PromptHeader>, mut panels: Query<&mut PanelCanvas, Wi
 /// How wide `text` is drawn, in columns.
 fn columns(text: &str) -> usize {
     text.chars().map(|c| c.width().unwrap_or(0)).sum()
-}
-
-/// `text` cut to `width` columns, ending in `…` when cut.
-fn cut(text: &str, width: usize) -> String {
-    if columns(text) <= width {
-        return text.to_owned();
-    }
-    let mut kept = String::new();
-    let mut used = 0;
-    for c in text.chars() {
-        let wide = c.width().unwrap_or(0);
-        if used + wide + 1 > width {
-            break;
-        }
-        used += wide;
-        kept.push(c);
-    }
-    if width > 0 {
-        kept.push('…');
-    }
-    kept
 }
 
 /// A duration in a few characters: `42s`, `3m 05s`, `2h 10m`.

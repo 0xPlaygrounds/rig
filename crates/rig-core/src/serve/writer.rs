@@ -147,7 +147,11 @@ impl StreamWriter {
     /// the reply folds into, under the writer's origin. The returned stream
     /// ends when the writing future also finishes.
     pub async fn finish(mut self, finish: Finish) -> Result<(), SinkClosed> {
-        self.turn.close_open(&mut self.items);
+        let cut = finish
+            .reason
+            .as_ref()
+            .is_some_and(crate::completion::FinishReason::truncated_output);
+        self.turn.close_open(&mut self.items, cut);
         self.flush().await?;
         let reply = WireReply {
             provider: self.origin.provider.clone(),

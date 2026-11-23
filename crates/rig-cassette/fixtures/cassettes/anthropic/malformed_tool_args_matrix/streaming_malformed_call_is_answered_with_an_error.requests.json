@@ -1,0 +1,14 @@
+{
+  "interactions": [
+    {
+      "index": 1,
+      "changes": [
+        {
+          "path": "/messages/2/content/0/content/0/text",
+          "recorded": "The arguments for tool `subtract` are not a JSON object: {\"x\": 2, \"y\": 5. Call the tool again with a JSON object as its arguments.",
+          "sent": "Not run: your reply reached the output limit before `subtract`'s arguments ended. Send less in one call: split the work into smaller calls, such as writing part of a file and adding the rest with edits. The arguments began: {\"x\": 2, \"y\": 5"
+        }
+      ]
+    }
+  ]
+}

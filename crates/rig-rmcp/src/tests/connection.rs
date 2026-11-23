@@ -92,7 +92,7 @@ impl ServerHandler for LabelledServer {
 }
 
 /// Connects to `server`; its task ends once the client side closes.
-async fn connect(server: LabelledServer) -> (McpConnection, JoinHandle<()>) {
+async fn connect(server: impl ServerHandler) -> (McpConnection, JoinHandle<()>) {
     let (c2s, sfc) = tokio::io::duplex(8192);
     let (s2c, cfs) = tokio::io::duplex(8192);
     let server_task = tokio::spawn(async move {
@@ -294,6 +294,151 @@ async fn resources_are_listed_read_and_given_as_agent_context() {
         "{documents:?}"
     );
 
+    connection.close().await;
+    server_task.abort();
+}
+
+/// A server that records the protocol version each `initialize` request
+/// offered, before negotiation replaces it.
+#[derive(Clone, Default)]
+struct OfferRecorder(Arc<Mutex<Vec<ProtocolVersion>>>);
+
+impl ServerHandler for OfferRecorder {
+    async fn initialize(
+        &self,
+        request: InitializeRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<InitializeResult, ErrorData> {
+        if let Ok(mut offers) = self.0.lock() {
+            offers.push(request.protocol_version.clone());
+        }
+        context.peer.set_peer_info(request.clone());
+        self.negotiate_initialize(&request)
+    }
+}
+
+/// The config rig-rmcp builds offers a protocol version that has the
+/// `initialize` handshake, as the server receives it. Some servers accept a
+/// draft offer and then refuse the session.
+#[tokio::test]
+async fn client_config_offers_a_version_with_the_initialize_handshake() {
+    let (c2s, sfc) = tokio::io::duplex(8192);
+    let (s2c, cfs) = tokio::io::duplex(8192);
+    let recorder = OfferRecorder::default();
+    let server = tokio::spawn(recorder.clone().serve((sfc, s2c)));
+    let client = crate::client_config("rig-rmcp-test", "0.1.0")
+        .serve((cfs, c2s))
+        .await
+        .expect("client connect");
+    let server = server.await.expect("server task").expect("server start");
+
+    let offers = recorder.0.lock().expect("offers").clone();
+    assert_eq!(offers.len(), 1, "one initialize request");
+    assert!(
+        offers.iter().all(ProtocolVersion::has_initialize),
+        "offered {offers:?}"
+    );
+    client.cancel().await.expect("client close");
+    server.cancel().await.expect("server close");
+}
+
+/// A server that declares tools only or resources only, as many do, and
+/// answers a list of the other kind with "method not found".
+#[derive(Clone)]
+struct OneSided {
+    tools: bool,
+}
+
+impl ServerHandler for OneSided {
+    fn get_info(&self) -> ServerConfig {
+        let capabilities = if self.tools {
+            ServerCapabilities::builder().enable_tools().build()
+        } else {
+            ServerCapabilities::builder().enable_resources().build()
+        };
+        ServerConfig::new(capabilities).with_protocol_version(ProtocolVersion::LATEST)
+    }
+
+    async fn list_tools(
+        &self,
+        params: Option<PaginatedRequestParams>,
+        context: RequestContext<RoleServer>,
+    ) -> Result<ListToolsResult, ErrorData> {
+        if !self.tools {
+            return Err(ErrorData::method_not_found::<ListToolsRequestMethod>());
+        }
+        LabelledServer::new("tools")
+            .list_tools(params, context)
+            .await
+    }
+
+    async fn list_resources(
+        &self,
+        params: Option<PaginatedRequestParams>,
+        context: RequestContext<RoleServer>,
+    ) -> Result<ListResourcesResult, ErrorData> {
+        if self.tools {
+            return Err(ErrorData::method_not_found::<ListResourcesRequestMethod>());
+        }
+        LabelledServer::new("resources")
+            .list_resources(params, context)
+            .await
+    }
+}
+
+#[tokio::test]
+async fn a_server_without_tools_lists_none() {
+    let (connection, server_task) = connect(OneSided { tools: false }).await;
+    let tools = connection.tools().await.map(|tools| tools.len());
+    assert!(matches!(tools, Ok(0)), "{tools:?}");
+    let resources = connection
+        .resources()
+        .await
+        .map(|resources| resources.len());
+    assert!(matches!(resources, Ok(1)), "{resources:?}");
+    connection.close().await;
+    server_task.abort();
+}
+
+#[tokio::test]
+async fn a_server_without_resources_lists_none() {
+    let (connection, server_task) = connect(OneSided { tools: true }).await;
+    let resources = connection
+        .resources()
+        .await
+        .map(|resources| resources.len());
+    assert!(matches!(resources, Ok(0)), "{resources:?}");
+    let tools = connection.list_tools(Duration::from_secs(5)).await;
+    assert!(
+        matches!(tools.as_deref(), Ok([tool]) if tool.name == "fetch"),
+        "{tools:?}"
+    );
+    connection.close().await;
+    server_task.abort();
+}
+
+#[tokio::test]
+async fn a_handler_connects_to_a_server_without_tools() {
+    let (c2s, sfc) = tokio::io::duplex(8192);
+    let (s2c, cfs) = tokio::io::duplex(8192);
+    let server_task = tokio::spawn(async move {
+        let running = OneSided { tools: false }
+            .serve((sfc, s2c))
+            .await
+            .expect("server start");
+        running.waiting().await.expect("server error");
+    });
+    let handle = ToolServer::new().run();
+    let connection = McpClientHandler::new(ClientConfig::default(), handle.clone())
+        .connect((cfs, c2s))
+        .await
+        .expect("a server without tools connects");
+    assert!(handle.toolset().is_empty(), "no tools registered");
+    let resources = connection
+        .resources()
+        .await
+        .map(|resources| resources.len());
+    assert!(matches!(resources, Ok(1)), "{resources:?}");
     connection.close().await;
     server_task.abort();
 }

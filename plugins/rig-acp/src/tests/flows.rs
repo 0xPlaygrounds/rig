@@ -1,6 +1,8 @@
 //! What a client sees of a session: the protocol, prompts, tool calls,
 //! questions, cancelling, history and MCP servers.
 
+#![allow(clippy::disallowed_methods, reason = "test fixtures")]
+
 use std::io::{BufRead, BufReader, Write};
 
 use super::*;
@@ -102,6 +104,72 @@ fn the_agent_speaks_v1_to_a_client_that_offers_2_and_says_what_it_takes() {
     });
     assert!(stray.is_empty(), "{stray:?}");
     assert!(router.wait().is_ok_and(|status| status.success()));
+}
+
+/// The router's launcher's warnings reach the user once: the first
+/// session the router opens shows them, and no later session repeats them.
+#[test]
+fn the_first_session_shows_its_routers_launcher_warnings_once() {
+    let mut place = Place::new("launcher-warning");
+    let warning = "The launcher's own warning.";
+    place
+        .env
+        .push(("RIG_WARNING".to_owned(), format!("[{warning:?}]")));
+    let router = drive(&place, full_client(), async |driven| {
+        let mut told_each = Vec::new();
+        for _ in 0..2 {
+            let new = driven.new_session(Vec::new()).await;
+            assert!(new.is_some(), "no session");
+            let Some(new) = new else { return };
+            let id = new.session_id;
+            assert!(driven.prompt(&id, "/mcp").await.is_ok());
+            told_each.push(told(driven, &id));
+        }
+        let shown: Vec<usize> = told_each
+            .iter()
+            .map(|told| told.matches(warning).count())
+            .collect();
+        assert_eq!(shown, [1, 0], "{told_each:?}");
+    });
+    assert!(router.is_some());
+}
+
+#[test]
+#[cfg(unix)]
+fn a_session_that_fails_to_start_leaves_the_launcher_warnings_for_the_next() {
+    use std::os::unix::fs::PermissionsExt;
+    let mut place = Place::new("launcher-warning-kept");
+    let warning = "The launcher's own warning.";
+    place
+        .env
+        .push(("RIG_WARNING".to_owned(), format!("[{warning:?}]")));
+    // A directory the session's process cannot enter: it is checked to
+    // exist, and the start fails.
+    let shut = place.project.join("shut");
+    std::fs::create_dir(&shut).ok();
+    std::fs::set_permissions(&shut, std::fs::Permissions::from_mode(0o000)).ok();
+    // A privileged user enters it anyway, so there is no failed start.
+    if std::fs::read_dir(&shut).is_ok() {
+        std::fs::set_permissions(&shut, std::fs::Permissions::from_mode(0o700)).ok();
+        return;
+    }
+    let router = drive(&place, full_client(), async |driven| {
+        let failed = driven
+            .cx
+            .send_request(acp::NewSessionRequest::new(&shut))
+            .block_task()
+            .await;
+        assert!(failed.is_err(), "{failed:?}");
+        let new = driven.new_session(Vec::new()).await;
+        assert!(new.is_some(), "no session");
+        let Some(new) = new else { return };
+        let id = new.session_id;
+        assert!(driven.prompt(&id, "/mcp").await.is_ok());
+        let told = told(driven, &id);
+        assert_eq!(told.matches(warning).count(), 1, "{told}");
+    });
+    std::fs::set_permissions(&shut, std::fs::Permissions::from_mode(0o700)).ok();
+    assert!(router.is_some());
 }
 
 #[test]
@@ -223,7 +291,50 @@ fn a_prompt_streams_its_tool_call_and_text_before_its_answer_and_commands_answer
 }
 
 #[test]
-fn an_allowed_call_runs_a_denied_one_does_not_and_cancel_answers_an_open_one() {
+fn a_model_the_editor_or_a_typed_command_picks_is_never_the_default() {
+    let place = Place::new("defaults");
+    let saved = "[model]\ndefault = \"test/reply\"\n";
+    std::fs::write(place.home.join("settings.toml"), saved).ok();
+    let router = drive(&place, acp::ClientCapabilities::new(), async |driven| {
+        let new = driven.new_session(Vec::new()).await;
+        assert!(new.is_some(), "no session");
+        let Some(new) = new else { return };
+        let id = new.session_id;
+        assert!(driven.model(&id, "test/read").await);
+        let answer = driven.prompt(&id, "Read the fixture.").await;
+        assert_eq!(answer.ok(), Some(acp::StopReason::EndTurn));
+        assert!(driven.said(&id).contains("read it"));
+        let typed = driven.prompt(&id, "/model test/again").await;
+        assert_eq!(typed.ok(), Some(acp::StopReason::EndTurn));
+        let answer = driven.prompt(&id, "Read the other one.").await;
+        assert_eq!(answer.ok(), Some(acp::StopReason::EndTurn));
+        assert!(
+            driven.said(&id).contains("not there"),
+            "{}",
+            driven.said(&id)
+        );
+    });
+    assert!(router.is_some());
+    let kept = std::fs::read_to_string(place.home.join("settings.toml"));
+    assert_eq!(kept.ok().as_deref(), Some(saved));
+}
+
+#[test]
+fn a_new_sessions_automatic_pick_is_never_the_default() {
+    let place = Place::new("first-pick");
+    let router = drive(&place, acp::ClientCapabilities::new(), async |driven| {
+        let new = driven.new_session(Vec::new()).await;
+        assert!(new.is_some(), "no session");
+        let Some(new) = new else { return };
+        let answer = driven.prompt(&new.session_id, "Hello.").await;
+        assert_eq!(answer.ok(), Some(acp::StopReason::EndTurn));
+    });
+    assert!(router.is_some());
+    assert!(!place.home.join("settings.toml").exists());
+}
+
+#[test]
+fn an_allowed_call_runs_and_a_denied_one_does_not() {
     let place = Place::new("permission");
     let router = drive(&place, acp::ClientCapabilities::new(), async |driven| {
         for (answering, status) in [
@@ -270,6 +381,14 @@ fn an_allowed_call_runs_a_denied_one_does_not_and_cancel_answers_an_open_one() {
         assert_eq!(at, [project(&place).join("guarded.txt")]);
         let why = format!("{:?}", fields.content);
         assert!(why.contains("It reads the guarded file."), "{why}");
+    });
+    assert!(router.is_some());
+}
+
+#[test]
+fn a_question_whose_turn_is_stopped_is_cancelled_and_leaves_nothing_behind() {
+    let place = Place::new("stopped-question");
+    let router = drive(&place, acp::ClientCapabilities::new(), async |driven| {
         driven.answering(Answering::Later);
         let new = driven.new_session(Vec::new()).await;
         assert!(new.is_some(), "no session");
@@ -291,6 +410,63 @@ fn an_allowed_call_runs_a_denied_one_does_not_and_cancel_answers_an_open_one() {
         let cancelled = open.cancellation();
         let told = tokio::time::timeout(Duration::from_secs(10), cancelled.cancelled()).await;
         assert!(told.is_ok(), "the open question was not cancelled");
+        // A late answer to it reaches nothing: the call never runs, and the
+        // next prompt is answered as if it was never asked.
+        let allow = acp::RequestPermissionOutcome::Selected(acp::SelectedPermissionOutcome::new(
+            rig_basics::approval::ALLOW,
+        ));
+        open.respond(acp::RequestPermissionResponse::new(allow))
+            .ok();
+        assert_eq!(
+            driven.prompt(&id, "Go on.").await.ok(),
+            Some(acp::StopReason::EndTurn)
+        );
+        let steps = tool_steps(driven, &id);
+        let ran = steps
+            .iter()
+            .any(|(_, status)| *status == acp::ToolCallStatus::Completed);
+        assert!(!ran, "{steps:?}");
+        assert_eq!(driven.seen().asked.len(), 1);
+    });
+    assert!(router.is_some());
+}
+
+#[test]
+fn two_calls_that_share_an_id_ask_under_their_own_ids_one_after_the_other() {
+    let place = Place::new("twice");
+    let router = drive(&place, acp::ClientCapabilities::new(), async |driven| {
+        driven.answering(Answering::Allow);
+        let new = driven.new_session(Vec::new()).await;
+        assert!(new.is_some(), "no session");
+        let Some(new) = new else { return };
+        let id = new.session_id;
+        // A subagent's calls are shown by the permissions they ask.
+        assert!(driven.model(&id, "test/delegate-twice").await);
+        assert!(driven.prompt(&id, "Delegate it.").await.is_ok());
+        let completed = |seen: &Seen| {
+            let done = seen.events.iter().filter(|event| {
+                matches!(event, Event::Update(_, acp::SessionUpdate::ToolCallUpdate(update))
+                    if update.fields.status == Some(acp::ToolCallStatus::Completed)
+                        && seen.asked.iter().any(|asked| asked.tool_call_id == update.tool_call_id))
+            });
+            done.count() == 2
+        };
+        assert!(
+            driven.until(completed).await,
+            "{:?}",
+            tool_steps(driven, &id)
+        );
+        let asked: Vec<String> = driven
+            .seen()
+            .asked
+            .iter()
+            .map(|call| call.tool_call_id.to_string())
+            .collect();
+        let places: Vec<_> = asked
+            .iter()
+            .filter_map(|asked| asked.rsplit('/').next())
+            .collect();
+        assert_eq!(places, ["0", "1"], "{asked:?}");
     });
     assert!(router.is_some());
 }
@@ -456,6 +632,147 @@ fn a_loaded_session_replays_its_history_as_it_went_and_a_resumed_one_does_not() 
     assert!(router.is_some());
 }
 
+/// The updates of `session` among `events`.
+fn updates_in(events: &[Event], session: &acp::SessionId) -> Vec<acp::SessionUpdate> {
+    let updates = events.iter().filter_map(|event| match event {
+        Event::Update(of, update) if of == session => Some(update.clone()),
+        _ => None,
+    });
+    updates.collect()
+}
+
+#[test]
+fn a_session_the_client_has_open_loads_with_its_history_first_and_resumes_without() {
+    let place = Place::new("reattach");
+    let router = drive(&place, acp::ClientCapabilities::new(), async |driven| {
+        let new = driven.new_session(Vec::new()).await;
+        assert!(new.is_some(), "no session");
+        let Some(new) = new else { return };
+        let id = new.session_id;
+        assert!(driven.model(&id, "test/reply").await);
+        assert!(driven.prompt(&id, "Say something.").await.is_ok());
+        // Loaded while open: its history, then the answer, an object.
+        let before = driven.seen().events.len();
+        let load = acp::LoadSessionRequest::new(id.clone(), &driven.project);
+        let loaded = driven.reopen(&id, load).await;
+        let loaded = loaded.ok().and_then(|it| serde_json::to_value(it).ok());
+        assert!(loaded.is_some_and(|it| it.is_object()));
+        let after: Vec<_> = driven.seen().events.iter().skip(before).cloned().collect();
+        let answered = after
+            .iter()
+            .position(|event| matches!(event, Event::Opened(of) if *of == id));
+        let history = after
+            .get(..answered.unwrap_or_default())
+            .unwrap_or_default();
+        let user = updates_in(history, &id).into_iter().any(|update| {
+            matches!(update, acp::SessionUpdate::UserMessageChunk(chunk)
+                if text(&chunk.content).as_deref() == Some("Say something."))
+        });
+        assert!(answered.is_some() && user, "{after:?}");
+        // Resumed while open: the answer, and no history.
+        let before = driven.seen().events.len();
+        let resume = acp::ResumeSessionRequest::new(id.clone(), &driven.project);
+        assert!(driven.reopen(&id, resume).await.is_ok());
+        let after: Vec<_> = driven.seen().events.iter().skip(before).cloned().collect();
+        let replayed = updates_in(&after, &id).into_iter().any(|update| {
+            matches!(
+                update,
+                acp::SessionUpdate::UserMessageChunk(_)
+                    | acp::SessionUpdate::AgentMessageChunk(_)
+                    | acp::SessionUpdate::ToolCall(_)
+            )
+        });
+        assert!(!replayed, "{after:?}");
+        assert!(driven.prompt(&id, "Again.").await.is_ok());
+        // Mid-turn a load, whose history would lack the turn, is refused; a
+        // resume attaches, and the prompt goes on until cancelled.
+        assert!(driven.model(&id, "test/wait").await);
+        let prompt = tokio::spawn(driven.send(&id, "Wait."));
+        let running = |seen: &Seen| {
+            seen.events.iter().any(|event| {
+                matches!(event, Event::Update(of, acp::SessionUpdate::ToolCallUpdate(update))
+                if *of == id && update.fields.status == Some(acp::ToolCallStatus::InProgress))
+            })
+        };
+        assert!(driven.until(running).await);
+        let load = acp::LoadSessionRequest::new(id.clone(), &driven.project);
+        let refused = driven.reopen(&id, load).await;
+        assert!(
+            refused
+                .as_ref()
+                .is_err_and(|error| error.message.contains("busy")),
+            "{refused:?}"
+        );
+        let resume = acp::ResumeSessionRequest::new(id.clone(), &driven.project);
+        assert!(driven.reopen(&id, resume).await.is_ok());
+        driven
+            .cx
+            .send_notification(acp::CancelNotification::new(id.clone()))
+            .ok();
+        let answer = prompt.await.ok().and_then(Result::ok);
+        assert_eq!(answer, Some(acp::StopReason::Cancelled));
+        // Other MCP servers, or another directory, are refused.
+        let load = acp::LoadSessionRequest::new(id.clone(), &driven.project)
+            .mcp_servers(vec![stub_with("files", Vec::new())]);
+        let refused = driven.reopen(&id, load).await;
+        assert!(
+            refused
+                .as_ref()
+                .is_err_and(|error| error.message.contains("other MCP servers")),
+            "{refused:?}"
+        );
+        let load = acp::LoadSessionRequest::new(id.clone(), &place.root);
+        let refused = driven.reopen(&id, load).await;
+        assert!(
+            refused
+                .as_ref()
+                .is_err_and(|error| error.message.contains("runs in")),
+            "{refused:?}"
+        );
+        assert!(driven.prompt(&id, "Still here.").await.is_ok());
+    });
+    assert!(router.is_some());
+}
+
+#[test]
+fn a_session_re_attaches_with_its_mcp_servers_in_any_order() {
+    let place = Place::new("reattach-order");
+    let env = |pairs: &[(&str, &str)]| {
+        let vars = pairs
+            .iter()
+            .map(|(name, value)| acp::EnvVariable::new(*name, *value));
+        vars.collect::<Vec<_>>()
+    };
+    let files = stub_with("files", env(&[("X", "1"), ("Y", "2")]));
+    let notes = stub_with("notes", Vec::new());
+    let router = drive(&place, acp::ClientCapabilities::new(), async |driven| {
+        let new = driven.new_session(vec![files, notes.clone()]).await;
+        assert!(new.is_some(), "no session");
+        let Some(new) = new else { return };
+        let id = new.session_id;
+        let resume = |servers: Vec<acp::McpServer>| {
+            acp::ResumeSessionRequest::new(id.clone(), &driven.project).mcp_servers(servers)
+        };
+        // The same servers, listed the other way round, with one's
+        // variables the other way round too.
+        let turned = stub_with("files", env(&[("Y", "2"), ("X", "1")]));
+        let attached = driven
+            .reopen(&id, resume(vec![notes.clone(), turned]))
+            .await;
+        assert!(attached.is_ok(), "{attached:?}");
+        // A variable with another value is another server.
+        let other = stub_with("files", env(&[("X", "1"), ("Y", "3")]));
+        let refused = driven.reopen(&id, resume(vec![notes.clone(), other])).await;
+        assert!(
+            refused
+                .as_ref()
+                .is_err_and(|error| error.message.contains("other MCP servers")),
+            "{refused:?}"
+        );
+    });
+    assert!(router.is_some());
+}
+
 #[test]
 fn a_client_mcp_server_serves_the_model_and_a_failing_one_is_told_after_the_session_opens() {
     let place = Place::new("mcp");
@@ -498,7 +815,47 @@ fn a_client_mcp_server_serves_the_model_and_a_failing_one_is_told_after_the_sess
         assert!(driven.prompt(&id, "/early m1").await.is_ok());
         assert_eq!(tool_steps(driven, &id).len(), shown);
         let said = driven.said(&id);
-        assert!(said.contains("files (client): connected, 1 tool"), "{said}");
+        assert!(
+            said.contains("files (client): connected, 2 tools"),
+            "{said}"
+        );
+    });
+    assert!(router.is_some());
+}
+
+#[test]
+fn a_tool_result_reads_the_same_live_and_after_session_load() {
+    let place = Place::new("pair");
+    let router = drive(&place, full_client(), async |driven| {
+        let new = driven
+            .new_session(vec![stub_with("files", Vec::new())])
+            .await;
+        assert!(new.is_some(), "no session");
+        let Some(new) = new else { return };
+        let id = new.session_id;
+        assert!(driven.model(&id, "test/pair").await);
+        assert!(driven.prompt(&id, "Pair.").await.is_ok());
+        let results = |updates: Vec<acp::SessionUpdate>| -> Vec<Value> {
+            let done = updates.into_iter().filter_map(|update| match update {
+                acp::SessionUpdate::ToolCallUpdate(update) => update.fields.raw_output,
+                _ => None,
+            });
+            done.collect()
+        };
+        let live = results(driven.updates(&id));
+        let close = acp::CloseSessionRequest::new(id.clone());
+        assert!(driven.cx.send_request(close).block_task().await.is_ok());
+        let before = driven.updates(&id).len();
+        let load = acp::LoadSessionRequest::new(id.clone(), &driven.project);
+        assert!(driven.cx.send_request(load).block_task().await.is_ok());
+        let replayed = results(driven.updates(&id).into_iter().skip(before).collect());
+        assert_eq!(live.len(), 1, "{live:?}");
+        assert_eq!(replayed, live);
+        let shown = format!("{live:?}");
+        assert!(
+            shown.contains("OPENAI_API_KEY=‹SECRET_1›") && !shown.contains("sk-proj"),
+            "{shown}"
+        );
     });
     assert!(router.is_some());
 }
@@ -568,8 +925,113 @@ fn a_question_is_a_form_or_closed_with_why_for_a_client_without_forms() {
     }
 }
 
+/// A new session that has a model, the saved default, still waits for a
+/// sign-in checking the account: its opening answer lists the sign-in's
+/// models.
 #[test]
-fn a_refused_model_change_says_why_and_shows_the_options_as_they_are() {
+fn the_opening_answer_waits_for_a_sign_in_still_checking() {
+    let mut place = Place::new("held");
+    place.env.push((HELD_SIGN_IN.to_owned(), "1".to_owned()));
+    let settings = "[model]\ndefault = \"test/reply\"\n";
+    assert!(std::fs::write(place.home.join("settings.toml"), settings).is_ok());
+    let router = drive(&place, acp::ClientCapabilities::new(), async |driven| {
+        let new = driven.new_session(Vec::new()).await;
+        assert!(new.is_some(), "no session");
+        let options = new.and_then(|new| new.config_options).unwrap_or_default();
+        let models = options.iter().find_map(|option| match &option.kind {
+            acp::SessionConfigKind::Select(select) if option.id.to_string() == "model" => Some((
+                select.current_value.to_string(),
+                format!("{:?}", select.options),
+            )),
+            _ => None,
+        });
+        let (current, listed) = models.unwrap_or_default();
+        assert_eq!(current, "test/reply");
+        assert!(listed.contains(HELD), "{listed}");
+    });
+    assert!(router.is_some());
+}
+
+/// The model the last options `session` was told of show.
+fn advertised_model(seen: &Seen, session: &acp::SessionId) -> Option<String> {
+    let updates = seen.events.iter().filter_map(|event| match event {
+        Event::Update(of, acp::SessionUpdate::ConfigOptionUpdate(update)) if of == session => {
+            Some(update)
+        }
+        _ => None,
+    });
+    let mut models = updates.filter_map(|update| {
+        update
+            .config_options
+            .iter()
+            .find_map(|option| match &option.kind {
+                acp::SessionConfigKind::Select(select) if option.id.to_string() == "model" => {
+                    Some(select.current_value.to_string())
+                }
+                _ => None,
+            })
+    });
+    models.next_back()
+}
+
+/// Showing another agent of the session, such as with `/agents`, makes it
+/// the one prompts go to, and the options show its model.
+#[test]
+fn the_options_follow_the_agent_shown() {
+    let place = Place::new("shown");
+    let router = drive(&place, acp::ClientCapabilities::new(), async |driven| {
+        let new = driven.new_session(Vec::new()).await;
+        assert!(new.is_some(), "no session");
+        let Some(new) = new else { return };
+        let id = new.session_id;
+        assert!(driven.model(&id, "test/reply").await);
+        assert!(driven.prompt(&id, "Hello.").await.is_ok());
+        assert!(driven.prompt(&id, "/fork").await.is_ok());
+        let forked = "Forked into a new agent";
+        let confirmed = driven.until(|seen| {
+            seen.events.iter().any(|event| match event {
+                Event::Update(of, acp::SessionUpdate::AgentMessageChunk(chunk)) => {
+                    *of == id && text(&chunk.content).is_some_and(|said| said.contains(forked))
+                }
+                _ => false,
+            })
+        });
+        let confirmed = confirmed.await;
+        assert!(confirmed, "{}", driven.said(&id));
+        assert!(driven.prompt(&id, "/model test/read").await.is_ok());
+        let read = |seen: &Seen| advertised_model(seen, &id).as_deref() == Some("test/read");
+        assert!(driven.until(read).await, "{}", driven.said(&id));
+        // The agent forked from, back on `test/reply`.
+        let logs = std::fs::read_dir(place.home.join("sessions"))
+            .into_iter()
+            .flatten();
+        let logs = logs.flatten().flat_map(|session| {
+            std::fs::read_dir(session.path().join("logs"))
+                .into_iter()
+                .flatten()
+                .flatten()
+        });
+        let source = logs.map(|log| log.path()).find_map(|log| {
+            let text = std::fs::read_to_string(&log).unwrap_or_default();
+            let name = log.file_stem()?.to_str()?.to_owned();
+            (name != "session" && !text.contains("ForkedFrom")).then_some(name)
+        });
+        assert!(source.is_some(), "no source log");
+        let Some(source) = source else { return };
+        assert!(
+            driven
+                .prompt(&id, &format!("/agents {source}"))
+                .await
+                .is_ok()
+        );
+        let reply = |seen: &Seen| advertised_model(seen, &id).as_deref() == Some("test/reply");
+        assert!(driven.until(reply).await, "{}", driven.said(&id));
+    });
+    assert!(router.is_some());
+}
+
+#[test]
+fn a_refused_model_change_says_why_and_keeps_the_model() {
     let place = Place::new("refused");
     let router = drive(&place, acp::ClientCapabilities::new(), async |driven| {
         let new = driven.new_session(Vec::new()).await;
@@ -581,22 +1043,10 @@ fn a_refused_model_change_says_why_and_shows_the_options_as_they_are() {
         let refused = driven.cx.send_request(change).block_task().await;
         let why = refused.err().map(|error| error.message);
         assert!(
-            why.as_ref()
-                .is_some_and(|why| !why.is_empty() && why != "rig did not change it"),
+            why.as_ref().is_some_and(|why| why.contains(UNREACHABLE)),
             "{why:?}"
         );
-        // The options the client is told after it show the model rig has.
-        let told = |seen: &Seen| {
-            seen.events.iter().any(|event| match event {
-                Event::Update(of, acp::SessionUpdate::ConfigOptionUpdate(update)) => {
-                    *of == id && format!("{:?}", update.config_options).contains(UNREACHABLE)
-                }
-                _ => false,
-            })
-        };
-        assert!(driven.until(told).await);
-        // A model that can be reached takes its place.
-        assert!(driven.model(&id, "test/reply").await);
+        // The model the session had still answers.
         assert_eq!(
             driven.prompt(&id, "Hello.").await.ok(),
             Some(acp::StopReason::EndTurn)
@@ -619,4 +1069,106 @@ fn a_refused_model_change_says_why_and_shows_the_options_as_they_are() {
         assert!(driven.until(chosen).await, "{}", driven.said(&id));
     });
     assert!(router.is_some());
+}
+
+/// `rig --tools … acp` reaches each session, which checks it against its own
+/// tools: a name none has refuses the session as it opens, and a known
+/// list keeps the session to it.
+#[test]
+fn rig_acp_tools_limit_each_session_and_an_unknown_name_refuses_it() {
+    let place = Place::new("tools-bogus").with_tools("read,bogus");
+    let router = drive(&place, acp::ClientCapabilities::new(), async |driven| {
+        let request = acp::NewSessionRequest::new(&driven.project);
+        let refused = driven.cx.send_request(request).block_task().await;
+        let why = refused.err().map(|error| format!("{error:?}"));
+        let unknown = "--tools: unknown tool `bogus`";
+        assert!(
+            why.as_ref().is_some_and(|why| why.contains(unknown)),
+            "{why:?}"
+        );
+    });
+    assert!(router.is_some());
+    let place = Place::new("tools-read").with_tools("read");
+    let router = drive(&place, acp::ClientCapabilities::new(), async |driven| {
+        let new = driven.new_session(Vec::new()).await;
+        assert!(new.is_some(), "no session");
+        let Some(new) = new else { return };
+        let id = new.session_id;
+        // The model calls `shell`, which `--tools read` leaves out.
+        assert!(driven.model(&id, "test/shell").await);
+        assert_eq!(
+            driven.prompt(&id, "Run it.").await.ok(),
+            Some(acp::StopReason::EndTurn)
+        );
+        let last = tool_steps(driven, &id).last().map(|(_, status)| *status);
+        assert_eq!(last, Some(acp::ToolCallStatus::Failed));
+    });
+    assert!(router.is_some());
+}
+
+#[test]
+fn a_reply_a_plugin_gives_in_place_reaches_the_client_once() {
+    let place = Place::new("in-place");
+    let router = drive(&place, acp::ClientCapabilities::new(), async |driven| {
+        let new = driven.new_session(Vec::new()).await;
+        assert!(new.is_some(), "no session");
+        let Some(new) = new else { return };
+        let id = new.session_id;
+        let answer = driven.prompt(&id, IN_PLACE).await;
+        let said = driven.said(&id);
+        assert!(
+            said.matches("hello in place").count() == 1,
+            "stop reason {answer:?}; the agent said {said:?}"
+        );
+    });
+    assert!(router.is_some(), "the router ran");
+}
+
+#[test]
+fn a_reply_taken_over_after_a_stream_with_no_text_reaches_the_client_once() {
+    for (marker, thought) in [(OPEN_THEN_TAKEN, ""), (THINK_THEN_TAKEN, "pondering")] {
+        let place = Place::new("taken-over");
+        let router = drive(&place, acp::ClientCapabilities::new(), async |driven| {
+            let new = driven.new_session(Vec::new()).await;
+            assert!(new.is_some(), "no session");
+            let Some(new) = new else { return };
+            let id = new.session_id;
+            let answer = driven.prompt(&id, marker).await;
+            let said = driven.said(&id);
+            assert!(
+                said.matches("hello in place").count() == 1,
+                "{marker}: stop reason {answer:?}; the agent said {said:?}"
+            );
+            let thoughts: String = driven
+                .updates(&id)
+                .into_iter()
+                .filter_map(|update| match update {
+                    acp::SessionUpdate::AgentThoughtChunk(chunk) => text(&chunk.content),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(thoughts, thought, "{marker}");
+        });
+        assert!(router.is_some(), "the router ran");
+    }
+}
+
+#[test]
+fn text_a_reviewer_gives_a_reply_that_streamed_reasoning_reaches_the_client_once() {
+    for marker in [THINK_THEN_REVIEWED, THINK_THEN_FAIL] {
+        let place = Place::new("reviewed");
+        let router = drive(&place, acp::ClientCapabilities::new(), async |driven| {
+            let new = driven.new_session(Vec::new()).await;
+            assert!(new.is_some(), "no session");
+            let Some(new) = new else { return };
+            let id = new.session_id;
+            let answer = driven.prompt(&id, marker).await;
+            let said = driven.said(&id);
+            assert!(
+                said.matches("REVIEW-REPLY added in place").count() == 1,
+                "{marker}: stop reason {answer:?}; the agent said {said:?}"
+            );
+        });
+        assert!(router.is_some(), "the router ran");
+    }
 }

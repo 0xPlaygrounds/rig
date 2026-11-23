@@ -1,4 +1,4 @@
-//! Run-lifecycle matrix (PR #2407): transport middleware, `on_run_start`,
+//! Run-lifecycle matrix: transport middleware, `on_run_start`,
 //! `on_run_settled`, and durable scratchpad state, recorded against the live
 //! Anthropic API.
 //!

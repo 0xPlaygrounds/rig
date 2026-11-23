@@ -19,10 +19,6 @@ struct OperationArgs {
 #[error("Math error")]
 struct MathError;
 
-#[derive(Debug, thiserror::Error)]
-#[error("Math error")]
-struct InitError;
-
 #[derive(Deserialize, Serialize)]
 struct Add;
 
@@ -61,12 +57,7 @@ impl Tool for Add {
     }
 }
 impl ToolEmbedding for Add {
-    type InitError = InitError;
     type Context = ();
-    type State = ();
-    fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
-        Ok(Add)
-    }
     fn embedding_docs(&self) -> Vec<String> {
         vec!["Add x and y together".into()]
     }
@@ -110,13 +101,7 @@ impl Tool for Subtract {
 }
 
 impl ToolEmbedding for Subtract {
-    type InitError = InitError;
     type Context = ();
-    type State = ();
-
-    fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
-        Ok(Subtract)
-    }
 
     fn context(&self) -> Self::Context {}
 

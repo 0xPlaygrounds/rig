@@ -72,6 +72,7 @@ use crate::message::{
     DocumentSourceKind, ImageMediaType, Message, Origin, StopReason, Text, ToolResult,
     ToolResultContent, UserContent,
 };
+use crate::tool::feedback;
 use crate::wasm_compat::WasmCompatSync;
 
 /// What replaces a user image for a model without image input, and another
@@ -168,7 +169,7 @@ pub enum Media<'a> {
     /// Video in a user message.
     Video(&'a crate::message::Video),
     /// A document in a user message.
-    Document(&'a crate::message::Document),
+    Document(&'a crate::message::DocumentContent),
 }
 
 /// The model a request is sent to, as replay sees it. Every completion wire
@@ -265,7 +266,8 @@ pub trait ReplayTarget: std::fmt::Debug + WasmCompatSync {
 
     /// Where this wire's items keep a reasoning blob (a signature or an
     /// encrypted copy of the reasoning), as JSON pointers tried in order.
-    /// The reply fold records the first that holds one on the block's
+    /// A `*` step stands for each index of an array. The reply fold
+    /// records the first that holds one on the block's
     /// [`Native`](crate::message::Native). By default there are none.
     fn blob_slots(&self) -> &'static [&'static str] {
         &[]
@@ -299,15 +301,6 @@ pub trait ReplayTarget: std::fmt::Debug + WasmCompatSync {
     fn drops_unbound_items(&self, request: &crate::completion::CompletionRequest) -> bool {
         let _ = request;
         false
-    }
-
-    /// The target `request` is sent to, for a wire that picks its API per
-    /// request. Preparing the request and folding its reply both read the
-    /// target this names, so a turn records the API it was made on. `None`,
-    /// the default, is this target.
-    fn route(&self, request: &crate::completion::CompletionRequest) -> Option<&dyn ReplayTarget> {
-        let _ = request;
-        None
     }
 
     /// Whether the encoder sends a request's documents itself. Otherwise
@@ -689,7 +682,7 @@ pub(crate) fn adapt_for(
                 );
             }
             Message::Assistant(turn) if matches!(turn.stop, Some(StopReason::Aborted(_))) => {
-                shaped.push(stopped(turn));
+                shaped.push(stopped(turn, &results_after(&history, at)));
             }
             // A failed turn is skipped, with the results answering it.
             Message::Assistant(turn)
@@ -1353,16 +1346,32 @@ fn assistant<'a>(
 /// The stopped turn `turn` as the text it had sent, shaped as a reply from
 /// no known model: canonical, blank text dropped, nothing when no text is
 /// left. Its reasoning and calls are dropped, so the results answering them
-/// go too.
-fn stopped(turn: &AssistantMessage) -> Option<Arc<Message>> {
-    let content: Vec<AssistantContent> = turn
+/// go too; each call nothing `answered` is said in a note
+/// ([`feedback::stopped_call_note`]), so the model knows it never ran.
+fn stopped(turn: &AssistantMessage, answered: &HashSet<&CallId>) -> Option<Arc<Message>> {
+    let text = turn
         .content
         .iter()
         .filter(|block| matches!(block, AssistantContent::Text(_)))
         .map(AssistantContent::canonical)
-        .filter(|block| !block.is_blank())
-        .collect();
+        .filter(|block| !block.is_blank());
+    let notes = turn
+        .tool_calls()
+        .filter(|call| !answered.contains(&call.id))
+        .map(|call| AssistantContent::text(feedback::stopped_call_note(call)));
+    let content: Vec<AssistantContent> = text.chain(notes).collect();
     (!content.is_empty()).then(|| Arc::new(Message::Assistant(AssistantMessage::new(content))))
+}
+
+/// The calls the tool results in the message after message `at` of
+/// `history` answer. Only that one is read: a resumed adaption adapts the
+/// last message again, so a turn's look changes only while it is last.
+fn results_after(history: &[Arc<Message>], at: usize) -> HashSet<&CallId> {
+    let next = history.get(at.saturating_add(1)).map(|message| &**message);
+    next.into_iter()
+        .flat_map(Message::results)
+        .map(|result| &result.call)
+        .collect()
 }
 
 /// The hosted uses and results that pair, as (message, block) positions in
@@ -1728,11 +1737,7 @@ fn result_text(result: &ToolResult) -> String {
     let text: Vec<String> = result
         .content
         .iter()
-        .map(|part| match part {
-            ToolResultContent::Text(text) => text.text.clone(),
-            ToolResultContent::Json { value } => value.to_string(),
-            ToolResultContent::Image(_) => TOOL_IMAGE_OMITTED.to_owned(),
-        })
+        .map(|part| part.to_text(TOOL_IMAGE_OMITTED))
         .collect();
     let kind = if result.is_error { "error" } else { "result" };
     format!("[tool {} {kind}] {}", result.name, text.join("\n"))

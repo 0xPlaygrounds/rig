@@ -16,7 +16,7 @@ use super::{CacheRetention, OnUnsupported, UnsupportedOption};
 use crate::completion::provider_options::SHARED;
 use crate::completion::{CompletionRequest, ReplayTarget};
 use crate::error::EncodeError;
-use crate::json_utils::remove_preserving_order;
+use crate::json_utils::{deep_merge, remove_preserving_order};
 use crate::providers::openai::wire::BodyRewrite;
 use crate::wire::Body;
 
@@ -88,6 +88,15 @@ impl FinalBody {
     /// When the body is not a `T`.
     pub fn deserialize<T: DeserializeOwned>(&self) -> Result<T, serde_json::Error> {
         // Read in place: a `Value` of the body would copy the whole history.
+        // A body holding an integer beyond u64 or i64 is read as
+        // `json_utils::from_value` reads it.
+        if self
+            .fields
+            .values()
+            .any(crate::json_utils::holds_wide_integer)
+        {
+            return crate::json_utils::from_value(&Value::Object(self.fields.clone()));
+        }
         let fields = self.fields.iter().map(|(key, value)| (key.as_str(), value));
         T::deserialize(serde::de::value::MapDeserializer::new(fields))
     }
@@ -178,6 +187,12 @@ pub enum Rewrite {
     /// For rig's own crates; not covered by semver.
     #[doc(hidden)]
     ChatDialect(BodyRewrite),
+    /// The Hugging Face router: `model` suffixed with the sub-provider it
+    /// selects.
+    ///
+    /// For rig's own crates; not covered by semver.
+    #[doc(hidden)]
+    RouterProvider(crate::providers::openai::wire::SubRoute),
     /// Gemini `cachedContent`: each raw `cachedContent`/`cached_content`
     /// handle, then the wire's own, checked against the body. The
     /// GenerateContent wires that name it also read a raw
@@ -720,19 +735,6 @@ fn placed(raw: Map<String, Value>, raw_at: RawAt) -> Map<String, Value> {
     }
 }
 
-/// Merge `upper` into `body`: objects key by key, recursively; any other
-/// value, `null` and arrays included, replaces.
-pub(crate) fn deep_merge(body: &mut Map<String, Value>, upper: Map<String, Value>) {
-    for (key, value) in upper {
-        match (body.get_mut(&key), value) {
-            (Some(Value::Object(lower)), Value::Object(upper)) => deep_merge(lower, upper),
-            (_, value) => {
-                body.insert(key, value);
-            }
-        }
-    }
-}
-
 /// The layers above the base, merged: the mapped options, then the
 /// provider options, then the raw layer as placed.
 fn upper_layers(
@@ -952,6 +954,9 @@ fn apply(
         }
         Rewrite::ChatDialect(kind) => {
             crate::providers::openai::wire::chat::rewrite_body(*kind, body)?;
+        }
+        Rewrite::RouterProvider(route) => {
+            crate::providers::openai::wire::chat::select_router_provider(route, body)?;
         }
         Rewrite::GeminiCachedContent(handle) => {
             for name in handles.iter().chain(handle) {

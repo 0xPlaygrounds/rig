@@ -1,14 +1,9 @@
-//! OC-13: rate answers and keep the feedback (one-conversation fresh
-//! held-out spec `13-message-ratings.md`).
-//!
-//! `/good [reason]` and `/bad [reason]` (Alt+Up and Alt+Down from the
-//! terminal view's input) rate the agent's last reply. A rating is two
-//! saved asides after that reply in the agent's conversation: a
-//! [`Rating`] (the data, kind [`Rating::KIND`]) and a [`Note`] the fronts
-//! draw as a marker with the reason. Asides never reach
-//! a model and are saved and restored with the conversation, so a rating
-//! stays with its reply. `/ratings` lists the session's ratings and
-//! jumps to one; `/ratings --all` reads every saved session of the project
+//! Rate answers and keep the feedback. `/good [reason]` and `/bad [reason]` (Alt+Up and Alt+Down
+//! from the terminal view's input) rate the agent's last reply. A rating is two saved asides after
+//! that reply in the agent's conversation: a [`Rating`] (the data, kind [`Rating::KIND`]) and a
+//! [`Note`] the fronts draw as a marker with the reason. Asides never reach a model and are saved
+//! and restored with the conversation, so a rating stays with its reply. `/ratings` lists the
+//! session's ratings and jumps to one; `/ratings --all` reads every saved session of the project
 //! and tallies good, bad and unrated replies per model.
 
 use std::cmp::Reverse;
@@ -23,9 +18,9 @@ use rig_tui::crossterm::event::{KeyCode, KeyModifiers};
 use rig_tui::ratatui::style::{Style, Stylize};
 use rig_tui::ratatui::text::Line;
 use rig_tui::{
-    AppKeyBindingsExt, EntryView, InputAction, ItemRow, KeyBinding, KeyPress, KeyPressed, KeyScope,
-    MainPane, RenderBatch, RenderSystems, ScrollTo, ShowAgent, TranscriptItem, TranscriptRender,
-    TranscriptView, TuiPlugin, run_command,
+    AppKeyBindingsExt, EntryRender, InputAction, ItemRow, KeyBinding, KeyPress, KeyPressed,
+    KeyScope, MainPane, RenderBatch, RenderSystems, ScrollTo, ShowAgent, TranscriptItem,
+    TranscriptRender, TranscriptView, TuiPlugin, run_command,
 };
 use serde::{Deserialize, Serialize};
 
@@ -153,12 +148,12 @@ fn bind_keys(app: &mut App) {
 /// Draws the ratings' notes as markers.
 fn draw(mut batch: ResMut<RenderBatch>) {
     for (entry, output) in batch.entries_mut(AUTHOR) {
-        output.lines = marker(&entry.view());
+        output.lines = marker(entry).into_iter().map(Into::into).collect();
     }
 }
 
 /// The marker's look: the verdict and reason, then the model.
-fn marker(entry: &EntryView<'_>) -> Vec<Line<'static>> {
+fn marker(entry: &EntryRender) -> Vec<Line<'static>> {
     let style = if entry.title.starts_with("good") {
         Style::new().green()
     } else {
@@ -212,10 +207,7 @@ fn first_line(message: &Message) -> String {
     let Message::Assistant(reply) = message else {
         return String::new();
     };
-    let text = reply.content.iter().find_map(|part| match part {
-        AssistantContent::Text(text) => Some(text.text.as_str()),
-        _ => None,
-    });
+    let text = reply.content.iter().find_map(AssistantContent::as_text);
     text.and_then(|text| text.trim().lines().next())
         .unwrap_or_default()
         .to_owned()
@@ -316,13 +308,8 @@ fn item_of(rated: &Rated) -> PickItem {
         .reason
         .as_deref()
         .map_or_else(String::new, |reason| format!(" · {reason}"));
-    PickItem {
-        label: format!("{} · {model}{reason}", rating.verdict.word()),
-        command: String::new(),
-        detail: Some(format!("{} · {}", when(rating.at_ms), rated.first_line)),
-        more: None,
-        checked: false,
-    }
+    let label = format!("{} · {model}{reason}", rating.verdict.word());
+    PickItem::new(label, "").detail(format!("{} · {}", when(rating.at_ms), rated.first_line))
 }
 
 /// `at_ms` as a local date and time, to the minute.
@@ -521,7 +508,7 @@ fn across_project(agents: &Query<(Entity, &AgentId, &Conversation)>, project: &P
         gathered.add("this session", &id.0, conversation);
     }
     let paths = project.paths.as_deref();
-    let directory = paths.and_then(|paths| paths.working_directory());
+    let directory = paths.and_then(|paths| paths.working_directory().ok().flatten());
     let this = paths.map(|paths| paths.path());
     let mut sessions: Vec<SessionEntry> = home
         .saved_sessions()

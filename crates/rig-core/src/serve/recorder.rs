@@ -73,60 +73,6 @@ pub trait Recorder: WasmCompatSend + WasmCompatSync + 'static {
     fn resolve(&self, id: EffectId, outcome: Result<Answered, ErrorReport>);
 }
 
-/// The [`Observe`](super::Observe) a recording driver installs on each
-/// dispatch ([`Dispatch::recorded_by`](super::Dispatch::recorded_by)): it
-/// tells `recorder` everything about the dispatch `id`, and the tool output
-/// its handler published, if any, before the outcome.
-pub(crate) struct RecordingObserver {
-    pub(crate) recorder: Arc<dyn Recorder + Send + Sync>,
-    pub(crate) id: EffectId,
-    pub(crate) published: Option<Arc<crate::tool::PublishedContext>>,
-    /// Whether an item streamed yet.
-    pub(crate) streamed: bool,
-}
-
-impl super::Observe for RecordingObserver {
-    fn outcome(&mut self, outcome: Result<Answered, ErrorReport>) {
-        if let Some(output) = self
-            .published
-            .as_ref()
-            .and_then(|published| published.result_context())
-        {
-            self.recorder.tool_output(self.id, output);
-        }
-        self.recorder.resolve(self.id, outcome);
-    }
-
-    fn keep_events(&self) -> bool {
-        self.recorder.keep_events()
-    }
-
-    fn event(&mut self, item: &Item<StreamEvent>) {
-        // Past the first, an item matters only to a recorder that keeps them.
-        if !std::mem::replace(&mut self.streamed, true) || self.recorder.keep_events() {
-            self.recorder.event(self.id, item);
-        }
-    }
-
-    fn stream_error(&mut self, error: &ErrorReport) {
-        self.recorder.stream_error(self.id, error);
-    }
-
-    fn origin(&mut self, origin: &crate::message::Origin) {
-        self.recorder.origin(self.id, origin);
-    }
-
-    /// A layer decided the dispatch before any handler saw it: the record
-    /// is dropped, since replay reruns the layers.
-    fn discard(&mut self, _layer: &str) {
-        self.recorder.discard(self.id);
-    }
-
-    fn patch(&mut self, kind: &EffectKind) {
-        self.recorder.patch(self.id, kind.clone());
-    }
-}
-
 /// `work`, the task that drives the dispatch `id`, with a panic in it (in
 /// the handler or in its reply's stream) turned into an internal error that
 /// `recorder`, if any, also records as the dispatch's outcome. Unwinding

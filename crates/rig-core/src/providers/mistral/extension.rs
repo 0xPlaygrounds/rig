@@ -136,10 +136,8 @@ pub struct MistralExtras {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
 pub struct MistralPromptTokens {
     /// Tokens read from the cache.
-    #[serde(default)]
     pub cached_tokens: Option<u64>,
     /// Audio tokens.
-    #[serde(default)]
     pub audio_tokens: Option<u64>,
 }
 

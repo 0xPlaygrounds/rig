@@ -1,6 +1,6 @@
 //! A unified diff a tool returned, drawn in the transcript: each line
 //! with its numbers in the old and the new file, in the colors of the
-//! file's language ([`highlight`](crate::highlight)), removed lines on red
+//! file's language once drawn ([`Code`]), removed lines on red
 //! and added ones on green ([`Theme`]), and the words a changed line
 //! changed on a stronger shade of each.
 
@@ -12,8 +12,9 @@ use ratatui::text::{Line, Span};
 use rig_core::tool::FileChange;
 use similar::{ChangeTag, TextDiff};
 
-use crate::Theme;
-use crate::highlight::{Language, highlight};
+use crate::highlight::{Code, Language};
+use crate::renderers::CodeLine;
+use crate::{LookLine, Theme};
 
 /// What a line of the diff is.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -34,7 +35,7 @@ enum Kind {
 
 /// `text` drawn as a unified diff when it holds a hunk header, else
 /// `None`, in `theme`'s colors.
-pub fn unified_lines(text: &str, theme: &Theme) -> Option<Vec<Line<'static>>> {
+pub fn unified_lines(text: &str, theme: &Theme) -> Option<Vec<LookLine>> {
     if !text.lines().any(|line| header(line).is_some()) {
         return None;
     }
@@ -47,14 +48,14 @@ pub fn unified_lines(text: &str, theme: &Theme) -> Option<Vec<Line<'static>>> {
 
 /// `change`'s hunks drawn as [`unified_lines`] draws them, in the colors
 /// of its path's language, without the `---`/`+++` lines naming its file.
-pub fn change_lines(change: &FileChange, theme: &Theme) -> Vec<Line<'static>> {
+pub fn change_lines(change: &FileChange, theme: &Theme) -> Vec<LookLine> {
     let mut lines = classify(&change.unified());
     lines.retain(|(kind, _)| *kind != Kind::File);
     draw(&lines, Some(change.path.as_str()), theme)
 }
 
 /// The classified `lines` of a diff of the file at `path`, each drawn.
-fn draw(lines: &[(Kind, String)], path: Option<&str>, theme: &Theme) -> Vec<Line<'static>> {
+fn draw(lines: &[(Kind, String)], path: Option<&str>, theme: &Theme) -> Vec<LookLine> {
     let width = lines
         .iter()
         .map(|(kind, _)| match kind {
@@ -74,29 +75,39 @@ fn draw(lines: &[(Kind, String)], path: Option<&str>, theme: &Theme) -> Vec<Line
         let number = |at: Option<usize>| at.map_or(" ".repeat(width), |at| format!("{at:>width$}"));
         let gutter =
             |old, new, sign| Span::from(format!("    {} {} {sign} ", number(old), number(new)));
-        let spans = code
-            .remove(&at)
-            .unwrap_or_else(|| vec![Span::from(text.clone())]);
-        let mut marked =
-            |shade| overlay(spans.clone(), &words.remove(&at).unwrap_or_default(), shade);
-        match *kind {
-            Kind::Other => Line::from(format!("    {text}")).dim(),
-            Kind::File => Line::from(format!("    {text}")).bold(),
-            Kind::Hunk => Line::from(format!("    {text}")).dim(),
+        let mut marked = |shade| overlay(text, &words.remove(&at).unwrap_or_default(), shade);
+        let (line, gutter) = match *kind {
+            Kind::Other => (Line::from(format!("    {text}")).dim(), None),
+            Kind::File => (Line::from(format!("    {text}")).bold(), None),
+            Kind::Hunk => (Line::from(format!("    {text}")).dim(), None),
             Kind::Same(old, new) => {
-                Line::from([vec![gutter(Some(old), Some(new), ' ').dim()], spans].concat())
+                let gutter = gutter(Some(old), Some(new), ' ').dim();
+                (
+                    Line::from(vec![gutter.clone(), Span::from(text.clone())]),
+                    Some(gutter),
+                )
             }
             Kind::Removed(old) => {
                 let shade = theme.changed_word(theme.removed_word);
                 let gutter = gutter(Some(old), None, '-').red();
-                Line::from([vec![gutter], marked(shade)].concat()).bg(theme.removed)
+                let line = Line::from([vec![gutter.clone()], marked(shade)].concat());
+                (line.bg(theme.removed), Some(gutter))
             }
             Kind::Added(new) => {
                 let shade = theme.changed_word(theme.added_word);
                 let gutter = gutter(None, Some(new), '+').green();
-                Line::from([vec![gutter], marked(shade)].concat()).bg(theme.added)
+                let line = Line::from([vec![gutter.clone()], marked(shade)].concat());
+                (line.bg(theme.added), Some(gutter))
             }
-        }
+        };
+        let code = gutter
+            .zip(code.remove(&at))
+            .map(|(gutter, (code, index))| CodeLine {
+                code,
+                index,
+                at: gutter.content.len(),
+            });
+        LookLine { line, code }
     });
     drawn.collect()
 }
@@ -194,11 +205,11 @@ fn header(line: &str) -> Option<((usize, usize), (usize, usize))> {
     Some((range(old)?, range(new)?))
 }
 
-/// Each code line's spans in the colors of `path`'s language, by the
-/// line's index: the hunk's old side (same and removed lines) and its new
-/// side (same and added) highlighted apart. Empty when the language has no
-/// grammar.
-fn highlighted(lines: &[(Kind, String)], path: &str) -> HashMap<usize, Vec<Span<'static>>> {
+/// Each code line's code and its place in it, by the line's index: the
+/// hunk's old side (same and removed lines) and its new side (same and
+/// added) each a code in `path`'s language. Empty when the language has
+/// no grammar.
+fn highlighted(lines: &[(Kind, String)], path: &str) -> HashMap<usize, (Code, usize)> {
     let mut spans = HashMap::new();
     let hunks = lines
         .iter()
@@ -217,11 +228,12 @@ fn highlighted(lines: &[(Kind, String)], path: &str) -> HashMap<usize, Vec<Span<
                 .map(|(at, (_, text))| (*at, text))
                 .collect();
             let code: Vec<&str> = side.iter().map(|(_, text)| text.as_str()).collect();
-            let Some(drawn) = highlight(&code.join("\n"), Language::File(path)) else {
+            let code = Code::new(&code.join("\n"), Language::File(path));
+            if !code.has_grammar() {
                 return spans;
-            };
-            for ((at, _), line) in side.iter().zip(drawn) {
-                spans.entry(*at).or_insert(line);
+            }
+            for (index, (at, _)) in side.iter().enumerate() {
+                spans.entry(*at).or_insert_with(|| (code.clone(), index));
             }
         }
     }
@@ -283,43 +295,23 @@ fn changed_words(lines: &[(Kind, String)]) -> HashMap<usize, Vec<Range<usize>>> 
     words
 }
 
-/// `spans` with `shade` laid over the bytes `ranges` of their joined
-/// text, each span split where a range starts or ends inside it.
-fn overlay(spans: Vec<Span<'static>>, ranges: &[Range<usize>], shade: Style) -> Vec<Span<'static>> {
-    if ranges.is_empty() {
-        return spans;
-    }
-    let mut laid = Vec::new();
-    let mut start = 0;
-    for span in spans {
-        let text = span.content.as_ref();
-        let end = start + text.len();
-        let mut cuts = vec![0, text.len()];
-        let inside = ranges.iter().flat_map(|range| [range.start, range.end]);
-        cuts.extend(
-            inside
-                .filter(|at| start < *at && *at < end)
-                .map(|at| at - start),
-        );
-        cuts.sort_unstable();
-        cuts.dedup();
-        for pair in cuts.windows(2) {
-            let [from, to] = pair else { continue };
-            let Some(piece) = text.get(*from..*to) else {
-                continue;
-            };
-            let at = start + from;
-            let marked = ranges.iter().any(|range| range.contains(&at));
-            let style = if marked {
-                span.style.patch(shade)
-            } else {
-                span.style
-            };
-            laid.push(Span::styled(piece.to_owned(), style));
+/// `text` as spans, with `shade` on its bytes `ranges`, which come in
+/// order and apart.
+fn overlay(text: &str, ranges: &[Range<usize>], shade: Style) -> Vec<Span<'static>> {
+    let mut spans = Vec::new();
+    let mut piece = |range: Range<usize>, style| {
+        if let Some(piece) = text.get(range).filter(|piece| !piece.is_empty()) {
+            spans.push(Span::styled(piece.to_owned(), style));
         }
-        start = end;
+    };
+    let mut at = 0;
+    for range in ranges {
+        piece(at..range.start, Style::default());
+        piece(range.clone(), shade);
+        at = range.end;
     }
-    laid
+    piece(at..text.len(), Style::default());
+    spans
 }
 
 #[cfg(test)]

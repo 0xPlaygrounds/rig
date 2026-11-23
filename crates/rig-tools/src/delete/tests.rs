@@ -1,3 +1,4 @@
+use crate::workspace::Root;
 use rig_core::tool::{FileChange, FileState, FilesChanged, Tool, ToolContext, ToolErrorKind};
 
 use super::{Delete, DeleteArgs};
@@ -16,9 +17,11 @@ fn a_delete_stays_in_its_base_and_publishes_the_deleted_file() {
     std::fs::write(dir.join("outside.txt"), "keep\n").ok();
     std::fs::write(base.join("a.txt"), "one\ntwo\n").ok();
     let delete = Delete {
-        base: Some(base.clone()),
-        confine: true,
-        ..Delete::default()
+        root: Root {
+            base: Some(base.clone()),
+            confine: true,
+            ..Root::default()
+        },
     };
     let run = |path: &str| {
         let mut context = ToolContext::new();

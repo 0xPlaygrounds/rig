@@ -4,7 +4,7 @@
 //! storing embedded documents in SQLite with the `sqlite-vec` extension. Define
 //! document table schemas by implementing [`SqliteVectorStoreTable`].
 //!
-//! With the `memory` feature, [`SqliteSessionStore`] keeps rig-memory
+//! With the `memory` feature, `SqliteSessionStore` keeps rig-memory
 //! sessions in the same database.
 //!
 //! The root `rig` facade re-exports this crate as `rig::sqlite` when the
@@ -75,7 +75,9 @@ impl Column {
     /// sqlite-vec metadata columns so supported filters can be applied during
     /// KNN candidate search. Filters on other document-table fields are applied
     /// after candidate search with an exhaustive candidate limit, which is
-    /// correct but can be more expensive on large stores.
+    /// correct but can be more expensive on large stores. A column whose type
+    /// declares a collation (`TEXT COLLATE NOCASE`) is filtered that way too,
+    /// because sqlite-vec compares metadata without collations.
     pub fn indexed(mut self) -> Self {
         self.indexed = true;
         self
@@ -300,6 +302,9 @@ impl SqliteColumnAffinity {
 struct SqliteMetadataColumn {
     name: &'static str,
     metadata_type: SqliteMetadataType,
+    /// The column declares a collation, which vec0 metadata comparisons
+    /// ignore, so its filters run on the document table instead.
+    collated: bool,
 }
 
 fn sqlite_metadata_columns(
@@ -320,6 +325,8 @@ fn sqlite_metadata_columns(
             Ok(SqliteMetadataColumn {
                 name: column.name,
                 metadata_type,
+                // Any mention counts: over-matching only moves filters off vec0.
+                collated: column.col_type.to_ascii_uppercase().contains("COLLATE"),
             })
         })
         .collect()
@@ -369,29 +376,26 @@ impl<T> SqliteVectorStore<T>
 where
     T: SqliteVectorStoreTable,
 {
-    async fn candidate_limit(
-        &self,
+    /// Sizes the KNN candidate set from the embedding counts `conn` sees. The
+    /// search must run on the same snapshot, or a concurrent write makes the
+    /// size stale.
+    fn candidate_limit(
+        conn: &rusqlite::Connection,
         samples: u64,
         exhaustive: bool,
-    ) -> Result<u64, VectorStoreError> {
+    ) -> rusqlite::Result<u64> {
         if samples == 0 {
             return Ok(0);
         }
 
         let embedding_map_table_name = format!("{}_embedding_map", T::name());
-        let (embedding_count, document_count) = self
-            .conn
-            .call(move |conn| {
-                Ok(conn.query_row(
-                    &format!(
-                        "SELECT COUNT(*), COUNT(DISTINCT document_rowid) FROM {embedding_map_table_name}"
-                    ),
-                    [],
-                    |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
-                )?)
-            })
-            .await
-            .map_err(VectorStoreError::datastore)?;
+        let (embedding_count, document_count) = conn.query_row(
+            &format!(
+                "SELECT COUNT(*), COUNT(DISTINCT document_rowid) FROM {embedding_map_table_name}"
+            ),
+            [],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+        )?;
 
         let embedding_count = u64::try_from(embedding_count).unwrap_or(0);
         let document_count = u64::try_from(document_count).unwrap_or(0);
@@ -491,28 +495,29 @@ where
 
         let embeddings_table_sql = conn
             .call(move |conn| {
-                conn.execute_batch("BEGIN")?;
+                // Dropping `tx` on an early return rolls the schema back.
+                let tx = conn.transaction()?;
 
-                conn.execute_batch(&create_table)?;
+                tx.execute_batch(&create_table)?;
 
                 for index_stmt in create_indexes {
-                    conn.execute_batch(&index_stmt)?;
+                    tx.execute_batch(&index_stmt)?;
                 }
 
-                conn.execute_batch(&format!(
+                tx.execute_batch(&format!(
                     "CREATE VIRTUAL TABLE IF NOT EXISTS {embeddings_table_name_for_sql} USING vec0({embeddings_columns})"
                 ))?;
-                conn.execute_batch(&format!(
+                tx.execute_batch(&format!(
                     "CREATE TABLE IF NOT EXISTS {embedding_map_table_name_for_sql} (
                         embedding_rowid INTEGER PRIMARY KEY AUTOINCREMENT,
                         document_rowid INTEGER NOT NULL
                     )"
                 ))?;
-                conn.execute_batch(&format!(
+                tx.execute_batch(&format!(
                     "CREATE INDEX IF NOT EXISTS idx_{table_name}_embedding_map_document_rowid ON {embedding_map_table_name_for_sql}(document_rowid)"
                 ))?;
 
-                conn.execute_batch("COMMIT")?;
+                tx.commit()?;
 
                 let schema_sql = conn
                     .query_row(
@@ -592,39 +597,58 @@ where
             embedding_columns.join(", "),
             embedding_placeholders.join(", ")
         );
-        let existing_rowid_sql = format!("SELECT rowid FROM {table_name} WHERE id = ?1");
-        let existing_embedding_rowids_sql = format!(
-            "SELECT embedding_rowid FROM {embedding_map_table_name} WHERE document_rowid = ?1"
-        );
         let insert_embedding_map_sql =
             format!("INSERT INTO {embedding_map_table_name}(document_rowid) VALUES (?1)");
-        let delete_embedding_map_sql =
-            format!("DELETE FROM {embedding_map_table_name} WHERE document_rowid = ?1");
+        let delete_embedding_map_sql = format!(
+            "DELETE FROM {embedding_map_table_name} WHERE document_rowid = ?1 RETURNING embedding_rowid"
+        );
         let delete_embeddings_sql = format!("DELETE FROM {embeddings_table_name} WHERE rowid = ?1");
+        let remove_vectors = |delete_map_sql: &str, params: &[i64]| -> rusqlite::Result<()> {
+            let embedding_rowids = txn
+                .prepare(delete_map_sql)?
+                .query_map(rusqlite::params_from_iter(params), |row| {
+                    row.get::<_, i64>(0)
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            for embedding_rowid in embedding_rowids {
+                txn.execute(&delete_embeddings_sql, [embedding_rowid])?;
+            }
+            Ok(())
+        };
+        // Read each batch, so unique indexes added after the store opened count.
+        let displaced = sqlite_displaced_rows(txn, table_name)?;
+        let displaced_rowids_sql = match &displaced {
+            Displaced::ById(collations) if !collations.is_empty() => Some(
+                collations
+                    .iter()
+                    .map(|collation| {
+                        format!(
+                            "SELECT rowid FROM {table_name} WHERE id = ?1 COLLATE \"{}\"",
+                            collation.replace('"', "\"\"")
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" UNION "),
+            ),
+            Displaced::ById(_) | Displaced::Sweep => None,
+        };
 
         for (doc, embeddings) in documents {
             debug!("Storing document with id {}", doc.id());
 
             let values = doc.column_values();
-            let id_value = values
-                .iter()
-                .find(|(name, _)| *name == "id")
-                .map_or_else(|| Value::Text(doc.id()), |(_, value)| value.to_sql_value());
-            if let Some(existing_rowid) = txn
-                .query_row(&existing_rowid_sql, rusqlite::params![id_value], |row| {
-                    row.get::<_, i64>(0)
-                })
-                .optional()?
-            {
-                let existing_embedding_rowids = txn
-                    .prepare(&existing_embedding_rowids_sql)?
-                    .query_map([existing_rowid], |row| row.get::<_, i64>(0))?
-                    .collect::<rusqlite::Result<Vec<_>>>()?;
-                for embedding_rowid in existing_embedding_rowids {
-                    txn.execute(&delete_embeddings_sql, [embedding_rowid])?;
+            let mut stale_rowids = match &displaced_rowids_sql {
+                Some(sql) => {
+                    let id_value = values
+                        .iter()
+                        .find(|(name, _)| *name == "id")
+                        .map_or_else(|| Value::Text(doc.id()), |(_, value)| value.to_sql_value());
+                    txn.prepare(sql)?
+                        .query_map([id_value], |row| row.get::<_, i64>(0))?
+                        .collect::<rusqlite::Result<Vec<_>>>()?
                 }
-                txn.execute(&delete_embedding_map_sql, [existing_rowid])?;
-            }
+                None => Vec::new(),
+            };
 
             let columns = values.iter().map(|(col, _)| *col).collect::<Vec<_>>();
 
@@ -644,6 +668,12 @@ where
                 rusqlite::params_from_iter(values.iter().map(|(_, val)| val.to_sql_value())),
             )?;
             last_id = txn.last_insert_rowid();
+            // The new row can take a replaced row's rowid, so its old map rows
+            // would otherwise score the new document.
+            stale_rowids.push(last_id);
+            for rowid in stale_rowids {
+                remove_vectors(&delete_embedding_map_sql, &[rowid])?;
+            }
 
             let metadata_values = self
                 .metadata_columns
@@ -668,6 +698,15 @@ where
                 params.extend(metadata_values.iter().cloned());
                 stmt.execute(rusqlite::params_from_iter(params))?;
             }
+        }
+
+        if matches!(displaced, Displaced::Sweep) {
+            remove_vectors(
+                &format!(
+                    "DELETE FROM {embedding_map_table_name} WHERE document_rowid NOT IN (SELECT rowid FROM {table_name}) RETURNING embedding_rowid"
+                ),
+                &[],
+            )?;
         }
 
         Ok(last_id)
@@ -712,7 +751,7 @@ where
             .into_iter()
             .map(|(document, embeddings)| {
                 let document = serde_json::to_value(document)?;
-                let row = serde_json::from_value::<T>(document)?;
+                let row = rig_core::json_utils::from_value::<T>(&document)?;
 
                 Ok((row, embeddings))
             })
@@ -1151,7 +1190,52 @@ fn sqlite_native_metadata_column<'a>(
         return None;
     }
 
-    metadata_columns.iter().find(|column| column.name == key)
+    metadata_columns
+        .iter()
+        .find(|column| column.name == key && !column.collated)
+}
+
+/// How `add_rows_with_txn` finds the documents an `INSERT OR REPLACE` deletes:
+/// every row that conflicts on any unique key, compared with that key's own
+/// collation.
+enum Displaced {
+    /// Every unique index is on `id` alone, with these collations. An
+    /// `INTEGER PRIMARY KEY` id is the rowid and has no index.
+    ById(Vec<String>),
+    /// Another unique key exists: remove orphaned vectors after the batch.
+    Sweep,
+}
+
+fn sqlite_displaced_rows(
+    txn: &rusqlite::Transaction<'_>,
+    table_name: &str,
+) -> rusqlite::Result<Displaced> {
+    let keys = txn
+        .prepare(
+            "SELECT i.name, i.partial, k.name, k.coll
+             FROM pragma_index_list(?1) AS i, pragma_index_xinfo(i.name) AS k
+             WHERE i.\"unique\" AND k.key",
+        )?
+        .query_map([table_name], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, bool>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut collations = Vec::new();
+    for (index, partial, column, collation) in &keys {
+        let single_key = keys.iter().filter(|key| key.0 == *index).count() == 1;
+        if *partial || !single_key || column.as_deref() != Some("id") {
+            return Ok(Displaced::Sweep);
+        }
+        collations.push(collation.clone());
+    }
+    collations.sort();
+    collations.dedup();
+    Ok(Displaced::ById(collations))
 }
 
 fn sqlite_is_plain_identifier(key: &str) -> bool {
@@ -1571,20 +1655,29 @@ where
         let distance_metric = self.store.distance_metric;
         let score_expression = distance_metric.score_expression("?1", "e.embedding");
         let filters = render_search_filters(req, distance_metric, &self.store.metadata_columns)?;
-        let candidate_limit = self
-            .store
-            .candidate_limit(req.samples(), filters.has_post_filters())
-            .await?;
-        let search_query = build_search_query(query_vec, filters, candidate_limit)?;
-        let where_clause = search_query.vector_where_clause;
-        let document_filter_clause = search_query.document_filter_clause;
-        let mut params = search_query.params;
-        params.push(sqlite_limit_param(req.samples(), "result limit")?);
+        let samples = req.samples();
+        let result_limit = sqlite_limit_param(samples, "result limit")?;
 
         self.store
             .conn
             .call(move |conn| {
-                let mut stmt = conn.prepare(&format!(
+                // The savepoint holds one read snapshot across the count and
+                // the search, and nests inside a caller's open transaction.
+                let snapshot = conn.savepoint()?;
+                let candidate_limit = SqliteVectorStore::<T>::candidate_limit(
+                    &snapshot,
+                    samples,
+                    filters.has_post_filters(),
+                )?;
+                let search_query = match build_search_query(query_vec, filters, candidate_limit) {
+                    Ok(query) => query,
+                    Err(error) => return Ok(Err(error)),
+                };
+                let where_clause = search_query.vector_where_clause;
+                let document_filter_clause = search_query.document_filter_clause;
+                let mut params = search_query.params;
+                params.push(result_limit);
+                let mut stmt = snapshot.prepare(&format!(
                     "WITH scored AS (
                         SELECT m.document_rowid AS __rig_document_rowid,
                             {score_expression} AS __rig_score,
@@ -1608,10 +1701,13 @@ where
                 let rows = stmt
                     .query_map(rusqlite::params_from_iter(params), |row| map_row(row))?
                     .collect::<Result<Vec<_>, _>>()?;
-                Ok(rows)
+                drop(stmt);
+                snapshot.commit()?;
+                Ok(Ok(rows))
             })
             .await
-            .map_err(VectorStoreError::datastore)
+            .map_err(VectorStoreError::datastore)?
+            .map_err(VectorStoreError::from)
     }
 }
 
@@ -1967,7 +2063,7 @@ impl<T: SqliteVectorStoreTable> VectorStoreIndex for SqliteVectorIndex<T> {
         debug!("Found {} potential matches", rows.len());
         let mut top_n = Vec::new();
         for (id, doc_value, score) in rows {
-            match serde_json::from_value::<D>(doc_value) {
+            match rig_core::json_utils::from_value::<D>(&doc_value) {
                 Ok(doc) => {
                     top_n.push(VectorSearchResult {
                         score,

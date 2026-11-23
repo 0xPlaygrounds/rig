@@ -1,4 +1,7 @@
+#![allow(clippy::disallowed_methods, reason = "test fixtures")]
+
 use bevy_app::prelude::*;
+use bevy_ecs::prelude::*;
 use rig_harness_protocol::AgentDescription;
 
 use super::{Describing, report};
@@ -6,6 +9,7 @@ use crate::host::cli::{AppCliExt, Cli, Flag, Front};
 use crate::host::launcher::Invoked;
 use crate::load;
 use crate::secrets::Secret;
+use crate::settings::AppSettingsExt;
 
 /// `rig stats`: a headless command that keeps no session.
 #[derive(Default)]
@@ -40,6 +44,24 @@ struct Help;
 impl Plugin for Help {
     fn build(&self, app: &mut App) {
         app.add_front(Front::new("help").on_command("help", "", "Help"));
+    }
+}
+
+/// `[limits]` in `settings.toml`, which [`Limited`] reads.
+#[derive(Resource, serde::Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+struct Limits {
+    #[allow(dead_code, reason = "read from settings only")]
+    calls: u32,
+}
+
+/// A plugin that reads `[limits]`.
+#[derive(Default)]
+struct Limited;
+
+impl Plugin for Limited {
+    fn build(&self, app: &mut App) {
+        app.add_setting::<Limits>("limits");
     }
 }
 
@@ -132,16 +154,23 @@ fn a_build_asked_to_describe_itself_writes_its_report_and_runs_no_frame() {
             .with_file_name(format!("rig-describe-{}", std::process::id()));
         std::fs::create_dir_all(&dir).ok();
         let report = dir.join("report");
+        let settings = dir.join("settings.toml");
+        std::fs::write(&settings, "[limits]\ncalls = 3\nmax_calls = 5\n").ok();
         let described = |case: &str| {
             std::fs::remove_file(&report).ok();
             let output = std::env::current_exe().and_then(|test| {
-                std::process::Command::new(test)
+                let mut command = std::process::Command::new(test);
+                command
                     .args(["--exact", name, "--test-threads", "1"])
                     .env(CASE, case)
                     .env(env::DESCRIBE, &report)
                     .env(env::HOME, dir.join("home"))
                     .env_remove(env::SESSION)
-                    .output()
+                    .env_remove(env::DESCRIBE_SETTINGS);
+                if case == "settings" {
+                    command.env(env::DESCRIBE_SETTINGS, &settings);
+                }
+                command.output()
             });
             let passed = output.is_ok_and(|output| {
                 output.status.success()
@@ -152,11 +181,15 @@ fn a_build_asked_to_describe_itself_writes_its_report_and_runs_no_frame() {
         };
         let (passed, report) = described("one");
         let (clash_passed, clash) = described("clash");
+        // The settings the launcher names are read, and refused as a start
+        // refuses them; the home's own, none, are not.
+        let (refused_passed, refused) = described("settings");
         let sessions = Home::at(dir.join("home")).sessions();
         let kept_none = std::fs::read_dir(sessions).map_or(true, |mut dirs| dirs.next().is_none());
         std::fs::remove_dir_all(&dir).ok();
         assert!(passed && report.command("stats").is_some(), "{report:?}");
         assert!(clash_passed && clash == AgentDescription::default());
+        assert!(refused_passed && refused == AgentDescription::default());
         assert!(kept_none, "a session directory was made");
         return;
     };
@@ -166,13 +199,64 @@ fn a_build_asked_to_describe_itself_writes_its_report_and_runs_no_frame() {
     if case == "clash" {
         load::<OtherStats>(&mut app, "corpus-other", "path other");
     }
+    load::<Limited>(&mut app, "corpus-limited", "path limited");
     // No frame runs.
     app.add_systems(Startup, || std::process::abort());
     let exit = crate::run(app);
-    let expected = if case == "clash" {
+    let expected = if case == "clash" || case == "settings" {
         AppExit::from_code(2)
     } else {
         AppExit::Success
     };
     assert_eq!(exit, expected);
+}
+
+/// A plugin whose `build` panics.
+#[derive(Default)]
+struct Panics;
+
+impl Plugin for Panics {
+    #[allow(clippy::panic, reason = "the panic is what the test is about")]
+    fn build(&self, _app: &mut App) {
+        panic!("this plugin panics on purpose");
+    }
+}
+
+/// Set on the copy of the test below that describes an app with [`Panics`].
+const PANICS: &str = "RIG_TEST_DESCRIBE_PANICS";
+
+/// The launcher shows what a describing build says on stderr when it
+/// fails, so a plugin's panic must reach stderr, not the session log.
+#[test]
+fn a_build_whose_plugin_panics_while_describing_says_why_on_stderr() {
+    use rig_harness_protocol::env;
+
+    if std::env::var_os(PANICS).is_none() {
+        let name =
+            "describe::tests::a_build_whose_plugin_panics_while_describing_says_why_on_stderr";
+        let dir = std::env::current_exe()
+            .unwrap_or_default()
+            .with_file_name(format!("rig-describe-panics-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).ok();
+        let output = std::env::current_exe().and_then(|test| {
+            std::process::Command::new(test)
+                .args(["--exact", name, "--test-threads", "1", "--nocapture"])
+                .env(PANICS, "1")
+                .env(env::DESCRIBE, dir.join("report"))
+                .env(env::HOME, dir.join("home"))
+                .env_remove(env::SESSION)
+                .env_remove(env::DESCRIBE_SETTINGS)
+                .output()
+        });
+        std::fs::remove_dir_all(&dir).ok();
+        let stderr = output
+            .map(|output| String::from_utf8_lossy(&output.stderr).into_owned())
+            .unwrap_or_default();
+        assert!(stderr.contains("this plugin panics on purpose"), "{stderr}");
+        return;
+    }
+    let mut app = App::new();
+    app.add_plugins((crate::HeadlessPlugins, crate::RigHarnessPlugins));
+    load::<Panics>(&mut app, "corpus-panics", "path panics");
+    crate::run(app);
 }

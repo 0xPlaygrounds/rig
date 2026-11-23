@@ -42,6 +42,9 @@ pub(crate) struct Plan {
     pub deletes: Vec<String>,
     /// `A path (+n)`, `M path (+n -m)`, `D path (-m)`, `R from -> to (+n -m)`.
     pub summary: Vec<String>,
+    /// Each file updated, by its resolved path, with the text the patch
+    /// applied to.
+    pub read: Vec<(PathBuf, String)>,
 }
 
 /// Parses `input` and checks it against the files of `workspace`, placing
@@ -128,6 +131,7 @@ pub(crate) fn check(
                     }
                 };
                 let change = file_change(&path, Some(&before), Some(&after));
+                plan.read.push((resolved, before));
                 let counts = format!("(+{} -{})", change.added, change.removed);
                 let Some(to) = move_to else {
                     plan.summary.push(format!("M {path} {counts}"));

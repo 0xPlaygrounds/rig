@@ -1,14 +1,14 @@
-//! The terminal view's part: the `/model` and `/effort` pickers, `/model`'s
-//! completions, and each agent's model and reasoning setting in its status
-//! line.
+//! The terminal view's part: `/model`'s completions, and each agent's model
+//! and reasoning setting in its status line.
 
 use rig_harness::prelude::*;
-use rig_harness::rig_core::catalog::{Connector, ModelSpec, ModelStatus};
 use rig_tui::{
-    CompletionSource, Editor, MainEditor, Side, StatusItem, StatusItems, StatusSystems, Tone,
+    AppStatusPartsExt, CompletionSource, Editor, MainEditor, Side, StatusItem, StatusItems,
+    StatusSystems, Tone,
 };
 
-use super::{ModelItem, ModelLabel};
+use super::pick::catalog;
+use super::{ModelItem, ModelLabel, effort_name};
 
 /// Where the model is: always shown.
 const MODEL: StatusItem = StatusItem::new("model", Side::Left, 30, u8::MAX);
@@ -17,88 +17,19 @@ const REASONING: StatusItem = StatusItem::new("reasoning", Side::Left, 40, 12);
 
 pub(super) fn add(app: &mut App) {
     app.add_systems(PostUpdate, show.in_set(StatusSystems::Show))
-        .add_systems(Update, complete_models);
-}
-
-/// What a catalog model is to `/model`: its reference, and its line with
-/// why it cannot be used, if it cannot.
-struct Listed {
-    reference: String,
-    line: String,
-}
-
-/// Every catalog model: first those that can be reached, as rig-core
-/// orders them, then the others with why not.
-fn catalog(models: &Connector) -> Vec<Listed> {
-    let statuses = models.statuses().into_iter();
-    let listed = statuses.map(|(spec, status)| {
-        let note = match status {
-            ModelStatus::Usable => match models.plan(spec) {
-                Some(plan) => format!("  ({plan} plan)"),
-                None if spec.provider.requires_credential() => String::new(),
-                None => "  (no key needed)".to_owned(),
-            },
-            ModelStatus::NoKey(tried) => format!("  (no key: set {})", tried.join(" or ")),
-            ModelStatus::NoTools => "  (calls no tools)".to_owned(),
-            ModelStatus::Unavailable(why) => format!("  (unavailable: {why})"),
-        };
-        listing(spec, &note)
-    });
-    listed.collect()
-}
-
-/// `spec` listed with `note`.
-fn listing(spec: &ModelSpec, note: &str) -> Listed {
-    let reference = spec.reference();
-    Listed {
-        line: format!("{reference}  {}{note}", spec.display_name),
-        reference,
-    }
-}
-
-/// Lets the user pick one of the [`ModelItem`]s, then of the catalog's
-/// models, each with why it cannot be used, if it cannot.
-pub(super) fn pick_model(
-    agent: Entity,
-    (models, contributed): (&Models, &Query<&ModelItem>),
-    notices: &mut MessageWriter<Notice>,
-    commands: &mut Commands,
-) {
-    let mut contributed: Vec<&ModelItem> = contributed.iter().collect();
-    contributed.sort_by(|a, b| a.name.cmp(&b.name));
-    let contributed = contributed.into_iter().map(|item| PickItem {
-        label: item.label.clone(),
-        command: item.command.clone(),
-        detail: None,
-        more: None,
-        checked: false,
-    });
-    let listed = catalog(&models.0).into_iter().map(|listed| PickItem {
-        label: listed.line,
-        command: format!("model {}", listed.reference),
-        detail: None,
-        more: None,
-        checked: false,
-    });
-    let items: Vec<PickItem> = contributed.chain(listed).collect();
-    if items.is_empty() {
-        notices.write(Notice::error(agent, "The catalog lists no model."));
-        return;
-    }
-    commands.spawn(Picker {
-        items,
-        ..Picker::new("Model").for_agent(agent)
-    });
+        .add_systems(Update, complete_models)
+        .add_status_part(&MODEL, "Model")
+        .add_status_part(&REASONING, "Reasoning effort");
 }
 
 /// On the entity of `/model`'s completions.
 #[derive(Component)]
 struct ModelCompletions;
 
-/// Offers the [`ModelItem`]s' names and the catalog's models as `/model`'s
-/// argument, each with its line: built once the input is a `/model`
-/// command, again only after the catalog or the choices plugins add
-/// changed. Listing the catalog asks each provider whether it connects,
+/// Offers the [`ModelItem`]s' names and the catalog's usable models as
+/// `/model`'s argument, each with its line: built once the input is a
+/// `/model` command, again only after the catalog or the choices plugins
+/// add changed. Listing the catalog asks each provider whether it connects,
 /// too slow for every start.
 fn complete_models(
     models: Res<Models>,
@@ -144,26 +75,6 @@ fn complete_models(
     }
 }
 
-/// Lets the user pick one of the reasoning settings of `spec`.
-pub(super) fn pick_effort(agent: Entity, spec: &ModelSpec, commands: &mut Commands) {
-    let title = format!("Reasoning for {}", spec.display_name);
-    commands.spawn(Picker {
-        items: spec
-            .reasoning
-            .choices()
-            .into_iter()
-            .map(|choice| PickItem {
-                label: choice.label(),
-                command: format!("effort {}", choice.name),
-                detail: None,
-                more: None,
-                checked: false,
-            })
-            .collect(),
-        ..Picker::new(title).for_agent(agent)
-    });
-}
-
 /// Each agent's model, its [`ModelLabel`] or else its choice, and its
 /// reasoning setting, when one of them changed.
 fn show(
@@ -171,6 +82,7 @@ fn show(
         Option<&ModelChoice>,
         Option<&ModelLabel>,
         &ReasoningSetting,
+        Option<&Connection>,
         &mut StatusItems,
     )>,
     changed: Query<
@@ -179,12 +91,13 @@ fn show(
             Changed<ModelChoice>,
             Changed<ReasoningSetting>,
             Changed<ModelLabel>,
+            Changed<Connection>,
         )>,
     >,
     mut unlabeled: RemovedComponents<ModelLabel>,
 ) {
     for agent in changed.iter().chain(unlabeled.read()) {
-        let Ok((model, label, effort, mut items)) = agents.get_mut(agent) else {
+        let Ok((model, label, &effort, connection, mut items)) = agents.get_mut(agent) else {
             continue;
         };
         let model = match (label, model) {
@@ -193,6 +106,7 @@ fn show(
             (None, None) => "no model: /model picks one",
         };
         items.show(MODEL.says(model, Tone::Bold));
+        let effort = effort_name(connection, effort);
         items.show(REASONING.says(format!("reasoning {effort}"), Tone::Dim));
     }
 }

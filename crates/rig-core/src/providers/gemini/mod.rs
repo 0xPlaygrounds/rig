@@ -13,16 +13,12 @@
 //!
 //! Pair a wire with a transport in a [`Model`](crate::driver::Model) to call it.
 
-#[cfg(feature = "audio")]
-#[cfg_attr(docsrs, doc(cfg(feature = "audio")))]
 pub mod audio_generation;
 pub mod cached_content;
 pub mod caching;
 pub mod completion;
 pub mod embedding;
 pub mod extension;
-#[cfg(feature = "image")]
-#[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 pub mod image_generation;
 pub mod interactions_api;
 pub mod model_listing;
@@ -32,13 +28,11 @@ pub mod transcription;
 
 pub use crate::client::gemini::Gemini;
 pub use crate::client::gemini_caching::Caching;
-#[cfg(feature = "audio")]
 pub use audio_generation::{GEMINI_3_8_FLASH_LITE_TTS, GEMINI_3_8_FLASH_TTS};
 pub use cached_content::{CacheExpiry, CachedContent, CachedContents, NewCachedContent};
 pub use caching::{AutoCache, CacheBook, CacheEvent, CacheReport, Clock, CreatedCache, Lease};
 pub use completion::ThoughtReplay;
 pub use embedding::{EMBEDDING_001, EMBEDDING_004};
-#[cfg(feature = "image")]
 pub use image_generation::{
     GEMINI_2_5_FLASH_IMAGE, GEMINI_3_1_FLASH_IMAGE, GEMINI_3_1_FLASH_LITE_IMAGE,
     GEMINI_3_PRO_IMAGE, GEMINI_NANO_BANANA_2_1,
@@ -91,24 +85,36 @@ impl GeminiConfig {
         self
     }
 
-    /// Build a GenerateContent URI, appending the API key after any path query.
-    /// The returned URI contains credentials and must not be logged.
-    pub(crate) fn uri(&self, path: &str) -> String {
-        let trimmed = path.trim_start_matches('/');
-        let separator = if trimmed.contains('?') { "&" } else { "?" };
+    /// A request to `path` under the API root, with the key in its header.
+    /// The key stays out of the URI, which proxies, traces and errors keep,
+    /// and out of the request's `Debug`. An unusable key fails at `body`.
+    pub(crate) fn request(&self, method: http::Method, path: &str) -> http::request::Builder {
         let base = self.base_url.trim_end_matches('/');
-        format!("{base}/{trimmed}{separator}key={}", self.api_key.expose())
+        let builder = http::Request::builder()
+            .method(method)
+            .uri(format!("{base}/{}", path.trim_start_matches('/')));
+        crate::providers::internal::credential_header(
+            builder,
+            Self::API_KEY_HEADER,
+            self.api_key.expose(),
+        )
     }
 
-    /// The URI for an Interactions-family `path`. No key: that family
-    /// authenticates by the `x-goog-api-key` header instead.
-    pub(crate) fn interactions_uri(&self, path: &str) -> String {
-        let base = self.base_url.trim_end_matches('/');
-        format!("{base}/{}", path.trim_start_matches('/'))
+    /// A JSON `POST` of `body` to `path` under the API root, as
+    /// [`request`](Self::request) builds it.
+    pub(crate) fn post_json(
+        &self,
+        path: &str,
+        body: crate::wire::Body,
+    ) -> Result<http::Request<crate::wire::Body>, crate::error::EncodeError> {
+        Ok(self
+            .request(http::Method::POST, path)
+            .header(http::header::CONTENT_TYPE, "application/json")
+            .body(body)?)
     }
 
-    /// The header that authenticates an Interactions-family request.
-    pub(crate) const INTERACTIONS_KEY_HEADER: &'static str = "x-goog-api-key";
+    /// The header that authenticates every request.
+    pub(crate) const API_KEY_HEADER: &'static str = "x-goog-api-key";
 
     /// The `generateContent` / `streamGenerateContent` completion wire.
     pub(crate) fn completion(&self, model: impl Into<String>) -> completion::GenerateContent {
@@ -118,6 +124,18 @@ impl GeminiConfig {
     /// The Interactions API completion wire.
     pub(crate) fn interactions(&self, model: impl Into<String>) -> interactions_api::Interactions {
         interactions_api::Interactions::new(self.clone(), model)
+    }
+}
+
+/// Merges a request's `additional_params` over `body`: objects deep merge,
+/// and any other value replaces the body.
+fn apply_params(body: &mut serde_json::Value, params: Option<serde_json::Value>) {
+    match (body, params) {
+        (serde_json::Value::Object(body), Some(serde_json::Value::Object(params))) => {
+            crate::json_utils::deep_merge(body, params);
+        }
+        (body, Some(params)) => *body = params,
+        (_, None) => {}
     }
 }
 

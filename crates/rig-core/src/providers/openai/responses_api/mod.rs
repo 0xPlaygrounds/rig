@@ -19,8 +19,8 @@ use crate::error::EncodeError;
 use crate::json_utils;
 use crate::json_utils::Lenient;
 use crate::message::{
-    AssistantContent, Document, DocumentData, DocumentMediaType, DocumentSourceKind, Message,
-    MimeType, ToolResultContent, UserContent,
+    AssistantContent, DocumentContent, DocumentData, DocumentMediaType, DocumentSourceKind,
+    Message, MimeType, ToolResultContent, UserContent,
 };
 use crate::providers::internal::object;
 use crate::providers::internal::wire_ids::WireIds;
@@ -31,8 +31,6 @@ use serde_json::{Map, Value, json};
 use std::sync::Arc;
 
 pub mod streaming;
-#[cfg(feature = "websocket")]
-#[cfg_attr(docsrs, doc(cfg(feature = "websocket")))]
 pub mod websocket;
 pub mod wire;
 
@@ -61,7 +59,7 @@ fn image_part(image: &message::Image) -> Option<Value> {
 /// The content part `document` goes as: an `input_file` for a file id, a URL
 /// or base64 PDF data, and its text for a text document. `None` for any other
 /// form; the adapter sends a text document's text instead.
-fn document_part(document: &Document) -> Option<Value> {
+fn document_part(document: &DocumentContent) -> Option<Value> {
     let source = match &document.data {
         DocumentData::Text(text) => return Some(json!({"type": "input_text", "text": text})),
         DocumentData::File(source) => source,
@@ -481,7 +479,7 @@ impl wire::Responses {
         let extra = layers.raw_tools()?;
         if !extra.is_empty() {
             tools.extend(
-                serde_json::from_value::<Vec<ResponsesToolDefinition>>(Value::Array(extra))
+                crate::json_utils::from_value::<Vec<ResponsesToolDefinition>>(&Value::Array(extra))
                     .map_err(|err| {
                         EncodeError::request(format!(
                             "Invalid OpenAI Responses tools payload in additional_params: {err}"
@@ -504,7 +502,8 @@ impl wire::Responses {
                 .collect(),
             calls: Default::default(),
         };
-        let stateless = codex || layers.param("store") == Some(&json!(false));
+        let store = self.store.map(Value::Bool);
+        let stateless = codex || layers.param("store").or(store.as_ref()) == Some(&json!(false));
         let caller = match layers.claim("input") {
             None | Some(Value::Null) => Vec::new(),
             Some(Value::Array(items)) => items,
@@ -610,6 +609,7 @@ impl wire::Responses {
 
         Ok(crate::providers::internal::set_fields([
             ("model", Some(Value::String(model))),
+            ("store", store),
             ("input", Some(Value::Array(sent))),
             ("instructions", instructions.map(Value::from)),
             (

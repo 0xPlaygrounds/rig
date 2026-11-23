@@ -61,7 +61,6 @@ pub const AZURE: Dialect = Dialect {
         // Verifying a credential without deploying and spending tokens is
         // not offered.
         verify_path: "",
-        transcription_path: "/audio/translations",
         embedding: EmbeddingQuirks {
             // The deployment is in the URL, so the body carries no model.
             sends_model_field: false,
@@ -194,8 +193,6 @@ pub const TOGETHER: Dialect = Dialect {
         verify_path: "/models",
         embedding: EmbeddingQuirks {
             requires_usage: false,
-            supports_encoding_format: false,
-            supports_user: false,
             ..EmbeddingQuirks::openai()
         },
         ..Quirks::openai()
@@ -217,8 +214,8 @@ pub const HUGGINGFACE: Dialect = Dialect {
         // in the base URL.
         completion_path: "/v1/chat/completions",
         verify_path: "/api/whoami-v2",
-        // Transcription and image generation address `/{model}` at the
-        // router root, not a fixed path under `/v1`.
+        // Transcription and image generation address
+        // `/hf-inference/models/{model}`, not a fixed path under `/v1`.
         model_is_modality_path: true,
         // The router's image endpoint takes none of OpenAI's fields and
         // answers with the image bytes rather than a JSON envelope.
@@ -296,7 +293,6 @@ pub const MISTRAL: Dialect = Dialect {
         rewrite: BodyRewrite::Mistral,
         embedding: EmbeddingQuirks {
             max_documents: 256,
-            supports_user: false,
             // Codestral Embed takes its width as `output_dimension`.
             dimensions: DimensionsField::OutputDimension,
             widths: super::modality::MISTRAL_EMBEDDING_WIDTHS,
@@ -356,7 +352,7 @@ pub const VENICE: Dialect = Dialect {
     },
     ..Dialect::gateway(
         crate::providers::venice::PROVIDER_NAME,
-        "https://api.venice.ai/api/v1",
+        crate::providers::venice::VENICE_API_BASE_URL,
         "VENICE_API_KEY",
     )
 };
@@ -367,8 +363,6 @@ pub const DOUBLEWORD: Dialect = Dialect {
     quirks: Quirks {
         embedding: EmbeddingQuirks {
             requires_usage: false,
-            supports_encoding_format: false,
-            supports_user: false,
             widths: super::modality::DOUBLEWORD_EMBEDDING_WIDTHS,
             // Doubleword refuses a zero width itself, and stating it here
             // keeps the refusal ahead of a request that cannot succeed.
@@ -404,14 +398,14 @@ pub const ZAI: Dialect = Dialect {
     },
     ..Dialect::gateway(
         crate::providers::zai::PROVIDER_NAME,
-        "https://api.z.ai/api/paas/v4",
+        crate::providers::zai::GENERAL_API_BASE_URL,
         "ZAI_API_KEY",
     )
 };
 
 /// Z.AI's coding endpoint: the same dialect at a different base URL.
 pub const ZAI_CODING: Dialect = Dialect {
-    base_url: "https://api.z.ai/api/coding/paas/v4",
+    base_url: crate::providers::zai::CODING_API_BASE_URL,
     ..ZAI
 };
 
@@ -432,14 +426,14 @@ pub const MINIMAX: Dialect = Dialect {
     },
     ..Dialect::gateway(
         crate::providers::minimax::PROVIDER_NAME,
-        "https://api.minimax.io/v1",
+        crate::providers::minimax::GLOBAL_API_BASE_URL,
         "MINIMAX_API_KEY",
     )
 };
 
 /// MiniMax's China endpoint.
 pub const MINIMAX_CHINA: Dialect = Dialect {
-    base_url: "https://api.minimax.cn/v1",
+    base_url: crate::providers::minimax::CHINA_API_BASE_URL,
     ..MINIMAX
 };
 
@@ -462,14 +456,14 @@ pub const MOONSHOT: Dialect = Dialect {
     },
     ..Dialect::gateway(
         crate::providers::moonshot::PROVIDER_NAME,
-        "https://api.moonshot.ai/v1",
+        crate::providers::moonshot::GLOBAL_API_BASE_URL,
         "MOONSHOT_API_KEY",
     )
 };
 
 /// Moonshot's China endpoint.
 pub const MOONSHOT_CHINA: Dialect = Dialect {
-    base_url: "https://api.moonshot.cn/v1",
+    base_url: crate::providers::moonshot::CHINA_API_BASE_URL,
     ..MOONSHOT
 };
 
@@ -484,7 +478,7 @@ pub const XIAOMIMIMO: Dialect = Dialect {
     },
     ..Dialect::gateway(
         crate::providers::xiaomimimo::PROVIDER_NAME,
-        "https://api.xiaomimimo.com/v1",
+        crate::providers::xiaomimimo::API_BASE_URL,
         "XIAOMI_MIMO_API_KEY",
     )
 };
@@ -497,12 +491,15 @@ pub const COHERE: Dialect = Dialect::gateway(
     "COHERE_API_KEY",
 );
 
-/// An Ollama daemon's OpenAI-compatible API. Its embedding and model-listing
-/// endpoints are its own wires.
+/// An Ollama daemon's OpenAI-compatible API, at `/v1` under the daemon
+/// `OLLAMA_API_BASE_URL` names, as for its other wires. Its embedding and
+/// model-listing endpoints are its own wires.
 pub const OLLAMA: Dialect = Dialect {
+    base_url_env: Some("OLLAMA_API_BASE_URL"),
     quirks: Quirks {
         // A local daemon takes no credential; a proxied one takes a token.
         auth: Auth::OptionalBearer,
+        base_url_env_path: "/v1",
         rewrite: BodyRewrite::Ollama,
         // A daemon is usually local; the catalog's prices are Ollama Cloud's.
         catalog_priced: false,

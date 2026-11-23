@@ -1,9 +1,7 @@
-//! CT-24: `session-compare a b`, a plain program on rig's library crates
-//! (rig-core, rig-memory, rig-tools; no Bevy, no harness) that compares two
-//! saved sessions: where their main agents'
-//! conversations part, what each side did (turns, replies, tool calls by
-//! name, failed calls, tokens, cost, models), and which files each side's
-//! file tools changed.
+//! `session-compare a b`, a plain program on rig's library crates (rig-core, rig-memory, rig-tools;
+//! no Bevy, no harness) that compares two saved sessions: where their main agents' conversations
+//! part, what each side did (turns, replies, tool calls by name, failed calls, tokens, cost,
+//! models), and which files each side's file tools changed.
 //!
 //! A side is a session directory ([`DirStore`]).
 
@@ -15,7 +13,7 @@ use rig_core::conversation::Conversation;
 use rig_core::message::{AssistantContent, Message, ToolCall, UserContent};
 use rig_core::tool::Tool;
 use rig_memory::{DirStore, Session, title_of};
-use rig_tools::{Delete, DeleteArgs, Edit, EditArgs, Move, MoveArgs, Write, WriteArgs};
+use rig_tools::{Delete, DeleteArgs, Edit, EditArgs, Write, WriteArgs};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -236,7 +234,7 @@ fn stats(side: &Side) -> Stats {
 }
 
 /// The files the file tools' calls of `conversation` changed: each call of
-/// `write`, `edit`, `delete` or `move` whose result is no failure, by the
+/// `write`, `edit` or `delete` whose result is no failure, by the
 /// paths its arguments name.
 fn changed_files(conversation: &Conversation) -> BTreeSet<String> {
     let failed: BTreeSet<_> = conversation
@@ -281,9 +279,6 @@ fn paths_changed(call: &ToolCall) -> Vec<String> {
         <Delete as Tool>::NAME => {
             read(serde_json::from_value::<DeleteArgs>(args).map(|args| vec![args.path]))
         }
-        <Move as Tool>::NAME => {
-            read(serde_json::from_value::<MoveArgs>(args).map(|args| vec![args.from, args.to]))
-        }
         _ => Vec::new(),
     }
 }
@@ -293,13 +288,7 @@ fn excerpt(message: &Message) -> Excerpt {
     let (role, text) = match message {
         Message::System { content } => ("system", content.clone()),
         Message::User { content } => {
-            let texts: Vec<&str> = content
-                .iter()
-                .filter_map(|item| match item {
-                    UserContent::Text(text) => Some(text.text()),
-                    _ => None,
-                })
-                .collect();
+            let texts: Vec<&str> = content.iter().filter_map(UserContent::as_text).collect();
             if texts.is_empty() {
                 let results = content.iter().filter_map(|item| match item {
                     UserContent::ToolResult(result) => {

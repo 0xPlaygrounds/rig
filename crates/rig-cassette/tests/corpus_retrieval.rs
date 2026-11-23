@@ -1,65 +1,18 @@
 //! Matrix A: retrieval effects.
 //!
-//! The family the original corpus never recorded. `dynamic_context`
-//! dispatches a `TopN` retrieval from a completion-call hook before every
-//! model call and patches the retrieved documents into the request;
-//! `retrieved_tools` dispatches a `TopNIds` retrieval at the request
+//! `dynamic_context` dispatches a `TopN` retrieval from a completion-call
+//! hook before every model call and patches the retrieved documents into the
+//! request. `retrieved_tools` dispatches a `TopNIds` retrieval at the request
 //! boundary and advertises the named tools. Both go over the bus under the
 //! agent's keys (`<owner>/retrieve:context#0`, `<owner>/retrieve:tools#0`),
-//! both are in the required row, and on replay a replayer answers them
-//! from the record: no index, no embedding model, no provider. The
-//! embeddings themselves are not effects — an index embeds its query
-//! inside the retrieval handler — so the `Embed` and `Rerank` families
-//! stay unrecorded by an agent program; a host that dispatches them over
-//! its own bus is outside this corpus.
+//! both are in the required row, and on replay a replayer answers them from
+//! the record through `dynamic_context_handler` and `retrieved_tools_handler`:
+//! no index, no embedding model, no provider.
 //!
-//! # Dimensions
-//!
-//! | axis | values recorded |
-//! |---|---|
-//! | retrieval source | `dynamic_context` · `retrieved_tools` · both |
-//! | `samples` | 1 · 2 · 5 over three documents |
-//! | index | three facts · empty · two tool schemas · one tool schema beside a static tool |
-//! | embedding provider | gemini (`gemini-embedding-001`) · openai (`text-embedding-3-small`) |
-//! | completion wire | gemini (id-less calls) · openai (dual-id calls) |
-//! | transport | unary · streamed with events |
-//!
-//! Full cross-product: 3 × 3 × 4 × 2 × 2 × 2 = 288. Recorded: the 12 cells
-//! below. Pruned: an embedding provider crossed with another provider's
-//! completion (a cassette records one provider's wire); `samples` beyond
-//! 1 for tool retrieval (a two-tool set retrieved whole is the static case
-//! with an extra record); a cohere or other embedding wire (the retrieval
-//! record holds the index's answer, not the embedding, so a third wire
-//! adds a cassette and no new record shape); an empty tool index (a
-//! program with no tool to advertise is the completion smoke).
-//!
-//! # Cells
-//!
-//! | golden | producer | shape |
-//! |---|---|---|
-//! | `gemini_retrieval_dynamic_context_one` | gemini `corpus_retrieval.rs` `dynamic_context_one_…` | `[Retrieve(TopN), Completion]`, `doc1` in the request |
-//! | `gemini_retrieval_dynamic_context_two_streamed` | `dynamic_context_two_streamed_…` | the same with two documents, events kept |
-//! | `gemini_retrieval_dynamic_context_over_sampled` | `dynamic_context_over_sampled_…` | `samples: 5`, three documents answered |
-//! | `gemini_retrieval_dynamic_context_empty_index` | `dynamic_context_empty_index_…` | no documents answered, none in the request |
-//! | `gemini_retrieval_retrieved_tools_one` | `retrieved_tools_one_…` | `[Retrieve(TopNIds), Completion, Tool, Retrieve, Completion]`, `subtract` retrieved and called |
-//! | `gemini_retrieval_retrieved_tools_with_static` | `retrieved_tools_with_static_…` | a static `add` and a retrieved `subtract`, two tool turns |
-//! | `gemini_retrieval_context_and_tools` | `context_and_tools_…` | `[Retrieve(TopN), Retrieve(TopNIds), Completion, Tool, Retrieve, Retrieve, Completion]` |
-//! | `openai_retrieval_dynamic_context_one` | openai `corpus_retrieval.rs` `dynamic_context_one_…` | `[Retrieve, Completion]` |
-//! | `openai_retrieval_dynamic_context_one_streamed` | `dynamic_context_one_streamed_…` | the same, events kept |
-//! | `openai_retrieval_retrieved_tools_one` | `retrieved_tools_one_…` | `[Retrieve, Completion, Tool, Retrieve, Completion]`, dual-id call |
-//! | `openai_retrieval_retrieved_tools_one_streamed` | `retrieved_tools_one_streamed_…` | the same, events kept |
-//! | `openai_retrieval_context_and_tools` | `context_and_tools_…` | both retrievals before every model call |
-//!
-//! Every cell is a new recording: the index's embeddings at build time,
-//! the query embedding at prompt time, the completion turns.
-//!
-//! # What the matrix found
-//!
-//! - The replay had no way to register a retrieval index from a log: the
-//!   builder's `dynamic_context` and the tool server's `retrieved_tools`
-//!   take a `VectorStoreIndex`, and a replayer is a handler.
-//!   `dynamic_context_handler` and `retrieved_tools_handler` register any
-//!   retrieval-family handler under the same keys.
+//! The embeddings themselves are not effects, since an index embeds its
+//! query inside the retrieval handler. So an agent program records no `Embed`
+//! or `Rerank` effect, and a third embedding wire would add a cassette but no
+//! new record shape.
 
 use crate::corpus;
 

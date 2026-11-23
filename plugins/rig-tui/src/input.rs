@@ -12,8 +12,9 @@ use bevy_ecs::schedule::ScheduleLabel;
 use bevy_ecs::system::SystemParam;
 use bevy_log::error;
 use crossbeam_channel::Receiver;
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
-use ratatui::layout::Rect;
+use crossterm::event::MouseEventKind::{self, ScrollDown, ScrollUp};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, MouseButton, MouseEvent};
+use ratatui::layout::{Position, Rect};
 
 use super::clipboard;
 use super::complete::{self, Completion, CompletionKind, CompletionSource};
@@ -24,13 +25,17 @@ use super::pane::{MainPane, PaneState};
 use super::panel::{TerminalSize, TuiPanel};
 use super::pick::{self, Choices, PickerInput, Showing};
 use super::render::selectable;
+use super::selection::Selection;
+use super::status::{AppStatus, Side, StatusItem, Tone};
 use super::terminal::TerminalFocus;
 use super::view::{ItemRow, TranscriptItem, TranscriptView, TuiView};
 use rig_ecs::agent::{ActiveTurn, Notice, StopTurn};
-use rig_ecs::inbox::{Deliver, DeliveryMode};
+use rig_ecs::inbox::{Deliver, DeliveryMode, Incoming};
+use rig_ecs::prelude::Author;
+use rig_ecs::stage::{Decision, Effect, ForAgent, Holds, Outcome, Settled, SupersededBy};
 use rig_ecs::tasks::Wake;
 use rig_harness::main_agent::ShownAgent;
-use rig_harness::pick::{Chosen, Pick};
+use rig_harness::pick::{Chosen, Pick, Ticked};
 use rig_harness::prelude::{Exit, ExitReason, Processes, Scratch};
 
 /// How long the input thread waits for an event before it checks whether
@@ -50,7 +55,16 @@ const KEYS_PER_FRAME: usize = 1024;
 /// [`InputSystems::Dispatch`] does it. The picker or question shown takes
 /// it first, then a [`KeyBinding`](crate::KeyBinding), then the input.
 /// Items left by a run are done next; a push outside [`TuiKeys`] waits for
-/// the next frame.
+/// the next frame. A modal input is one filter, and `/` starts a slash
+/// command unless a filter or a binding takes it.
+///
+/// The mouse comes in as [`Event::Mouse`]. The wheel scrolls the
+/// transcript pane with the [`KeyFocus`](crate::KeyFocus), else the
+/// [`MainPane`], three rows a notch, or moves through an open picker or
+/// completion list as Up and Down. The view marks every drag of the left
+/// button and copies its text with [`CopyToClipboard`](crate::CopyToClipboard)
+/// on release. A plugin that takes a drag itself drops those items here in
+/// its [`InputSystems::Filter`] system.
 ///
 /// ```no_run
 /// use rig_harness::prelude::*;
@@ -83,7 +97,7 @@ pub struct PendingInput(pub Vec<KeyInput>);
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum KeyInput {
     /// What the terminal reported: a key, a paste, a resize, a change of
-    /// focus.
+    /// focus, the mouse.
     Event(Event),
     /// A built-in action of the input, done where it stands among the keys.
     Action(InputAction),
@@ -102,8 +116,9 @@ pub struct TuiKeys;
 /// in [`TuiKeys`], in this order.
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum InputSystems {
-    /// Plugins read and change the item in the [`PendingInput`], with
-    /// the [`InputContext`] and the input as the keys before it left them.
+    /// Plugins read, change, drop or replace the item in the
+    /// [`PendingInput`] before any binding or the input sees it, with the
+    /// [`InputContext`] and the input as the keys before it left them.
     Filter,
     /// The view does what is left in the [`PendingInput`].
     Dispatch,
@@ -254,7 +269,8 @@ pub(crate) fn clear_events(mut events: ResMut<PendingInput>) {
 /// Runs [`TuiKeys`] for each item of the frame's [`PendingInput`], in
 /// order, with that item alone in them; what a run leaves goes next. A run
 /// that changed the input's text ends the reading of the transcript: the
-/// selection goes. Past [`KEYS_PER_FRAME`] the rest waits for the next
+/// selection goes. Past [`KEYS_PER_FRAME`], or after a drag's release but a
+/// frame's first item (so the frame copies the drag), the rest waits for the next
 /// frame, which it wakes.
 pub(crate) fn run_keys(world: &mut World) {
     if world
@@ -267,7 +283,9 @@ pub(crate) fn run_keys(world: &mut World) {
     let mut queue: VecDeque<KeyInput> = std::mem::take(&mut events.0).into();
     let mut done = 0;
     while let Some(item) = queue.pop_front() {
-        if done == KEYS_PER_FRAME {
+        let view = world.get_resource::<TuiView>();
+        let copying = matches!(view.and_then(|view| view.selection), Some(drag) if drag.up);
+        if done == KEYS_PER_FRAME || (done > 0 && copying) {
             queue.push_front(item);
             world.resource_mut::<PendingInput>().0 = queue.into();
             if let Some(wake) = world.get_resource::<Wake>() {
@@ -331,7 +349,7 @@ pub(crate) fn note_input_context(
     let picking = picker.map(|(e, _)| e);
     let selection = picker.and_then(|(entity, choosing)| {
         let shown = choices.shown(entity)?;
-        match shown.rows(&choosing.filter).get(choosing.selected) {
+        match shown.rows(choosing).get(choosing.selected) {
             Some(&pick::Row::Item(index)) => Some(index),
             _ => None,
         }
@@ -403,6 +421,13 @@ pub(crate) struct Context<'a, 'w, 's> {
 pub(crate) struct Target<'a> {
     view: &'a mut TuiView,
     input: &'a mut Editor,
+    /// The input's entity, if it is one.
+    editor: Option<Entity>,
+    /// Whether `input` is the main editor (not a panel's).
+    main: bool,
+    /// Waiting user messages of the shown busy agent, oldest first, so Up on
+    /// an empty main editor pops the newest back into the input.
+    waiting: &'a mut Vec<(Entity, String)>,
     pane: Option<(Mut<'a, TranscriptView>, Mut<'a, PaneState>)>,
 }
 
@@ -420,6 +445,25 @@ type Panes<'w, 's> = Query<
 
 /// The editors, which the keys type into.
 type Editors<'w, 's> = Query<'w, 's, (Entity, &'static mut Editor, Has<MainEditor>)>;
+
+/// Waiting user messages that have not been delivered, decided, or held yet.
+type WaitingMessages<'w, 's> = Query<
+    'w,
+    's,
+    (
+        Entity,
+        &'static Effect,
+        &'static Incoming,
+        &'static ForAgent,
+        &'static Decision,
+    ),
+    (
+        Without<Outcome>,
+        Without<Settled>,
+        Without<SupersededBy>,
+        Without<Holds>,
+    ),
+>;
 
 /// The editor the keys type into: the panel's with the keys, else the main
 /// one.
@@ -448,7 +492,7 @@ pub(crate) fn read_input(
     (mut editors, mut showing): (Editors, Showing),
     mut keymap: Keymap,
     choices: Choices,
-    agents: Query<Has<ActiveTurn>>,
+    (agents, waiting): (Query<Has<ActiveTurn>>, WaitingMessages),
     (scratch, processes, wake, history): (
         Option<Res<Scratch>>,
         Option<Res<Processes>>,
@@ -467,6 +511,26 @@ pub(crate) fn read_input(
         .0
         .and_then(|agent| agents.get(agent).ok())
         .unwrap_or(false);
+    let mut recallable: Vec<(Entity, String)> = match shown.0.filter(|_| busy) {
+        Some(agent) => {
+            let mut pending: Vec<_> = waiting
+                .iter()
+                .filter(|(_, _, message, to, decision)| {
+                    to.0 == agent
+                        && message.author == Author::user()
+                        && message.mode != DeliveryMode::Inform
+                        && !decision.is_decided()
+                        && !message.text().trim().is_empty()
+                })
+                .collect();
+            pending.sort_unstable_by_key(|(_, effect, ..)| effect.id());
+            pending
+                .into_iter()
+                .map(|(entity, _, message, ..)| (entity, message.text().trim().to_owned()))
+                .collect()
+        }
+        None => Vec::new(),
+    };
     let context = Context {
         agent: shown.0,
         busy,
@@ -479,9 +543,11 @@ pub(crate) fn read_input(
     // Keys typed with no editor to take them go nowhere.
     let mut none = Editor::default();
     for item in std::mem::take(&mut events.0) {
+        forget_changed_refusal(&mut view, &editors);
         let editor = keyed_editor(&editors, keymap.focus.0);
         let in_panel = editor.is_some() && editor == keymap.focus.0;
         let mut found = editor.and_then(|editor| editors.get_mut(editor).ok());
+        let main = found.as_ref().is_some_and(|(.., main)| *main);
         let input: &mut Editor = match &mut found {
             Some((_, editor, _)) => editor,
             None => &mut none,
@@ -497,24 +563,43 @@ pub(crate) fn read_input(
                 let mut target = Target {
                     view: &mut view,
                     input,
+                    editor,
+                    main,
+                    waiting: &mut recallable,
                     pane: pane.map(|(_, view, state, _)| (view, state)),
                 };
                 act(action, &mut target, (&context, &showing), &mut commands);
                 continue;
             }
         };
+        // A picker shown, or the completion list, takes the wheel as the arrow keys.
+        let picking = view.completion.is_some()
+            || showing.iter().any(|(_, choosing)| choosing.draft.is_none());
+        let event = match event {
+            Event::Mouse(m) if picking && m.kind == ScrollUp => Event::Key(KeyCode::Up.into()),
+            Event::Mouse(m) if picking && m.kind == ScrollDown => Event::Key(KeyCode::Down.into()),
+            event => event,
+        };
         match event {
             Event::Key(key) if key.kind == KeyEventKind::Release => {
                 released(key, (shown.0, reading), &mut keymap, &mut commands);
             }
             Event::Key(key) => {
+                if view.selection.is_some() {
+                    view.selection = None;
+                }
                 // A question answered in the input leaves the keys to it.
                 let picking = showing.iter_mut().find(|(_, c)| c.draft.is_none());
                 if let Some((entity, mut choosing)) = picking {
                     let shown = choices.shown(entity);
-                    let chosen =
-                        shown.and_then(|shown| pick::choice_key(key, &mut choosing, &shown));
+                    let chosen = (shown.as_ref())
+                        .and_then(|shown| pick::choice_key(key, &mut choosing, shown));
                     if let Some(chosen) = chosen {
+                        // The plugin sees the ticks of a key earlier in this frame too.
+                        if shown.is_some_and(|shown| shown.multiple) {
+                            let ticked = Ticked(choosing.ticked.clone());
+                            commands.entity(entity).try_insert(ticked);
+                        }
                         commands.trigger(Pick::person(entity, chosen));
                         // The next one takes the keys that follow.
                         view.queue.retain(|&queued| queued != entity);
@@ -526,6 +611,9 @@ pub(crate) fn read_input(
                 let mut target = Target {
                     view: &mut view,
                     input,
+                    editor,
+                    main,
+                    waiting: &mut recallable,
                     pane: pane.map(|(_, view, state, _)| (view, state)),
                 };
                 pressed(
@@ -540,20 +628,22 @@ pub(crate) fn read_input(
             // A paste arrives whole, newlines included, so it is not sent
             // line by line. A panel with the keys reads it from the event.
             Event::Paste(text) => match showing.iter_mut().find(|(_, c)| c.draft.is_none()) {
-                Some((_, mut choosing)) => {
+                Some((entity, mut choosing)) => {
                     choosing
                         .filter
                         .push_str(text.lines().next().unwrap_or_default());
-                    choosing.selected = 0;
+                    choosing.selected = choices.shown(entity).map_or(0, |shown| {
+                        shown.found_row(&choosing, &shown.rows(&choosing))
+                    });
                 }
                 None if !in_panel && matches!(keymap.scope(reading), KeyScope::Panel(_)) => {}
-                // A dropped image file becomes `@path`, which attaches it.
-                None => match clipboard::dropped_image(&text) {
-                    Some(path) => clipboard::type_path(input, &path),
-                    None => input.insert(&text),
-                },
+                None => {
+                    clipboard::paste_text(input, &text);
+                    view.pasted |= main && !text.is_empty();
+                }
             },
             Event::Resize(width, height) => {
+                view.selection = None;
                 screen.set_if_neq(TerminalSize(Rect::new(0, 0, width, height)));
             }
             Event::FocusGained => {
@@ -562,8 +652,77 @@ pub(crate) fn read_input(
             Event::FocusLost => {
                 focus.set_if_neq(TerminalFocus(Some(false)));
             }
-            Event::Mouse(_) => {}
+            Event::Mouse(mouse) if mouse.kind == MouseEventKind::Moved => {} // Windows sends these.
+            Event::Mouse(mouse) => {
+                let pane = pane.and_then(|pane| panes.get_mut(pane).ok());
+                moused(mouse, &mut view, pane.map(|(_, _, state, _)| state));
+            }
         }
+    }
+    forget_changed_refusal(&mut view, &editors);
+}
+
+/// Forgets the refused command once the main input no longer holds it
+/// unchanged, so a line cleared and typed again is a command again.
+fn forget_changed_refusal(view: &mut TuiView, editors: &Editors) {
+    let main = editors
+        .iter()
+        .find_map(|(_, editor, main)| main.then_some(editor));
+    let changed = main.is_none_or(|editor| view.refused.as_deref() != Some(editor.text()));
+    if view.refused.is_some() && changed {
+        view.refused = None;
+    }
+}
+
+/// Scrolls `pane` on the wheel, and follows a drag of the left button.
+fn moused(mouse: MouseEvent, view: &mut TuiView, pane: Option<Mut<PaneState>>) {
+    let at = Position::new(mouse.column, mouse.row);
+    match mouse.kind {
+        ScrollUp | ScrollDown => {
+            view.selection = None;
+            let Some(mut pane) = pane else { return };
+            match mouse.kind {
+                ScrollUp => pane.scroll.up(3), // Rows a notch of the wheel.
+                _ => pane.scroll.down(3),
+            }
+        }
+        MouseEventKind::Down(MouseButton::Left) => {
+            let (from, to, up, held) = (at, at, false, true);
+            let copied = None;
+            view.selection = Some(Selection {
+                from,
+                to,
+                up,
+                held,
+                copied,
+            });
+        }
+        MouseEventKind::Drag(MouseButton::Left) | MouseEventKind::Up(MouseButton::Left) => {
+            if let Some(selection) = view.selection.as_mut().filter(|drag| drag.held) {
+                selection.to = at;
+                selection.held = matches!(mouse.kind, MouseEventKind::Drag(_));
+                selection.up = !selection.held;
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The status line item saying what the last drag copied.
+pub(crate) const COPIED: StatusItem = StatusItem::new("copied", Side::Left, 95, 20);
+
+/// Shows `Copied N lines`, N the lines of the text a drag copied, while
+/// it stays selected, so it goes with the selection.
+pub(crate) fn show_copied(view: Res<TuiView>, mut status: ResMut<AppStatus>) {
+    let copied = view.selection.and_then(|drag| drag.copied);
+    let text = match copied {
+        None => String::new(),
+        Some(1) => "Copied 1 line".to_owned(),
+        Some(lines) => format!("Copied {lines} lines"),
+    };
+    let shown = status.0.iter().find(|item| item.name == COPIED.name);
+    if shown.map(|item| item.text.as_str()).unwrap_or_default() != text {
+        status.0.show(COPIED.says(text, Tone::Green));
     }
 }
 
@@ -660,7 +819,14 @@ fn act(
     commands: &mut Commands,
 ) {
     use InputAction as Do;
-    let Target { view, input, pane } = target;
+    let Target {
+        view,
+        input,
+        editor,
+        main,
+        waiting,
+        pane,
+    } = target;
     // A question answered in the input: Enter answers it, Esc refuses it.
     let editing = showing
         .iter()
@@ -693,11 +859,19 @@ fn act(
         Do::DeleteWordAfter => input.delete_word_after(),
         Do::DeleteToLineStart => input.delete_to_line_start(),
         Do::DeleteToLineEnd => input.delete_to_line_end(),
-        Do::LineUp => input.line_up(context.history),
+        Do::LineUp => {
+            if !recall_waiting(*main, editing, input, waiting, commands) {
+                input.line_up(context.history);
+            }
+        }
         Do::LineDown => input.down(context.history),
         Do::Up => match &mut view.completion {
             Some(completion) => completion.select(-1),
-            None => input.up(context.history),
+            None => {
+                if !recall_waiting(*main, editing, input, waiting, commands) {
+                    input.up(context.history);
+                }
+            }
         },
         Do::Down => match &mut view.completion {
             Some(completion) => completion.select(1),
@@ -755,7 +929,9 @@ fn act(
                 .processes
                 .map(Processes::launcher)
                 .unwrap_or_default();
-            clipboard::paste_image(images, launcher, context.wake, commands);
+            if let Some(editor) = *editor {
+                clipboard::paste(images, launcher, (editor, context.wake), commands);
+            }
         }
         Do::SelectUp | Do::SelectDown => {
             if let Some((transcript, state)) = pane {
@@ -894,6 +1070,29 @@ pub(crate) fn send(
     let refused = view.refused.take().as_ref() == Some(&text);
     let typed = Deliver::new(entity, text, mode);
     commands.trigger(if refused { typed.literal() } else { typed });
+}
+
+/// Pops the newest waiting user message of the shown busy agent back into
+/// the main editor when it is empty, cancelling its pending [`Incoming`] so
+/// editing and re-sending replaces it instead of queuing a duplicate.
+fn recall_waiting(
+    main: bool,
+    editing: Option<Entity>,
+    input: &mut Editor,
+    waiting: &mut Vec<(Entity, String)>,
+    commands: &mut Commands,
+) -> bool {
+    if !main || editing.is_some() || !input.is_empty() {
+        return false;
+    }
+    let Some((entity, text)) = waiting.pop() else {
+        return false;
+    };
+    commands
+        .entity(entity)
+        .try_insert_if_new(Outcome::custom("recalled"));
+    input.set(text);
+    true
 }
 
 /// Puts the selected completion in place of the token being completed.

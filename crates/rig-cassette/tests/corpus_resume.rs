@@ -1,82 +1,21 @@
 //! Matrix L: resumption under everything.
 //!
-//! A resumed run is a third interpretation of a program, not a row class
-//! of its own: the hand driver takes the program up to and including its
-//! first tool turn's results, serializes the `AgentRun`, and the bus
-//! engine resumes it on the same replay bus to the golden's ending. #2450
-//! resumed four plain tool programs; every matrix since added programs
-//! the resume path had never seen. This matrix resumes sixteen existing
-//! goldens across hooks, a committed output tool, a route,
-//! `Ignore`, the delta wire and retrieval, recording nothing new: the
-//! golden is the oracle, the interpretation is the row.
+//! A resumed run is a third interpretation of a program, not a row class of
+//! its own. The hand driver takes the program up to and including its first
+//! tool turn's results and serializes the `AgentRun`. The bus engine then
+//! resumes it on the same replay bus to the golden's ending. Each row resumes
+//! an existing golden across hooks, a committed output tool, a route,
+//! `Ignore`, the delta wire and retrieval, recording nothing new: the golden
+//! is the oracle, the interpretation is the row.
 //!
-//! What a resumed run does and does not do: it fires no `on_run_start`
-//! (the run already started), takes no history (it carries its own), and
-//! it fires the turn, tool, outcome and settled hooks of its own. The
-//! builder that resumes it registers its own route and context handlers,
-//! so the replay
-//! re-registers them from the golden's tail; the tool server's replayers
-//! are the head's and continue.
-//!
-//! # Dimensions
-//!
-//! | axis | values recorded |
-//! |---|---|
-//! | hooks | none · observe-only · a dispatch patch · an outcome replace · two hooks · a run-start dispatch · a stop after the resume point · a per-call custom note |
-//! | output mode | `Auto` · `Tool` committed on turn 1 · `Prompted` |
-//! | route | none · selected after the resume point |
-//! | invalid call | none · ignored before the resume point |
-//! | head medium | unary · streamed with events |
-//! | wire | anthropic · mock delta wire · gemini (retrieval) |
-//!
-//! Full cross-product: 8 × 3 × 2 × 2 × 2 × 3 = 576. Interpreted: the
-//! 16 rows below. Pruned: a route selected before the resume point (the
-//! head selects it; the tail's model is then the route's — no golden
-//! has it, and recording one is Matrix M's first-turn route); a run
-//! serialized twice (the resumed engine exposes no second suspension);
-//! a resume after a streamed head on a live wire beyond the one streamed
-//! patch row (the medium changes the head's assembly, which the streamed
-//! rows pin); `Ignore` after the resume point (the ignored call is in
-//! the same turn as the valid one the head dispatches; the tail answers).
-//!
-//! # Rows
-//!
-//! | golden | what the resume carries |
-//! |---|---|
-//! | `anthropic_hooks_observe_everything` | an observe-only hook: the tail observes |
-//! | `anthropic_hooks_patch_tool_args` | the head patched the call; the tail answers |
-//! | `anthropic_hooks_patch_tool_args_streamed` | the same, the head assembled from a stream |
-//! | `anthropic_hooks_replace_tool_result` | the head replaced the result the tail reads |
-//! | `anthropic_hooks_two_hooks` | both |
-//! | `anthropic_hooks_lookup_before_run` | the head's run-start dispatch; the resumed run fires no run start |
-//! | `anthropic_endings_answer_turn_stop` | the stop fires in the tail: `Cancelled` from the resumed engine |
-//! | `anthropic_host_custom_at_outcome` | the head's per-call note; the tail dispatches none |
-//! | `anthropic_host_custom_at_outcome_streamed` | the same, streamed head |
-//! | `anthropic_output_tool_with_real_tool` | the output tool committed on turn 1; the tail finalizes on it |
-//! | `anthropic_output_prompted_with_real_tool` | the prompted schema; the tail's answer is the JSON text |
-//! | `anthropic_serving_model_route` | the route selected on the tail's turn |
-//! | `mock_invalid_mixed_ignore` | the ignored call resolved by the head |
-//! | `mock_invalid_mixed_ignore_streamed` | the same, streamed head |
-//! | `mock_delta_repair` | a name-delta call repaired by the head |
-//! | `gemini_retrieval_context_and_tools` | the head's retrievals; the tail retrieves again for its turn |
-//!
-//! # What the matrix found
-//!
-//! - A resumed run forgot the model the head asked: routing state lived
-//!   in the driver only ("live routing state stays in the driver, not the
-//!   serde `AgentRun`"), so a resumed engine's model-selection hook saw
-//!   `previous_model: None` and a hook that routes after the first turn
-//!   asked the default model again — a divergence from the golden the
-//!   fresh run recorded. The run now carries `previous_model`, advanced
-//!   where the driver advances it, and the resumed engine seeds its
-//!   routing state from it (`rig-agent`, with a unit test; the hand
-//!   driver sets it as the engine does).
-//! - The builder that resumes a run registers its handlers as a fresh
-//!   run's builder does, under the same keys the head's handlers hold;
-//!   a second registration is refused ("a fresh key"), so the head's
-//!   route and context handlers are deregistered and the tail's
-//!   registered from the golden's tail. Tools are the server's and
-//!   continue.
+//! A resumed run fires no `on_run_start` (the run already started), takes no
+//! history (it carries its own), and fires its own turn, tool, outcome and
+//! settled hooks. It carries `previous_model`, so a hook that routes after the
+//! first turn sees the model the head asked. The builder that resumes it
+//! registers its own route and context handlers under the keys the head's
+//! handlers hold, so the replay deregisters the head's and re-registers them
+//! from the golden's tail; the tool server's replayers are the head's and
+//! continue.
 
 use crate::corpus;
 use rig_cassette::agent::AgentReplayExt;

@@ -28,8 +28,8 @@ fn rich_deltas() -> Vec<Value> {
 pub const FIXTURE: ChatHistory = ChatHistory {
     dialect: &XIAOMIMIMO,
     model: rig_core::providers::xiaomimimo::MIMO_V2_5,
-    other_model: rig_core::providers::xiaomimimo::MIMO_V2_OMNI,
-    text_only_model: Some(rig_core::providers::xiaomimimo::MIMO_V2_FLASH),
+    other_model: rig_core::providers::xiaomimimo::MIMO_V2_6_FLASH,
+    text_only_model: Some(rig_core::providers::xiaomimimo::MIMO_V2_5_PRO),
     rich,
     rich_deltas,
     interleaved: None,

@@ -82,6 +82,7 @@ fn websocket_error_event_preserves_provider_payload_as_json() {
         .provider_response_json()
         .expect("preserved body should be valid JSON")
         .expect("provider response body should be present");
+    assert_eq!(json["type"], "error");
     assert_eq!(json["error"]["code"], "rate_limit_exceeded");
     assert_eq!(json["error"]["message"], "slow down");
     assert_eq!(json["error"]["type"], "invalid_request_error");
@@ -115,7 +116,7 @@ fn warmup_options_serialize_generate_false() {
 
 #[test]
 fn websocket_request_rejects_an_unsupported_base_url_scheme() {
-    let error = websocket_request(&test_wire("ftp://api.openai.com/v1"))
+    let error = websocket_request(&test_wire("ftp://api.openai.com/v1"), None)
         .expect_err("ftp is not a websocket base");
     assert!(
         error.to_string().contains("ftp"),
@@ -147,10 +148,29 @@ fn parse_done_event_exposes_response_id() {
     ));
     assert_eq!(event.response_id(), Some("resp_done_1"));
     assert!(event.is_terminal());
+    // The event serializes back with its tag.
+    let done = serde_json::from_value::<ResponsesWebSocketDoneEvent>(payload.clone());
+    assert_eq!(
+        done.ok().and_then(|done| serde_json::to_value(done).ok()),
+        Some(payload)
+    );
+}
+
+/// Each server event reads only under its own `type`.
+#[test]
+fn server_events_reject_a_wrong_or_missing_type_on_read() {
+    let done = json!({"type": "error", "response": {}});
+    assert!(serde_json::from_value::<ResponsesWebSocketDoneEvent>(done).is_err());
+    let done = json!({"response": {}});
+    assert!(serde_json::from_value::<ResponsesWebSocketDoneEvent>(done).is_err());
+    let error = json!({"type": "response.done", "error": {}});
+    assert!(serde_json::from_value::<ResponsesWebSocketErrorEvent>(error).is_err());
+    let error = json!({"error": {}});
+    assert!(serde_json::from_value::<ResponsesWebSocketErrorEvent>(error).is_err());
 }
 
 /// A terminal event that states no response object still ends the turn:
-/// nothing in it is needed to build a block (#2668).
+/// nothing in it is needed to build a block.
 #[test]
 fn a_terminal_without_its_response_object_still_ends_the_turn() {
     let payload = json!({
@@ -308,4 +328,54 @@ fn websocket_failures_with_a_transient_code_are_retryable() {
     };
     assert!(err.is_retryable(), "{err}");
     assert_eq!(err.report().code.as_deref(), Some("rate_limit_exceeded"));
+}
+
+/// A session from the default builder fails a turn that sends no event for
+/// the driver's idle timeout, as a streamed reply does, rather than waiting
+/// indefinitely.
+#[test]
+fn the_default_builder_times_event_waits_as_the_driver_does() {
+    let builder = ResponsesWebSocketSessionBuilder::new(test_wire("https://api.openai.com/v1"));
+    assert_eq!(
+        builder.event_timeout,
+        Some(crate::driver::STREAM_IDLE_TIMEOUT)
+    );
+}
+
+/// A backend that records the handshake it was asked to open and refuses it.
+#[derive(Clone, Default)]
+struct RecordingBackend(std::sync::Arc<std::sync::Mutex<Option<HeaderMap>>>);
+
+impl WebSocketClientExt for RecordingBackend {
+    async fn connect(
+        &self,
+        request: http_client::Request<NoBody>,
+        _options: ConnectOptions,
+    ) -> Result<BoxedWebSocketConnection, http_client::Error> {
+        *self.0.lock().expect("not poisoned") = Some(request.headers().clone());
+        Err(rejection(401, None, None, &[]))
+    }
+}
+
+/// A builder's cache key is the session identity its handshake carries, as
+/// a completion's cache key is on HTTP, so reconnects share one session.
+#[tokio::test]
+async fn the_handshake_session_id_is_the_cache_key() {
+    let wire =
+        OpenAIConfig::with_key(&crate::providers::chatgpt::DIALECT, "tok").responses("gpt-5.4");
+    let backend = RecordingBackend::default();
+    let _refused = ResponsesWebSocketSessionBuilder::new(wire)
+        .cache_key("agent-1")
+        .connect_with(&backend)
+        .await;
+    let headers = backend
+        .0
+        .lock()
+        .expect("not poisoned")
+        .take()
+        .expect("a handshake");
+    assert_eq!(
+        headers.get("session-id").and_then(|v| v.to_str().ok()),
+        Some("agent-1")
+    );
 }

@@ -11,6 +11,7 @@
 pub mod builtin;
 pub mod context;
 pub mod contextual;
+mod decode;
 mod facts;
 pub mod feedback;
 mod footprint;
@@ -23,6 +24,7 @@ pub use context::{
     ContextValue, PublishedContext, ToolContext, ToolContextError, ToolResultContext,
 };
 pub use contextual::{DynamicTool, LivenessFn, Tool, ToolEmbedding, tool_definition, tool_name};
+pub use decode::decode_args;
 pub use facts::{
     ChangeKind, ContentHash, ExitStatus, FileChange, FileRead, FileState, FilesChanged, FilesRead,
     Hunk, HunkLine, KeptEnd, Lines, LinesShown, OutputCut, content_hash,

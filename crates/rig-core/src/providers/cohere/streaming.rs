@@ -16,16 +16,13 @@ use std::collections::BTreeMap;
 use serde_json::{Map, Value, json};
 
 use super::chat::PLAN;
-use crate::completion::{FinishReason, Usage};
+use crate::completion::{FinishReason, Usage, token_sum};
 use crate::error::ProviderError;
 use crate::json_utils::Lenient;
 use crate::message::{CallId, Source, SourceLocation, ToolName};
 use crate::operation::{Block, CallFragment, Completion, Finish};
 use crate::providers::internal::wire;
-use crate::wire::{
-    AdapterVerdict, Decoder, Flow, ObservationSink, Out, SpanUnit, WireCitation, WireEvent,
-    WireFrame, WireSpan,
-};
+use crate::wire::{Decoder, Flow, Out, SpanUnit, WireCitation, WireEvent, WireFrame, WireSpan};
 
 /// The stream's event tags; any other tag classifies as unknown.
 const KNOWN_EVENT_TYPES: &[&str] = &[
@@ -64,7 +61,8 @@ fn checked(index: usize) -> Result<usize, ProviderError> {
 }
 
 /// One stream event, or the whole reply a unary call answers (`kind` is
-/// then empty), as Cohere sent it.
+/// then empty), as Cohere sent it. Cohere's error body is kept as its text,
+/// a JSON string.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChatEvent {
     /// The event as sent.
@@ -357,7 +355,7 @@ impl ChatDecoder {
             .or_else(|| {
                 (reason == Some("ERROR")).then(|| "Cohere ended the reply with an error".to_owned())
             });
-        let mut usage = usage_of(usage_value);
+        let mut usage = usage_of(usage_value)?;
         if let Some(billed) = billed_of(usage_value) {
             usage.cost = out
                 .catalog_pricing(None)
@@ -380,14 +378,11 @@ impl ChatDecoder {
         mut out: Out<'_, Completion>,
     ) -> Result<Flow, ProviderError> {
         self.message_id = reply.str("id").map(str::to_owned);
-        // A `message` string is Cohere's error body, sent with a success
-        // status.
-        let message = match reply.get("message") {
-            Some(Value::String(_)) => {
-                return Err(ProviderError::from_provider_body(reply.to_string()));
-            }
-            message => message.unwrap_or(&Value::Null),
-        };
+        // Cohere's error body, sent with a success status, as `classify` kept it.
+        if let Value::String(body) = reply {
+            return Err(ProviderError::from_provider_body(body.clone()));
+        }
+        let message = reply.get("message").unwrap_or(&Value::Null);
         // The plan leads, as it streams first.
         if let Some(plan) = message.str(PLAN).filter(|plan| !plan.is_empty()) {
             self.plan(plan, &mut out)?;
@@ -474,21 +469,26 @@ fn billed_of(usage: Option<&Value>) -> Option<Usage> {
 }
 
 /// Rig's usage from Cohere's: the `tokens` the model read and wrote,
-/// else the `billed_units`, with `cached_tokens` among the input.
-fn usage_of(usage: Option<&Value>) -> Usage {
+/// else the `billed_units`, with `cached_tokens` among the input; an error
+/// when their sum overflows.
+fn usage_of(usage: Option<&Value>) -> Result<Usage, ProviderError> {
     let count = |pointer: &str| usage?.at(pointer)?.as_u64_lenient();
     let input = count("/tokens/input_tokens").or_else(|| count("/billed_units/input_tokens"));
     let output = count("/tokens/output_tokens").or_else(|| count("/billed_units/output_tokens"));
-    Usage {
+    let total = input
+        .zip(output)
+        .map(|(input, output)| token_sum([input, output]))
+        .transpose()?;
+    Ok(Usage {
         input_tokens: input,
         output_tokens: output,
         cached_input_tokens: count("/cached_tokens"),
         cache_creation_input_tokens: None,
         reasoning_tokens: count("/tokens/reasoning_tokens"),
-        total_tokens: input.zip(output).map(|(input, output)| input + output),
+        total_tokens: total,
         tool_use_prompt_tokens: None,
-        cost: None,
-    }
+        ..Usage::default()
+    })
 }
 
 impl<'id> Decoder<'id, Completion> for ChatDecoder {
@@ -508,6 +508,14 @@ impl<'id> Decoder<'id, Completion> for ChatDecoder {
                     .map(|fields| ChatEvent { fields })
             },
         )
+        // An untagged frame with a `message` string is Cohere's error body,
+        // reported as sent.
+        .map(|event| match event.fields.get("message") {
+            Some(Value::String(_)) if event.kind().is_empty() => ChatEvent {
+                fields: Value::String(data.into_owned()),
+            },
+            _ => event,
+        })
     }
 
     fn decode(
@@ -569,26 +577,6 @@ impl<'id> Decoder<'id, Completion> for ChatDecoder {
             _ => {}
         }
         Ok(Flow::More)
-    }
-}
-
-impl ChatDecoder {
-    /// Native chat metadata projected before normalization can discard it:
-    /// the finish reason and the reply id, on the unary reply
-    /// and on the stream's `message-start` and `message-end` events.
-    pub(crate) fn project(payload: &[u8], sink: &mut ObservationSink<'_>) {
-        let Ok(payload) = serde_json::from_slice::<Value>(payload) else {
-            return;
-        };
-        let end = payload.get("delta").unwrap_or(&payload);
-        let verdict = AdapterVerdict {
-            finish_reason: end.str("finish_reason").map(|reason| sink.scrub(reason)),
-            block_reason: None,
-            detail: None,
-            model: None,
-        };
-        let response_id = payload.str("id").map(|id| sink.scrub(id));
-        sink.provider(verdict, response_id);
     }
 }
 

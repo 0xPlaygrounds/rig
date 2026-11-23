@@ -320,9 +320,14 @@ impl CohereModels {
         ))
     }
 
-    /// The chat model for `model`.
-    pub fn completion(&self, model: impl Into<String>) -> Model<cohere::CohereChat> {
+    /// The chat model for `model`, on the Compatibility API.
+    pub fn completion(&self, model: impl Into<String>) -> Model<openai::wire::Chat> {
         self.client().completion(model)
+    }
+
+    /// The chat model for `model`, on the native chat API.
+    pub fn native_completion(&self, model: impl Into<String>) -> Model<cohere::NativeChat> {
+        self.client().native_completion(model)
     }
 
     /// The text-embedding model for `model`.
@@ -446,12 +451,7 @@ impl CopilotModels {
 
     /// The session's model listing.
     pub async fn list_models(&self) -> Result<ModelList, ProviderError> {
-        Model::new(
-            copilot::model_listing::Models::new(self.config.clone()),
-            self.http.clone(),
-        )
-        .list()
-        .await
+        self.client().list_models().await
     }
 }
 

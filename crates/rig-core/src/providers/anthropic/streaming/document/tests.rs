@@ -11,7 +11,7 @@ use crate::completion::{CompletionRequest, CompletionResponse};
 use crate::providers::anthropic::extension::AnthropicExt;
 use crate::providers::anthropic::streaming::MessagesDecoder;
 use crate::providers::anthropic::wire::{
-    ANTHROPIC, AnthropicConfig, Dialect, MINIMAX, MOONSHOT, Messages, XIAOMIMIMO, ZAI,
+    ANTHROPIC, AnthropicConfig, Dialect, MINIMAX, MOONSHOT, Messages, Quirks, XIAOMIMIMO, ZAI,
 };
 use crate::wire::document::rebuild;
 use crate::wire::{Mode, WireFrame};
@@ -23,7 +23,7 @@ fn frame(event: &Value) -> WireFrame {
 /// The document `events` rebuild.
 fn rebuilt(events: &[Value]) -> Value {
     rebuild(
-        &MessagesDecoder::default(),
+        &MessagesDecoder::new(Quirks::anthropic()),
         Message::default(),
         events.iter().map(frame),
     )
@@ -384,5 +384,22 @@ fn a_gateway_without_block_starts_still_rebuilds_its_text() {
             "stop_reason": "end_turn",
             "usage": {"output_tokens": 1}
         })
+    );
+}
+
+/// A wire index is a name, never a size: a block at `usize::MAX` is the
+/// first block of `content`, and its deltas reach it.
+#[test]
+fn a_huge_block_index_sizes_nothing() {
+    let huge = usize::MAX;
+    let document = rebuilt(&[
+        message_start("claude-x", json!({"input_tokens": 1, "output_tokens": 1})),
+        start(huge, json!({"type": "text", "text": ""})),
+        delta(huge, json!({"type": "text_delta", "text": "hi"})),
+        stop(huge),
+    ]);
+    assert_eq!(
+        document.pointer("/content"),
+        Some(&json!([{"type": "text", "text": "hi"}]))
     );
 }

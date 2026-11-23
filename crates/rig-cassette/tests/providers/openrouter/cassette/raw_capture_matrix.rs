@@ -1,29 +1,17 @@
 //! Raw provider response capture on OpenRouter's blocking chat-completions
 //! path.
 //!
-//! **The feature.** Every blocking completion attaches the gateway's own reply
-//! to the normalized [`rig::completion::CompletionResponse::raw`]. Capture is
-//! always on: there is no flag to request it, nothing about it reaches the
-//! wire, and a `Value::Null` only ever means a response built by hand with no
-//! provider payload behind it.
+//! Every blocking completion attaches the gateway's own reply to the
+//! normalized [`rig::completion::CompletionResponse::raw`]. Capture is always
+//! on, and a `Value::Null` only means a response built by hand. The driver
+//! sets `raw` from the reply's bytes (`driver::call`), so it is the provider's
+//! response document. The upstream that served the turn (`provider`) and its
+//! cost (`usage.cost`) have no normalized slot and reach a caller through
+//! `raw` under OpenRouter's own field names.
 //!
-//! **What `raw` is.** The driver sets it from the reply's bytes
-//! (`driver::call`), so it is the provider's response *document*, not a
-//! round-trip through whatever type the decoder parsed. That matters most for
-//! a gateway: OpenRouter says which upstream served the turn (`provider`) and
-//! what it cost (`usage.cost`), and neither has a slot on the normalized
-//! response, so they reach a caller through `raw` precisely because `raw` is
-//! the body. A caller reads it as JSON under OpenRouter's own field names.
-//!
-//! | # | Cell | Dimension | expected | Status |
-//! |---|------|-----------|----------|--------|
-//! | 1 | `raw_reads_back_as_openrouter_type` | JSON read-back | `raw` is the reply document and its identity agrees with the normalized response | recorded |
-//!
-//! The cell re-derives its premise from its fixture after the wrapper returns,
-//! so a recording that stopped carrying what it reads fails loudly instead of
-//! covering nothing.
-//! OpenRouter contracts no request-id header, so `provider_request_id` is
-//! `None` on every turn here — a documented outcome, pinned as such.
+//! The cell re-derives its premise from its fixture, so a recording that
+//! stopped carrying what it reads fails loudly. OpenRouter contracts no
+//! request-id header, so `provider_request_id` is `None` on every turn.
 
 use rig::completion::CompletionRequest;
 

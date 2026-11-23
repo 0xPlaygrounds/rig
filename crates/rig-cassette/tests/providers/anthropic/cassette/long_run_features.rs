@@ -143,8 +143,8 @@ fn tool_changes(recording: &Recording) -> Vec<(usize, u64, Option<u64>)> {
 /// thinking blocks are bound to the tools they were produced with. Every
 /// request asks Anthropic to drop a block whose binding no longer matches,
 /// so the first request after each change (turns 11 and 21) replays the
-/// signed thinking made under the old tools and is accepted where it used
-/// to be refused with a 400 (#2703), and every turn completes.
+/// signed thinking made under the old tools and is accepted rather than
+/// refused with a 400, and every turn completes.
 #[tokio::test]
 async fn dynamic_tools_30() {
     let run = with_anthropic_long_run_cassette(

@@ -1,5 +1,6 @@
 use rig_harness::rig_core::effect::EffectKind;
 use rig_harness::rig_core::message::{ToolCall, ToolFunction, ToolName};
+use rig_harness::rig_core::streaming::{Part, PartKind, StreamEvent};
 
 use super::*;
 
@@ -15,7 +16,7 @@ fn a_question_and_a_plugins_work_outside_the_turn_show() {
     let mut app = App::new();
     app.add_plugins((TaskPoolPlugin::default(), AgentPlugin, ActivityPlugin));
     let world = app.world_mut();
-    let agent = world.spawn(Agent).id();
+    let agent = spawn_root(world, ()).id();
     let review = EffectRequest {
         kind: EffectKind::Custom {
             kind: "review".into(),
@@ -48,7 +49,7 @@ fn a_tool_calls_activity_names_its_holds_and_its_progress() {
     let mut app = App::new();
     app.add_plugins(ActivityPlugin);
     let world = app.world_mut();
-    let agent = world.spawn(Agent).id();
+    let agent = spawn_root(world, ()).id();
     let turn = world.spawn(TurnOf(agent)).id();
     let Ok(name) = ToolName::new("edit") else {
         return;
@@ -80,7 +81,7 @@ fn an_inline_question_leaves_a_running_turn_its_status() {
     let mut app = App::new();
     app.add_plugins((TaskPoolPlugin::default(), AgentPlugin, ActivityPlugin));
     let world = app.world_mut();
-    let agent = world.spawn(Agent).id();
+    let agent = spawn_root(world, ()).id();
     let ask = Ask::yes_no("Try the next step?").inline();
     world.spawn((ask, ForAgent(agent)));
     let asking = Some(ActivityStatus::Asking("Try the next step?".to_owned()));
@@ -95,7 +96,7 @@ fn a_turn_is_writing_once_its_answer_streams() {
     let mut app = App::new();
     app.add_plugins(ActivityPlugin);
     let world = app.world_mut();
-    let agent = world.spawn(Agent).id();
+    let agent = spawn_root(world, ()).id();
     let turn = world.spawn(TurnOf(agent)).id();
     let call = world.spawn((Partial::default(), CallOf(turn))).id();
     assert_eq!(status(&mut app, agent), Some(ActivityStatus::Thinking));
@@ -103,14 +104,28 @@ fn a_turn_is_writing_once_its_answer_streams() {
     let reasoning = Partial {
         text: " \n".to_owned(),
         reasoning: "Weighing it.".to_owned(),
+        calls: Vec::new(),
     };
     app.world_mut().entity_mut(call).insert(reasoning);
     assert_eq!(status(&mut app, agent), Some(ActivityStatus::Thinking));
     let answer = Partial {
         text: "Hello".to_owned(),
         reasoning: String::new(),
+        calls: Vec::new(),
     };
     app.world_mut().entity_mut(call).insert(answer);
+    assert_eq!(status(&mut app, agent), Some(ActivityStatus::Writing));
+    // A tool call streaming its arguments is written too, text or none.
+    let Ok(write) = ToolName::new("write") else {
+        return;
+    };
+    let mut writing = Partial::default();
+    writing.follow(&StreamEvent::Start {
+        part: Part::new(0),
+        kind: PartKind::ToolCall,
+        name: Some(write),
+    });
+    app.world_mut().entity_mut(call).insert(writing);
     assert_eq!(status(&mut app, agent), Some(ActivityStatus::Writing));
 
     // The next model call has written nothing yet.
@@ -123,6 +138,7 @@ fn a_turn_is_writing_once_its_answer_streams() {
     let streaming = Partial {
         text: "Reading it.".to_owned(),
         reasoning: String::new(),
+        calls: Vec::new(),
     };
     app.world_mut().entity_mut(next).insert(streaming);
     let Ok(name) = ToolName::new("read") else {
@@ -132,4 +148,95 @@ fn a_turn_is_writing_once_its_answer_streams() {
     app.world_mut()
         .spawn((ToolRequest { call: request }, CallOf(turn)));
     assert_eq!(status(&mut app, agent), Some(ActivityStatus::RunningTools));
+}
+
+#[cfg(feature = "tui")]
+#[test]
+fn the_status_line_shows_how_long_a_step_has_lasted() {
+    let mut app = App::new();
+    // Bevy's real clock, stepped by hand.
+    app.add_plugins(ActivityPlugin)
+        .init_resource::<Time<Real>>()
+        .register_required_components::<Agent, rig_tui::StatusItems>();
+    let world = app.world_mut();
+    let agent = spawn_root(world, ()).id();
+    let turn = world.spawn(TurnOf(agent)).id();
+    let call = world.spawn((Partial::default(), CallOf(turn))).id();
+    let shown = |app: &mut App, after: u64| {
+        let world = app.world_mut();
+        let mut time = world.resource_mut::<Time<Real>>();
+        time.update_with_duration(Duration::from_secs(after));
+        app.update();
+        let items = app.world().get::<rig_tui::StatusItems>(agent);
+        let item = items.and_then(|items| items.iter().find(|item| item.name == "status"));
+        // Without the working animation, no bars before it.
+        item.map(|item| item.text.clone())
+    };
+    // A short step shows no clock, so it does not flicker.
+    assert_eq!(shown(&mut app, 0).as_deref(), Some("thinking…"));
+    assert_eq!(shown(&mut app, 4).as_deref(), Some("thinking…"));
+    assert_eq!(shown(&mut app, 1).as_deref(), Some("thinking… 5s"));
+    assert_eq!(shown(&mut app, 7).as_deref(), Some("thinking… 12s"));
+    assert_eq!(shown(&mut app, 65).as_deref(), Some("thinking… 1m17s"));
+
+    // The clock counts from when the status changed.
+    let answer = Partial {
+        text: "Hello".to_owned(),
+        reasoning: String::new(),
+        calls: Vec::new(),
+    };
+    app.world_mut().entity_mut(call).insert(answer);
+    assert_eq!(shown(&mut app, 0).as_deref(), Some("writing…"));
+    assert_eq!(shown(&mut app, 8).as_deref(), Some("writing… 8s"));
+    assert_eq!(shown(&mut app, 235).as_deref(), Some("writing… 4m03s"));
+    assert_eq!(shown(&mut app, 3357).as_deref(), Some("writing… 1h00m"));
+
+    app.world_mut().entity_mut(turn).despawn();
+    assert_eq!(shown(&mut app, 60).as_deref(), Some("idle"));
+}
+
+/// Without the working animation the activity keeps nothing awake, even
+/// when the terminal view is the run's front.
+#[cfg(feature = "tui")]
+#[test]
+fn the_activity_alone_animates_nothing() {
+    let mut app = App::new();
+    let invoked = Invoked {
+        terminal: true,
+        ..Invoked::default()
+    };
+    app.insert_resource(rig_harness::settings::Settings::default())
+        .insert_resource(invoked)
+        .add_front(Front::new(rig_tui::FRONT).on_terminal())
+        .add_plugins(ActivityPlugin)
+        .init_resource::<rig_harness::main_agent::ShownAgent>();
+    app.finish();
+    let world = app.world_mut();
+    let agent = spawn_root(world, ()).id();
+    world
+        .resource_mut::<rig_harness::main_agent::ShownAgent>()
+        .0 = Some(agent);
+    world.spawn(TurnOf(agent));
+    app.update();
+    let world = app.world_mut();
+    assert_eq!(world.query::<&KeepAwake>().iter(world).count(), 0);
+}
+
+/// `[activity]` is the working animation's: without it, no plugin reads
+/// the table, which the user is told.
+#[test]
+fn without_the_animation_no_plugin_reads_its_table() {
+    let mut app = App::new();
+    let settings = rig_harness::settings::Settings::from_toml("[activity]\nanimate = false\n");
+    app.insert_resource(settings).add_plugins(ActivityPlugin);
+    let settings = app.world().resource::<rig_harness::settings::Settings>();
+    let unread: Vec<String> = settings
+        .unread()
+        .into_iter()
+        .map(|notice| notice.text)
+        .collect();
+    assert!(
+        unread.len() == 1 && unread.iter().all(|notice| notice.contains("[activity]")),
+        "{unread:?}"
+    );
 }

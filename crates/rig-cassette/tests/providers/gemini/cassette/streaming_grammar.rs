@@ -5,7 +5,7 @@
 //! traffic, not synthetic chunks.
 //!
 //! Re-record with:
-//! `RIG_PROVIDER_TEST_MODE=record GEMINI_API_KEY=... cargo test --test gemini streaming_grammar -- --test-threads=1`
+//! `RIG_PROVIDER_TEST_MODE=record GEMINI_API_KEY=... cargo test -p rig-cassette --all-features --test integration gemini::cassette::streaming_grammar -- --test-threads=1`
 //!
 //! Cassette IDs are scrub placeholders; assertions derive expected IDs from
 //! the recorded turn and never mint literal IDs.
@@ -79,7 +79,7 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
 
     run.choice = response.choice.clone();
     // The shared lifecycle validator runs over every recorded turn this
-    // suite drains (#2258 C1).
+    // suite drains.
     rig_core::test_utils::streaming_conformance::assert_valid_event_stream(&raw_items, &run.choice);
     run.response = Some(response.clone());
     run
@@ -203,7 +203,7 @@ async fn parallel_function_calls_stay_distinct() {
 /// one recorded exchange, asserted through the normalized conversion.
 #[tokio::test]
 async fn interactions_requires_action_roundtrip() {
-    super::super::support::with_gemini_interactions_cassette(
+    super::super::support::with_gemini_cassette(
         "streaming_grammar/interactions_requires_action",
         |client| async move {
             let model = client.interactions("gemini-3-flash-preview");
@@ -304,10 +304,10 @@ async fn interactions_requires_action_roundtrip() {
 /// signature the wire delivered must survive into the aggregated choice.
 ///
 /// Re-record with:
-/// `RIG_PROVIDER_TEST_MODE=record GEMINI_API_KEY=... cargo test --test gemini interactions_signature_without_summaries -- --test-threads=1`
+/// `RIG_PROVIDER_TEST_MODE=record GEMINI_API_KEY=... cargo test -p rig-cassette --all-features --test integration gemini::cassette::streaming_grammar::interactions_signature_without_summaries -- --test-threads=1`
 #[tokio::test]
 async fn interactions_signature_without_summaries_never_fabricates_an_empty_sibling() {
-    super::super::support::with_gemini_interactions_cassette(
+    super::super::support::with_gemini_cassette(
         "streaming_grammar/interactions_signature_without_summaries",
         |client| async move {
             let model = client.interactions("gemini-3-flash-preview");

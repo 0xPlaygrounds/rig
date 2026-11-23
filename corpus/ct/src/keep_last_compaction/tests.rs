@@ -6,7 +6,7 @@ use rig_core::completion::Message as ChatMessage;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::settings::Settings;
 use rig_harness_test_support::{
-    Ended, MemoryStore, app_on, connect, first_agent, log_ended, reply, run_until,
+    Ended, MemoryStore, app_on, connect, first_agent, log_ended, reply, say,
 };
 
 use super::*;
@@ -28,16 +28,6 @@ fn start(model: &MockCompletionModel, window: u32, settings: &str) -> (App, Rece
         app.world_mut().entity_mut(agent).insert(connection);
     }
     (app, wakes, agent)
-}
-
-/// Sends `text` and runs frames until its turn ended.
-fn ask(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str) {
-    let ended = app.world().resource::<Ended>().0.len();
-    app.world_mut()
-        .trigger(Deliver::new(agent, text, DeliveryMode::Steer));
-    run_until(app, wakes, |world| {
-        world.resource::<Ended>().0.len() > ended
-    });
 }
 
 /// Each message of `agent`, as its text.
@@ -70,9 +60,9 @@ fn a_request_near_the_window_drops_the_oldest_turns_with_no_model_call() {
     let model =
         MockCompletionModel::from_stream_turns((1..=4).map(|turn| reply(&format!("A{turn}"))));
     // No reserve and a one-token window: every request is over it.
-    let (mut app, wakes, agent) = start(&model, 1, "[compaction]\nlimits = { reserve = 0 }");
+    let (mut app, wakes, agent) = start(&model, 1, "[compaction]\nreserve_tokens = 0");
     for question in ["apples?", "bananas?", "cherries?", "dates?"] {
-        ask(&mut app, &wakes, agent, question);
+        say(&mut app, &wakes, agent, question);
     }
 
     // One request per turn: no summary was asked for.
@@ -93,6 +83,34 @@ fn a_request_near_the_window_drops_the_oldest_turns_with_no_model_call() {
     );
 }
 
+#[derive(serde::Deserialize, schemars::JsonSchema)]
+struct NoArgs {}
+
+#[test]
+fn the_tools_a_request_offers_count_toward_the_window() {
+    let model =
+        MockCompletionModel::from_stream_turns((1..=3).map(|turn| reply(&format!("A{turn}"))));
+    // The messages fit the window; with the tool's 5,000-token description
+    // every request is over it.
+    let (mut app, wakes, agent) = start(&model, 2_000, "[compaction]\nreserve_tokens = 0");
+    let description = "word ".repeat(4_000);
+    app.add_open_tool(
+        "lookup",
+        &description,
+        ToolOptions::default(),
+        |_: On<ToolCalled<NoArgs>>| {},
+    );
+    for question in ["Q1", "Q2", "Q3"] {
+        say(&mut app, &wakes, agent, question);
+    }
+    assert!(
+        sent(&model)
+            .iter()
+            .all(|request| request.contains("lookup"))
+    );
+    assert_eq!(texts(&app, agent), owned(&["Q2", "A2", "Q3", "A3"]));
+}
+
 #[test]
 fn compact_drops_the_oldest_turns_now() {
     let model =
@@ -100,7 +118,7 @@ fn compact_drops_the_oldest_turns_now() {
     // A window no request nears: only `/compact` drops.
     let (mut app, wakes, agent) = start(&model, 1_000_000, "");
     for question in ["Q1", "Q2", "Q3"] {
-        ask(&mut app, &wakes, agent, question);
+        say(&mut app, &wakes, agent, question);
     }
     assert_eq!(texts(&app, agent).len(), 6);
 
@@ -111,7 +129,7 @@ fn compact_drops_the_oldest_turns_now() {
     assert_eq!(model.request_count(), 3);
 }
 
-/// The default `plugins.toml` with this plugin in place of the default
+/// The default plugins with this plugin in place of the default
 /// compaction: no default plugin adds that back, and this one's systems
 /// are ordered against theirs.
 #[test]

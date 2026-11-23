@@ -50,12 +50,12 @@ fn start(store: &MemoryStore) -> (App, Receiver<()>) {
         "corpus-ct-compaction-archive",
         "path corpus/ct-compaction-archive",
     );
-    // A compaction the user asks for keeps the newest 20 estimated tokens:
-    // the last two turns of short messages.
+    // A compaction keeps the newest 5 estimated tokens (four characters a
+    // token): the last two turns of short messages.
     app.world_mut()
         .resource_mut::<CompactionDefault>()
         .0
-        .keep_asked = 20;
+        .keep_recent_tokens = 5;
     app.finish();
     app.update();
     (app, wakes)
@@ -310,7 +310,4 @@ fn compacted_messages_are_found_across_compactions_restarts_and_removals() {
     assert!(vault.starts_with("No archived message matches"), "{vault}");
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(CompactionArchivePlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(CompactionArchivePlugin);

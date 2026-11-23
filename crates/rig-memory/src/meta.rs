@@ -9,11 +9,11 @@ use std::io;
 
 use rig_core::completion::Message;
 use rig_core::conversation::EntryRef;
-use rig_core::message::{AssistantContent, UserContent};
+use rig_core::message::UserContent;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::{Files, Session, main_order};
+use crate::{Files, SavedAgent, Session};
 use rig_core::now_ms;
 
 /// The file of a session's store that holds its [`SessionMeta`].
@@ -67,14 +67,17 @@ impl SessionMeta {
     /// session no rig is running: the main agent's model and message count,
     /// `updated` set to now, and each listed value (keys in `listed`, plus
     /// those already listed), taken from the session's own values, else from
-    /// the first agent by [`main_order`] that has one. A value that is gone
-    /// is unlisted. The title and labels stay.
+    /// the main agent ([`Session::main_agent`]) and then the first other
+    /// agent that has one, those nothing spawned first, each group by id, as
+    /// a running rig lists them. A value that is gone is unlisted. The title
+    /// and labels stay.
     pub fn relist(&mut self, session: &Session, listed: &BTreeSet<String>) {
-        let mut agents: Vec<_> = session.agents.iter().filter(|a| !a.retired).collect();
-        agents.sort_by(|a, b| {
-            main_order(a.parent.is_some(), &a.id).cmp(&main_order(b.parent.is_some(), &b.id))
-        });
-        let main = agents.first();
+        let main = session.main_agent();
+        let is_main = |agent: &SavedAgent| main.is_some_and(|main| std::ptr::eq(agent, main));
+        let mut agents: Vec<_> = (session.agents.iter())
+            .filter(|agent| !agent.retired)
+            .collect();
+        agents.sort_by_key(|agent| (!is_main(agent), agent.parent.is_some(), &agent.id));
         self.messages = main.map_or(0, |main| main.conversation.messages().len());
         self.model = main.and_then(|main| main.model()).unwrap_or_default();
         let keys: BTreeSet<String> = listed.iter().chain(self.listed.keys()).cloned().collect();
@@ -120,13 +123,7 @@ pub fn excerpt(entry: &EntryRef<'_>) -> String {
     let (who, text) = match entry.message {
         Message::System { content } => ("system", content.clone()),
         Message::User { content } => {
-            let text: Vec<&str> = content
-                .iter()
-                .filter_map(|part| match part {
-                    UserContent::Text(text) => Some(text.text.as_str()),
-                    _ => None,
-                })
-                .collect();
+            let text: Vec<&str> = content.iter().filter_map(UserContent::as_text).collect();
             match text.is_empty() {
                 true => ("tool results", String::new()),
                 false => ("user", text.join(" ")),
@@ -135,12 +132,8 @@ pub fn excerpt(entry: &EntryRef<'_>) -> String {
         Message::Assistant(turn) => {
             let text = turn.text();
             let calls: Vec<&str> = turn
-                .content
-                .iter()
-                .filter_map(|part| match part {
-                    AssistantContent::ToolCall(call) => Some(call.function.name.as_str()),
-                    _ => None,
-                })
+                .tool_calls()
+                .map(|call| call.function.name.as_str())
                 .collect();
             match (text.trim().is_empty(), calls.is_empty()) {
                 (true, false) => ("calls", calls.join(", ")),

@@ -428,7 +428,4 @@ fn a_failed_stream_leaves_no_trace_of_its_early_calls() {
     assert!(!traced, "the conversation has no early call");
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(EarlyToolStartPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(EarlyToolStartPlugin);

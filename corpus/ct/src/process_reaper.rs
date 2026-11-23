@@ -1,25 +1,20 @@
-//! CT-14: leftover process reaper.
+//! Leftover process reaper. Every process rig starts carries one more variable, [`TAG`] set
+//! to the session's id, put in the app's [`Processes`] launcher as the plugin is built: the
+//! `shell` tool, background jobs and any plugin's launcher pass it on, and a process's
+//! children, grandchildren and daemons inherit it. After each tool call and turn the plugin
+//! finds the live processes with the tag in `/proc` and groups them into entries, one per
+//! process whose parent is not tagged, with every tagged descendant; an entry belongs to
+//! the agent and turn whose call it first appeared after. A process the user started
+//! outside rig has no tag and is never touched.
 //!
-//! Every process rig starts carries one more variable, [`TAG`] set to the
-//! session's id, put in the app's [`Processes`] launcher as the plugin is
-//! built: the `shell` tool, background jobs and any plugin's launcher pass
-//! it on, and a process's children, grandchildren and daemons inherit it.
-//! After each tool call and turn the plugin finds the live processes with
-//! the tag in `/proc` and groups them into entries, one per process whose
-//! parent is not tagged, with every tagged descendant; an entry belongs to
-//! the agent and turn whose call it first appeared after. A process the
-//! user started outside rig has no tag and is never touched.
-//!
-//! When a turn ends, its entries still running are listed to the user in
-//! one line and to the model as a note. Entries of the agent's earlier
-//! turns that nobody kept (`keep_process`, `/procs keep <id>`) are stopped
-//! then; so is every entry on any exit but `/reload`, which holds the exit
-//! until they are gone: `SIGTERM`, then `SIGKILL` after the grace period
-//! (`[processes] grace_ms`). The entries are saved in the user's plugin
-//! data with this process's pid and start time, so the next start finds
-//! what a crashed run left and stops each process whose pid still names a
-//! process started at its saved start time. Linux only, and only while the
-//! workspace is this machine.
+//! When a turn ends, its entries still running are listed to the user in one line and to
+//! the model as a note. Entries of the agent's earlier turns that nobody kept
+//! (`keep_process`, `/procs keep <id>`) are stopped then; so is every entry on any exit but
+//! `/reload`, which holds the exit until they are gone: `SIGTERM`, then `SIGKILL` after the
+//! grace period (`[processes] grace_ms`). The entries are saved in the user's plugin data
+//! with this process's pid and start time, so the next start finds what a crashed run left
+//! and stops each process whose pid still names a process started at its saved start time.
+//! Linux only, and only while the workspace is this machine.
 
 use std::collections::HashSet;
 use std::fmt::Write as _;

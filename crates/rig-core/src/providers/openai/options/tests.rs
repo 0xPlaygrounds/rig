@@ -65,6 +65,33 @@ fn openai_model_facts_come_from_the_catalog() {
     );
 }
 
+/// OpenRouter lists effort `none` and `high` for Mistral Large 4.0, so rig
+/// sends those two and refuses the other levels and a budget.
+#[test]
+fn openrouter_mistral_large_4_takes_effort_none_and_high_only() {
+    let mistral = chat(&OPENROUTER, "mistralai/mistral-large-4-0");
+    for (reasoning, effort) in [
+        (Reasoning::Off, "none"),
+        (Reasoning::Effort(Effort::High), "high"),
+    ] {
+        let body = sent(&mistral, GenerationOptions::default().reasoning(reasoning))
+            .unwrap_or_else(|error| panic!("{reasoning:?}: {error}"));
+        assert_eq!(
+            body["reasoning"],
+            json!({"effort": effort}),
+            "{reasoning:?}"
+        );
+    }
+    for reasoning in [
+        Reasoning::Effort(Effort::Low),
+        Reasoning::Effort(Effort::XHigh),
+        Reasoning::Budget { tokens: 1024 },
+    ] {
+        let result = sent(&mistral, GenerationOptions::default().reasoning(reasoning));
+        assert_eq!(refused(result), Some("reasoning"), "{reasoning:?}");
+    }
+}
+
 /// OpenAI ids the catalog does not list (from OpenAI's own model list,
 /// `openai/models/list_models_smoke.yaml`) reason by their name: Chat sends
 /// `max_completion_tokens`, and `Off` is refused where the name says the
@@ -758,8 +785,8 @@ mod responses {
         assert_eq!(body["top_p"], 0.5);
     }
 
-    /// Ported from #2171 (`prompt_cache_options_serialize_at_request_top_level`):
-    /// a long cache on GPT-5.6 is `prompt_cache_options.ttl`, and a raw
+    /// A long cache on GPT-5.6 is the 12 hour `prompt_cache_options.ttl`
+    /// (<https://developers.openai.com/api/docs/guides/prompt-caching>), and a raw
     /// `mode` and `prompt_cache_key` join it at the top level.
     #[test]
     fn prompt_cache_options_serialize_at_request_top_level() {
@@ -775,11 +802,10 @@ mod responses {
         .expect("encodes");
         assert_eq!(body["prompt_cache_key"], "tenant:acme:v1");
         assert_eq!(body["prompt_cache_options"]["mode"], "explicit");
-        assert_eq!(body["prompt_cache_options"]["ttl"], "30m");
+        assert_eq!(body["prompt_cache_options"]["ttl"], "12h");
     }
 
-    /// Ported from #2616 (`prompt_cache_options_reach_the_request_typed_and_through_additional_params`):
-    /// the option and the raw key send the same object, and no retention.
+    /// The option and the raw key send the same object, and no retention.
     #[test]
     fn prompt_cache_options_reach_the_request_typed_and_through_additional_params() {
         let wire = responses(&OPENAI, crate::providers::openai::GPT_6_SOL);
@@ -788,12 +814,12 @@ mod responses {
             with(GenerationOptions::default().cache(CacheRetention::Long)),
         )
         .expect("encodes");
-        assert_eq!(typed["prompt_cache_options"], json!({"ttl": "30m"}));
+        assert_eq!(typed["prompt_cache_options"], json!({"ttl": "12h"}));
         assert_eq!(typed.get("prompt_cache_retention"), None);
         let raw = sent(
             &wire,
             CompletionRequest::new("hi")
-                .additional_params(json!({"prompt_cache_options": {"ttl": "30m"}})),
+                .additional_params(json!({"prompt_cache_options": {"ttl": "12h"}})),
         )
         .expect("encodes");
         assert_eq!(raw["prompt_cache_options"], typed["prompt_cache_options"]);
@@ -1099,15 +1125,18 @@ mod responses {
     }
 }
 
-// GPT-6's sampling and Chat Completions tool rules, ported from #2616 and
-// expressed as catalog data: the four GPT-6 models' `sampling` is
-// `reasoning_off`, they are marked `chat_tools_need_reasoning_off`, and their
-// documented default effort is `medium`. Sources: the GPT-6 model pages and
+// GPT-6's sampling and Chat Completions tool rules, expressed as catalog
+// data: the GPT-6 models' `sampling` is `reasoning_off`,
+// their `chat_tools` is `reasoning_off` (Sol, Luna) or `never` (Astra, 6.1
+// Sol, 6.1 Terra), and their documented default effort is `medium`. Sources:
+// the GPT-6 model pages and
 // <https://developers.openai.com/api/docs/guides/latest-model>.
 
 use crate::completion::ToolDefinition;
 use crate::message::ToolName;
-use crate::providers::openai::completion::{GPT_6_ASTRA, GPT_6_LUNA, GPT_6_SOL};
+use crate::providers::openai::completion::{
+    GPT_6_1_SOL, GPT_6_1_TERRA, GPT_6_2_ASTRA, GPT_6_2_SOL, GPT_6_ASTRA, GPT_6_LUNA, GPT_6_SOL,
+};
 use crate::providers::openai::responses_api::wire::Responses as ResponsesWire;
 
 fn gpt_6_request(additional_params: Option<Value>) -> CompletionRequest {
@@ -1242,6 +1271,35 @@ fn gpt_6_sampling_parameters_fail_while_the_model_reasons_by_default() {
     }
 }
 
+/// GPT-6.2 Astra and Sol reject effort `none` and sampling parameters, and
+/// call tools only through Responses.
+#[test]
+fn gpt_6_2_refuses_effort_none_sampling_and_chat_tools() {
+    for model in [GPT_6_2_ASTRA, GPT_6_2_SOL] {
+        for result in [
+            on_prepared_chat(model, gpt_6_request(None).reasoning(Reasoning::Off)),
+            on_prepared_responses(model, gpt_6_request(None).reasoning(Reasoning::Off)),
+        ] {
+            assert_eq!(refusal(result).0, "reasoning", "{model}");
+        }
+        for result in [
+            on_prepared_chat(model, strict(gpt_6_request(None).temperature(0.2))),
+            on_prepared_responses(model, strict(gpt_6_request(None).temperature(0.2))),
+        ] {
+            assert_eq!(refusal(result).0, "temperature", "{model}");
+        }
+        let tools = on_prepared_chat(model, strict(with_tool(gpt_6_request(None))));
+        assert_eq!(refusal(tools).0, "tools", "{model}");
+        let body = on_prepared_responses(model, strict(with_tool(gpt_6_request(None))))
+            .unwrap_or_else(|error| panic!("{model}: {error}"));
+        assert_eq!(body["tools"][0]["name"], "lookup", "{model}");
+    }
+    let variant = "gpt-6.2-sol-codex";
+    assert!(openai_spec(crate::catalog::ModelFacts::builtin(), variant).is_none());
+    let off = on_prepared_responses(variant, gpt_6_request(None).reasoning(Reasoning::Off));
+    assert_eq!(refusal(off).0, "reasoning");
+}
+
 /// A request that sets no generation option is sent as built, as before the
 /// catalog held these rules, and the provider decides: the sampling and
 /// tool rules refuse nothing for it.
@@ -1357,32 +1415,29 @@ fn gpt_6_astras_sampling_error_does_not_suggest_effort_none() {
     assert!(!error.contains("to `none`"), "{error}");
 }
 
-/// Astra and 6.1 Sol never call tools through Chat Completions: with an
-/// option set, `Error` refuses them under the name `tools` and `Ignore`
-/// sends them as built with a warning. Sol and Luna call them at effort
-/// `none`; at their default effort the request reaches OpenAI, whose 400
-/// names the fix (the recorded `gpt_6_luna` session pins that reply).
+/// Astra, 6.1 Sol and 6.1 Terra never call tools through Chat Completions,
+/// even Terra at effort `none`: with an option set, `Error` refuses them
+/// under the name `tools` and `Ignore` sends them as built with a warning.
+/// Sol and Luna call them at effort `none`; at their default effort the
+/// request reaches OpenAI, whose 400 names the fix (the recorded
+/// `gpt_6_luna` session pins that reply).
 #[test]
 fn gpt_6_chat_completions_tools_fail_for_astra_and_reach_the_api_on_sol_and_luna() {
-    let result = on_prepared_chat(GPT_6_ASTRA, strict(with_tool(gpt_6_request(None))));
-    assert_eq!(
-        refusal(result),
-        (
-            "tools".to_owned(),
-            "openai".to_owned(),
-            GPT_6_ASTRA.to_owned()
+    for model in [GPT_6_ASTRA, GPT_6_1_SOL, GPT_6_1_TERRA] {
+        let result = on_prepared_chat(model, strict(with_tool(gpt_6_request(None))));
+        assert_eq!(
+            refusal(result),
+            ("tools".to_owned(), "openai".to_owned(), model.to_owned())
+        );
+        let error = on_chat(
+            model,
+            strict(with_tool(gpt_6_request(Some(
+                json!({"reasoning_effort": "none"}),
+            )))),
         )
-    );
-    let error = on_chat(GPT_6_ASTRA, strict(with_tool(gpt_6_request(None)))).expect_err("astra");
-    assert!(error.contains("Responses"), "{error}");
-    let error = on_chat(
-        GPT_6_ASTRA,
-        strict(with_tool(gpt_6_request(Some(
-            json!({"reasoning_effort": "none"}),
-        )))),
-    )
-    .expect_err("astra never calls tools on chat");
-    assert!(error.contains("Responses"), "{error}");
+        .expect_err("never calls tools on chat");
+        assert!(error.contains("Responses"), "{model}: {error}");
+    }
     let (body, warnings) = sent_with_warnings(
         &chat(&OPENAI, GPT_6_ASTRA),
         lenient(with_tool(gpt_6_request(None))),

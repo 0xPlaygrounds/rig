@@ -1,25 +1,19 @@
-//! CT-21: Prometheus metrics endpoint (conversation-over-time fresh
-//! held-out spec `21-metrics-endpoint.md`).
+//! Prometheus metrics endpoint. `rig --metrics=127.0.0.1:9464`, or `addr` in the
+//! `[metrics]` settings, serves `/metrics` in the Prometheus text format from threads of
+//! its own, which read a registry the app updates and never wait on the app's loop. Off by
+//! default; an address that is not loopback needs `metrics_public = true` in `[metrics]`,
+//! else the endpoint is refused with an error notice.
 //!
-//! `rig --metrics=127.0.0.1:9464`, or `addr` in the `[metrics]` settings,
-//! serves `/metrics` in the Prometheus text format from threads of its own,
-//! which read a registry the app updates and never wait on the app's loop.
-//! Off by default; an address that is not loopback needs
-//! `metrics_public = true` in `[metrics]`, else the endpoint is refused
-//! with an error notice.
-//!
-//! Counters: model requests, input, output and cached tokens and cost (by
-//! model), tool calls and tool errors (by tool), errors the process logged
-//! (by plugin, from `rig_basics::telemetry`'s `Diagnostics`) and retries (by model).
-//! Histograms: turn duration, model time to first token (by model), tool
-//! call duration (by tool). Gauges: agents busy, subagents running,
-//! approvals waiting, each agent's context fill ratio and seconds since its
-//! last activity (by agent id). Every series has a `session` label: the
-//! session's `/name`, else its id. No label holds prompt text, paths or
-//! arguments, and each label takes at most
-//! [`MAX_LABEL_VALUES`](registry::MAX_LABEL_VALUES) values, later ones
-//! folded into `other`. Counters live as long as the process: the agent
-//! runs one session per process, so `/new` and `/resume` start them again.
+//! Counters: model requests, input, output and cached tokens and cost (by model), tool
+//! calls and tool errors (by tool), errors the process logged (by plugin, from
+//! `rig_basics::telemetry`'s `Diagnostics`) and retries (by model). Histograms: turn
+//! duration, model time to first token (by model), tool call duration (by tool). Gauges:
+//! agents busy, subagents running, approvals waiting, each agent's context fill ratio and
+//! seconds since its last activity (by agent id). Every series has a `session` label: the
+//! session's `/name`, else its id. No label holds prompt text, paths or arguments, and each
+//! label takes at most [`MAX_LABEL_VALUES`](registry::MAX_LABEL_VALUES) values, later ones
+//! folded into `other`. Counters live as long as the process: the agent runs one session
+//! per process, so `/new` and `/resume` start them again.
 
 use std::collections::BTreeSet;
 use std::time::{Instant, SystemTime};

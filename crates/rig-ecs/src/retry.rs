@@ -1,13 +1,17 @@
 //! What to do about a failed model call: wait and send it again after a
 //! transient failure, honouring the wait the provider asked for; recover
 //! from a request that outgrew the model's context window; or give up.
+//! The kernel reads its policy from the [`RetryPolicy`] resource, which
+//! rig's `[retry]` table sets.
 
 use std::time::{Duration, SystemTime};
 
+use bevy_ecs::prelude::Resource;
 use rig_core::error::{ErrorKind, ErrorReport};
 
-/// How often and how long a failed call is retried.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// How often and how long a failed call is retried: a resource the kernel
+/// reads each time a call fails.
+#[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RetryPolicy {
     /// Retries of failed calls in a row before giving up.
     pub max_retries: u32,
@@ -18,6 +22,12 @@ pub struct RetryPolicy {
     /// The longest wait a provider may ask for; past it the policy gives
     /// up, as waiting longer in front of a user is worse than saying so.
     pub max_asked_wait: Duration,
+}
+
+impl Default for RetryPolicy {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
 }
 
 impl RetryPolicy {
@@ -40,13 +50,29 @@ impl RetryPolicy {
             return Verdict::Final;
         }
         if retries >= self.max_retries {
-            return Verdict::GaveUp(format!("it failed {} times in a row", retries + 1));
+            let most = self.max_retries;
+            let times = match retries.saturating_add(1) {
+                1 => "once".to_owned(),
+                times => format!("{times} times in a row"),
+            };
+            return Verdict::GaveUp(format!(
+                "it failed {times} (`[retry] max_retries` is {most})"
+            ));
         }
         match report.retry_after(now) {
             Some(asked) if asked > self.max_asked_wait => Verdict::GaveUp(format!(
-                "the provider asks to wait {}s before the next call",
-                asked.as_secs()
+                "the provider asks to wait {} s before the next call (`[retry] max_wait_secs` \
+                 is {})",
+                asked.as_secs(),
+                self.max_asked_wait.as_secs()
             )),
+            Some(asked) if web_time::Instant::now().checked_add(asked).is_none() => {
+                Verdict::GaveUp(format!(
+                    "the provider asks to wait {} s before the next call, longer than this \
+                     machine's clock counts",
+                    asked.as_secs()
+                ))
+            }
             Some(asked) => Verdict::Retry(asked),
             None => Verdict::Retry(self.backoff(retries)),
         }

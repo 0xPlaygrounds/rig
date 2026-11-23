@@ -1,10 +1,9 @@
 use super::*;
 use crate::message::Message;
 
-/// `text` renders exactly what the kernel's string rendering sent before
-/// the prompt became data: the trimmed role, then each non-blank section
-/// trimmed between its tags, a blank line apart, with nothing before the
-/// first block when the role is empty.
+/// `text` renders the prompt as one string: the trimmed role, then each
+/// non-blank section trimmed between its tags, a blank line apart, with
+/// nothing before the first block when the role is empty.
 #[test]
 fn text_renders_the_role_and_tagged_sections() {
     let prompt = SystemPrompt {

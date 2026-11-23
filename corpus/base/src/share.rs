@@ -1,23 +1,18 @@
-//! Plugin corpus: 42. Share a session (spec `42-share.md`).
-//!
-//! `/share` renders the agent's conversation as an HTML page with every
-//! secret found redacted, and spawns the upload as a `share` effect held
-//! by a question listing what goes and the secrets taken out. Confirmed,
-//! the effect starts and uploads in the background to the `[share]`
-//! target: a secret GitHub gist (with a token from `GH_TOKEN`,
-//! `GITHUB_TOKEN` or `gh auth token`), or an `http` paste server that
-//! answers a POST with `{"url": …}`. The link is shown, copied to the
-//! clipboard through the terminal view (`CopyToClipboard`, OSC 52), and
-//! saved with the session, so `/share` again updates the same page and
-//! `/unshare` deletes it. A run nobody answers questions in shares only
-//! when started with `--yes`.
+//! Share a session. `/share` renders the agent's conversation as an HTML page with every secret
+//! found redacted, and spawns the upload as a `share` effect held by a question listing what
+//! goes and the secrets taken out. Confirmed, the effect starts and uploads in the background
+//! to the `[share]` target: a secret GitHub gist (with a token from `GH_TOKEN`, `GITHUB_TOKEN`
+//! or `gh auth token`), or an `http` paste server that answers a POST with `{"url": …}`. The
+//! link is shown, copied to the clipboard through the terminal view (`CopyToClipboard`, OSC
+//! 52), and saved with the session, so `/share` again updates the same page and `/unshare`
+//! deletes it. A run nobody answers questions in shares only when started with `--yes`.
 
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::{Answered, EffectKind};
-use rig_harness::rig_core::http_client::{self, HttpClientExt, Method, Request};
+use rig_harness::rig_core::http_client::{self, Bytes, HttpClientExt, Method, Request};
 use rig_harness::rig_core::{ErrorKind, ErrorReport};
 use rig_tui::CopyToClipboard;
 use serde::{Deserialize, Serialize};
@@ -475,14 +470,15 @@ async fn send(
     for (name, value) in headers {
         request = request.header(name, value);
     }
-    let request = request.body(body).map_err(|error| error.to_string())?;
-    let response = rig_reqwest::shared()
-        .send::<String, Vec<u8>>(request)
-        .await
-        .map_err(|error| match error.non_success_body() {
+    let request = request
+        .body(Bytes::from(body))
+        .map_err(|error| error.to_string())?;
+    let response = rig_reqwest::shared().send(request).await.map_err(|error| {
+        match error.non_success_body() {
             Some(body) => format!("{error}: {body}"),
             None => error.to_string(),
-        })?;
+        }
+    })?;
     http_client::text(response)
         .await
         .map_err(|error| error.to_string())

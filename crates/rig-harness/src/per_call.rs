@@ -18,25 +18,28 @@
 //! ```
 
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, PoisonError, RwLock};
 
 use bevy_app::{App, Plugin};
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
+use rig_core::completion::ToolAnnotations;
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ToolAdapter;
-use rig_core::tool::{Touches, tool_definition};
+use rig_core::tool::{ToolContext, Touches, tool_definition};
 use rig_ecs::effects::Handler;
 use rig_ecs::prelude::{
-    Admitted, AgentPass, CallHandler, Footprint, ForAgent, PrepareSystems, Tool, ToolCalls,
+    Admitted, Agent, AgentPass, CallHandler, Footprint, ForAgent, PrepareSystems, Tool, ToolCalls,
     ToolDef, ToolOptions, ToolRequest, Wake, WorldToolsExt,
 };
-use rig_tools::workspace::Workspace;
-use rig_tools::{Delete, Edit, List, Live, Move, Read, Search, Shell, Spill, Write};
+use rig_tools::workspace::{Root, Workspace};
+use rig_tools::{
+    Delete, Edit, LineFilter, List, Live, OutputLimit, Read, Search, Seen, Shell, Spill, Write,
+};
 
 use crate::host::session::Scratch;
 use crate::progress::CallOutput;
-use crate::services::{ProjectRoot, WorkDir};
+use crate::services::{Processes, ProjectRoot, WorkDir};
 use crate::workspace::ProjectWorkspace;
 
 /// Where one call of a tool registered with
@@ -54,61 +57,217 @@ pub struct CallPlace {
     pub base: PathBuf,
     /// Whether `base` is a `WorkDir`, outside which the call refuses paths.
     pub confine: bool,
-    /// Where the call reports its output as it comes, for a tool
-    /// registered with [`add_live_tool_per_call`](AppPerCallExt::add_live_tool_per_call);
+    /// Where the call reports its output as it comes, for a
+    /// [`LIVE`](PerCallTool::LIVE) tool;
     /// read by the front as the call's [`CallOutput`]. `None` from
     /// [`PerCallTools::place`]; the harness sets it for a call it runs.
     pub live: Option<Live>,
+    /// What each line of the call's output goes through first, such as a
+    /// redaction plugin's, set before [`PerCallSystems::Build`]; `None`
+    /// until a plugin sets it.
+    pub filter: Option<LineFilter>,
     /// Where output cut short is kept whole, if anywhere
     /// ([`Scratch::spill`]). `None` from [`PerCallTools::place`]; the
     /// harness sets it for a call it runs.
     pub spill: Option<Spill>,
+    /// The calling agent's [`FilesSeen`], where the file tools note what
+    /// the call reads and writes; `None` for a call of no agent, whose
+    /// tools keep the `Seen` they were registered with.
+    pub seen: Option<Seen>,
+    /// Whether `workspace` keeps the call's writes from the files, as an
+    /// overlay does for a call previewed: the file tools then note what
+    /// the call reads and writes in a [`fork`](Seen::fork) of that `Seen`,
+    /// so what it wrote there is not taken as on disk.
+    pub overlaid: bool,
 }
+
+/// The files an agent's file tools saw: what `read` showed it and `edit`
+/// and `write` left, so its `edit` asks for a new read only of a file that
+/// changed since it saw it, and its `write` replaces only a file it saw as
+/// it is now. Each agent has its own, as each has its own model context;
+/// it is empty when the agent is made, a fork's and a subagent's too (a
+/// fork may start before reads its parent made since), and after a
+/// restart.
+#[derive(Component, Clone, Debug, Default)]
+pub struct FilesSeen(pub Seen);
 
 /// A tool built anew for each call, for where the call works.
 pub trait PerCallTool: Tool + Clone + 'static {
+    /// Whether its calls report their output as they run: each gets a
+    /// [`CallOutput`], and its place the [`Live`] that fills it.
+    const LIVE: bool = false;
+
     /// This tool, as a call at `place` runs it: `self` is the tool as
     /// registered, so what is not about the place comes from it.
     fn at(&self, place: CallPlace) -> Self;
 }
 
-/// The file tools work in the place's workspace, from its base, keeping
-/// the fields named from the tool as registered.
+impl From<CallPlace> for Root {
+    /// The place's workspace, from its base, confined as the place is.
+    fn from(place: CallPlace) -> Self {
+        Self {
+            workspace: place.workspace,
+            base: Some(place.base),
+            confine: place.confine,
+        }
+    }
+}
+
+/// The file tools work in the place's workspace, from its base, noting
+/// what they see in the calling agent's [`FilesSeen`], else as registered.
 macro_rules! file_tools_per_call {
-    ($($tool:ty { $($keep:ident),* }),*) => {$(
+    ($($tool:ty),*; seen) => {$(
         impl PerCallTool for $tool {
             fn at(&self, place: CallPlace) -> Self {
                 Self {
-                    workspace: place.workspace,
-                    base: Some(place.base),
-                    confine: place.confine,
-                    $($keep: self.$keep.clone(),)*
+                    seen: {
+                        let seen = place.seen.as_ref().unwrap_or(&self.seen);
+                        if place.overlaid { seen.fork() } else { seen.clone() }
+                    },
+                    root: place.into(),
                 }
+            }
+        }
+    )*};
+    ($($tool:ty),*) => {$(
+        impl PerCallTool for $tool {
+            fn at(&self, place: CallPlace) -> Self {
+                Self { root: place.into() }
             }
         }
     )*};
 }
 
-file_tools_per_call!(
-    Read { seen },
-    Edit { seen },
-    Write { seen },
-    Search {},
-    List {},
-    Delete {},
-    Move {}
-);
+file_tools_per_call!(Read, Edit, Write; seen);
+file_tools_per_call!(Search, List, Delete);
 
-impl PerCallTool for Shell {
+/// [`Shell`] registered per call, starting each command as the app's
+/// [`Processes`] say when it starts: under their wrapper and without a
+/// secret, its output cut as the app's [`ShellOutput`] says then. It starts
+/// in its [`CallPlace`]'s base when confined there or when the `Processes`
+/// name no directory. `shell`'s own `launcher` and `cut` are not used.
+///
+/// ```
+/// use rig_harness::prelude::*;
+/// use rig_harness::rig_tools::Shell;
+///
+/// let mut app = App::new();
+/// let shell = PerCallShell::new(Shell::default(), app.world_mut());
+/// app.add_tool_per_call(shell, ToolOptions::default());
+/// ```
+///
+/// A bare `Shell` is no per-call tool, so it cannot skip the `Processes`:
+///
+/// ```compile_fail
+/// use rig_harness::prelude::*;
+/// use rig_harness::rig_tools::Shell;
+///
+/// let mut app = App::new();
+/// app.add_tool_per_call(Shell::default(), ToolOptions::default());
+/// ```
+#[derive(Clone)]
+pub struct PerCallShell {
+    /// The shell each call runs, but for its launcher and its cut.
+    pub shell: Shell,
+    processes: Processes,
+    output: ShellOutput,
+    dir: Option<PathBuf>,
+}
+
+impl PerCallShell {
+    /// `shell`, starting its commands as `world`'s [`Processes`] say and
+    /// cutting their output as its [`ShellOutput`] says, which this inits
+    /// if missing.
+    pub fn new(shell: Shell, world: &mut World) -> Self {
+        Self {
+            shell,
+            processes: world.get_resource_or_init::<Processes>().clone(),
+            output: world.get_resource_or_init::<ShellOutput>().clone(),
+            dir: None,
+        }
+    }
+}
+
+/// How much of a command's output [`PerCallShell`] gives the model, read
+/// as each call runs: [`OutputLimit::default`] unless set. A plugin that
+/// cuts or summarizes output itself turns the cut off with `set(None)`,
+/// such as from its `finish`, and then holds all of it. Shared by its
+/// clones: change it with [`set`](Self::set), not by inserting a new one.
+#[derive(Resource, Clone, Debug)]
+pub struct ShellOutput(Arc<RwLock<Option<OutputLimit>>>);
+
+impl ShellOutput {
+    /// How the next call cuts its output; `None` keeps all of it.
+    pub fn cut(&self) -> Option<OutputLimit> {
+        *self.0.read().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Cuts every call's output from now on as `cut` says.
+    pub fn set(&self, cut: Option<OutputLimit>) {
+        *self.0.write().unwrap_or_else(PoisonError::into_inner) = cut;
+    }
+}
+
+impl Default for ShellOutput {
+    fn default() -> Self {
+        Self(Arc::new(RwLock::new(Some(OutputLimit::default()))))
+    }
+}
+
+impl PerCallTool for PerCallShell {
+    const LIVE: bool = true;
+
     fn at(&self, place: CallPlace) -> Self {
         Self {
-            launcher: self.launcher.clone().in_dir(&place.base),
-            workspace: place.workspace,
-            live: place.live,
-            spill: place.spill,
-            confine: place.confine,
+            shell: Shell {
+                workspace: place.workspace,
+                live: place.live,
+                filter: place.filter,
+                confine: place.confine,
+                spill: place.spill,
+                ..self.shell.clone()
+            },
+            dir: Some(place.base),
             ..self.clone()
         }
+    }
+}
+
+impl Tool for PerCallShell {
+    const NAME: &'static str = Shell::NAME;
+    type Args = <Shell as Tool>::Args;
+    type Output = <Shell as Tool>::Output;
+    type Error = <Shell as Tool>::Error;
+
+    fn description(&self) -> String {
+        self.shell.description()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        self.shell.parameters()
+    }
+
+    fn annotations(&self) -> ToolAnnotations {
+        self.shell.annotations()
+    }
+
+    async fn call(
+        &self,
+        context: &mut ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
+        let mut launcher = self.processes.launcher();
+        if let Some(dir) = &self.dir
+            && (self.shell.confine || launcher.cwd.is_none())
+        {
+            launcher = launcher.in_dir(dir);
+        }
+        let shell = Shell {
+            launcher,
+            cut: self.output.cut(),
+            ..self.shell.clone()
+        };
+        shell.call(context, args).await
     }
 }
 
@@ -122,56 +281,37 @@ pub trait AppPerCallExt {
     /// previewed (rig-basics' `Preview`), as it is built on an overlay of
     /// the workspace.
     fn add_tool_per_call<T: PerCallTool>(&mut self, tool: T, options: ToolOptions) -> &mut Self;
-
-    /// As [`add_tool_per_call`](Self::add_tool_per_call), for a tool that
-    /// reports its output as it runs: each call gets a [`CallOutput`], and
-    /// its place the [`Live`] that fills it.
-    fn add_live_tool_per_call<T: PerCallTool>(
-        &mut self,
-        tool: T,
-        options: ToolOptions,
-    ) -> &mut Self;
 }
 
 impl AppPerCallExt for App {
     fn add_tool_per_call<T: PerCallTool>(&mut self, tool: T, options: ToolOptions) -> &mut Self {
-        add_per_call(self, tool, options, false)
-    }
-
-    fn add_live_tool_per_call<T: PerCallTool>(
-        &mut self,
-        tool: T,
-        options: ToolOptions,
-    ) -> &mut Self {
-        add_per_call(self, tool, options, true)
-    }
-}
-
-fn add_per_call<T: PerCallTool>(
-    app: &mut App,
-    tool: T,
-    options: ToolOptions,
-    live: bool,
-) -> &mut App {
-    if !app.is_plugin_added::<PerCallPlugin>() {
-        app.add_plugins(PerCallPlugin);
-    }
-    let definition = tool_definition(&tool);
-    // The annotations are the tool's own code's, so they give its default
-    // footprint, as `add_tool_with` takes them, not as hints.
-    let own = Touches::from_annotations(&definition.annotations);
-    let own = options.footprint.is_none().then_some(Footprint(own));
-    let handler = ErasedHandler::new(ToolAdapter::new(tool.clone()));
-    let tool = Arc::new(tool);
-    let world = app.world_mut();
-    if let Some(entity) = world.spawn_tool(definition, handler, options) {
-        let mut entity = world.entity_mut(entity);
-        entity.insert(PerCall { live, tool });
-        if let Some(own) = own {
-            entity.insert(own);
+        if !self.is_plugin_added::<PerCallPlugin>() {
+            self.add_plugins(PerCallPlugin);
         }
+        let definition = tool_definition(&tool);
+        // The annotations are the tool's own code's, so they give its default
+        // footprint, as `add_tool_with` takes them, not as hints.
+        let own = Touches::from_annotations(&definition.annotations);
+        let own = options.footprint.is_none().then_some(Footprint(own));
+        let handler = ErasedHandler::new(ToolAdapter::new(tool.clone()));
+        let build = Arc::new(move |place| {
+            CallHandler(Handler(ErasedHandler::new(ToolAdapter::new(
+                tool.at(place),
+            ))))
+        });
+        let world = self.world_mut();
+        if let Some(entity) = world.spawn_tool(definition, handler, options) {
+            let mut entity = world.entity_mut(entity);
+            entity.insert(PerCall {
+                live: T::LIVE,
+                build,
+            });
+            if let Some(own) = own {
+                entity.insert(own);
+            }
+        }
+        self
     }
-    app
 }
 
 /// The phases, in [`PrepareSystems::Compose`], in which each call of a tool
@@ -191,6 +331,8 @@ struct PerCallPlugin;
 
 impl Plugin for PerCallPlugin {
     fn build(&self, app: &mut App) {
+        app.try_register_required_components::<Agent, FilesSeen>()
+            .ok();
         app.init_resource::<ProjectRoot>()
             .init_resource::<ProjectWorkspace>()
             .configure_sets(
@@ -216,34 +358,12 @@ impl Plugin for PerCallPlugin {
 pub struct PerCall {
     /// Whether its calls report their output as they run.
     pub live: bool,
-    tool: Arc<dyn BuildAt>,
-}
-
-impl PerCall {
-    /// The handler of a call of this tool working at `place`. It runs
-    /// nothing.
-    pub fn build(&self, place: CallPlace) -> CallHandler {
-        self.tool.build(place)
-    }
-}
-
-/// A [`PerCallTool`] whose type is erased.
-trait BuildAt: Send + Sync {
-    fn build(&self, place: CallPlace) -> CallHandler;
-}
-
-impl<T: PerCallTool> BuildAt for T {
-    fn build(&self, place: CallPlace) -> CallHandler {
-        CallHandler(Handler(ErasedHandler::new(ToolAdapter::new(
-            self.at(place),
-        ))))
-    }
+    build: Arc<dyn Fn(CallPlace) -> CallHandler + Send + Sync>,
 }
 
 /// The tools registered per call, and where a call of an agent's works:
 /// for a plugin that builds a call somewhere else, as rig-basics' `Preview`
-/// builds it on an overlay of the workspace, or wraps a call where it
-/// works, as its `Checkpoint` does. The plugin inits [`ProjectRoot`], which
+/// builds it on an overlay of the workspace. The plugin inits [`ProjectRoot`], which
 /// this reads: without it the system using this fails. A tool replaced
 /// (its entity `Disabled`) is not seen.
 ///
@@ -266,7 +386,10 @@ impl<T: PerCallTool> BuildAt for T {
 /// let overlay = Arc::new(Overlay::new(project));
 /// let on = overlay.clone();
 /// let ran = app.world_mut().run_system_once(move |tools: PerCallTools| {
-///     let place = tools.place(Some(agent), on.clone());
+///     let place = CallPlace {
+///         overlaid: true,
+///         ..tools.place(Some(agent), on.clone())
+///     };
 ///     let (base, confine) = (place.base.clone(), place.confine);
 ///     let quiet = place.live.is_none() && place.spill.is_none();
 ///     let missing = tools.build("read", tools.place(None, on.clone()));
@@ -288,6 +411,7 @@ impl<T: PerCallTool> BuildAt for T {
 pub struct PerCallTools<'w, 's> {
     tools: Query<'w, 's, (&'static ToolDef, &'static PerCall)>,
     dirs: Query<'w, 's, &'static WorkDir>,
+    seen: Query<'w, 's, &'static FilesSeen>,
     root: Res<'w, ProjectRoot>,
 }
 
@@ -297,7 +421,8 @@ impl PerCallTools<'_, '_> {
     /// `live` and no `spill`, so a call built on an overlay writes nowhere
     /// else; a call that runs for real elsewhere sets `spill` itself
     /// ([`Scratch::spill`]). `confine` limits the file tools' paths; it is
-    /// no process sandbox.
+    /// no process sandbox. On another machine it compares path text and
+    /// does not see links there.
     pub fn place(&self, agent: Option<Entity>, workspace: Arc<dyn Workspace>) -> CallPlace {
         let dir = agent.and_then(|agent| self.dirs.get(agent).ok());
         CallPlace {
@@ -305,7 +430,12 @@ impl PerCallTools<'_, '_> {
             base: dir.map_or(&self.root.0, |dir| &dir.0).clone(),
             confine: dir.is_some(),
             live: None,
+            filter: None,
             spill: None,
+            seen: agent
+                .and_then(|agent| self.seen.get(agent).ok())
+                .map(|FilesSeen(seen)| seen.clone()),
+            overlaid: false,
         }
     }
 
@@ -313,7 +443,7 @@ impl PerCallTools<'_, '_> {
     /// `place`; `None` when no enabled tool of that name is registered per
     /// call. It runs nothing.
     pub fn build(&self, name: &str, place: CallPlace) -> Option<CallHandler> {
-        self.find(name).map(|tool| tool.build(place))
+        self.find(name).map(|tool| (tool.build)(place))
     }
 
     /// The per-call tool named `name`.

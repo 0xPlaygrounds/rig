@@ -6,7 +6,7 @@
 //! `raw` round-tripping to the provider's own type, raw-route parity,
 //! the single-text convenience, and the error path preserving the body.
 
-use super::support::with_mistral_embedding_cassette;
+use super::support::with_mistral_cassette;
 use rig::providers::mistral;
 
 use crate::support::{
@@ -28,7 +28,7 @@ fn inputs() -> Vec<String> {
 
 #[tokio::test]
 async fn normalized_response_is_complete() {
-    with_mistral_embedding_cassette(
+    with_mistral_cassette(
         "embedding_matrix/normalized_response_is_complete",
         |client| async move {
             let model = client.embedding(mistral::embedding::MISTRAL_EMBED, None);
@@ -48,7 +48,7 @@ async fn normalized_response_is_complete() {
 /// catch.
 #[tokio::test]
 async fn dimensions_request() {
-    with_mistral_embedding_cassette("embedding_matrix/dimensions_request", |client| async move {
+    with_mistral_cassette("embedding_matrix/dimensions_request", |client| async move {
         // `mistral-embed` is fixed-width; `output_dimension` is a
         // codestral-embed capability, so the cell exercises that model.
         let ndims = 64;
@@ -67,7 +67,7 @@ async fn dimensions_request() {
 /// A rejected request surfaces the provider's own error body, preserved raw.
 #[tokio::test]
 async fn error_preserves_provider_body() {
-    with_mistral_embedding_cassette(
+    with_mistral_cassette(
         "embedding_matrix/error_preserves_provider_body",
         |client| async move {
             let model = client.embedding("no-such-embedding-model", None);

@@ -1,9 +1,9 @@
 # rig-basics
 
 The default plugins of the [rig coding agent](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-harness), and
-the services only some plugins add. One crate, one module per group, all on
-rig-harness's public API. Each plugin is its own entry in `plugins.toml`,
-so each can be turned off alone.
+the services only some plugins add. One crate, one module per area, all on
+rig-harness's public API. Each plugin is its own name in `[plugins]` of
+`settings.toml`, so each can be turned off alone.
 
 - the root: `BasicCommandsPlugin` (`/help`, `/quit`);
 - `prompt`: rig's fixed system prompt for an agent without one
@@ -15,78 +15,96 @@ so each can be turned off alone.
 - `models`: `/model`, `/effort` and the model picker (`ModelsPlugin`), and
   the model a new session starts on (`defaults::DefaultsPlugin`);
 - `login`: `/login` and `/logout` for the ChatGPT plan's models and the
-  providers' API keys (`LoginPlugin`);
-- `session_picker`: the session and conversation lists of `/resume`,
-  `/fork` and `/agents` (`SessionPickerPlugin`, which the plugins of those
-  commands add, so it is not listed on its own);
-- `sessions`: `/new`, `/resume` and `/name` (`SessionsPlugin`), and `/fork`,
-  `/agents` and rewind (`agents::AgentsPlugin`);
-- `compaction`: summarizing a conversation near the model's window, and
-  `/compact` (`CompactionPlugin`);
+  providers' API keys (`LoginPlugin`), and `[login] app_name`, the app the
+  ChatGPT sign-in pages send the user back to;
+- `session_picker`: the session and conversation lists of `/resume` and
+  `/fork at` (`SessionPickerPlugin`, which the plugins of those commands
+  add, so it is not listed on its own);
+- `agent_picker`: `/agents`, which lists the session's agents and shows one
+  (`AgentPickerPlugin`, off by default; forks and subagents add it);
+- `sessions`: `/new`, `/resume` and `/name` (`SessionsPlugin`), and `/fork`
+  and rewind (`forks::ForksPlugin`, off by default);
+- `compaction`: summarizing a conversation near the model's window, after an
+  overflow and on `/compact`, as the pi coding agent does (`CompactionPlugin`);
 - `telemetry`: what model calls cost and `/usage` (`usage::UsagePlugin`),
   the effect log (`effect_log::EffectLogPlugin`), and warnings and errors
   as data (`diagnostics::DiagnosticsPlugin`);
-- `activity`: what each agent is doing, for views (`ActivityPlugin`);
+- `activity`: what the agent is doing, in the status line: writing,
+  running tools or the question it waits on (`ActivityPlugin`), and the
+  working animation, the bars before its status and the welcome mark's
+  pulse (`animation::WorkingAnimationPlugin`);
 - `coding_tools`: the `read`, `edit`, `write` and `shell` tools (`ReadTool`,
   `EditTool`, `WriteTool`, `ShellTool`), `@path` attachments
   (`AttachPlugin`), and `HOST:PATH` paths on other machines
   (`RemoteHostsPlugin`, below);
+- `redact`: API keys, tokens and private keys become placeholders where
+  they come in, the model's reply, tool output and results, and messages,
+  so no model, log or view holds them, while a tool call naming one runs
+  with the real value (`RedactPlugin`); without it nothing is redacted;
 - `approval`: one question for every effect a plugin wants approved
   (`ApprovalPlugin`);
 - `preview`: what a tool call would change on disk, before it runs
   (`PreviewPlugin`);
-- `checkpoint`: what each tool call changed on disk (`CheckpointPlugin`);
-- `reload`: `/reload` (`ReloadPlugin`), and
-  `/plugins` (`plugins::PluginsPlugin`);
+- `reload`: `/reload` (`ReloadPlugin`), `/update` (`update::UpdatePlugin`)
+  and `/plugins` (`plugins::PluginsPlugin`);
 - `print`: `--print` and `--json`, the fronts of a run with `-p`, piped
   stdin or JSON lines (`PrintPlugin`), and the loop of any run nobody sits
   at (`AppHeadlessExt`);
 - `helpers`: the `helper` tool, which runs `rig -p --json` children
-  (`HelpersPlugin`);
+  (`HelpersPlugin`), whose spend is the caller's as they report it;
+- `budget`: `[budget]` and `/budget`, which bound what the session spends,
+  helpers included, in dollars (priced calls only) or tokens
+  (`BudgetPlugin`);
 - `subagents`: the `task`, `message` and `wait` tools (`SubagentsPlugin`).
 
-In TUI, print and JSON runs, omitting `--tools` preserves each agent's tool access.
-`--tools=` permits no tools; `--tools=read,write` intersects each agent's
-existing access with those names before its first request and at execution.
-A run refuses a name no registered tool has, with exit code 2, before any
-model or tool call: a print or JSON run with its lines, a TUI run before its
-view opens. A print or JSON run checks once every plugin finished and no
-`print::Starting` entity is left: a plugin whose tools come in the
-background, such as rig-mcp-client's MCP servers, holds the start until they
-are in, and until then the run runs no turn, request or prompt. A TUI run
-checks once every plugin finished, so such a tool cannot be named there.
+In TUI, print and JSON runs, `--tools=read,write` limits that run to those
+tools, and `--tools=` leaves it none. Each agent keeps its own access within
+them, at its first request and at execution. The limit is never saved, so a
+later run without `--tools` has every tool the session kept.
+The harness owns this check (`rig_harness::run`), the same in every front:
+once every plugin finished and no `rig_harness::run::Starting` entity is
+left, a run refuses a name no registered tool has, with exit code 2, before
+any model or tool call: a print or JSON run with its lines, a TUI run as its
+view closes. A plugin whose tools come in the background, such as
+rig-mcp-client's MCP servers, holds the start until they are in, so their
+tools can be named; until then the agent runs no turn, request or prompt.
 This limit also applies to subagents, including their normally supplied
-`message` and `wait` tools: include those names when children need them.
-Subagents cannot use this flag to broaden their inherited restrictions.
-Access is intersected in Prepare Input and already-built tool advertisements
-are pruned in Prepare Edit, before dispatch and in a defined order with session
-persistence.
+`message` and `wait` tools: include those names when children need them. A
+subagent never has a tool its parent lacks: it gets `message` and `wait`
+only when its parent keeps them, and asking for another tool is refused. A
+tool its parent keeps but the run leaves out is given, and cannot be called
+in that run.
+The kernel keeps every agent within the run's tools (`rig_ecs::agent::RunTools`)
+before anything is admitted, as it keeps each within its parents.
 
-Without an explicit output limit, a turn asks for 64,000 tokens plus any
-thinking budget and 1,024, within the model's output limit, or the server's
-default for a model whose limits are unknown. The room left in the window caps it.
+A turn's request asks for its own output limit, else the model's, fitted to
+the room its input leaves in the window, as pi asks; compaction keeps
+`[compaction] reserve_tokens` of the model's input limit free for the reply.
 
-`/usage` reports provider-supplied cost when available, otherwise API list-price
+`/usage` reports what the agent, the agents below it (despawned ones
+included) and the session spent: provider-supplied cost when available, otherwise API list-price
 estimates. These are not subscription charges or verified invoices. Missing
 usage details or prices leave a partial estimate; previously saved estimates
 are not retroactively recalculated.
 
-An entry names the crate and the plugin's type by the module that defines
-it, the one path the type has, which `/plugins` and inspect show too:
+`settings.toml` names a plugin by its type's path through the module that
+defines it, the one path the type has, which `/plugins` and inspect show too:
 
 ```toml
-[[plugin]]
-crate = "rig-basics"
-plugin = "rig_basics::compaction::CompactionPlugin"
+[plugins]
+disable = ["rig_basics::compaction::CompactionPlugin"]
 ```
 
-`rig plugin disable rig_basics::compaction::CompactionPlugin` comments an
-entry out, and `rig plugin enable <type>` puts it back; `/plugins` does the
-same from inside the agent. `ApprovalPlugin`, `PreviewPlugin`,
-`CheckpointPlugin`, `HelpersPlugin`, `SubagentsPlugin`, `EffectLogPlugin` and
-`DiagnosticsPlugin` are listed disabled by default. A plugin that needs
-another adds it when it is missing, as `SessionsPlugin` adds
-`SessionPickerPlugin` and `SubagentsPlugin` adds `ApprovalPlugin`.
+`rig plugin disable rig_basics::compaction::CompactionPlugin` writes that,
+and `rig plugin enable <type>` takes it back out; `/plugins` does the same
+from inside the agent. Each module is an area of the plugin tree:
+`rig plugin disable rig-basics/sessions` turns off every plugin of
+`sessions` in one line (`[plugins] off`), and `enable` brings each back as
+it was. `ApprovalPlugin`, `PreviewPlugin`, `HelpersPlugin`, `BudgetPlugin`, `SubagentsPlugin`,
+`EffectLogPlugin`, `DiagnosticsPlugin` and `RedactPlugin` are off by
+default. A plugin that needs another adds it when it is missing, as
+`SessionsPlugin` adds `SessionPickerPlugin`, `SubagentsPlugin` adds
+`ApprovalPlugin`, and `HelpersPlugin` and `BudgetPlugin` add `UsagePlugin`.
 
 With the default `tui` feature, each plugin also draws its part in the
 terminal view; `default-features = false` leaves that out.
@@ -113,5 +131,4 @@ and a `shell` call ends with that status. A transport must forward its stdin
 and close it there when it ends: a `shell` command on the host stops when
 that stdin closes, so a call stopped at its timeout, interrupted, or cut off
 by a transport killed on this machine leaves nothing running there. `ssh`
-does this; `koh exec` does on a stop or when its stdin closes. A project's
-`.rig/settings.toml` cannot add hosts.
+does this; `koh exec` does on a stop or when its stdin closes.

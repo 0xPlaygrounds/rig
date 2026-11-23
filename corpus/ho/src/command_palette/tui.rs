@@ -5,6 +5,7 @@
 //! each time it changes. Up and Down (or Tab) select, Enter picks, and Esc
 //! (or Ctrl-P again) closes it.
 
+use rig_harness::commands::run_chosen;
 use rig_tui::crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use rig_tui::ratatui::layout::Constraint;
 use rig_tui::ratatui::style::Style;
@@ -52,9 +53,7 @@ impl Palette {
 pub struct PaletteSystems;
 
 pub(super) fn add(app: &mut App) {
-    if !app.is_plugin_added::<TuiPlugin>() {
-        app.add_plugins(TuiPlugin);
-    }
+    rig_harness::load::<TuiPlugin>(app, "rig-tui", "");
     // Shadows the input's Ctrl-P (the line above, which Up does too).
     app.add_key_binding(
         KeyBinding::new(KeyPress::ctrl('p'), "Command palette"),
@@ -178,7 +177,7 @@ fn activate(
     recent.record(entry, &home.0);
     match &entry.action {
         Action::Run(line) => {
-            commands.trigger(RunCommand::new(*agent, line.clone()));
+            commands.queue(run_chosen(*agent, line.clone()));
         }
         Action::Prefill(name) => {
             if let Some(input) = input.as_deref_mut() {

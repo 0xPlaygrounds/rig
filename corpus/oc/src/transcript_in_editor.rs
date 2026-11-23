@@ -1,24 +1,17 @@
-//! OC-09: Edit the conversation in your editor (one-conversation fresh
-//! held-out spec).
+//! Edit the conversation in your editor. `/edit-history` writes the focused agent's conversation to
+//! a Markdown file, one section per message part (`## [n] user`, `## [n] assistant`, `## [n]
+//! tool-result <tool> <call id>`), and opens the editor on it with the terminal. Tool calls are
+//! fenced ```` ```call <tool> <id> ```` blocks of JSON arguments; reasoning, images and other parts
+//! are placeholder lines that keep the original part.
 //!
-//! `/edit-history` writes the focused agent's conversation to a Markdown
-//! file, one section per message part (`## [n] user`, `## [n] assistant`,
-//! `## [n] tool-result <tool> <call id>`), and opens the editor on it with
-//! the terminal (rig-tui's `RunInTerminal`). Tool calls are fenced
-//! ```` ```call <tool> <id> ```` blocks of JSON arguments; reasoning, images
-//! and other parts are placeholder lines that keep the original part.
+//! On save the file is parsed and saved as one change of the conversation: text edits, deleted
+//! sections, changed call arguments. A call and its result go together: deleting one side asks
+//! whether to delete both or reopen the editor. A parse error reopens the editor with the error on
+//! top; quitting without saving changes nothing.
 //!
-//! On save the file is parsed, normalized (`pairing::normalize`, which
-//! merges the model's turns left side by side and keeps ids) and saved as
-//! one change of the conversation (`set_entries`): text edits, deleted
-//! sections, changed call arguments.
-//! A call and its result go together: deleting one side asks whether to
-//! delete both or reopen the editor. A parse error reopens the editor with
-//! the error on top; quitting without saving changes nothing.
-//! `/edit-history undo` restores the version before the last edit, read
-//! back from the session's log, its entries put back with their ids
-//! (`restore`), keeping the turns that came after it. Neither runs while
-//! the agent's turn does, nor without the terminal view.
+//! `/edit-history undo` restores the version before the last edit, with the ids its entries had,
+//! keeping the turns that came after it. Neither runs while the agent's turn does, nor without the
+//! terminal view.
 
 #[cfg(test)]
 mod tests;
@@ -622,11 +615,8 @@ fn ids(message: &Message) -> (Vec<String>, Vec<String>) {
             turn.tool_calls().map(|call| call.id.to_string()).collect(),
             Vec::new(),
         ),
-        Message::User { content } => {
-            let results = content.iter().filter_map(|part| match part {
-                UserContent::ToolResult(result) => Some(result.call.to_string()),
-                _ => None,
-            });
+        Message::User { .. } => {
+            let results = message.results().map(|result| result.call.to_string());
             (Vec::new(), results.collect())
         }
         Message::System { .. } => (Vec::new(), Vec::new()),
@@ -684,8 +674,13 @@ fn build(original: &[Entry], sections: &[Section], edited: &[Section]) -> Result
 
 /// The entries of the edited conversation, both sides of each orphaned
 /// call taken out when `delete_both`, normalized: the model's turns left
-/// side by side are one, keeping the first's id and author. Refused when
-/// that needs more than merging turns and the original paired its calls.
+/// side by side are one, keeping the first's id and author. A reply whose
+/// calls moved, in it or by a merge, gets a new id, so what was kept for a
+/// call at its place, such as its run time, is not drawn for the call now
+/// there. Refused when that needs more than merging turns and the original
+/// paired its calls, and when the edit takes out, moves or merges calls of
+/// a reply that repeats a call id, as its calls could only be told apart by
+/// order.
 fn finish(original: &[Entry], built: &Built, delete_both: bool) -> Result<Vec<Entry>, String> {
     let orphan = |id: String| delete_both && built.orphans.contains(&id);
     let mut entries = Vec::new();
@@ -708,13 +703,34 @@ fn finish(original: &[Entry], built: &Built, delete_both: bool) -> Result<Vec<En
             }
             Message::System { content } => content.trim().is_empty(),
         };
+        let (calls, before) = (ids(&message).0, ids(&entry.message).0);
+        // A call that kept its place keeps its reply's id, and what was
+        // kept for it at that place.
+        let moved = calls.iter().zip(&before).any(|(call, was)| call != was);
+        // The file names a call by its id alone, so in a reply that repeats
+        // one it can't tell which call an edit took out or moved, and a new
+        // id would leave such calls to be paired by order.
+        let repeats = |id: &&String| before.iter().filter(|was| was == id).count() > 1;
+        let shared = |calls: &[String]| calls.iter().filter(repeats).cloned().collect::<Vec<_>>();
+        let changed = moved || shared(&calls) != shared(&before);
+        if let Some(id) = shared(&before).first().filter(|_| changed) {
+            return Err(format!(
+                "a reply asks for two calls with the id `{id}`, so the edit can't keep each call in its place; leave that reply's calls as they are, or take out only calls at its end"
+            ));
+        }
         if !empty {
             entries.push(Entry {
                 message: message.into(),
+                id: entry.id.filter(|_| !moved),
                 ..entry.clone()
             });
         }
     }
+    // How many calls each kept reply has before merging, which only adds
+    // calls after its own.
+    let asked: Vec<_> = (entries.iter())
+        .filter_map(|entry| Some((entry.id?, ids(&entry.message).0.len())))
+        .collect();
     let normalized = pairing::normalize(entries);
     let worse = normalized
         .repairs
@@ -729,7 +745,28 @@ fn finish(original: &[Entry], built: &Built, delete_both: bool) -> Result<Vec<En
             "the edited conversation does not pair its tool calls: {why}"
         ));
     }
-    Ok(normalized.entries)
+    // Merging replies can put a call where another was, under that one's
+    // id: such a reply gets a new id, so nothing kept for the old places
+    // matches it. One that repeats a call id can't: its calls would be
+    // paired by order.
+    let mut entries = normalized.entries;
+    for entry in &mut entries {
+        let calls = ids(&entry.message).0;
+        let had = asked.iter().find(|(id, _)| Some(*id) == entry.id);
+        if entry.id.is_none() || had.is_some_and(|&(_, had)| had == calls.len()) {
+            continue;
+        }
+        let repeated = calls
+            .iter()
+            .find(|id| calls.iter().filter(|it| it == id).count() > 1);
+        if let Some(id) = repeated {
+            return Err(format!(
+                "a reply asks for two calls with the id `{id}`, so the edit can't keep each call in its place; leave that reply and the messages around it as they are"
+            ));
+        }
+        entry.id = None;
+    }
+    Ok(entries)
 }
 
 /// Every entry of `conversation`.

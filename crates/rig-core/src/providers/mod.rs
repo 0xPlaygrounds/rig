@@ -11,6 +11,7 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 pub mod anthropic;
+pub mod auth;
 pub mod azure;
 pub mod chatgpt;
 pub mod cohere;

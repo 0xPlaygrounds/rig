@@ -6,9 +6,10 @@ use std::io;
 use std::sync::Arc;
 
 use rig_core::completion::Message;
-use rig_core::conversation::{Aside, Author, Change, Conversation, Lineage};
+use rig_core::conversation::{Aside, Author, Change, Conversation, Lineage, ResultFacts};
+use rig_core::json_utils::from_value;
+use serde::Serialize;
 use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::blobs::{BLOBS, blob_names, named_blobs, put_blob, read_blob, store_change};
@@ -60,6 +61,13 @@ pub trait Rewrite: Send + Sync {
         false
     }
 
+    /// What the tool calls of an entry of a push, a splice or a reset
+    /// published, kept beside its message.
+    fn facts(&self, at: &Place<'_>, facts: &mut ResultFacts) -> bool {
+        let _ = (at, facts);
+        false
+    }
+
     /// A saved value under `key`, or a JSON value of a file (`key` is its
     /// name). A value made `null` is removed.
     fn value(&self, at: &Place<'_>, key: &str, value: &mut Value) -> bool {
@@ -79,11 +87,11 @@ pub trait Rewrite: Send + Sync {
     }
 }
 
-/// Every string, keys included, of every value: messages and asides through
-/// their serde form, saved values, text and every file. Redaction and path
-/// remapping are this. A string that is part of a message's or an aside's
-/// form, such as a field name or a tag, is left as it is where changing it
-/// would make the value unreadable.
+/// Every string, keys included, of every value: messages, their tool
+/// calls' facts and asides through their serde form, saved values, text and
+/// every file. Redaction and path remapping are this. A string that is part
+/// of a message's or an aside's form, such as a field name or a tag, is
+/// left as it is where changing it would make the value unreadable.
 ///
 /// ```
 /// use rig_core::conversation::Author;
@@ -116,6 +124,10 @@ impl<F: Fn(&mut String) -> bool + Send + Sync> Rewrite for Strings<F> {
 
     fn aside(&self, _: &Place<'_>, aside: &mut Aside) -> bool {
         map_serde(aside, &self.0)
+    }
+
+    fn facts(&self, _: &Place<'_>, facts: &mut ResultFacts) -> bool {
+        map_serde(facts, &self.0)
     }
 
     fn value(&self, _: &Place<'_>, _: &str, value: &mut Value) -> bool {
@@ -190,7 +202,7 @@ fn map_serde<T: Serialize + DeserializeOwned>(
     if !map_strings(&mut value, f) {
         return false;
     }
-    if let Ok(read) = T::deserialize(&value) {
+    if let Ok(read) = from_value(&value) {
         *item = read;
         return true;
     }
@@ -203,7 +215,7 @@ fn map_serde<T: Serialize + DeserializeOwned>(
     for leaf in leaves {
         let mut trial = kept.clone();
         if map_leaf(&mut trial, &leaf, f)
-            && let Ok(read) = T::deserialize(&trial)
+            && let Ok(read) = from_value(&trial)
         {
             *item = read;
             kept = trial;
@@ -300,29 +312,6 @@ fn map_leaf(value: &mut Value, leaf: &Leaf, f: &dyn Fn(&mut String) -> bool) -> 
         }
         _ => false,
     }
-}
-
-/// `item` mapped through `with` by its serde form, as a JSON value of a
-/// file is ([`Rewrite::value`] at `at`, under `key`): whether it changed.
-/// How a host or a plugin maps what it keeps of a rewritten session, such
-/// as a copy of a tool call held in memory.
-///
-/// # Errors
-///
-/// When the mapped form no longer reads as a `T`; `item` is left as it was,
-/// and the owner drops it or keeps it unreadable to no one.
-pub fn rewrite_value<T: Serialize + DeserializeOwned>(
-    with: &dyn Rewrite,
-    at: &Place<'_>,
-    key: &str,
-    item: &mut T,
-) -> Result<bool, serde_json::Error> {
-    let mut value = serde_json::to_value(&*item)?;
-    if !with.value(at, key, &mut value) {
-        return Ok(false);
-    }
-    *item = T::deserialize(value)?;
-    Ok(true)
 }
 
 /// The file `name` of `files` through [`Rewrite::file`], written back
@@ -461,11 +450,7 @@ pub(crate) fn map_log(
     with: &dyn Rewrite,
     blobs: &dyn Store,
 ) -> Result<Option<Mapped>, SessionError> {
-    let refuse = |line, why| SessionError::Record {
-        log: name.to_owned(),
-        line,
-        why,
-    };
+    let refuse = |line, why| SessionError::record(name, line, why);
     let Some((_, _, first)) = lines.iter().next() else {
         return Ok(None);
     };
@@ -541,8 +526,8 @@ pub(crate) fn map_record(
     Ok(Some(line))
 }
 
-/// Maps the messages and asides of `change` through `with`; whether any
-/// changed.
+/// Maps the messages, facts and asides of `change` through `with`;
+/// whether any changed.
 pub(crate) fn map_change(
     change: &mut Change,
     at: &Place<'_>,
@@ -551,7 +536,8 @@ pub(crate) fn map_change(
     Ok(match change {
         Change::Push { entries } | Change::Splice { with: entries, .. } => {
             entries.iter_mut().fold(false, |changed, entry| {
-                with.message(at, Arc::make_mut(&mut entry.message)) | changed
+                let message = with.message(at, Arc::make_mut(&mut entry.message));
+                message | with.facts(at, &mut entry.facts) | changed
             })
         }
         Change::Aside {
@@ -562,24 +548,33 @@ pub(crate) fn map_change(
     })
 }
 
-/// Maps the messages and saved asides of a reset's `state` through `with`,
-/// by its serde form; whether any changed.
+/// Maps the messages, facts and saved asides of a reset's `state` through
+/// `with`, by its serde form; whether any changed.
 fn map_state(state: &mut Conversation, at: &Place<'_>, with: &dyn Rewrite) -> Result<bool, String> {
     let fail = |failure: serde_json::Error| failure.to_string();
     let mut value = serde_json::to_value(&*state).map_err(fail)?;
     let mut changed = false;
     if let Some(Value::Array(messages)) = value.get_mut("messages") {
         for message in messages {
-            let mut typed = Message::deserialize(&*message).map_err(fail)?;
+            let mut typed: Message = from_value(message).map_err(fail)?;
             if with.message(at, &mut typed) {
                 *message = serde_json::to_value(&typed).map_err(fail)?;
                 changed = true;
             }
         }
     }
+    if let Some(Value::Array(metas)) = value.get_mut("meta") {
+        for facts in metas.iter_mut().filter_map(|meta| meta.get_mut("facts")) {
+            let mut typed: ResultFacts = from_value(facts).map_err(fail)?;
+            if with.facts(at, &mut typed) {
+                *facts = serde_json::to_value(&typed).map_err(fail)?;
+                changed = true;
+            }
+        }
+    }
     if let Some(Value::Array(asides)) = value.get_mut("asides") {
         for aside in asides.iter_mut().filter_map(|pair| pair.get_mut(1)) {
-            let mut typed = Aside::deserialize(&*aside).map_err(fail)?;
+            let mut typed: Aside = from_value(aside).map_err(fail)?;
             if with.aside(at, &mut typed) {
                 *aside = serde_json::to_value(&typed).map_err(fail)?;
                 changed = true;
@@ -587,7 +582,7 @@ fn map_state(state: &mut Conversation, at: &Place<'_>, with: &dyn Rewrite) -> Re
         }
     }
     if changed {
-        *state = Conversation::deserialize(&value).map_err(fail)?;
+        *state = from_value(&value).map_err(fail)?;
     }
     Ok(changed)
 }
@@ -618,7 +613,7 @@ fn map_state(state: &mut Conversation, at: &Place<'_>, with: &dyn Rewrite) -> Re
 /// process may rewrite a running session; rig-memory cannot tell, so a
 /// program rewriting a rig session first checks that no rig runs it.
 /// Files kept outside the store are the program's to map with the same
-/// `with` ([`rewrite_value`], [`rewrite_file`]).
+/// `with` ([`rewrite_file`]).
 ///
 /// # Errors
 ///
@@ -661,11 +656,8 @@ pub fn rewrite(
         bytes.extend_from_slice(&mapped.body);
         let new = LogLines::parse(bytes);
         if fold_lines(name, &new, Fold::WHOLE, &blob)?.is_none() {
-            return Err(SessionError::Record {
-                log: name.clone(),
-                line: 1,
-                why: "the rewritten log is empty".to_owned(),
-            });
+            let why = "the rewritten log is empty".to_owned();
+            return Err(SessionError::record(name, 1, why));
         }
         rewritten.logs.push(RewrittenLog {
             log: name.clone(),

@@ -32,7 +32,9 @@ use bevy_reflect::prelude::*;
 pub struct WakeAt(pub SystemTime);
 
 impl WakeAt {
-    /// A wake `after` from now.
+    /// A wake `after` from now. On an entity of the plugin's it is a wait
+    /// that can be put off or called off, such as a debounce: inserting a
+    /// new one puts it off, and despawning the entity calls it off.
     pub fn after(after: Duration) -> Self {
         Self(SystemTime::now() + after)
     }

@@ -5,11 +5,17 @@
 //! on the one the user picked from, or closed: the harness then runs the
 //! item's command, for the picker's agent or else the agent the user is
 //! looking at ([`ShownAgent`]), triggers [`Picked`] on
-//! it, and despawns it. A picker may take several items
+//! it, and despawns it. A refused command shows why and puts nothing in
+//! the input ([`run_chosen`]). A picker may take several items
 //! ([`Picker::multiple`]): the harness runs each one's command in list
 //! order. A [`Chosen`] holds the items picked and the text typed, either
 //! or both. A front answers an open [`Ask`] the same way: a `Pick` on it
 //! decides the answer, a question's choices with the note typed on them.
+//! In a run whose front shows no pickers
+//! ([`Front::shows_pickers`](crate::host::cli::Front::shows_pickers)), such
+//! as `-p`, the harness closes each picker a command opens at once, with an
+//! error notice that says what to type instead, which refuses the command,
+//! unless a plugin shows pickers itself ([`ShowsPickers`]).
 //!
 //! ```no_run
 //! use rig_harness::pick::{Chosen, Picked, Picker};
@@ -38,11 +44,13 @@ use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
 use rig_core::conversation::{Conversation, MessageId};
 use rig_core::effect::Decider;
+use rig_ecs::agent::Notice;
 use rig_ecs::stage::{Decision, Outcome, Settled};
 
 use crate::ask::{Answer, Ask};
-use crate::commands::RunCommand;
-use crate::main_agent::{ShownAgent, keep_shown};
+use crate::commands::{CommandRuns, run_chosen};
+use crate::host::cli::Cli;
+use crate::main_agent::{CurrentAgentPlugin, ShownAgent};
 
 /// One choice of a picker: what it shows, and the command line, without
 /// its `/`, that choosing it runs for the agent, such as
@@ -63,6 +71,30 @@ pub struct PickItem {
     pub more: Option<String>,
     /// Whether it is ticked at first, in a picker of several items.
     pub checked: bool,
+    /// The position of the item it sits under, listed before it, in a
+    /// picker with a tree. An item others sit under is a branch, which a
+    /// front shows folded at first. In a picker of several answered with its
+    /// ticks ([`Ticked`]), a branch's tick is a switch over its items:
+    /// unticked, they are off whatever their own ticks, and none of their
+    /// commands runs. An item picked by itself runs its command.
+    pub parent: Option<usize>,
+}
+
+impl PickItem {
+    /// An item showing `label` that runs `command` (empty: nothing).
+    pub fn new(label: impl Into<String>, command: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+            command: command.into(),
+            ..Self::default()
+        }
+    }
+
+    /// The same item, `detail` shown beside its label.
+    pub fn detail(mut self, detail: impl Into<String>) -> Self {
+        self.detail = Some(detail.into());
+        self
+    }
 }
 
 /// A filterable list for the user to choose one item, or several, from, on
@@ -114,21 +146,7 @@ impl Picker {
     /// The same picker with an item showing `label` that runs `command`
     /// (empty: nothing).
     pub fn item(mut self, label: impl Into<String>, command: impl Into<String>) -> Self {
-        self.items.push(PickItem {
-            label: label.into(),
-            command: command.into(),
-            detail: None,
-            more: None,
-            checked: false,
-        });
-        self
-    }
-
-    /// The same picker, its last item ticked at first, or not.
-    pub fn checked(mut self, checked: bool) -> Self {
-        if let Some(item) = self.items.last_mut() {
-            item.checked = checked;
-        }
+        self.items.push(PickItem::new(label, command));
         self
     }
 
@@ -208,6 +226,52 @@ impl Chosen {
 #[reflect(Component, Clone, Debug, Default, PartialEq)]
 pub struct Highlighted(pub usize);
 
+/// How a tick box shows an item of a tree, or an item its own tick.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TickBox {
+    /// Ticked, and every item under it on.
+    On,
+    /// Some items under it on, some off.
+    Mixed,
+    /// Unticked, or every item under it off.
+    Off,
+}
+
+impl TickBox {
+    /// How the item at `index` shows with `ticked`, among items each under
+    /// the one `parents` gives ([`PickItem::parent`]), which is listed
+    /// before it: an item its tick; a branch unticked is off, else as the
+    /// items under it are, each on while it and the branches between are
+    /// ticked.
+    pub fn of(parents: &[Option<usize>], index: usize, ticked: &[usize]) -> Self {
+        let on = |index: usize| ticked.contains(&index);
+        if !on(index) {
+            return Self::Off;
+        }
+        let parent = |item: usize| parents.get(item).copied().flatten().filter(|up| *up < item);
+        let branches = |item: usize| std::iter::successors(parent(item), move |up| parent(*up));
+        let is_branch = |item: usize| (0..parents.len()).any(|other| parent(other) == Some(item));
+        let items: Vec<bool> = (0..parents.len())
+            .filter(|item| branches(*item).any(|branch| branch == index))
+            .filter(|item| !is_branch(*item))
+            .map(|item| on(item) && branches(item).take_while(|up| *up != index).all(on))
+            .collect();
+        match (items.iter().all(|on| *on), items.iter().any(|on| *on)) {
+            (true, _) => Self::On,
+            (false, true) => Self::Mixed,
+            (false, false) => Self::Off,
+        }
+    }
+}
+
+/// The positions of the items ticked in a [`Picker`] of several, in list
+/// order, branches among them ([`PickItem::parent`]), set by the front on
+/// the picker's entity as the user ticks, so a plugin can show what changed
+/// before the picker closes.
+#[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq)]
+#[reflect(Component, Clone, Debug, Default, PartialEq)]
+pub struct Ticked(pub Vec<usize>);
+
 /// What a front shows beside a [`Picker`] of the plugin's, previewing the
 /// highlighted item ([`Highlighted`]): text, or a conversation drawn as a
 /// transcript, scrolled to entry `at` when given. Any plugin sets it on its
@@ -218,7 +282,6 @@ pub enum PickPreview {
     Text(String),
     /// A conversation, such as a saved session's line.
     Conversation {
-        /// The conversation.
         conversation: Conversation,
         /// The entry to show first; the end with `None`.
         at: Option<MessageId>,
@@ -275,29 +338,99 @@ pub struct PickPlugin;
 
 impl Plugin for PickPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<ShownAgent>()
-            .add_systems(First, keep_shown)
-            .add_observer(pick);
+        if !app.is_plugin_added::<CurrentAgentPlugin>() {
+            app.add_plugins(CurrentAgentPlugin);
+        }
+        app.add_observer(pick).add_observer(refuse_unshown);
     }
 }
 
+/// How many of a picker's commands a refusal lists.
+const PICKS: usize = 10;
+
+/// While any entity has it, something besides the run's front shows and
+/// answers pickers, such as a client attached to the session: no picker is
+/// refused.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct ShowsPickers;
+
+/// Closes a picker a command opened that nothing shows, saying what to do
+/// instead in an error notice about its agent, which refuses the command.
+/// A picker a plugin opens by itself is left to it.
+fn refuse_unshown(
+    added: On<Add<Picker>>,
+    pickers: Query<&Picker>,
+    (cli, command): (Option<Res<Cli>>, Option<Res<CommandRuns>>),
+    shows: Query<(), With<ShowsPickers>>,
+    mut notices: MessageWriter<Notice>,
+    mut commands: Commands,
+) {
+    let front = cli.and_then(|cli| cli.pickers()).unwrap_or(true);
+    let shown = front || !shows.is_empty() || command.is_none();
+    if let (false, Ok(picker)) = (shown, pickers.get(added.entity)) {
+        notices.write(Notice::error(picker.agent, unshown(picker)));
+        commands.trigger(Pick::person(added.entity, None));
+    }
+}
+
+/// What to do instead of picking from `picker` where no front shows it:
+/// type a secret, such as an API key, in rig at a terminal, which hides it;
+/// else type one of the commands of its items, or the command with what
+/// to pick.
+fn unshown(picker: &Picker) -> String {
+    let title = &picker.title;
+    let commands: Vec<String> = (picker.items.iter())
+        .filter(|item| !item.command.is_empty())
+        .map(|item| format!("/{}", item.command))
+        .collect();
+    if picker.secret {
+        return format!(
+            "{title}: rig cannot hide what you type here. Type it in `rig` in a terminal, with \
+             this agent's RIG_HOME; a running session does not read what is saved meanwhile."
+        );
+    }
+    if commands.is_empty() {
+        return format!(
+            "{title}: rig cannot show a list to pick from here; give the command what to pick, \
+             or use `rig` in a terminal."
+        );
+    }
+    let shown = commands.get(..PICKS).unwrap_or(&commands);
+    let more = if commands.len() > PICKS { ", …" } else { "" };
+    format!(
+        "{title}: rig cannot show a list to pick from here; type one of: {}{more}",
+        shown.join(", ")
+    )
+}
+
 /// Runs the chosen items' commands, in list order, for the picker's agent,
-/// else the one shown, and triggers [`Picked`] before despawning the
-/// picker; answers a question, a closed one refused.
+/// else the one shown, but not those an unticked branch switches off
+/// ([`PickItem::parent`]), and triggers [`Picked`] with every item chosen
+/// before despawning the picker; answers a question, a closed one refused.
 fn pick(
     pick: On<Pick>,
-    pickers: Query<&Picker>,
+    pickers: Query<(&Picker, Option<&Ticked>)>,
     mut asks: Query<(&Ask, &mut Decision), (Without<Outcome>, Without<Settled>)>,
     shown: Res<ShownAgent>,
     mut commands: Commands,
 ) {
     let (entity, chosen) = (pick.entity, pick.chosen.clone());
-    if let Ok(picker) = pickers.get(entity) {
+    if let Ok((picker, ticked)) = pickers.get(entity) {
         let items = chosen.as_ref().map(Chosen::positions).unwrap_or_default();
-        let items = items.iter().filter_map(|index| picker.items.get(*index));
+        let from_ticks = picker.multiple && ticked.is_some_and(|ticked| ticked.0 == items);
+        // Bounded, so a parent that loops ends.
+        let switched_on = |item: &PickItem| {
+            !from_ticks
+                || std::iter::successors(item.parent, |branch| picker.items.get(*branch)?.parent)
+                    .take(picker.items.len())
+                    .all(|branch| items.contains(&branch))
+        };
+        let items = (items.iter())
+            .filter_map(|index| picker.items.get(*index))
+            .filter(|item| switched_on(item));
         if let Some(agent) = picker.agent.or(shown.0) {
             for item in items.filter(|item| !item.command.is_empty()) {
-                commands.trigger(RunCommand::new(agent, item.command.clone()));
+                commands.queue(run_chosen(agent, item.command.clone()));
             }
         }
         commands.trigger(Picked { entity, chosen });
@@ -314,15 +447,13 @@ fn pick(
                 .into_iter()
                 .map(|index| ask.choices.get(index));
             let ids: Option<Vec<String>> = ids.map(|c| c.map(|c| c.id.clone())).collect();
-            let typed = chosen.text.is_some();
-            ids.filter(|ids| ask.multiple || ids.len() == 1 || (ids.is_empty() && typed))
-                .map(|choices| {
-                    let answer = Answer {
-                        choices,
-                        text: chosen.text,
-                    };
-                    answer.outcome()
-                })
+            let answer = ids.map(|choices| Answer {
+                choices,
+                text: chosen.text,
+            });
+            answer
+                .filter(|answer| ask.check(answer).is_ok())
+                .map(|answer| answer.outcome())
         }
         None => Some(Outcome::refused("The user closed the question.")),
     };

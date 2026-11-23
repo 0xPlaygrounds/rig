@@ -43,13 +43,11 @@ pub const SPEECH_02_TURBO: &str = "speech-02-turbo";
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct SpeechReply {
     /// The audio. MiniMax may send `null` here.
-    #[serde(default)]
     pub data: Option<SpeechData>,
     /// Audio length, size, format and billed characters, verbatim.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub extra_info: Option<serde_json::Value>,
     /// MiniMax's trace id.
-    #[serde(default)]
     pub trace_id: Option<String>,
 }
 

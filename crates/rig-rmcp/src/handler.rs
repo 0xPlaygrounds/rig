@@ -2,10 +2,10 @@
 //!
 //! ```
 //! use rig_core::tool::ManagedToolSink;
-//! use rig_rmcp::{McpClientHandler, rmcp};
+//! use rig_rmcp::McpClientHandler;
 //!
 //! fn handler<S: ManagedToolSink + Send + Sync + 'static>(sink: S) -> McpClientHandler<S> {
-//!     McpClientHandler::new(rmcp::model::ClientConfig::default(), sink)
+//!     McpClientHandler::new(rig_rmcp::client_config("my-app", "1.0"), sink)
 //! }
 //! ```
 
@@ -204,7 +204,8 @@ where
     /// The connection stays open while the returned [`McpConnection`] or a
     /// clone of it is held. When the server sends
     /// `notifications/tools/list_changed`, this handler re-fetches and
-    /// re-registers tools into the sink.
+    /// re-registers tools into the sink. A server whose handshake declared no
+    /// tools connects with none.
     ///
     /// # Errors
     ///

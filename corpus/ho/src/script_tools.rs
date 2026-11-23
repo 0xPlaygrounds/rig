@@ -1,6 +1,5 @@
-//! Tools from shell scripts, live (spec H08). An executable file in
-//! `<project>/.rig/tools/` or `RIG_HOME/tools/` whose header names it is a
-//! tool:
+//! Tools from shell scripts, live. An executable file in `<project>/.rig/tools/` or
+//! `RIG_HOME/tools/` whose header names it is a tool:
 //!
 //! ```text
 //! #!/bin/sh
@@ -11,13 +10,12 @@
 //! # timeout 300
 //! ```
 //!
-//! `# readonly` lets its calls run beside others. Each argument reaches the
-//! script as `RIG_ARG_<NAME>` and all of them as JSON on stdin; stdout is
-//! the result, and a non-zero exit is a failed result with stderr. Both
-//! directories are watched: a tool comes, changes and goes with its file,
-//! for every agent's next request. A call runs the version of the script
-//! its tool had when the call was admitted, from a copy, so an edit or a
-//! removal never reaches a call already under way.
+//! `# readonly` lets its calls run beside others. Each argument reaches the script as
+//! `RIG_ARG_<NAME>` and all of them as JSON on stdin; stdout is the result, and a non-zero exit is
+//! a failed result with stderr. Both directories are watched: a tool comes, changes and goes with
+//! its file, for every agent's next request. A call runs the version of the script its tool had
+//! when the call was admitted, from a copy, so an edit or a removal never reaches a call already
+//! under way.
 
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
@@ -171,7 +169,10 @@ fn refresh(
 ) {
     // Read at once on startup too, so the first request has them, not
     // only once the watch's first look comes.
-    let changed = changes.read().any(|change| dirs.contains(change.watch));
+    let changed = (changes.read())
+        .filter(|change| dirs.contains(change.watch) && change.event.names_files())
+        .count()
+        > 0;
     if !changed && !dirs.iter().any(|(_, watch)| watch.is_added()) {
         return;
     }
@@ -492,6 +493,7 @@ impl Runner {
         let how = Spawn {
             stdin: Some(args.to_string().into_bytes()),
             merge_stderr: false,
+            ..Spawn::default()
         };
         let process = launcher
             .with_env("RIG_TOOL_FILE", &script.path)
@@ -525,8 +527,8 @@ fn finish(
     let (mut out, mut err) = (String::new(), String::new());
     while let Ok(line) = process.lines().recv_timeout(PIPE_GRACE) {
         match line {
-            OutputLine::Out(text) => out.push_str(&text),
-            OutputLine::Err(text) => err.push_str(&text),
+            OutputLine::Out(bytes) => out.push_str(&String::from_utf8_lossy(&bytes)),
+            OutputLine::Err(bytes) => err.push_str(&String::from_utf8_lossy(&bytes)),
         }
     }
     let Some(status) = ended else {

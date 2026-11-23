@@ -10,10 +10,11 @@ use std::fmt::{Debug, Write};
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Seek, SeekFrom};
 use std::ops::Deref;
+#[cfg(unix)]
+use std::os::unix::fs::DirBuilderExt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
-use bevy_app::OnAppExitSystems;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_log::tracing::field::{Field, Visit};
@@ -27,10 +28,10 @@ use rig_harness_protocol::{Home, SessionDir, SessionId, StartReason};
 
 use rig_core::completion::Message;
 use rig_core::conversation::Author;
-use rig_ecs::WriteLogs;
 use rig_ecs::agent::{Agent, Conversation, Notice, NoticeLevel};
-use rig_ecs::restore::{SavedKeys, check_saved};
+use rig_ecs::restore::SavedKeys;
 use rig_ecs::session_log::{SessionLog, SessionStore, open_session};
+use rig_ecs::{Persist, WriteLogs};
 use rig_memory::{
     DirFiles, DirStore, Files, Rewrite, Rewritten, Session, SessionError, SessionMeta, Store,
     rewrite, rewrite_file,
@@ -42,7 +43,7 @@ use super::exit::ExitReason;
 use super::launcher::{LauncherRun, refuse};
 use crate::describe::Describing;
 use crate::plugin_data::PluginData;
-use crate::services::{ProjectRoot, RigHome};
+use crate::services::{Project, ProjectRoot, RigHome};
 use crate::timings::{self, SystemTimings, TimeSystems};
 use crate::workspace::ProjectWorkspace;
 
@@ -74,10 +75,12 @@ impl Deref for SessionPaths {
 /// this, and reads it before writing; a run whose session does not open or
 /// read is refused, unchanged. The harness marks the running session saved
 /// once its log wrote and an agent's conversation has a user or assistant
-/// message, so `/resume` lists it (not a sessionless run's); a program
-/// that saves a new session through this marks it itself
-/// ([`SessionDir::mark_saved`]). [`Self::relist`] keeps the listing of a
-/// session no rig runs current.
+/// message, so `/resume` lists it (not a sessionless run's), and unmarks
+/// it while none has; a program that saves a new session through this
+/// marks it itself ([`SessionDir::mark_saved`]). [`Self::relist`] keeps
+/// the listing of a session no rig runs current. Opening, reading and
+/// writing a store may block the frame: do it in commands and at startup,
+/// as `/resume` does.
 #[derive(Resource, Clone)]
 pub struct StoreOpener {
     /// How a store is opened.
@@ -114,8 +117,8 @@ impl StoreOpener {
     /// `store`, which no rig runs, up to it, as a running rig keeps its
     /// own: its listed values, its main agent's model and message count,
     /// and when it changed ([`SessionMeta::relist`]). Every writer of a
-    /// stopped session calls it after writing; [`edit_stopped`] and
-    /// [`rewrite_stopped`] do.
+    /// stopped session calls it after writing; [`rewrite_stopped`]
+    /// does.
     ///
     /// # Errors
     ///
@@ -179,7 +182,12 @@ pub(crate) fn paths_in(home: &Home) -> SessionPaths {
     // A directory that cannot be created shows up as a failed log write.
     // A build describing itself keeps none.
     if crate::describe::describing().is_none() {
-        fs::create_dir_all(dir.path()).ok();
+        fs::create_dir_all(home.sessions()).ok();
+        home.keep_private();
+        #[cfg(unix)]
+        fs::DirBuilder::new().mode(0o700).create(dir.path()).ok();
+        #[cfg(not(unix))]
+        fs::create_dir(dir.path()).ok();
     }
     SessionPaths(dir)
 }
@@ -205,27 +213,32 @@ pub struct AppStart(pub StartReason);
 #[derive(Resource)]
 struct Unmarked;
 
-/// Until the session's log wrote and an agent's conversation has a user or
-/// assistant message, in a run that keeps its session: the session is
-/// marked saved then ([`SessionDir::mark_saved`]), so `/resume` lists it.
-/// A sessionless run never has it.
+/// In a run that keeps its session: the session is marked saved
+/// ([`SessionDir::mark_saved`]) while it holds a conversation
+/// ([`holds_conversation`]), so `/resume` lists it and the launcher says
+/// how to resume it, and unmarked when it no longer does, such as after a
+/// first message whose turn failed. A sessionless run never has it.
 #[derive(Resource)]
-struct Unsaved;
+struct KeepsSession;
 
 /// Inserts the [`SessionPaths`] from the environment, unless the log took
 /// them already, the default [`StoreOpener`] and [`Scratch`], the
 /// [`SystemTimings`] (which stay empty without the log), opens the
 /// [`SessionStore`] once every plugin is built and then inserts the
-/// [`PluginData`], routes panics to the log,
+/// [`PluginData`], routes panics to the log unless the build describes
+/// itself,
 /// says why the app started ([`AppStart`]), and deletes sessions,
 /// finishing at startup the deletes a crash cut short.
 pub struct SessionPlugin;
 
 impl Plugin for SessionPlugin {
     fn build(&self, app: &mut App) {
-        std::panic::set_hook(Box::new(|info| {
-            error!("{info}\n{}", std::backtrace::Backtrace::capture());
-        }));
+        // A describing build keeps no log; the launcher shows its stderr.
+        if crate::describe::describing().is_none() {
+            std::panic::set_hook(Box::new(|info| {
+                error!("{info}\n{}", std::backtrace::Backtrace::capture());
+            }));
+        }
         let paths = session_paths(app.world_mut());
         if !app.world().contains_resource::<Scratch>() {
             app.insert_resource(Scratch(Some(paths.path().to_owned())));
@@ -240,17 +253,12 @@ impl Plugin for SessionPlugin {
             app.insert_resource(AppStart(reason));
         }
         if first {
-            app.insert_resource(Unmarked).add_systems(
-                Last,
-                mark_started
-                    .run_if(resource_exists::<Unmarked>)
-                    .before(discard_unsaved),
-            );
+            app.insert_resource(Unmarked)
+                .add_systems(Last, mark_started.run_if(resource_exists::<Unmarked>));
         }
         app.init_resource::<StoreOpener>()
             .init_resource::<SystemTimings>()
             .add_message::<SessionDeleted>()
-            .add_message::<SessionDeleteFailed>()
             .add_message::<Notice>()
             .add_observer(delete_session)
             .add_systems(PreStartup, list_keys)
@@ -260,17 +268,15 @@ impl Plugin for SessionPlugin {
             )
             .add_systems(First, timings::next_frame)
             .add_systems(
-                Last,
-                mark_saved
-                    .after(WriteLogs)
-                    .before(discard_unsaved)
-                    .run_if(resource_exists::<Unsaved>),
-            )
-            .add_systems(
-                Last,
-                discard_unsaved
-                    .after(OnAppExitSystems)
-                    .run_if(on_message::<AppExit>),
+                Persist,
+                (
+                    track_saved
+                        .run_if(resource_exists::<KeepsSession>)
+                        .in_set(MarkSaved),
+                    discard_unsaved.run_if(on_message::<AppExit>),
+                )
+                    .chain()
+                    .after(WriteLogs),
             );
     }
 
@@ -311,8 +317,8 @@ fn list_keys(keys: Option<Res<SavedKeys>>, stores: Option<ResMut<StoreOpener>>) 
 }
 
 /// Inserts the [`PluginData`] of this run, unless the app has one: in the
-/// session's store when it opened, for the [`ProjectRoot`] in the
-/// [`ProjectWorkspace`].
+/// session's store when it opened, for the [`Project`], or the
+/// [`ProjectRoot`] of a [`ProjectWorkspace`] on another host.
 fn insert_plugin_data(world: &mut World) {
     if world.contains_resource::<PluginData>() {
         return;
@@ -321,28 +327,32 @@ fn insert_plugin_data(world: &mut World) {
     let session = world
         .get_resource::<SessionStore>()
         .map(|store| -> Arc<dyn Files> { store.0.clone() });
-    let root = world
-        .get_resource::<ProjectRoot>()
-        .cloned()
-        .unwrap_or_default();
     let workspace = world.get_resource::<ProjectWorkspace>();
-    let host = workspace.and_then(|workspace| workspace.0.host());
-    let data = PluginData::new(&home, session, &root.0, host);
+    let host = workspace.and_then(|workspace| workspace.0.host().map(str::to_owned));
+    // This machine's directories say nothing of a project on another host.
+    let root = match host {
+        None => world.get_resource_or_init::<Project>().root.clone(),
+        Some(_) => {
+            world
+                .get_resource::<ProjectRoot>()
+                .cloned()
+                .unwrap_or_default()
+                .0
+        }
+    };
+    let data = PluginData::new(&home, session, &root, host.as_deref());
     world.insert_resource(data);
 }
 
 /// Opens the session's store, the one in the world or else the one the
 /// run's front or [`StoreOpener`] opens for [`SessionPaths`], and reads
 /// the session it holds ([`open_session`]), before anything is written to
-/// it. A session whose format is refused is migrated through that store,
-/// the saved values its steps changed checked against the registered
-/// types, and read again;
-/// the launcher's lock on the session holds it meanwhile. A sessionless
+/// it. A sessionless
 /// run never marks its session saved, so a crash leaves no session for
 /// `/resume` to list.
 fn open_store(world: &mut World) -> Result<(), SessionError> {
-    let store = match world.remove_resource::<SessionStore>() {
-        Some(SessionStore(store)) => store,
+    let (store, keeps) = match world.remove_resource::<SessionStore>() {
+        Some(SessionStore(store)) => (store, false),
         None => {
             cli::choose(world);
             let front = world.get_resource::<Cli>().and_then(Cli::chosen);
@@ -353,28 +363,16 @@ fn open_store(world: &mut World) -> Result<(), SessionError> {
             let (Some(paths), Some(stores)) = (world.get_resource::<SessionPaths>(), stores) else {
                 return Ok(());
             };
-            let store = stores.open(paths)?;
-            if keeps && !paths.is_saved() {
-                world.insert_resource(Unsaved);
-            }
-            store
+            (stores.open(paths)?, keeps)
         }
     };
-    match open_session(world, store.clone()) {
-        Err(SessionError::Format { .. }) => {
-            CHAIN.migrate(&*store, &|key, value| check_saved(world, key, value))?;
-            open_session(world, store)
-        }
-        opened => opened,
+    open_session(world, store)?;
+    // Only a session that was read is judged by what it holds.
+    if keeps {
+        world.insert_resource(KeepsSession);
     }
+    Ok(())
 }
-
-/// The steps a session in an earlier format is migrated by; in this
-/// crate's tests, those from the synthetic format too.
-#[cfg(not(test))]
-const CHAIN: rig_memory::migration::Chain = rig_memory::migration::SHIPPED;
-#[cfg(test)]
-const CHAIN: rig_memory::migration::Chain = rig_memory::migration::testing::CHAIN;
 
 /// Keeps a refused run out of its session's directory: what it logged
 /// goes to the launcher's run directory, where the launcher points, or
@@ -387,28 +385,58 @@ pub(crate) fn leave_session(world: &mut World) {
     world.remove_resource::<Unmarked>();
 }
 
-/// Marks the session saved once its log wrote and an agent's conversation
-/// has a user or assistant message: a session that only changed settings
-/// is not worth resuming, and is removed on exit.
-fn mark_saved(
+/// The system in [`Persist`], after the logs are written, that marks the
+/// session saved once it holds a conversation. A system in [`Persist`]
+/// that reads `SessionPaths::is_saved` goes `.after(MarkSaved)`.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct MarkSaved;
+
+/// Keeps the session's saved marker equal to whether it holds a
+/// conversation: marked once its log wrote and it does, unmarked once it
+/// no longer does. Once a log write failed, the log on disk may hold more
+/// than the agents do, so the marker stays as it is. `marked` is the
+/// marker as last set, read from the session the first time, so the
+/// marker is touched only on a change; a change that failed is tried
+/// again each frame, and said once until one succeeds.
+fn track_saved(
     log: Option<Res<SessionLog>>,
     conversations: Query<&Conversation, With<Agent>>,
     paths: Res<SessionPaths>,
-    mut commands: Commands,
+    (mut marked, mut failing): (Local<Option<bool>>, Local<bool>),
 ) {
-    let said = |conversation: &Conversation| {
+    let Some(log) = log.filter(|log| log.failure().is_none()) else {
+        return;
+    };
+    let marked = marked.get_or_insert_with(|| paths.is_saved());
+    let holds = holds_conversation(conversations.iter());
+    // Marked only once the log holds what it marks.
+    let written = log.has_written();
+    let change = match (*marked, holds) {
+        (false, true) if written => paths.mark_saved(),
+        (true, false) => paths.unmark_saved(),
+        _ => return,
+    };
+    match change {
+        Ok(()) => (*marked, *failing) = (holds, false),
+        Err(failure) if !*failing => {
+            *failing = true;
+            warn!("could not mark whether the session is saved: {failure}");
+        }
+        Err(_) => {}
+    }
+}
+
+/// Whether a session with these agents' `conversations` is worth
+/// resuming: one has a user or assistant message. A session that only
+/// changed settings, or whose only message's turn failed and gave it
+/// back, is not.
+fn holds_conversation<'a>(mut conversations: impl Iterator<Item = &'a Conversation>) -> bool {
+    conversations.any(|conversation| {
         conversation
             .messages()
             .iter()
             .any(|message| matches!(**message, Message::User { .. } | Message::Assistant(_)))
-    };
-    if !log.is_some_and(|log| log.has_written()) || !conversations.iter().any(said) {
-        return;
-    }
-    commands.remove_resource::<Unsaved>();
-    if let Err(failure) = paths.mark_saved() {
-        warn!("could not mark the session saved: {failure}");
-    }
+    })
 }
 
 /// Marks the session started at the end of its first app's first frame.
@@ -423,10 +451,10 @@ fn mark_started(paths: Res<SessionPaths>, mut commands: Commands) {
 /// nothing saved there, such as a run that switches to another session at
 /// startup, or when a sessionless front's run ends, however, once
 /// everything was written there; never a saved session a front keeps,
-/// never on a reload, which runs the session again, never on a switch the
-/// launcher is told of (its switch file is in the directory, and the
-/// launcher removes an unsaved session once it read it), and never a
-/// resumed session's, which a sessionless front refuses. A run that
+/// never on a reload, which runs the session again, never on a switch
+/// (the launcher removes an unsaved session once it claimed the next, and
+/// runs this one on when it cannot), and never a resumed session's, which
+/// a sessionless front refuses. A run that
 /// failed first moves its text log into the launcher's run directory,
 /// where the launcher's failure message points.
 fn discard_unsaved(
@@ -440,16 +468,14 @@ fn discard_unsaved(
     (run, scratch): (Option<Res<LauncherRun>>, Option<Res<Scratch>>),
 ) {
     let exits: Vec<&AppExit> = exits.read().collect();
-    let reload = match reason.as_deref() {
-        Some(reason) => *reason == ExitReason::Reload,
-        None => exits
-            .iter()
-            .any(|exit| ExitReason::of(exit) == ExitReason::Reload),
-    };
+    let runs_again = matches!(
+        reason.as_deref(),
+        Some(ExitReason::Reload | ExitReason::Switch(_))
+    );
     let discard = if cli.is_some_and(|cli| cli.sessionless()) {
         start.is_none_or(|start| start.0 != StartReason::Resumed)
     } else {
-        !reload && !paths.is_saved() && !paths.switch().exists()
+        !runs_again && !paths.is_saved() && !paths.holds_logs()
     };
     if !discard {
         return;
@@ -463,36 +489,6 @@ fn discard_unsaved(
     fs::remove_dir_all(paths.path()).ok();
 }
 
-/// Changes the saved session in `dir`, which no rig runs, as
-/// [`rewrite_stopped`] rewrites one: read, given
-/// to `edit`, and saved, its listing brought up to it
-/// ([`StoreOpener::relist`]). It holds the session's launcher lock
-/// ([`SessionDir::hold`]) from the check to the last write, so a rig
-/// starting meanwhile finds it running elsewhere. The running session,
-/// `running`, is refused: edit its agents' `Conversation` instead.
-///
-/// # Errors
-///
-/// When `dir` is the running session or another rig runs it, when its
-/// store does not open or its session cannot be read (nothing written),
-/// when `edit` fails (nothing written), or when a write fails.
-pub fn edit_stopped(
-    stores: &StoreOpener,
-    running: &SessionDir,
-    dir: &SessionDir,
-    edit: impl FnOnce(&mut Session) -> Result<(), String>,
-) -> Result<(), String> {
-    let _held = hold_stopped(running, dir, "edit its agents' conversations instead")?;
-    let store = stores.open(dir).map_err(|failure| failure.to_string())?;
-    let mut session = Session::read(&*store).map_err(|failure| failure.to_string())?;
-    edit(&mut session)?;
-    session
-        .save(&*store)
-        .map_err(|failure| failure.to_string())?;
-    relist(stores, &*store, &session);
-    Ok(())
-}
-
 /// Brings the listing of `session`, saved to `store`, up to it; a listing
 /// not written is logged, as a running rig's is, since the session is.
 fn relist(stores: &StoreOpener, store: &dyn Store, session: &Session) {
@@ -501,12 +497,13 @@ fn relist(stores: &StoreOpener, store: &dyn Store, session: &Session) {
     }
 }
 
-/// The launcher lock of the session in `dir`, held for an edit of it:
-/// refused for the running session (`running`, which is edited as `this`
-/// says), a session that is not there and one another rig runs.
-fn hold_stopped(running: &SessionDir, dir: &SessionDir, this: &str) -> Result<File, String> {
+/// The launcher lock of the session in `dir`, held for a rewrite or a
+/// delete of it:
+/// refused for the running session (`running`), a session that is not
+/// there and one another rig runs.
+fn hold_stopped(running: &SessionDir, dir: &SessionDir) -> Result<File, String> {
     if dir.path() == running.path() {
-        return Err(format!("it is this session: {this}"));
+        return Err("it is this session".to_owned());
     }
     if !dir.path().is_dir() {
         return Err("there is no such session".to_owned());
@@ -518,7 +515,7 @@ fn hold_stopped(running: &SessionDir, dir: &SessionDir, this: &str) -> Result<Fi
 
 /// Rewrites the saved session in `dir`, which no rig runs, through
 /// `with`, as done by `by` (rig-memory's `rewrite`), holding its launcher
-/// lock throughout, as [`edit_stopped`] does: its store opened by
+/// lock throughout: its store opened by
 /// `stores`, then the files kept in its directory: its name
 /// ([`SessionDir::name`]), the text log and the spilled tool output, and
 /// its listing brought up to it ([`StoreOpener::relist`]). The running
@@ -557,7 +554,7 @@ pub fn rewrite_stopped(
     by: Author,
     with: &dyn Rewrite,
 ) -> Result<Rewritten, String> {
-    let _held = hold_stopped(running, dir, "only a stopped session is rewritten")?;
+    let _held = hold_stopped(running, dir)?;
     let store = stores.open(dir).map_err(|failure| failure.to_string())?;
     let rewritten = rewrite(&*store, by, with).map_err(|failure| failure.to_string())?;
     let scratch = DirFiles::new(dir.path());
@@ -579,7 +576,7 @@ const LOG: &str = "agent.log";
 /// `with`, as the text file `name`; whether it changed. A name mapped to
 /// blank is removed.
 fn map_name(dir: &SessionDir, with: &dyn Rewrite) -> io::Result<bool> {
-    let Some(name) = dir.name() else {
+    let Some(name) = dir.name()? else {
         return Ok(false);
     };
     let mut bytes = name.into_bytes();
@@ -605,9 +602,9 @@ fn map_spill(scratch: &DirFiles, with: &dyn Rewrite) -> io::Result<()> {
 /// The session is marked deleting first ([`SessionDir::mark_deleting`]),
 /// which hides it from listings, then everything its store holds is
 /// destroyed, wherever [`StoreOpener`] keeps it, then its directory is
-/// removed. A delete a crash cut short is finished at the next start.
-/// [`SessionDeleted`] follows, or [`SessionDeleteFailed`] and an error
-/// notice say why not.
+/// removed, all while holding its launcher lock. A delete a crash cut short
+/// is finished at the next start. [`SessionDeleted`] follows, or an error
+/// notice says why not.
 #[derive(Event, Clone, Debug)]
 pub struct DeleteSession(pub SessionId);
 
@@ -616,52 +613,31 @@ pub struct DeleteSession(pub SessionId);
 #[derive(Message, Clone, Debug)]
 pub struct SessionDeleted(pub SessionId);
 
-/// A session [`DeleteSession`], or the next start finishing a delete a
-/// crash cut short, could not remove, and why, such as `another rig runs
-/// it`.
-#[derive(Message, Clone, Debug)]
-pub struct SessionDeleteFailed {
-    /// The session.
-    pub id: SessionId,
-    /// Why it is still there.
-    pub why: String,
-}
-
 fn delete_session(
     delete: On<DeleteSession>,
     (paths, stores): (Res<SessionPaths>, Res<StoreOpener>),
     home: Option<Res<RigHome>>,
     mut deleted: MessageWriter<SessionDeleted>,
-    mut failed: MessageWriter<SessionDeleteFailed>,
     mut notices: MessageWriter<Notice>,
 ) {
     let home = home.map_or_else(Home::from_env, |home| home.0.clone());
     let session = home.session(&delete.0);
-    let refusal = if session.path() == paths.path() {
-        Some("it is this session".to_owned())
-    } else if !session.path().is_dir() {
-        Some("there is no such session".to_owned())
-    } else if session.runs_elsewhere() {
-        Some("another rig runs it".to_owned())
-    } else {
+    let done = hold_stopped(&paths, &session).and_then(|_held| {
         session
             .mark_deleting()
             .map_err(SessionError::from)
             .and_then(|()| finish_delete(&session, &stores))
-            .err()
-            .map(|failure| failure.to_string())
-    };
-    match refusal {
-        None => {
+            .map_err(|failure| failure.to_string())
+    });
+    match done {
+        Ok(()) => {
             deleted.write(SessionDeleted(delete.0.clone()));
         }
-        Some(why) => {
+        Err(why) => {
             notices.write(Notice::error(
                 None,
                 format!("Could not delete session {}: {why}.", delete.0),
             ));
-            let id = delete.0.clone();
-            failed.write(SessionDeleteFailed { id, why });
         }
     }
 }
@@ -684,13 +660,10 @@ fn finish_deletes(
     home: Option<Res<RigHome>>,
     (paths, stores): (Res<SessionPaths>, Res<StoreOpener>),
     mut deleted: MessageWriter<SessionDeleted>,
-    mut failed: MessageWriter<SessionDeleteFailed>,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Some(home) = home else {
-        return;
-    };
-    let Ok(entries) = fs::read_dir(home.0.sessions()) else {
+    let home = home.map_or_else(Home::from_env, |home| home.0.clone());
+    let Ok(entries) = fs::read_dir(home.sessions()) else {
         return;
     };
     for entry in entries.flatten() {
@@ -703,7 +676,7 @@ fn finish_deletes(
                 deleted.write(SessionDeleted(id));
             }
             (Ok(()), None) => {}
-            (Err(failure), id) => {
+            (Err(failure), _) => {
                 notices.write(Notice::warn(
                     None,
                     format!(
@@ -711,10 +684,6 @@ fn finish_deletes(
                         session.path().display()
                     ),
                 ));
-                if let Some(id) = id {
-                    let why = failure.to_string();
-                    failed.write(SessionDeleteFailed { id, why });
-                }
             }
         }
     }
@@ -850,7 +819,7 @@ pub struct Logged {
 pub struct LoggedQueue(pub Receiver<Logged>);
 
 /// The `LogPlugin` layer passing warnings and errors on to [`LoggedQueue`],
-/// which exists before any plugin `plugins.toml` lists is added, and
+/// which exists before any plugin the settings turn on is added, and
 /// timing systems into [`SystemTimings`].
 pub fn log_events(app: &mut App) -> Option<BoxedLayer> {
     let (sender, receiver) = crossbeam_channel::bounded(256);

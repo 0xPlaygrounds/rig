@@ -1,52 +1,15 @@
-//! Cross-family tool calling: the dimension that tests
-//! `EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS`.
+//! Cross-family tool calling with llama.cpp.
 //!
-//! `--jinja` makes `llama-server` render the **model's own** chat template, so
-//! the tool-call wire is a property of the *model family*, not of llama.cpp.
-//! Qwen, Llama and Mistral each emit and parse tool calls through different
-//! delimiters, and a claim about "what llama.cpp does with tool calls" that
-//! was only ever checked against Qwen is a claim about Qwen.
+//! `--jinja` makes `llama-server` render the model's own chat template, so
+//! the tool-call wire is a property of the model family, not of llama.cpp.
+//! Coverage is targeted: one blocking tool cell per non-Qwen family
+//! ([`llama_family_calls_a_tool`]), and the rest of the matrix stays on Qwen.
 //!
-//! Coverage here is **targeted, not broad**, exactly as the corpus rules
-//! require: one blocking tool cell per non-Qwen family. The rest of the matrix
-//! stays on Qwen.
-//!
-//! | Family | Model | Template tool support | Blocking | Streaming |
-//! | --- | --- | --- | --- | --- |
-//! | Qwen (smoke) | `unsloth/Qwen3-1.7B-GGUF` Q4_K_M | yes | `tools.rs`, `tool_matrix.rs` | `streaming_tools.rs` |
-//! | Qwen (competent) | `unsloth/Qwen3-8B-GGUF` Q4_K_M | yes, parallel | `tool_matrix.rs` | — |
-//! | Llama | `bartowski/Llama-3.2-3B-Instruct-GGUF` Q4_K_M | yes, no parallel | [`llama_family_calls_a_tool`] | none |
-//!
-//! # The finding: llama.cpp does not emit single-chunk tool calls
-//!
-//! `EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS` asks whether the backend can put a
-//! whole tool call — id, name and **complete** arguments — into one streaming
-//! chunk. The provider inherited `true` for it. Measured against
-//! `llama-server` b10964-b29c606e2 it is **false on every family that can call a
-//! tool at all**: arguments stream one token at a time, so the first chunk
-//! carries the name beside a lone `{` and the closing `}` arrives ten chunks
-//! later. Even a *zero-argument* call streams as `{` then `}` rather than as
-//! `{}`.
-//!
-//! The const is now `false`. Flipping it changes no output and that was
-//! checked rather than argued: the shared accumulator's immediate-emit is a
-//! probe that finalizes a call only when its
-//! accumulated arguments parse, so a lone `{` was already being declined, and
-//! the whole recorded streaming corpus replays byte-identically either way.
-//! What changes is that the const stops asserting something untrue — and that
-//! a future build whose partial arguments happened to parse could not finalize
-//! a truncated call.
-//!
-//! # Gemma has no tools, and that is a note rather than a finding
-//!
-//! `GET /props` on the Gemma server reports
-//! `chat_template_caps.supports_tools: false` and
-//! `supports_tool_calls: false`. Its template has no tool section, so
-//! llama.cpp has nothing to render tool definitions into and nothing to parse
-//! a call back out of; the model answers a tool prompt with a ```` ```tool_code ````
-//! block as ordinary prose. A capability the loaded model lacks is not a rig
-//! defect — it is the model choice — so the cell records the shape and the
-//! streaming twin is dropped with this as its reason.
+//! `EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS` is `false` for llama.cpp: on
+//! every family that can call a tool, arguments stream one token at a time,
+//! so the first chunk carries the name beside a lone `{`. Gemma's template
+//! reports no tool support in `GET /props`, so it has no tool cell; a
+//! capability the loaded model lacks is the model choice, not a rig defect.
 
 use rig::message::AssistantContent;
 use serde_json::Value;
@@ -129,11 +92,3 @@ async fn llama_family_calls_a_tool() {
     serde_json::from_str::<Value>(&calls[0].1)
         .expect("the wire's stringified arguments must be JSON");
 }
-
-// ---------------------------------------------------------------------------
-// Mistral Small 3.2
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// Gemma 3 — no tool support in the template
-// ---------------------------------------------------------------------------

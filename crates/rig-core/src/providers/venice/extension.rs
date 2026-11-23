@@ -238,40 +238,28 @@ pub struct VeniceExtras {
 #[derive(Clone, Debug, Default, PartialEq, Deserialize)]
 pub struct VeniceParametersEcho {
     /// The character conversed with.
-    #[serde(default)]
     pub character_slug: Option<String>,
     /// Whether `<think>` blocks were stripped.
-    #[serde(default)]
     pub strip_thinking_response: Option<bool>,
     /// Whether reasoning was off.
-    #[serde(default)]
     pub disable_thinking: Option<bool>,
     /// The web-search mode.
-    #[serde(default)]
     pub enable_web_search: Option<WebSearchMode>,
     /// Whether prompt URLs were scraped.
-    #[serde(default)]
     pub enable_web_scraping: Option<bool>,
     /// Whether xAI's search was used.
-    #[serde(default)]
     pub enable_x_search: Option<bool>,
     /// Whether sources were cited.
-    #[serde(default)]
     pub enable_web_citations: Option<bool>,
     /// Whether search results were streamed.
-    #[serde(default)]
     pub include_search_results_in_stream: Option<bool>,
     /// Whether search results came back as documents.
-    #[serde(default)]
     pub return_search_results_as_documents: Option<bool>,
     /// Whether Venice's system prompt was included.
-    #[serde(default)]
     pub include_venice_system_prompt: Option<bool>,
     /// Whether end-to-end encryption applied.
-    #[serde(default)]
     pub enable_e2ee: Option<bool>,
     /// The sources web search consulted.
-    #[serde(default)]
     pub web_search_citations: Option<Vec<WebSearchCitation>>,
 }
 
@@ -280,16 +268,12 @@ pub struct VeniceParametersEcho {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
 pub struct WebSearchCitation {
     /// The page title.
-    #[serde(default)]
     pub title: Option<String>,
     /// The source URL.
-    #[serde(default)]
     pub url: Option<String>,
     /// The page content Venice extracted.
-    #[serde(default)]
     pub content: Option<String>,
     /// The publication date, when Venice found one.
-    #[serde(default)]
     pub date: Option<String>,
 }
 
@@ -298,10 +282,8 @@ pub struct WebSearchCitation {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Deserialize)]
 pub struct VeniceCost {
     /// In USD credits.
-    #[serde(default)]
     pub usd: Option<f64>,
     /// In DIEM.
-    #[serde(default)]
     pub diem: Option<f64>,
 }
 

@@ -388,14 +388,14 @@ async fn an_in_band_envelope_with_a_status_code_is_classified_by_it() -> anyhow:
 /// for a document carrying only one; every other dialect sends the id.
 #[test]
 fn openrouter_gets_a_placeholder_for_a_file_id_document() {
-    use crate::message::{Document, DocumentSourceKind, Message, UserContent};
+    use crate::message::{DocumentContent, DocumentSourceKind, Message, UserContent};
     use crate::providers::openai::wire::OPENROUTER;
 
     let body = |chat: Chat| {
         let mut request = prompt("read this");
         request.chat_history = vec![
             Message::User {
-                content: vec![UserContent::Document(Document {
+                content: vec![UserContent::Document(DocumentContent {
                     data: DocumentSourceKind::FileId("file-abc".to_owned()).into(),
                     media_type: None,
                     additional_params: None,
@@ -899,13 +899,12 @@ pub(super) fn replayed(wire: &Chat, turn: crate::message::AssistantMessage) -> s
 }
 
 /// A gateway that reports usage on the choice rather than the top level
-/// still has its usage observed: the decoder accepts `choices[0].usage` for
-/// `Finish`, and the driver observes that `Finish` usage, so the
-/// observation sees the same counts.
+/// still has its usage read: the decoder accepts `choices[0].usage` for
+/// `Finish`.
 #[tokio::test]
-async fn per_choice_usage_is_observed_as_the_decoder_reads_it() {
+async fn per_choice_usage_is_read() {
     let payload = r#"{"id":"c","model":"m","choices":[{"index":0,"delta":{},"finish_reason":"stop","usage":{"prompt_tokens":3,"completion_tokens":4,"total_tokens":7}}]}"#;
-    let (observed, usage) = crate::driver::tests::observed_usage(
+    let usage = crate::driver::tests::reply_usage(
         wire(),
         MockStreamingClient {
             sse_bytes: Bytes::from(format!("data: {payload}\n\ndata: [DONE]\n\n")),
@@ -913,12 +912,11 @@ async fn per_choice_usage_is_observed_as_the_decoder_reads_it() {
         Mode::Streaming,
     )
     .await;
-    let counts: Vec<(Option<u64>, Option<u64>)> = observed
-        .iter()
-        .map(|usage| (usage.input_tokens, usage.output_tokens))
-        .collect();
-    assert_eq!(counts, [(Some(3), Some(4))], "per-choice usage is observed");
-    assert_eq!(observed, [crate::wire::AdapterUsage::from(&usage)]);
+    assert_eq!(
+        (usage.input_tokens, usage.output_tokens),
+        (Some(3), Some(4)),
+        "per-choice usage is read"
+    );
 }
 
 /// A whole reply must hold a choice, and its choice a message.
@@ -950,9 +948,9 @@ fn a_whole_reply_without_a_choice_or_its_message_fails() {
 /// document file that is not a PDF, or audio a URL names.
 #[test]
 fn a_part_chat_cannot_carry_is_refused() {
-    use crate::message::{Audio, Document};
+    use crate::message::{Audio, DocumentContent};
     let parts = [
-        UserContent::Document(Document {
+        UserContent::Document(DocumentContent {
             data: Source::base64("YSxiCjEsMgo=").into(),
             media_type: Some(DocumentMediaType::CSV),
             additional_params: None,
@@ -979,4 +977,35 @@ fn chat_forces_one_named_tool_at_most() {
         function_names: names.to_vec(),
     };
     assert!(tool_choice_value(choice).is_err());
+}
+
+/// Mistral's Voxtral models report audio beside `prompt_tokens`, so the
+/// input count is the sum; a text turn's detail block is unaffected. The
+/// numbers are a live Voxtral turn's, quoted verbatim.
+#[test]
+fn usage_counts_audio_tokens_reported_beside_the_prompt_as_input() {
+    let voxtral = normalized_usage(
+        &serde_json::json!({
+            "prompt_audio_seconds": 0,
+            "prompt_tokens": 6,
+            "completion_tokens": 2,
+            "total_tokens": 383,
+            "prompt_tokens_details": {"cached_tokens": 0, "audio_tokens": 375}
+        }),
+        &Quirks::openai(),
+    );
+    assert_eq!(voxtral.input_tokens, Some(381));
+    assert_eq!(voxtral.output_tokens, Some(2));
+    assert_eq!(voxtral.total_tokens, Some(381 + 2));
+
+    let text = normalized_usage(
+        &serde_json::json!({
+            "prompt_tokens": 19,
+            "completion_tokens": 2,
+            "total_tokens": 21,
+            "prompt_tokens_details": {"cached_tokens": 0}
+        }),
+        &Quirks::openai(),
+    );
+    assert_eq!(text.input_tokens, Some(19));
 }

@@ -48,11 +48,20 @@ fn internal(root: &Path, target: &Path, step: &Step) -> Result<()> {
             crate::bevy::check(&serde_json::from_str(&metadata)?)
                 .map_err(|error| invalid(error.to_string()))
         }
+        "@catalog" => crate::catalog::check(root).map_err(invalid),
         "@layout" => crate::test_layout::check(root).map_err(invalid),
         "@packaging" => crate::packaging::check(root).map_err(invalid),
         "@wires" => crate::wires::check(root).map_err(invalid),
         "@options-guards" => super::guards::check(root).map_err(invalid),
+        "@driver-adoption" => crate::driver_adoption::check(root).map_err(invalid),
+        "@random-ids" => crate::random_ids::check(root).map_err(invalid),
         "@stage-order" => crate::stage_order::check(root).map_err(invalid),
+        "@copy" => match step.args.as_slice() {
+            [from, to] => fs::copy(root.join(from), root.join(to))
+                .map(|_| ())
+                .map_err(|error| invalid(format!("copy {from} to {to}: {error}"))),
+            _ => Err(invalid("@copy takes a source and a destination")),
+        },
         "@fixture-paths" => {
             // `cargo test` runs from the crate root and nextest from the
             // workspace root, so a CWD-relative fixture path passes under one
@@ -144,6 +153,44 @@ fn internal(root: &Path, target: &Path, step: &Step) -> Result<()> {
             }
             Ok(())
         }
+        "@redact-boundary" => {
+            // Redaction is one plugin's: no kernel crate or front calls the
+            // detection library itself. Its other callers redact what they
+            // record or export of their own.
+            const CALLERS: [&str; 4] = [
+                "crates/rig-core/src/redact",
+                "crates/rig-cassette/src/http/",
+                "crates/rig-cassette/src/scrub.rs",
+                "plugins/rig-basics/src/redact",
+            ];
+            let tested = |p: &str| {
+                p.ends_with("tests.rs")
+                    || ["/tests/", "/test_utils/", "/benches/", "/examples/"]
+                        .iter()
+                        .any(|dir| p.contains(dir))
+            };
+            for path in tracked_inputs(root)?
+                .into_iter()
+                .chain(untracked_inputs(root)?)
+                .filter(|p| {
+                    (p.starts_with("crates/") || p.starts_with("plugins/") || p.starts_with("src/"))
+                        && p.ends_with(".rs")
+                        && !tested(p)
+                        && !CALLERS.iter().any(|caller| p.starts_with(caller))
+                })
+            {
+                let Ok(text) = fs::read_to_string(root.join(&path)) else {
+                    continue;
+                };
+                if let Some(number) = names_redact(&text) {
+                    return Err(invalid(format!(
+                        "{path}:{number}: names `rig_core::redact`; redaction is \
+                         `rig_basics::redact::RedactPlugin`'s"
+                    )));
+                }
+            }
+            Ok(())
+        }
         "@native-only" => {
             // A native-only crate on wasm must fail with exactly its one
             // `compile_error!` sentence; an item outside the `not(wasm)` gate
@@ -191,7 +238,10 @@ fn internal(root: &Path, target: &Path, step: &Step) -> Result<()> {
         ))),
     }
 }
-pub(super) fn run(root: &Path, metadata: &Value, plan: &[Check]) -> Result<()> {
+/// Run `plan` in order. A failed step stops the run, or with `keep_going`
+/// (a CI job) ends only its check, and the run fails at the end naming each
+/// failed check.
+pub(super) fn run(root: &Path, metadata: &Value, plan: &[Check], keep_going: bool) -> Result<()> {
     if plan.is_empty() {
         println!("No executable changes; no verification result claimed.");
         return Ok(());
@@ -203,6 +253,7 @@ pub(super) fn run(root: &Path, metadata: &Value, plan: &[Check]) -> Result<()> {
     );
     preflight::run(root, plan)?;
     let start = Instant::now();
+    let mut failed = Vec::new();
     for (index, check) in plan.iter().enumerate() {
         println!(
             "RUN {}/{} {} ({:.0}s elapsed)",
@@ -212,9 +263,10 @@ pub(super) fn run(root: &Path, metadata: &Value, plan: &[Check]) -> Result<()> {
             start.elapsed().as_secs_f64()
         );
         let check_start = Instant::now();
+        let mut outcome = Ok(());
         for step in &check.steps {
             println!("STEP {} {}", step.program, step.args.join(" "));
-            let outcome = if step.program.starts_with('@') {
+            outcome = if step.program.starts_with('@') {
                 internal(root, target, step)
             } else if command(root, step, target).status()?.success() {
                 Ok(())
@@ -224,18 +276,30 @@ pub(super) fn run(root: &Path, metadata: &Value, plan: &[Check]) -> Result<()> {
                     check.id, step.program, step.args
                 )))
             };
-            if let Err(error) = outcome {
+            if outcome.is_err() {
+                break;
+            }
+        }
+        match outcome {
+            Ok(()) => println!(
+                "PASS {}: {:.1}s",
+                check.id,
+                check_start.elapsed().as_secs_f64()
+            ),
+            Err(error) if keep_going => {
+                println!("FAIL {}: {error}", check.id);
+                failed.push(check.id.clone());
+            }
+            Err(error) => {
                 for remaining in plan.iter().skip(index + 1) {
                     println!("NOT RUN {}", remaining.id);
                 }
                 return Err(error);
             }
         }
-        println!(
-            "PASS {}: {:.1}s",
-            check.id,
-            check_start.elapsed().as_secs_f64()
-        );
+    }
+    if !failed.is_empty() {
+        return Err(invalid(format!("failed checks: {}", failed.join(", "))));
     }
     println!(
         "All {} checks passed in {:.0}s. This does not certify independent review or remote CI.",
@@ -243,6 +307,40 @@ pub(super) fn run(root: &Path, metadata: &Value, plan: &[Check]) -> Result<()> {
         start.elapsed().as_secs_f64()
     );
     Ok(())
+}
+
+/// The first line, counted from 1, of `text`, Rust source, that names
+/// `rig_core::redact`: a path through it, or `redact` in a
+/// `use rig_core::{…}` list, however rustfmt spreads and nests the list.
+/// Comments are skipped.
+pub(super) fn names_redact(text: &str) -> Option<usize> {
+    // How deep in a `rig_core::{…}` list the line starts.
+    let mut depth = 0_usize;
+    for (number, line) in (1..).zip(text.lines()) {
+        let code = line.split("//").next().unwrap_or_default();
+        let opens = code.find("rig_core::{");
+        let listed = (depth > 0 || opens.is_some())
+            && paths(code, "redact")
+                .any(|after| after.is_empty() || after.starts_with([',', '}', ' ']));
+        // The plugin's own path, such as `rig_basics::redact::RedactSystems`, is not the library.
+        let pathed = paths(code, "redact::").count() > code.matches("rig_basics::redact::").count();
+        if listed || pathed || code.contains("rig_core::redact") {
+            return Some(number);
+        }
+        let from = if depth > 0 { Some(0) } else { opens };
+        for ch in from
+            .and_then(|from| code.get(from..))
+            .unwrap_or_default()
+            .chars()
+        {
+            match ch {
+                '{' => depth += 1,
+                '}' => depth = depth.saturating_sub(1),
+                _ => {}
+            }
+        }
+    }
+    None
 }
 
 /// What follows each `prefix` (such as `rig::`) in `code` that starts a

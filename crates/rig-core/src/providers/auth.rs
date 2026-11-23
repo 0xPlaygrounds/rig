@@ -1,0 +1,307 @@
+//! The sign-in types the ChatGPT and Copilot authenticators share: errors,
+//! device-code callbacks, token stores, and the browser sign-in's loopback
+//! listener.
+//!
+//! ```
+//! use rig_core::providers::auth::DeviceCodeHandler;
+//! let handler = DeviceCodeHandler::new(|prompt| {
+//!     println!("Visit {} and enter {}", prompt.verification_uri, prompt.user_code);
+//! });
+//! ```
+
+use crate::http_client::{self, HttpClientExt};
+use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use std::sync::Arc;
+
+/// Device authorization details surfaced to a provider callback.
+#[derive(Debug, Clone)]
+pub struct DeviceCodePrompt {
+    /// URL where the user authorizes the device.
+    pub verification_uri: String,
+    /// Short code the user enters at the verification URL.
+    pub user_code: String,
+}
+
+/// Device-code callback with thread-safety bounds outside browser WASM.
+/// Browser WASM authenticators do not invoke it.
+#[cfg(not(target_family = "wasm"))]
+pub(crate) type DeviceCodeCallback = dyn Fn(DeviceCodePrompt) + Send + Sync;
+#[cfg(target_family = "wasm")]
+pub(crate) type DeviceCodeCallback = dyn Fn(DeviceCodePrompt);
+
+/// Optional callback invoked when an OAuth device flow needs user action.
+#[derive(Clone, Default)]
+pub struct DeviceCodeHandler(pub(crate) Option<Arc<DeviceCodeCallback>>);
+
+impl DeviceCodeHandler {
+    /// Wraps a device-code callback.
+    pub fn new<F>(handler: F) -> Self
+    where
+        F: Fn(DeviceCodePrompt) + WasmCompatSend + WasmCompatSync + 'static,
+    {
+        Self(Some(Arc::new(handler)))
+    }
+}
+
+impl DeviceCodeHandler {
+    /// Show `prompt` with the callback, or print `fallback_message` to
+    /// stdout when there is none.
+    #[cfg(not(target_family = "wasm"))]
+    pub(crate) fn show(&self, prompt: DeviceCodePrompt, fallback_message: &str) {
+        match &self.0 {
+            Some(callback) => callback(prompt),
+            None => println!("{fallback_message}"),
+        }
+    }
+}
+
+impl std::fmt::Debug for DeviceCodeHandler {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.0.is_some() {
+            f.write_str("DeviceCodeHandler(<callback>)")
+        } else {
+            f.write_str("DeviceCodeHandler(None)")
+        }
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum AuthError {
+    #[error("{0}")]
+    Message(String),
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    #[error(transparent)]
+    Json(#[from] serde_json::Error),
+    /// The HTTP transport failed. Non-success responses arrive as the
+    /// status-bearing [`http_client::Error`] variants (so the status is still
+    /// inspectable); response-less failures as
+    /// [`http_client::Error::Transient`] or [`http_client::Error::Permanent`].
+    #[error(transparent)]
+    Http(#[from] http_client::Error),
+    /// The sign-in server answered with a failure: `message` says what it
+    /// said, and `source`, its reply, says whether asking again may work.
+    #[error("{message}")]
+    Reply {
+        /// What the failure means for the sign-in.
+        message: String,
+        /// The non-success reply.
+        #[source]
+        source: http_client::Error,
+    },
+    /// The [`TokenStore`] could not load or save a credential.
+    #[error("token store failed: {0}")]
+    Store(#[source] crate::error::BoxError),
+}
+
+/// The credential a signed-in request is sent with.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuthContext {
+    /// The resolved key. Use [`Secret::expose`](crate::wire::Secret::expose)
+    /// only when raw bytes are required.
+    pub api_key: crate::wire::Secret,
+    /// The account the key belongs to, when the provider names one
+    /// (ChatGPT's `ChatGPT-Account-Id`).
+    pub account_id: Option<String>,
+    /// The API root the sign-in names, when it names one (Copilot's
+    /// session endpoint).
+    pub api_base: Option<String>,
+}
+
+/// What every provider's authenticator holds: where its credential comes
+/// from, the store that keeps it, how a device code is shown, whether a
+/// device flow may start, the lock a refresh holds and the credential last
+/// resolved. Clones share the store, the lock and the remembered credential.
+#[derive(Clone)]
+#[cfg_attr(target_family = "wasm", allow(dead_code))]
+pub(crate) struct Shell<S> {
+    pub(crate) source: S,
+    pub(crate) store: Arc<dyn TokenStore>,
+    pub(crate) device_code_handler: DeviceCodeHandler,
+    pub(crate) allow_device_flow: bool,
+    /// Held across a cache refresh to prevent concurrent updates.
+    pub(crate) refresh_lock: Arc<futures::lock::Mutex<()>>,
+    pub(crate) remembered: Remembered,
+}
+
+impl<S> Shell<S> {
+    pub(crate) fn new(
+        source: S,
+        store: impl TokenStore + 'static,
+        device_code_handler: DeviceCodeHandler,
+        allow_device_flow: bool,
+    ) -> Self {
+        Self {
+            source,
+            store: Arc::new(store),
+            device_code_handler,
+            allow_device_flow,
+            refresh_lock: Arc::default(),
+            remembered: Remembered::default(),
+        }
+    }
+}
+
+impl<S> Shell<S> {
+    /// Holds the record under `key` for a refresh, a sign-in or a sign-out:
+    /// the refresh lock its clones share, then the store's lock on `key`
+    /// ([`TokenStore::lock`]), so one runs at a time across clones and
+    /// processes, and each reads what the last one saved.
+    #[cfg_attr(target_family = "wasm", allow(dead_code))]
+    pub(crate) async fn hold(&self, key: &str) -> Result<Held<'_>, AuthError> {
+        let refresh = self.refresh_lock.lock().await;
+        let store = self.store.lock(key).await.map_err(AuthError::Store)?;
+        Ok(Held {
+            _refresh: refresh,
+            _store: store,
+        })
+    }
+}
+
+/// What [`Shell::hold`] holds, let go when dropped: the store's lock first.
+#[cfg_attr(target_family = "wasm", allow(dead_code))]
+pub(crate) struct Held<'a> {
+    _store: StoreLock,
+    _refresh: futures::lock::MutexGuard<'a, ()>,
+}
+
+impl<'a> Held<'a> {
+    /// Run `wait` with the store's lock let go, so other processes can use
+    /// the store meanwhile, and the refresh lock kept, so clones still wait.
+    /// The store's lock on `key` is taken again before returning.
+    #[cfg_attr(target_family = "wasm", allow(dead_code))]
+    pub(crate) async fn store_free_during<S, T>(
+        self,
+        shell: &Shell<S>,
+        key: &str,
+        wait: impl Future<Output = T>,
+    ) -> Result<(T, Held<'a>), AuthError> {
+        let Held { _store, _refresh } = self;
+        drop(_store);
+        let out = wait.await;
+        let store = shell.store.lock(key).await.map_err(AuthError::Store)?;
+        Ok((
+            out,
+            Held {
+                _store: store,
+                _refresh,
+            },
+        ))
+    }
+}
+
+impl<S: std::fmt::Debug> std::fmt::Debug for Shell<S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Authenticator")
+            .field("source", &self.source)
+            .field("device_code_handler", &self.device_code_handler)
+            .field("allow_device_flow", &self.allow_device_flow)
+            .finish_non_exhaustive()
+    }
+}
+
+/// The last credential an authenticator resolved and its expiry, shared by
+/// its clones: a live one is served without the store, its lock or a parse.
+#[derive(Clone, Default)]
+pub(crate) struct Remembered(Arc<std::sync::Mutex<Option<(AuthContext, i64)>>>);
+
+impl Remembered {
+    /// The credential while it is live, `skew_seconds` before its expiry.
+    pub(crate) fn live(&self, skew_seconds: i64) -> Option<AuthContext> {
+        let held = self.0.lock().ok()?;
+        let (context, expires_at) = held.as_ref()?;
+        (!token_expired(Some(*expires_at), skew_seconds)).then(|| context.clone())
+    }
+
+    /// Remember `context` until `expires_at`; one with no expiry is not
+    /// remembered.
+    pub(crate) fn keep(&self, context: &AuthContext, expires_at: Option<i64>) {
+        if let Ok(mut held) = self.0.lock() {
+            *held = expires_at.map(|expires_at| (context.clone(), expires_at));
+        }
+    }
+
+    /// Forget the remembered credential.
+    pub(crate) fn forget(&self) {
+        if let Ok(mut held) = self.0.lock() {
+            *held = None;
+        }
+    }
+}
+
+/// Build a request to an absolute authentication URL, independent of the API base.
+pub(crate) fn request(method: http::Method, url: &str) -> http::request::Builder {
+    http::Request::builder().method(method).uri(url)
+}
+
+/// `builder` finished with `pairs` as a form-encoded body.
+#[cfg(not(target_family = "wasm"))]
+pub(crate) fn form(
+    builder: http::request::Builder,
+    pairs: &[(&str, &str)],
+) -> http::Result<http::Request<bytes::Bytes>> {
+    let body = url::form_urlencoded::Serializer::new(String::new())
+        .extend_pairs(pairs)
+        .finish();
+    builder
+        .header(
+            http::header::CONTENT_TYPE,
+            "application/x-www-form-urlencoded",
+        )
+        .body(body.into())
+}
+
+/// Send `req` and decode its JSON response.
+/// Request and transport failures return [`AuthError::Http`], preserving HTTP
+/// status when available. Invalid JSON returns [`AuthError::Json`].
+pub(crate) async fn send_json<H, T>(
+    http: &H,
+    req: http::Result<http::Request<bytes::Bytes>>,
+) -> Result<T, AuthError>
+where
+    H: HttpClientExt,
+    T: serde::de::DeserializeOwned,
+{
+    let bytes = send_bytes(http, req).await?;
+    Ok(serde_json::from_slice(&bytes)?)
+}
+
+/// Send `req` through the transport and return the raw success body. A
+/// non-success reply the transport returned as `Ok` is the same
+/// [`AuthError::Http`] the bundled transport reports for it.
+pub(crate) async fn send_bytes<H>(
+    http: &H,
+    req: http::Result<http::Request<bytes::Bytes>>,
+) -> Result<bytes::Bytes, AuthError>
+where
+    H: HttpClientExt,
+{
+    let req = req.map_err(http_client::Error::Protocol)?;
+    let (parts, body) = http.send(req).await?.into_parts();
+    let body = body.await?;
+    if !parts.status.is_success() {
+        return Err(http_client::Error::InvalidStatusCodeWithDetails {
+            status: parts.status,
+            body: String::from_utf8_lossy(&body).into_owned(),
+            headers: parts.headers,
+        }
+        .into());
+    }
+    Ok(body)
+}
+
+/// Returns true when the token is expired (or has no expiry), treating the
+/// token as expired `skew_seconds` before its actual `expires_at`.
+pub(crate) fn token_expired(expires_at: Option<i64>, skew_seconds: i64) -> bool {
+    let now = (crate::now_ms() / 1000) as i64;
+    expires_at.is_none_or(|exp| now >= exp - skew_seconds)
+}
+
+#[cfg(not(target_family = "wasm"))]
+pub mod loopback;
+mod store;
+
+#[cfg(not(target_family = "wasm"))]
+pub use store::{FileStoreError, FileTokenStore};
+pub use store::{MemoryTokenStore, StoreLock, TokenStore};
+pub(crate) use store::{load_record, save_record};

@@ -18,7 +18,6 @@
 use std::collections::BTreeMap;
 
 use serde::de::Error as _;
-use serde::ser::SerializeMap;
 use serde::{Deserialize, Serialize, Serializer};
 use serde_json::Value;
 
@@ -559,37 +558,32 @@ pub struct SpeakerVoiceConfig {
     pub voice_config: VoiceConfig,
 }
 
-/// A harm category a safety setting applies to.
+/// A harm category a safety setting applies to, serialized in the
+/// GenerateContent spelling such as `HARM_CATEGORY_HATE_SPEECH`.
 #[non_exhaustive]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub enum HarmCategory {
     /// Hate speech.
+    #[serde(rename = "HARM_CATEGORY_HATE_SPEECH")]
     HateSpeech,
     /// Dangerous content.
+    #[serde(rename = "HARM_CATEGORY_DANGEROUS_CONTENT")]
     DangerousContent,
     /// Harassment.
+    #[serde(rename = "HARM_CATEGORY_HARASSMENT")]
     Harassment,
     /// Sexually explicit content.
+    #[serde(rename = "HARM_CATEGORY_SEXUALLY_EXPLICIT")]
     SexuallyExplicit,
     /// Content that may be used to harm civic integrity.
+    #[serde(rename = "HARM_CATEGORY_CIVIC_INTEGRITY")]
     CivicIntegrity,
     /// Jailbreak attempts.
+    #[serde(rename = "HARM_CATEGORY_JAILBREAK")]
     Jailbreak,
 }
 
 impl HarmCategory {
-    /// The GenerateContent spelling, such as `HARM_CATEGORY_HATE_SPEECH`.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::HateSpeech => "HARM_CATEGORY_HATE_SPEECH",
-            Self::DangerousContent => "HARM_CATEGORY_DANGEROUS_CONTENT",
-            Self::Harassment => "HARM_CATEGORY_HARASSMENT",
-            Self::SexuallyExplicit => "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-            Self::CivicIntegrity => "HARM_CATEGORY_CIVIC_INTEGRITY",
-            Self::Jailbreak => "HARM_CATEGORY_JAILBREAK",
-        }
-    }
-
     /// The Interactions spelling, such as `hate_speech`.
     fn interactions(self) -> &'static str {
         match self {
@@ -603,9 +597,11 @@ impl HarmCategory {
     }
 }
 
-/// The probability at and above which content is blocked.
+/// The probability at and above which content is blocked, serialized in
+/// the GenerateContent spelling such as `BLOCK_ONLY_HIGH`.
 #[non_exhaustive]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum HarmBlockThreshold {
     /// Block low probability and above.
     BlockLowAndAbove,
@@ -620,17 +616,6 @@ pub enum HarmBlockThreshold {
 }
 
 impl HarmBlockThreshold {
-    /// The GenerateContent spelling, such as `BLOCK_ONLY_HIGH`.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::BlockLowAndAbove => "BLOCK_LOW_AND_ABOVE",
-            Self::BlockMediumAndAbove => "BLOCK_MEDIUM_AND_ABOVE",
-            Self::BlockOnlyHigh => "BLOCK_ONLY_HIGH",
-            Self::BlockNone => "BLOCK_NONE",
-            Self::Off => "OFF",
-        }
-    }
-
     /// The Interactions spelling, such as `block_only_high`.
     fn interactions(self) -> &'static str {
         match self {
@@ -648,7 +633,7 @@ impl HarmBlockThreshold {
 /// GenerateContent and `{"type": "…", "threshold": "block_…"}` on
 /// Interactions.
 #[non_exhaustive]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub struct SafetySetting {
     /// The category.
     pub category: HarmCategory,
@@ -663,15 +648,6 @@ impl SafetySetting {
             category,
             threshold,
         }
-    }
-}
-
-impl Serialize for SafetySetting {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut map = serializer.serialize_map(Some(2))?;
-        map.serialize_entry("category", self.category.as_str())?;
-        map.serialize_entry("threshold", self.threshold.as_str())?;
-        map.end()
     }
 }
 
@@ -920,8 +896,10 @@ pub struct GeminiExtras {
 impl ReplyExtras for GeminiExtras {
     fn from_reply(api: &Api, raw: &Value) -> Result<Self, serde_json::Error> {
         match api.as_str() {
-            GENERATE_CONTENT => Ok(GenerateContentReply::deserialize(raw)?.into()),
-            INTERACTIONS => Ok(InteractionReply::deserialize(raw)?.into()),
+            GENERATE_CONTENT => {
+                Ok(crate::json_utils::from_value::<GenerateContentReply>(raw)?.into())
+            }
+            INTERACTIONS => Ok(crate::json_utils::from_value::<InteractionReply>(raw)?.into()),
             other => Err(serde_json::Error::custom(format!(
                 "the Gemini API returns no `{other}` reply"
             ))),
@@ -973,13 +951,13 @@ impl From<GenerateContentReply> for GeminiExtras {
         };
         if let Some(usage) = reply.usage_metadata {
             extras.service_tier = usage.service_tier;
-            extras.prompt_tokens_details = usage.prompt_tokens_details;
-            extras.cache_tokens_details = usage.cache_tokens_details;
-            extras.candidates_tokens_details = usage.candidates_tokens_details;
-            extras.tool_use_prompt_tokens_details = usage.tool_use_prompt_tokens_details;
+            extras.prompt_tokens_details = listed(usage.prompt_tokens_details);
+            extras.cache_tokens_details = listed(usage.cache_tokens_details);
+            extras.candidates_tokens_details = listed(usage.candidates_tokens_details);
+            extras.tool_use_prompt_tokens_details = listed(usage.tool_use_prompt_tokens_details);
         }
         if let Some(candidate) = reply.candidates.into_iter().next() {
-            extras.safety_ratings = candidate.safety_ratings;
+            extras.safety_ratings = listed(candidate.safety_ratings);
             extras.finish_message = candidate.finish_message;
             extras.citation_metadata = candidate.citation_metadata;
             extras.grounding_metadata = candidate.grounding_metadata;
@@ -989,6 +967,12 @@ impl From<GenerateContentReply> for GeminiExtras {
         }
         extras
     }
+}
+
+/// `items`, or `None` when the list is empty, as `reply_field` reads a
+/// list for every other `Extras` type.
+fn listed<T>(items: Option<Vec<T>>) -> Option<Vec<T>> {
+    items.filter(|items| !items.is_empty())
 }
 
 /// The parts of an interaction resource [`GeminiExtras`] reads.
@@ -1021,10 +1005,10 @@ impl From<InteractionReply> for GeminiExtras {
             ..Self::default()
         };
         if let Some(usage) = reply.usage {
-            extras.input_tokens_by_modality = usage.input_tokens_by_modality;
-            extras.output_tokens_by_modality = usage.output_tokens_by_modality;
-            extras.cached_tokens_by_modality = usage.cached_tokens_by_modality;
-            extras.grounding_tool_count = usage.grounding_tool_count;
+            extras.input_tokens_by_modality = listed(usage.input_tokens_by_modality);
+            extras.output_tokens_by_modality = listed(usage.output_tokens_by_modality);
+            extras.cached_tokens_by_modality = listed(usage.cached_tokens_by_modality);
+            extras.grounding_tool_count = listed(usage.grounding_tool_count);
         }
         extras
     }

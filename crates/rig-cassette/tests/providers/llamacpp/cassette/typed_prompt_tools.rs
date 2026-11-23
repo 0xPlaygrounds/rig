@@ -1,8 +1,7 @@
-//! Smoke coverage for issue #1604 against a local llama.cpp OpenAI-compatible server.
+//! Typed-prompt tool smoke coverage against a local llama.cpp OpenAI-compatible server.
 
 use anyhow::Result;
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -10,17 +9,7 @@ use rig::tool::Tool;
 
 use super::super::cassette_support::*;
 use crate::support::assert_weather_tool_roundtrip_response;
-
-#[derive(Debug, Deserialize, JsonSchema, Serialize)]
-struct WeatherResponse {
-    city: String,
-    weather: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct WeatherArgs {
-    city: String,
-}
+use crate::weather_tool::{WeatherArgs, WeatherResponse};
 
 #[derive(Clone)]
 struct WeatherTool {

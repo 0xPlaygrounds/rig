@@ -1,8 +1,10 @@
 use super::*;
 use rig_core::conversation::Author;
+use rig_core::conversation::pairing::validate;
 use rig_core::json_utils::remove_preserving_order;
 use rig_core::message::ToolChoice;
 use rig_core::message::{StopReason, ToolFunction, ToolResultContent};
+use rig_core::tool::validate::Problem;
 use serde_json::json;
 use std::sync::Arc;
 
@@ -53,17 +55,15 @@ fn entries_round_trip_through_serialization_in_append_order() {
     let serialized = serde_json::to_string(&run).expect("run serializes");
     let restored: AgentRun = serde_json::from_str(&serialized).expect("run deserializes");
     assert_eq!(restored.entries(), run.entries());
-    assert_eq!(
-        restored.entries_of("counter").count(),
-        2,
-        "kind filter sees both counter snapshots"
-    );
+    let counters = || {
+        restored
+            .entries()
+            .iter()
+            .filter(|entry| entry.kind == "counter")
+    };
+    assert_eq!(counters().count(), 2, "both counter snapshots survive");
     // Last-wins: the snapshot pattern reads the most recent entry.
-    assert_eq!(
-        restored.last_entry_of("counter"),
-        Some(&entry("counter", json!(2)))
-    );
-    assert_eq!(restored.last_entry_of("absent"), None);
+    assert_eq!(counters().next_back(), Some(&entry("counter", json!(2))));
 
     // A cloned ("forked") run carries the entries verbatim.
     assert_eq!(restored.entries(), run.entries());
@@ -361,17 +361,19 @@ fn tool_roundtrip_threads_history_and_usage() {
 
 /// A turn that calls `add` and ends with `stop` at `finish`.
 fn ended_call_turn(stop: StopReason, finish: FinishReason) -> ModelTurn {
-    ModelTurn::new(
-        AssistantMessage::default().with_stop(stop),
-        vec![
-            AssistantContent::text("checking"),
-            tool_call("call_1", "add"),
-        ],
-        Usage::default(),
-        policy(&["add"]),
-        hand_raw(),
-    )
-    .with_finish_reason(Some(finish))
+    ModelTurn {
+        finish_reason: Some(finish),
+        ..ModelTurn::new(
+            AssistantMessage::default().with_stop(stop),
+            vec![
+                AssistantContent::text("checking"),
+                tool_call("call_1", "add"),
+            ],
+            Usage::default(),
+            policy(&["add"]),
+            hand_raw(),
+        )
+    }
 }
 
 /// A turn that ends in an error runs none of its tool calls: the run ends
@@ -824,13 +826,18 @@ fn assert_no_orphan_tool_use(messages: &[Message]) {
 
 /// A turn calling the output tool with arguments that are not a JSON object.
 fn malformed_output_tool_turn() -> ModelTurn {
+    output_tool_turn("{\"x\":")
+}
+
+/// A turn calling the output tool with raw `arguments`.
+fn output_tool_turn(arguments: &str) -> ModelTurn {
     ModelTurn::new(
         rig_core::message::AssistantMessage::default(),
         vec![AssistantContent::ToolCall(ToolCall::from_wire(
             "call_1",
             ToolFunction::parse(
                 rig_core::message::ToolName::new("final_result").expect("tool name"),
-                "{\"x\":",
+                arguments,
             ),
         ))],
         Usage::default(),
@@ -1116,24 +1123,6 @@ fn a_run_of_another_format_or_with_an_unknown_key_is_refused() {
     assert!(error.to_string().contains("retired_field"), "{error}");
 }
 
-fn assistant(content: Vec<AssistantContent>) -> Message {
-    Message::Assistant(rig_core::message::AssistantMessage::new(content))
-}
-
-#[test]
-fn with_validated_history_gates_construction() {
-    let bad = vec![
-        assistant(vec![AssistantContent::text("a")]),
-        assistant(vec![AssistantContent::text("b")]),
-    ];
-    assert!(AgentRun::new("x").with_validated_history(bad).is_err());
-    assert!(
-        AgentRun::new("x")
-            .with_validated_history(vec![Message::user("ok")])
-            .is_ok()
-    );
-}
-
 /// The model a run last asked survives a suspension: a resumed run's
 /// selection hook is shown it as `previous_model`, as a fresh run's is.
 #[test]
@@ -1149,22 +1138,24 @@ fn serde_round_trip_keeps_the_previous_model() {
     );
 }
 
-/// rig#2322: a reasoning-only turn the provider cut short fails the run
+/// A reasoning-only turn the provider cut short fails the run
 /// *before* anything is committed — the reasoning is not history.
 #[test]
 fn a_truncated_reasoning_only_turn_commits_nothing() {
     let mut run = AgentRun::new("solve this");
     let _ = expect_call_model(&mut run);
-    let turn = ModelTurn::new(
-        rig_core::message::AssistantMessage::default(),
-        vec![AssistantContent::Reasoning(
-            rig_core::message::Reasoning::new("thinking, never answering"),
-        )],
-        Usage::default(),
-        policy(&["add"]),
-        hand_raw(),
-    )
-    .with_finish_reason(Some(FinishReason::Length));
+    let turn = ModelTurn {
+        finish_reason: Some(FinishReason::Length),
+        ..ModelTurn::new(
+            rig_core::message::AssistantMessage::default(),
+            vec![AssistantContent::Reasoning(
+                rig_core::message::Reasoning::new("thinking, never answering"),
+            )],
+            Usage::default(),
+            policy(&["add"]),
+            hand_raw(),
+        )
+    };
     // The turn is accepted into resolution; the run fails when it is read.
     expect_continue(
         run.model_response(turn)
@@ -1183,8 +1174,7 @@ fn a_truncated_reasoning_only_turn_commits_nothing() {
     );
 }
 
-/// An empty choice, or a retry with no tool calls to answer, builds no
-/// message, so nothing empty is appended to history.
+/// An empty choice builds no message, so nothing empty is appended to history.
 #[test]
 fn transcript_helpers_build_no_message_from_nothing() {
     assert_eq!(
@@ -1193,14 +1183,6 @@ fn transcript_helpers_build_no_message_from_nothing() {
     );
     assert_eq!(
         transcript::assistant_turn(rig_core::message::AssistantMessage::default(), Vec::new()),
-        None
-    );
-    assert_eq!(
-        transcript::invalid_tool_retry_user_message(
-            &[AssistantContent::text("no calls here")],
-            &rig_core::message::CallId::from_wire("call_1"),
-            "feedback",
-        ),
         None
     );
 }
@@ -1462,6 +1444,7 @@ fn a_provider_error_retry_still_pins_and_intercepts_the_output_tool() {
         prepare_request(
             &spec,
             &Default::default(),
+            "go",
             &history,
             tools.clone(),
             run.output_tool_name(),
@@ -1499,7 +1482,8 @@ fn a_provider_error_retry_still_pins_and_intercepts_the_output_tool() {
 
 /// Every older envelope is refused by name rather than resumed with its
 /// fields dropped: format 3 kept in-flight flags beside the state, format 4
-/// was the last before the memory path went.
+/// was the last before the memory path went, format 5 parked a turn without
+/// the calls its reply was cut off in.
 #[test]
 fn an_older_format_run_is_refused_by_name() {
     let run = AgentRun::new("go");
@@ -1518,10 +1502,10 @@ fn an_older_format_run_is_refused_by_name() {
 }
 
 /// Transcript well-formedness has one meaning: whatever a run commits to
-/// its own history must be accepted by `with_validated_history`, the
-/// documented way to resume a run in another process (a `/reload`).
+/// its own history must pass `pairing::validate`, which a host resuming a
+/// run in another process (a `/reload`) runs before `with_history`.
 fn assert_resumable(history: Vec<Message>) {
-    let result = AgentRun::new("continue").with_validated_history(history.clone());
+    let result = validate(&history);
     assert!(
         result.is_ok(),
         "a history the run produced is refused on resume: {:?}\nhistory: {history:#?}",
@@ -2014,20 +1998,22 @@ fn a_canonical_history_closes_an_unchecked_input_history() {
 /// A cut-off `write_file` call: the provider stopped at the token limit in
 /// the middle of the `content` string.
 fn truncated_write_turn(id: &str) -> ModelTurn {
-    ModelTurn::new(
-        AssistantMessage::default().with_stop(StopReason::Length),
-        vec![AssistantContent::ToolCall(ToolCall::from_wire(
-            id,
-            ToolFunction::parse(
-                rig_core::message::ToolName::new("write_file").expect("tool name"),
-                r#"{"path":"a.rs","content":"fn ma"#,
-            ),
-        ))],
-        Usage::default(),
-        policy(&["write_file"]),
-        hand_raw(),
-    )
-    .with_finish_reason(Some(FinishReason::Length))
+    ModelTurn {
+        finish_reason: Some(FinishReason::Length),
+        ..ModelTurn::new(
+            AssistantMessage::default().with_stop(StopReason::Length),
+            vec![AssistantContent::ToolCall(ToolCall::from_wire(
+                id,
+                ToolFunction::parse(
+                    rig_core::message::ToolName::new("write_file").expect("tool name"),
+                    r#"{"path":"a.rs","content":"fn ma"#,
+                ),
+            ))],
+            Usage::default(),
+            policy(&["write_file"]),
+            hand_raw(),
+        )
+    }
 }
 
 /// Persist a run mid-step and resume it from bytes, as a host does across a
@@ -2282,4 +2268,330 @@ fn a_malformed_stop_keeps_an_answer_applied_with_it() {
         run.messages()
     );
     assert!(run.next_step().is_err(), "the run has failed");
+}
+
+/// The first terminating answer in call order ends the run, whatever order
+/// the driver supplies the answers in.
+#[test]
+fn a_batch_ends_on_the_first_terminating_answer_in_call_order() {
+    let mut run = AgentRun::new("add").max_turns(2);
+    expect_call_model(&mut run);
+    let malformed = |id| {
+        AssistantContent::ToolCall(ToolCall::from_wire(
+            id,
+            ToolFunction::parse(
+                rig_core::message::ToolName::new("add").expect("tool name"),
+                "{\"x\":",
+            ),
+        ))
+    };
+    expect_continue(
+        run.model_response(ModelTurn::new(
+            AssistantMessage::default(),
+            vec![malformed("c1"), malformed("c2")],
+            Usage::default(),
+            policy(&["add"]),
+            hand_raw(),
+        ))
+        .expect("model_response"),
+    );
+    let calls = expect_call_tools(&mut run);
+    let [
+        PendingToolCall::Malformed(first),
+        PendingToolCall::Malformed(second),
+    ] = calls.as_slice()
+    else {
+        panic!("two malformed calls");
+    };
+    let error = run
+        .answer_all([
+            second.clone().answer(Some(InvalidToolCallAction::Fail)),
+            first
+                .clone()
+                .answer(Some(InvalidToolCallAction::stop("first call"))),
+        ])
+        .expect_err("the batch ends the run");
+    assert!(
+        matches!(&error, PromptError::Cancelled { reason, .. } if reason == "first call"),
+        "the first call's Stop wins: {error:?}"
+    );
+}
+
+/// A terminating answer does not end the run before the rest of its batch is
+/// checked: a duplicate answer refuses the whole batch and stores nothing.
+#[test]
+fn a_terminating_answer_does_not_skip_checking_the_rest_of_its_batch() {
+    let mut run = AgentRun::new("write a.rs").max_turns(2);
+    expect_call_model(&mut run);
+    expect_continue(
+        run.model_response(truncated_write_turn("c1"))
+            .expect("model_response should succeed"),
+    );
+    let Some(PendingToolCall::Malformed(call)) = expect_call_tools(&mut run).pop() else {
+        panic!("one malformed call");
+    };
+    let error = run
+        .answer_all([
+            call.clone()
+                .answer(Some(InvalidToolCallAction::stop("stop"))),
+            call.answer(Some(InvalidToolCallAction::stop("again"))),
+        ])
+        .expect_err("a duplicate answer is refused");
+    assert!(
+        matches!(&error, PromptError::Cancelled { reason, .. } if reason.contains("protocol violation")),
+        "a protocol violation: {error:?}"
+    );
+    assert_eq!(
+        expect_call_tools(&mut run).len(),
+        1,
+        "the call is still open"
+    );
+}
+
+/// A run that asks for a schema never ends on an answer that misses it.
+/// Without an output tool (Native on a provider that drops the schema, or
+/// Prompted) it reprompts without naming a tool while the budget lasts, then
+/// fails. Field types count, in text and in output-tool arguments alike. The
+/// error carries the whole answer, the problems and the history, so a caller
+/// can log, repair or retry without parsing a message.
+#[test]
+fn a_schema_run_fails_on_an_answer_that_misses_the_schema() {
+    let problem = |at: &str, what: &str| Problem {
+        at: at.to_owned(),
+        what: what.to_owned(),
+    };
+    let schema = json!({"type": "object", "required": ["answer"]});
+    let mut run = AgentRun::new("summarize")
+        .max_turns(3)
+        .with_output_validation(Some(schema), 1);
+    expect_call_model(&mut run);
+    expect_continue(
+        run.model_response(text_turn("plain prose"))
+            .expect("model_response should succeed"),
+    );
+    let (prompt, _, turn) = expect_call_model(&mut run);
+    assert_eq!(turn, 2);
+    let prompt = serde_json::to_string(&prompt).expect("prompt should serialize");
+    assert!(prompt.contains("answer"), "{prompt}");
+    assert!(!prompt.contains("tool"), "{prompt}");
+    expect_continue(
+        run.model_response(text_turn(r#"{"other": 1}"#))
+            .expect("model_response should succeed"),
+    );
+    let error = run.next_step().expect_err("the mismatch fails the run");
+    let PromptError::OutputSchemaMismatch {
+        output,
+        output_tool,
+        problems,
+        chat_history,
+    } = error
+    else {
+        panic!("expected OutputSchemaMismatch, got {error:?}");
+    };
+    assert_eq!(output, r#"{"other": 1}"#);
+    assert_eq!(output_tool, None);
+    assert_eq!(problems, [problem("/answer", "missing")]);
+    let history = serde_json::to_string(&chat_history).expect("history should serialize");
+    assert!(
+        history.contains("plain prose") && !history.contains("other"),
+        "the history keeps the reprompted answer, not the refused one: {history}"
+    );
+
+    let typed = json!({
+        "type": "object",
+        "properties": {"answer": {"type": "integer"}},
+        "required": ["answer"],
+    });
+    let mut run = AgentRun::new("summarize").with_output_validation(Some(typed.clone()), 0);
+    expect_call_model(&mut run);
+    let long_answer = format!(r#"{{"answer": "wrong", "note": "{}"}}"#, "x".repeat(1000));
+    expect_continue(
+        run.model_response(text_turn(&long_answer))
+            .expect("model_response should succeed"),
+    );
+    let error = run.next_step().expect_err("a mistyped field fails the run");
+    let message = error.to_string();
+    assert!(
+        message.ends_with('…') && message.chars().count() < 400,
+        "the message cuts the answer short: {message}"
+    );
+    let PromptError::OutputSchemaMismatch {
+        output,
+        problems,
+        chat_history,
+        ..
+    } = error
+    else {
+        panic!("expected OutputSchemaMismatch, got {error:?}");
+    };
+    assert_eq!(output, long_answer, "the field keeps the whole answer");
+    assert_eq!(
+        chat_history,
+        [Message::user("summarize")],
+        "without the answer"
+    );
+    assert_eq!(
+        problems,
+        [problem("/answer", "expected an integer, got a string")]
+    );
+
+    let mut run = AgentRun::new("summarize")
+        .with_output_tool_name("final_result")
+        .with_output_validation(Some(typed), 0);
+    expect_call_model(&mut run);
+    expect_continue(
+        run.model_response(output_tool_turn(&long_answer))
+            .expect("model_response should succeed"),
+    );
+    let error = run
+        .next_step()
+        .expect_err("mistyped arguments fail the run");
+    let PromptError::OutputSchemaMismatch {
+        output,
+        output_tool,
+        problems,
+        chat_history,
+    } = error
+    else {
+        panic!("expected OutputSchemaMismatch, got {error:?}");
+    };
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&output).ok(),
+        serde_json::from_str::<serde_json::Value>(&long_answer).ok(),
+        "the field keeps the whole arguments"
+    );
+    assert_eq!(output_tool.as_deref(), Some("final_result"));
+    assert_eq!(
+        chat_history,
+        [Message::user("summarize")],
+        "without the call"
+    );
+    assert_eq!(
+        problems,
+        [problem("/answer", "expected an integer, got a string")]
+    );
+}
+
+/// The tool-result texts of the last message in `history` that answers
+/// tool calls, in order.
+fn last_result_texts(history: &[Message]) -> Vec<String> {
+    let texts = |content: &[UserContent]| -> Vec<String> {
+        content
+            .iter()
+            .filter_map(|item| match item {
+                UserContent::ToolResult(result) => Some(
+                    result
+                        .content
+                        .iter()
+                        .filter_map(|part| match part {
+                            ToolResultContent::Text(text) => Some(text.text.clone()),
+                            _ => None,
+                        })
+                        .collect::<String>(),
+                ),
+                _ => None,
+            })
+            .collect()
+    };
+    history
+        .iter()
+        .rev()
+        .find_map(|message| match message {
+            Message::User { content } => Some(texts(content)).filter(|t| !t.is_empty()),
+            _ => None,
+        })
+        .unwrap_or_default()
+}
+
+/// A retry's feedback answers the invalid call by position, so a valid peer
+/// that shares its id is told it did not run, and an ignored call before it
+/// does not shift the position.
+#[test]
+fn retry_feedback_answers_the_invalid_call_when_a_peer_shares_its_id() {
+    let not_run = rig_core::tool::feedback::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER;
+    let turn = |calls| {
+        ModelTurn::new(
+            AssistantMessage::default(),
+            calls,
+            Usage::default(),
+            policy(&["add"]),
+            hand_raw(),
+        )
+    };
+
+    let mut run = AgentRun::new("add things")
+        .max_turns(2)
+        .max_invalid_tool_call_retries(1);
+    expect_call_model(&mut run);
+    expect_needs_resolution(
+        run.model_response(turn(vec![tool_call("c1", "ghost"), tool_call("c1", "add")]))
+            .expect("model_response should succeed"),
+    );
+    run.resolve_invalid_tool_call(InvalidToolCallAction::retry("FIX"))
+        .expect("the retry is accepted");
+    assert_eq!(last_result_texts(&run.full_history()), ["FIX", not_run]);
+
+    let mut run = AgentRun::new("add things")
+        .max_turns(2)
+        .max_invalid_tool_call_retries(1);
+    expect_call_model(&mut run);
+    let calls = vec![
+        tool_call("c1", "ghost"),
+        tool_call("c1", "ghost"),
+        tool_call("c1", "add"),
+    ];
+    expect_needs_resolution(
+        run.model_response(turn(calls))
+            .expect("model_response should succeed"),
+    );
+    expect_needs_resolution(
+        run.ignore_invalid_tool_call()
+            .expect("the ignore is accepted"),
+    );
+    run.resolve_invalid_tool_call(InvalidToolCallAction::retry("FIX"))
+        .expect("the retry is accepted");
+    assert_eq!(
+        last_result_texts(&run.full_history()),
+        [not_run, "FIX", not_run]
+    );
+}
+
+/// An output-tool reprompt answers the refused output call by position, so a
+/// peer that shares its id is told it did not run.
+#[test]
+fn output_reprompt_feedback_answers_the_output_call_when_a_peer_shares_its_id() {
+    let mut run = AgentRun::new("summarize")
+        .max_turns(2)
+        .with_output_tool_name("final_result")
+        .with_output_validation(None, 1);
+    expect_call_model(&mut run);
+    let output_call = AssistantContent::ToolCall(ToolCall::from_wire(
+        "call_1",
+        ToolFunction::parse(
+            rig_core::message::ToolName::new("final_result").expect("tool name"),
+            "{\"x\":",
+        ),
+    ));
+    expect_continue(
+        run.model_response(ModelTurn::new(
+            AssistantMessage::default(),
+            vec![tool_call("call_1", "add"), output_call],
+            Usage::default(),
+            TurnPolicy::new(tool_names(&["add"]), None, Some("final_result".to_string()))
+                .expect("policy"),
+            hand_raw(),
+        ))
+        .expect("model_response should succeed"),
+    );
+    expect_call_model(&mut run);
+
+    let texts = last_result_texts(&run.full_history());
+    let [peer, output] = texts.as_slice() else {
+        panic!("two tool results expected: {texts:?}");
+    };
+    assert_eq!(
+        peer,
+        rig_core::tool::feedback::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER
+    );
+    assert!(output.contains("not a JSON object"), "{output}");
 }

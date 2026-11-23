@@ -2,7 +2,7 @@
 //!
 //! [`PostgresVectorStore`] searches a table holding a `pgvector` embedding
 //! column using a [`PgVectorDistanceFunction`] and optional [`PgSearchFilter`]
-//! conditions. With the `memory` feature, [`PostgresSessionStore`] keeps
+//! conditions. With the `memory` feature, `PostgresSessionStore` keeps
 //! rig-memory sessions in the same database. The `rig` facade re-exports
 //! this crate as `rig::postgres` under the `postgres` feature, and enables
 //! `memory` when its own `memory` feature is enabled too.
@@ -240,7 +240,8 @@ impl SearchResult {
         Ok(VectorSearchResult {
             score: self.distance,
             id: self.id.to_string(),
-            document: serde_json::from_value(self.document).map_err(VectorStoreError::JsonError)?,
+            document: rig_core::json_utils::from_value(&self.document)
+                .map_err(VectorStoreError::JsonError)?,
         })
     }
 }
@@ -401,19 +402,14 @@ impl VectorStoreIndex for PostgresVectorStore {
     type Filter = PgSearchFilter;
 
     /// Returns up to `samples` documents scored by distance, ordered by
-    /// ascending distance. Rows whose documents fail to deserialize are skipped.
+    /// ascending distance. A row whose document fails to deserialize fails the
+    /// search with [`VectorStoreError::JsonError`].
     async fn top_n<T: DeserializeOwned + WasmCompatSend>(
         &self,
         req: VectorSearchRequest<PgSearchFilter>,
     ) -> Result<Vec<VectorSearchResult<T>>, VectorStoreError> {
         let rows: Vec<SearchResult> = self.run_search(&req, true).await?;
-
-        let rows: Vec<VectorSearchResult<T>> = rows
-            .into_iter()
-            .flat_map(SearchResult::into_result)
-            .collect();
-
-        Ok(rows)
+        rows.into_iter().map(SearchResult::into_result).collect()
     }
 
     /// Like `top_n` but returns only scores and ids, without deserializing documents.

@@ -1,13 +1,13 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use rig_basics::coding_tools::{EditTool, ShellTool, WriteTool};
+use rig_basics::coding_tools::{EditTool, WriteTool};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::commands::CommandPlugin;
 use rig_harness::pick::PickPlugin;
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
-    Ended, app_on, first_agent, log_ended, reply, run_until, scripted_models,
+    Ended, app_on, first_agent, log_ended, reply, run_until, scratch_dir, scripted_models,
 };
 
 use super::*;
@@ -17,9 +17,7 @@ const MODEL: &str = "corpus-scripted/agent";
 /// A repository with a committed `src/lib.rs` and the user's untracked
 /// `notes.txt`, in a directory beside the test binary.
 fn repository(name: &str) -> PathBuf {
-    let exe = std::env::current_exe().unwrap_or_default();
-    let dir = exe.with_file_name(format!("sn-stray-{name}"));
-    fs::remove_dir_all(&dir).ok();
+    let dir = scratch_dir(&format!("sn-stray-{name}"));
     fs::create_dir_all(dir.join("src")).ok();
     fs::write(dir.join("src/lib.rs"), "// one\n").ok();
     for args in [
@@ -37,8 +35,7 @@ fn repository(name: &str) -> PathBuf {
     fs::canonicalize(&dir).unwrap_or(dir)
 }
 
-/// A reply that writes `scratch.py`, edits `src/lib.rs` and makes
-/// `out.log` with `shell`.
+/// A reply that writes `scratch.py` and `out.log` and edits `src/lib.rs`.
 fn makes_files() -> Vec<MockStreamEvent> {
     vec![
         MockStreamEvent::tool_call(
@@ -55,9 +52,9 @@ fn makes_files() -> Vec<MockStreamEvent> {
             }),
         ),
         MockStreamEvent::tool_call(
-            "s",
-            "shell",
-            serde_json::json!({ "command": "echo hi > out.log" }),
+            "o",
+            "write",
+            serde_json::json!({ "path": "out.log", "content": "hi\n" }),
         ),
         MockStreamEvent::final_response_with_default_usage(),
     ]
@@ -74,7 +71,7 @@ fn after_a_turn(
     app.insert_resource(scripted_models([(MODEL, model)]))
         .insert_resource(ProjectRoot(dir.to_path_buf()))
         .add_plugins((AgentPlugin, SessionLogPlugin, CommandPlugin, PickPlugin))
-        .add_plugins((WriteTool, EditTool, ShellTool, StrayFilesPlugin))
+        .add_plugins((WriteTool, EditTool, StrayFilesPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended);
     if answered {
@@ -87,6 +84,7 @@ fn after_a_turn(
     world.trigger(SetModel {
         entity: agent,
         model: MODEL.to_owned(),
+        kind: ChoiceKind::ForThisRun,
     });
     world.trigger(Deliver::new(agent, "Find the bug.", DeliveryMode::Queue));
     run_until(&mut app, &wakes, |world| {
@@ -232,7 +230,4 @@ fn a_run_nobody_answers_deletes_nothing_and_prints_the_list() {
     fs::remove_dir_all(&dir).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(StrayFilesPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(StrayFilesPlugin);

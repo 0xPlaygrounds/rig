@@ -1,25 +1,18 @@
-//! Plugin corpus: 46. HTTP API front (spec `46-http-api.md`).
+//! HTTP API front. Drives the agent over local HTTP while the terminal view keeps working: `rig
+//! --serve=127.0.0.1:7777`, or `addr` in the `[serve]` settings, starts a server whose random
+//! bearer token is shown as a notice and written to `RIG_HOME/serve-token`.
 //!
-//! Drives the agent over local HTTP while the terminal view keeps working:
-//! `rig --serve=127.0.0.1:7777`, or `addr` in the `[serve]` settings,
-//! starts a server whose random bearer token is shown as a notice and
-//! written to `RIG_HOME/serve-token`.
+//! `POST /agents/{id}/messages {text, mode}` delivers a message as if typed (slash commands
+//! run), and `POST /agents/{id}/interrupt` stops a turn. `GET /agents` lists the agents with
+//! their status, and `GET /agents/{id}/conversation` returns the messages. `GET /events`
+//! streams Server-Sent Events in the order things happened: `turn_start`, `text_delta`,
+//! `reasoning_delta`, `tool_start`, `tool_end`, `turn_end`, `notice`, `approval_request` and
+//! `approval_closed`. `POST /approvals/{id} {choice}` answers any plugin's open [`Ask`] or
+//! [`Picker`] with [`Pick`], as the terminal view does; a `null` choice closes it.
 //!
-//! - `POST /agents/{id}/messages {text, mode}` delivers a message as if
-//!   typed (slash commands run), `POST /agents/{id}/interrupt` stops a turn.
-//! - `GET /agents` lists the agents with their status,
-//!   `GET /agents/{id}/conversation` returns the messages.
-//! - `GET /events` streams Server-Sent Events, in the order things
-//!   happened: `turn_start`, `text_delta`, `reasoning_delta`, `tool_start`,
-//!   `tool_end`, `turn_end`, `notice`, `approval_request` and
-//!   `approval_closed`.
-//! - `POST /approvals/{id} {choice}` answers any plugin's open [`Ask`] or
-//!   [`Picker`] with [`Pick`], as the terminal view does; a `null` choice
-//!   closes it.
-//!
-//! An agent is named by its id or the id's first characters. A client
-//! lagging more than 256 events behind is dropped. Binding to anything but
-//! localhost needs `allow_remote = true` in `[serve]`.
+//! An agent is named by its id or the id's first characters. A client lagging more than 256
+//! events behind is dropped. Binding to anything but localhost needs `allow_remote = true` in
+//! `[serve]`.
 
 use std::sync::mpsc::SyncSender;
 
@@ -98,7 +91,11 @@ impl Plugin for HttpApiPlugin {
                     notices.write(Notice::info(None, text));
                     commands.insert_resource(api);
                     let pool = IoTaskPool::get_or_init(TaskPool::default);
-                    commands.spawn((listener, Running::stream(pool, &wake, requests)));
+                    commands.spawn((
+                        listener,
+                        ShowsPickers,
+                        Running::stream(pool, &wake, requests),
+                    ));
                     commands.spawn(Answerer::default());
                 },
             )
@@ -245,7 +242,7 @@ fn answer(
                         "name": name.as_str(),
                         "status": status,
                         "busy": busy,
-                        "spawned_by": parent.and_then(|parent| ids.get(parent.0).ok()).map(|id| &id.0),
+                        "spawned_by": parent.and_then(|parent| ids.get(parent.parent()).ok()).map(|id| &id.0),
                     })
                 })
                 .collect();
@@ -332,7 +329,10 @@ fn turn_ended(
             json!({ "agent": agent, "outcome": "answered", "answer": message.final_answer() })
         }
         TurnOutcome::Failed(why) => json!({ "agent": agent, "outcome": "failed", "error": why }),
-        TurnOutcome::Stopped(why) => json!({ "agent": agent, "outcome": "stopped", "reason": why }),
+        TurnOutcome::Stopped(stop) => {
+            let why = (*stop.cause() != StopCause::User).then(|| stop.cause().to_string());
+            json!({ "agent": agent, "outcome": "stopped", "reason": why })
+        }
     };
     events.send("turn_end", &data);
 }
@@ -371,14 +371,9 @@ fn stream_text(mut events: Events) {
 
 fn relay_notices(mut notices: MessageReader<Notice>, mut events: Events) {
     for notice in notices.read() {
-        let level = match notice.level {
-            NoticeLevel::Info => "info",
-            NoticeLevel::Warn => "warn",
-            NoticeLevel::Error => "error",
-        };
         let data = json!({
             "agent": notice.agent.and_then(|agent| events.agent(agent)),
-            "level": level,
+            "level": notice.level,
             "text": notice.text,
         });
         events.send("notice", &data);

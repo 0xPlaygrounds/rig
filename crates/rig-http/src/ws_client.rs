@@ -116,7 +116,7 @@ pub struct InvalidWebSocketUrl(String);
 /// appended path. Returns an error for invalid URLs or unsupported schemes.
 pub fn websocket_url(base_url: &str, path: &str) -> Result<String> {
     fn invalid(message: impl Into<String>) -> Error {
-        Error::instance(InvalidWebSocketUrl(message.into()))
+        Error::permanent(InvalidWebSocketUrl(message.into()))
     }
 
     let mut url =

@@ -1,22 +1,16 @@
-//! OC-17: images in the terminal transcript. Every image in the transcript
-//! (the user's, the model's, and those in tool results) is drawn below its
-//! message or call, scaled to at most [`ImagesSettings::max_width_percent`]
-//! of the terminal's width and [`ImagesSettings::max_rows`] rows, keeping
-//! its aspect ratio:
+//! Images in the terminal transcript. Every image in the transcript (the user's, the model's, and
+//! those in tool results) is drawn below its message or call, scaled to at most
+//! [`ImagesSettings::max_width_percent`] of the terminal's width and [`ImagesSettings::max_rows`]
+//! rows, keeping its aspect ratio.
 //!
-//! - with a terminal that shows images ([`ImagesSettings::protocol`]: the
-//!   kitty graphics protocol, iTerm2's inline images or sixel, inside tmux
-//!   only with its passthrough on), the transcript keeps blank rows, and after
-//!   each frame the image is placed over the rows of them on screen, and
-//!   taken off once they scroll away, the screen is resized or a box opens
-//!   over it;
-//! - otherwise half-block characters coloured as the image
-//!   ([`Mode::Blocks`]), or with [`Mode::Off`] one line saying what it is.
+//! A terminal that shows images ([`ImagesSettings::protocol`]: the kitty graphics protocol,
+//! iTerm2's inline images or sixel, inside tmux only with its passthrough on) gets the image placed
+//! over blank rows the transcript keeps, and taken off once they scroll away, the screen is resized
+//! or a box opens over it. Otherwise the image is drawn in half-block characters coloured as the
+//! image ([`Mode::Blocks`]), or with [`Mode::Off`] as one line saying what it is.
 //!
-//! A render system draws a message's images in place of the block and a
-//! call's under it, as a decoration. `o` on a selected image or call opens the image in the
-//! system viewer and `y` copies the path it was saved to. The images are
-//! drawn from the conversation, so a resumed session draws them again.
+//! `o` on a selected image or call opens the image in the system viewer and `y` copies the path it
+//! was saved to. The images are drawn from the conversation, so a resumed session draws them again.
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
@@ -32,19 +26,19 @@ use image::imageops::FilterType;
 use image::{DynamicImage, GenericImageView, ImageFormat};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{AssistantContent, Message as ChatMessage};
-use rig_harness::rig_core::message::{
-    CallId, DocumentSourceKind, Image, ToolResultContent, UserContent,
-};
+use rig_harness::rig_core::conversation::CallRef;
+use rig_harness::rig_core::conversation::pairing::answered_by;
+use rig_harness::rig_core::message::{DocumentSourceKind, Image, ToolResultContent, UserContent};
 use rig_harness::rig_tools::process::Launcher;
 use rig_tui::crossterm::event::KeyCode;
 use rig_tui::ratatui::layout::Rect;
 use rig_tui::ratatui::style::{Color, Style, Stylize};
 use rig_tui::ratatui::text::{Line, Span};
 use rig_tui::{
-    AppKeyBindingsExt, ContentBlock, ContentKind, CopyToClipboard, DrawnTranscript, KeyBinding,
-    KeyPress, KeyPressed, KeyScope, MainPane, RedrawArea, RenderBatch, RenderRevision,
-    RenderSystems, TerminalSize, TerminalWrite, TranscriptItem, TranscriptRender, TranscriptView,
-    TuiFrame, TuiSystems,
+    AppKeyBindingsExt, CallItem, ContentKind, CopyToClipboard, DrawnTranscript, KeyBinding,
+    KeyPress, KeyPressed, KeyScope, MainPane, RedrawArea, RenderBatch, RenderContent,
+    RenderRevision, RenderSystems, TerminalSize, TerminalWrite, TranscriptItem, TranscriptRender,
+    TranscriptView, TuiFrame, TuiSystems,
 };
 use serde::Deserialize;
 
@@ -417,18 +411,24 @@ fn result_images(content: &[ToolResultContent]) -> impl Iterator<Item = &Image> 
     })
 }
 
-/// The images of the result of `call` in `conversation`.
-fn images_of_call<'a>(conversation: &'a Conversation, call: &CallId) -> Vec<&'a Image> {
-    let result = conversation.messages().iter().rev().find_map(|message| {
-        let ChatMessage::User { content } = &**message else {
-            return None;
-        };
-        content.iter().find_map(|content| match content {
-            UserContent::ToolResult(result) if result.call == *call => Some(result),
-            _ => None,
-        })
-    });
-    result.map_or_else(Vec::new, |result| result_images(&result.content).collect())
+/// The images of the result of the call at `at` in `conversation`, which
+/// the message after its reply holds.
+fn images_of_call(conversation: &Conversation, at: CallRef) -> Vec<&Image> {
+    let messages = conversation.messages();
+    let reply = conversation.index_of(at.reply);
+    let asked =
+        reply.and_then(|reply| Some((&**messages.get(reply)?, &**messages.get(reply + 1)?)));
+    let Some((ChatMessage::Assistant(reply), results @ ChatMessage::User { .. })) = asked else {
+        return Vec::new();
+    };
+    let results = results.results().map(|result| (&result.call, result));
+    let answers = answered_by(reply.tool_calls().map(|call| &call.id), results);
+    let result = usize::try_from(at.index)
+        .ok()
+        .and_then(|at| answers.into_iter().nth(at));
+    result
+        .flatten()
+        .map_or_else(Vec::new, |result| result_images(&result.content).collect())
 }
 
 /// The image that is the `index`-th block of the message `id`.
@@ -469,8 +469,8 @@ fn drawn_in(
         TranscriptItem::Content(id, index) => {
             image_in(conversation, *id, *index).into_iter().collect()
         }
-        TranscriptItem::Decoration(call, name) if name == DECORATOR => {
-            images_of_call(conversation, call)
+        TranscriptItem::Decoration(CallItem::Reply(at), name) if name == DECORATOR => {
+            images_of_call(conversation, *at)
         }
         _ => return Vec::new(),
     };
@@ -517,8 +517,9 @@ fn follow_look(
 fn draw_images(mut images: ResMut<Images>, mut batch: ResMut<RenderBatch>) {
     let width = batch.width;
     for (content, output) in batch.contents_mut(ContentKind::Image) {
-        if let ContentBlock::Image(image) = content.view().block {
-            output.lines = images.lines(image, width).0;
+        if let RenderContent::Image(image) = &content.content {
+            let lines = images.lines(image, width).0;
+            output.lines = lines.into_iter().map(Into::into).collect();
         }
     }
 }
@@ -883,11 +884,8 @@ fn selected_image(world: &mut World) -> Result<PathBuf, String> {
         (Some(TranscriptItem::Content(id, index)), Some(conversation)) => {
             image_in(conversation, id, index).cloned()
         }
-        (Some(TranscriptItem::Call(call)), Some(conversation)) => {
-            images_of_call(conversation, &call)
-                .first()
-                .copied()
-                .cloned()
+        (Some(TranscriptItem::Call(CallItem::Reply(at))), Some(conversation)) => {
+            images_of_call(conversation, at).first().copied().cloned()
         }
         _ => None,
     };

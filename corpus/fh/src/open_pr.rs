@@ -1,25 +1,19 @@
-//! FH-12: open a pull request from the session.
+//! Opens a pull request from the session. `/pr` (`/pr draft`, `/pr --base <branch>`) turns the
+//! session's work into a pull request. The plugin keeps, with the session, the files each turn
+//! changed (by `git status` and file contents between the turn's start and end, so the agent's
+//! shell edits count and the user's earlier edits do not) and every command a tool ran, with how it
+//! ended.
 //!
-//! `/pr` (`/pr draft`, `/pr --base <branch>`) turns the session's work into
-//! a pull request. The plugin keeps, with the session, the files each turn
-//! changed (what `git status` and the files' contents show changed between
-//! the turn's start and end, so the agent's shell edits count and the
-//! user's earlier edits do not) and every command a tool ran, with how it
-//! ended. Both snapshots run off the main thread: the turn's first model
-//! call waits for the first, the turn's end for the second. `/pr` checks
-//! the repository, its remote and `gh` off the main thread, then asks a
-//! writer model (`[open-pr] model`, else the agent's) for the title, commit
-//! message and description from the user's requests, the diff against the
-//! base and those commands, following the repository's PR template when it
-//! has one. A review question shows the
-//! branch, files, message, title and description, each edited in place
-//! from its current text, with Publish, Commit only and Cancel. Nothing is
-//! committed or pushed before that answer. The steps then run off the main
-//! thread as an effect of the plugin's own (`open-pr`), each one shown as
-//! it starts; a failing step stops there and says how to go on. A pull
-//! request already open for the branch gets the new commits and, if the
-//! user agrees, the new description. The URL is kept with the session, in
-//! `/resume`'s line and shown again when the session is resumed.
+//! `/pr` asks a writer model (`[open-pr] model`, else the agent's) for the title, commit message
+//! and description from the user's requests, the diff against the base and those commands,
+//! following the repository's PR template when it has one. A review question shows the branch,
+//! files, message, title and description, each editable, with Publish, Commit only and Cancel.
+//! Nothing is committed or pushed before that answer.
+//!
+//! The steps then run as an `open-pr` effect, each shown as it starts; a failing step stops there
+//! and says how to go on. A pull request already open for the branch gets the new commits and, if
+//! the user agrees, the new description. The URL is kept with the session and shown in `/resume`
+//! and when the session is resumed.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsString;
@@ -587,7 +581,10 @@ fn prepared(
         .output_schema(schemars::schema_for!(Written));
     let mut request = ModelRequest::new(request);
     if let Some(reference) = config.model.as_deref() {
-        match models.connect(reference) {
+        match models
+            .connect(reference)
+            .map_err(|why| Models::cannot_use(reference, why))
+        {
             Ok(connection) => request = request.on(connection),
             Err(why) => {
                 notices.write(Notice::error(agent, format!("[open-pr] model: {why}")));

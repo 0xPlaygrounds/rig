@@ -1,21 +1,25 @@
+use std::io::Write;
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+use async_channel::Sender;
+
 use bevy_tasks::futures_lite::stream;
 use bevy_tasks::{IoTaskPool, TaskPool};
-use rig_core::completion::{CompletionResponse, Message, Usage};
+use rig_core::completion::{CompletionResponse, Effort, Message, Usage};
 use rig_core::message::{AssistantContent, Origin as Made, Text};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::harness_protocol::Invocation;
 use rig_harness::host::exit::ExitPlugin;
 use rig_harness_test_support::{
-    self as test_support, MemoryStore, app_on, calls, connect, first_agent, reply, scripted_models,
-    start_call,
+    self as test_support, MemoryStore, app_on, calls, connect, first_agent, hold_turn_calls, reply,
+    scripted_models, start_call,
 };
 
 use super::*;
 use crate::approval::{ApprovalPlugin, NeedsApproval};
+use crate::telemetry::usage::{UnknownSpend, UsagePlugin};
 
 mod tools;
 
@@ -27,13 +31,24 @@ const MODEL: &str = "test/model";
 struct Ends(Vec<HeadlessEnded>, Vec<HeadlessTurnEnded>);
 
 /// An app on `store` that keeps what [`Ends`] holds, `invoked` as its
-/// command line.
+/// command line, choosing models as the agent does.
 fn noting(store: &MemoryStore, invoked: Invocation) -> (App, Receiver<()>) {
+    let (mut app, wakes) = unpicked(store, invoked);
+    app.add_plugins(crate::models::ModelsPlugin);
+    (app, wakes)
+}
+
+/// [`noting`] without the models plugin. Its apps still get the first
+/// pick through [`AppHeadlessExt::run_headless`], which is why
+/// [`started`] holds the start while its setup restores a model.
+fn unpicked(store: &MemoryStore, invoked: Invocation) -> (App, Receiver<()>) {
     let (mut app, wakes) = app_on(store);
     app.insert_resource(Invoked {
         args: invoked,
         terminal: false,
     })
+    // No model unless a test scripts one: never the environment's.
+    .insert_resource(scripted_models([]))
     .add_plugins(AgentPlugin)
     .init_resource::<Ends>()
     .add_observer(|ended: On<HeadlessEnded>, mut ends: ResMut<Ends>| {
@@ -45,20 +60,24 @@ fn noting(store: &MemoryStore, invoked: Invocation) -> (App, Receiver<()>) {
     (app, wakes)
 }
 
-/// A run of `prompt` after its first frame and `setup`; with `model`,
-/// named on the command line and connected.
+/// A run of `prompt` after its first frame and `setup`, which run before
+/// the start is over, as a restored session does; with `model`, named on
+/// the command line and connected.
 fn started(
     prompt: &str,
     model: Option<&MockCompletionModel>,
     setup: impl FnOnce(&mut World, Entity),
 ) -> App {
-    let named = model.map(|_| "deepseek/deepseek-flash".to_owned());
+    const NAMED: &str = "deepseek/deepseek-flash";
     let invoked = Invocation {
-        model: named,
+        model: model.map(|_| NAMED.to_owned()),
         ..Invocation::default()
     };
-    let (mut app, _) = noting(&MemoryStore::default(), invoked);
-    app.add_plugins(ExitPlugin)
+    let (mut app, _) = unpicked(&MemoryStore::default(), invoked);
+    let scripted = model.cloned().unwrap_or_else(silent);
+    let starting = app.world_mut().spawn(Starting).id();
+    app.insert_resource(scripted_models([(NAMED, &scripted)]))
+        .add_plugins(ExitPlugin)
         .run_headless(Some(prompt.to_owned()))
         .update();
     let world = app.world_mut();
@@ -67,6 +86,7 @@ fn started(
         world.entity_mut(agent).insert(connection);
     }
     setup(world, agent);
+    world.despawn(starting);
     app
 }
 
@@ -214,7 +234,8 @@ fn a_failed_headless_run_names_the_unanswered_message() {
     let (mut app, _) = noting(&MemoryStore::default(), invoked);
     app.insert_resource(scripted_models([(MODEL, &model)]))
         .insert_resource(Printed::to(lines.clone()))
-        .add_plugins((ExitPlugin, PrintPlugin));
+        // The key it said is redacted where it came in.
+        .add_plugins((ExitPlugin, PrintPlugin, crate::redact::RedactPlugin));
     app.finish();
     app.cleanup();
     run_until(&mut app, |_| false);
@@ -228,12 +249,48 @@ fn a_failed_headless_run_names_the_unanswered_message() {
     let stderr = String::from_utf8_lossy(&bytes);
     assert!(
         stderr.lines().any(
-            |line| line == "rig: not answered: Explain this failure. OPENAI_API_KEY=[REDACTED]"
+            |line| line == "rig: not answered: Explain this failure. OPENAI_API_KEY=‹SECRET_1›"
         ),
         "{stderr}"
     );
     // There is no input to send it again from.
     assert!(!stderr.contains("back in the input"), "{stderr}");
+}
+
+#[test]
+fn a_reasoning_effort_the_model_cannot_take_is_reset_on_stderr_and_answered() {
+    let model = answering(&["done"]);
+    let lines = Lines::default();
+    let invoked = Invocation {
+        print: Some("go".to_owned()),
+        ..Invocation::default()
+    };
+    let (mut app, _) = noting(&MemoryStore::default(), invoked);
+    // The scripted model does not reason; the effort comes with it, as
+    // `[model] effort` does.
+    let high = ReasoningSetting(Some(Effort::High.into()));
+    app.insert_resource(scripted_models([(MODEL, &model)]))
+        .insert_resource(Printed::to(lines.clone()))
+        .add_plugins((ExitPlugin, PrintPlugin))
+        .add_observer(move |added: On<Add<Connection>>, mut commands: Commands| {
+            commands.entity(added.entity).insert(high);
+        });
+    app.finish();
+    app.cleanup();
+    run_until(&mut app, |_| false);
+    assert_eq!(app.should_exit(), Some(AppExit::Success));
+    let bytes = lines
+        .0
+        .lock()
+        .map(|lines| lines.clone())
+        .unwrap_or_default();
+    let stderr = String::from_utf8_lossy(&bytes);
+    assert!(
+        stderr
+            .lines()
+            .any(|line| line.starts_with("rig: Reasoning reset to default: `reasoning`")),
+        "{stderr}"
+    );
 }
 
 #[test]
@@ -399,13 +456,6 @@ fn a_turn_the_run_never_saw_working_is_still_reported() {
     assert_eq!(turns(&app), [Some("one"), Some("two")]);
 }
 
-/// Holds every model call of a turn, as an approval nobody gave.
-fn hold_turn_calls(calls: Query<Entity, (ReadyToStart, With<TurnCall>)>, mut commands: Commands) {
-    for call in &calls {
-        commands.spawn(HoldOf(call));
-    }
-}
-
 /// Runs a frame of `app`, then one more for each wake, as the host loop
 /// does, up to 50 frames.
 fn run_while_woken(app: &mut App, wakes: &Receiver<()>) {
@@ -474,6 +524,7 @@ fn a_resumed_run_without_a_prompt_runs_nothing_of_a_turn_an_exit_stopped() {
     world.trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     world.trigger(Deliver::new(agent, "hi", DeliveryMode::Steer));
     test_support::run_until(&mut app, &wakes, |world| {
@@ -524,6 +575,35 @@ fn an_exit_during_a_held_start_leaves_the_restored_turn() {
         assert_eq!(ended(&mut app), answered("hello"), "{with_the_last}");
         assert_eq!(third.request_count(), 0);
     }
+}
+
+/// At a terminal with `--tools`, the loop waits for the start too, and a
+/// signal meanwhile leaves the restored turn as a headless run does.
+#[test]
+fn an_exit_during_a_held_start_at_a_terminal_leaves_the_restored_turn() {
+    let store = MemoryStore::default();
+    killed_two_frames_in(&store);
+    let invoked = Invocation {
+        flags: vec![(rig_harness::run::TOOLS.to_owned(), Some(String::new()))],
+        ..Invocation::default()
+    };
+    let (mut app, _) = noting(&store, invoked);
+    app.world_mut().resource_mut::<Invoked>().terminal = true;
+    app.add_front(Front::new("view").on_terminal())
+        .add_plugins((SessionLogPlugin, ExitPlugin, rig_harness::run::RunPlugin));
+    app.finish();
+    app.cleanup();
+    let starting = app.world_mut().spawn(Starting).id();
+    app.update();
+    app.world_mut().trigger(Exit(ExitReason::Signal));
+    app.world_mut().despawn(starting);
+    run_until(&mut app, |_| false);
+    assert_eq!(app.should_exit(), Some(ExitReason::Signal.exit()));
+    drop(app);
+    let third = silent();
+    let in_place = (carry_on, answer_in_place).in_set(Stage::Gate);
+    let (mut app, _) = scripted(&store, (&third, false), None, in_place);
+    assert_eq!(ended(&mut app), answered("hello"));
 }
 
 /// A `/command` waits for the start as any prompt does: a skill's starts a
@@ -617,6 +697,48 @@ fn a_json_exit_during_a_held_start_closes_the_restored_turn_it_leaves() {
     assert_eq!(ended(&mut app), answered("hello"));
 }
 
+/// A run refused as it starts, such as for its settings, leaves the turn
+/// its session restored as it was, for the next run.
+#[test]
+fn a_refused_run_leaves_the_restored_turn_to_the_next_run() {
+    let store = MemoryStore::default();
+    killed_two_frames_in(&store);
+    let refused = silent();
+    let (mut app, _) = scripted(&store, (&refused, false), Some("again"), || {});
+    app.refuse_run("the settings do not read".to_owned());
+    for _ in 0..5 {
+        if app.should_exit().is_none() {
+            app.update();
+        }
+    }
+    assert_eq!(app.should_exit(), Some(AppExit::from_code(2)));
+    assert_eq!(refused.request_count(), 0);
+    drop(app);
+    let next = silent();
+    let in_place = (carry_on, answer_in_place).in_set(Stage::Gate);
+    let (mut app, _) = scripted(&store, (&next, false), None, in_place);
+    assert_eq!(ended(&mut app), answered("hello"));
+}
+
+/// A long-lived `--json` run refused as it starts reads no request: its
+/// end of input cannot end it first, with 0.
+#[test]
+fn a_refused_json_run_ends_refused_whatever_its_input() {
+    let invoked = Invocation {
+        flags: vec![(JSON.to_owned(), None)],
+        ..Invocation::default()
+    };
+    let (mut app, _) = noting(&MemoryStore::default(), invoked);
+    app.insert_resource(JsonOut::new(Lines::default()))
+        .insert_resource(JsonIn(pipes::read_lines(std::io::empty(), REQUEST_LIMIT)))
+        .add_plugins((SessionLogPlugin, ExitPlugin, PrintPlugin));
+    app.refuse_run("the settings do not read".to_owned());
+    app.finish();
+    app.cleanup();
+    run_until(&mut app, |_| false);
+    assert_eq!(app.should_exit(), Some(AppExit::from_code(2)));
+}
+
 /// `rig -m <MODEL> -p hi` on `store`, killed two frames in, before any
 /// reply; its model, which got no request.
 fn killed_two_frames_in(store: &MemoryStore) -> MockCompletionModel {
@@ -629,7 +751,11 @@ fn killed_two_frames_in(store: &MemoryStore) -> MockCompletionModel {
             {
                 *done = true;
                 let model = MODEL.to_owned();
-                commands.trigger(SetModel { entity, model });
+                commands.trigger(SetModel {
+                    entity,
+                    model,
+                    kind: ChoiceKind::ForThisRun,
+                });
             }
         };
     let held = hold_turn_calls.in_set(Stage::Gate);
@@ -694,6 +820,132 @@ fn answer_in_place(mut calls: Query<&mut Decision, (ReadyToStart, ModelCalls, Wi
             Outcome(Ok(rig_core::effect::Answered::Completion(reply.into()))),
         );
     }
+}
+
+/// `--json` writes a reply a plugin gives in place as `text`, once, as it
+/// writes one that streamed.
+#[test]
+fn a_json_run_writes_a_reply_given_in_place_as_text_once() {
+    let model = silent();
+    let (_, lines) = one_shot("hi", None, &model, true, |app| {
+        app.add_systems(AgentPass, answer_in_place.in_set(Stage::Gate));
+    });
+    let texts: Vec<Value> = lines
+        .of("text")
+        .iter()
+        .map(|line| at(line, "text").clone())
+        .collect();
+    assert_eq!(texts, [json!("hello")], "{:?}", lines.parsed());
+    assert_eq!(model.request_count(), 0);
+}
+
+/// Adds the text "added in review" to each turn call's answer that has
+/// none, in Review, as a reviewer edits an outcome in place.
+fn add_text_in_review(mut calls: Query<&mut Outcome, (ReadyToSettle, With<TurnCall>)>) {
+    for mut outcome in &mut calls {
+        let Ok(rig_core::effect::Answered::Completion(reply)) = &outcome.0 else {
+            continue;
+        };
+        let mut choice = reply.choice.clone();
+        if choice
+            .iter()
+            .any(|content| matches!(content, AssistantContent::Text(_)))
+        {
+            continue;
+        }
+        choice.push(AssistantContent::text("added in review"));
+        let made = Made::new("plugin", "test", "review");
+        let reply = CompletionResponse::new(choice, Usage::default(), made, Value::Null);
+        outcome.0 = Ok(rig_core::effect::Answered::Completion(reply.into()));
+    }
+}
+
+/// `--json` writes the text a reviewer gives a reply that streamed only
+/// reasoning as `text`, once.
+#[test]
+fn a_json_run_writes_text_a_reviewer_adds_to_a_reply_as_text_once() {
+    let model = MockCompletionModel::from_stream_turns([vec![
+        MockStreamEvent::reasoning("hm"),
+        MockStreamEvent::final_response_with_default_usage(),
+    ]]);
+    let (_, lines) = one_shot("hi", None, &model, true, |app| {
+        app.add_systems(AgentPass, add_text_in_review.in_set(ReviewSystems::Edit));
+    });
+    let texts: Vec<Value> = lines
+        .of("text")
+        .iter()
+        .map(|line| at(line, "text").clone())
+        .collect();
+    assert_eq!(texts, [json!("added in review")], "{:?}", lines.parsed());
+}
+
+/// Answers the first model call in place with text and a call of `noted`,
+/// and the next with "done": nothing streams.
+fn narrate_in_place(
+    mut calls: Query<&mut Decision, (ReadyToStart, ModelCalls, With<TurnCall>)>,
+    mut answered: Local<usize>,
+) {
+    for mut decision in &mut calls {
+        *answered += 1;
+        let mut choice = Vec::new();
+        if *answered == 1 {
+            choice.push(AssistantContent::text("Noting it first."));
+            if let Ok(name) = rig_core::message::ToolName::new("noted") {
+                let function = rig_core::message::ToolFunction::new(name, json!({}));
+                let id = rig_core::message::CallId::from_wire("c1");
+                let call = rig_core::message::ToolCall::new(id, function);
+                choice.push(AssistantContent::ToolCall(call));
+            }
+        } else {
+            choice.push(AssistantContent::text("done"));
+        }
+        let made = Made::new("plugin", "test", "answer");
+        let reply = CompletionResponse::new(choice, Usage::default(), made, Value::Null);
+        decision.decide(
+            Decider::plugin("test"),
+            Outcome(Ok(rig_core::effect::Answered::Completion(reply.into()))),
+        );
+    }
+}
+
+/// On a terminal, plain `-p` writes what a reply a plugin gives in place
+/// says before its tool call to stderr, once, as it does for one that
+/// streamed.
+#[test]
+fn a_terminal_run_narrates_a_reply_given_in_place() {
+    let (out, err) = (Lines::default(), Lines::default());
+    let model = silent();
+    let invoked = Invocation {
+        print: Some("hi".to_owned()),
+        ..Invocation::default()
+    };
+    let (mut app, _) = noting(&MemoryStore::default(), invoked);
+    let terminal = Terminal {
+        width: Some(80),
+        color: false,
+    };
+    let writer = Writer::inline(out.clone(), err.clone());
+    app.insert_resource(scripted_models([(MODEL, &model)]))
+        .insert_resource(Printed::by(writer, None, Some(terminal)))
+        .add_plugins((ExitPlugin, PrintPlugin))
+        .add_systems(AgentPass, narrate_in_place.in_set(Stage::Gate))
+        .add_open_tool(
+            "noted",
+            "Notes.",
+            ToolOptions::default(),
+            |called: On<ToolCalled<Value>>, mut commands: Commands| {
+                let result = rig_core::tool::ToolResult::success("Noted.".into());
+                commands.entity(called.call).insert(Outcome::from(result));
+            },
+        );
+    app.finish();
+    app.cleanup();
+    run_until(&mut app, |_| false);
+    assert_eq!(app.should_exit(), Some(AppExit::Success));
+    let said = err.text().concat();
+    assert_eq!(said.matches("Noting it first.").count(), 1, "{said}");
+    assert_eq!(out.text().concat().trim(), "done");
+    assert_eq!(model.request_count(), 0);
 }
 
 /// The resumed turn a plugin carries on ends inside the run's first frame,
@@ -826,6 +1078,48 @@ fn questions_are_answered_from_answer_or_refused() {
     assert_eq!(none, (0, vec![Some(None)]));
 }
 
+/// What a print run of a model answering `answer` writes to stdout, when
+/// stdout is `terminal`.
+fn stdout_of(answer: &str, terminal: Option<Terminal>) -> Vec<u8> {
+    let out = Lines::default();
+    let model = answering(&[answer]);
+    let invoked = Invocation {
+        print: Some("hi".to_owned()),
+        ..Invocation::default()
+    };
+    let (mut app, _) = noting(&MemoryStore::default(), invoked);
+    let writer = Writer::inline(out.clone(), std::io::sink());
+    app.insert_resource(scripted_models([(MODEL, &model)]))
+        .insert_resource(Printed::by(writer, terminal, None))
+        .add_plugins((ExitPlugin, PrintPlugin));
+    app.finish();
+    app.cleanup();
+    run_until(&mut app, |_| false);
+    out.0.lock().map(|out| out.clone()).unwrap_or_default()
+}
+
+#[test]
+fn a_pipe_gets_the_answers_own_bytes_and_a_terminal_gets_it_drawn() {
+    let code = format!("fn main() {{ {} }}", "step();".repeat(30));
+    let answer = format!(
+        "# Plan\n\n{} `cargo test` **now**.\n\n- one\n- two\n\n```rust\n{code}\n```\n\n",
+        "a long sentence of words ".repeat(16).trim_end(),
+    );
+    // Not a terminal: the answer as the model wrote it, as before.
+    let piped = stdout_of(&answer, None);
+    assert_eq!(piped, format!("{}\n", answer.trim_end()).into_bytes());
+    let terminal = Terminal {
+        width: Some(80),
+        color: false,
+    };
+    let drawn = String::from_utf8(stdout_of(&answer, Some(terminal))).unwrap_or_default();
+    assert!(!drawn.contains("```") && !drawn.contains("**"), "{drawn}");
+    assert!(
+        drawn.lines().any(|line| line.trim_start() == code),
+        "{drawn}"
+    );
+}
+
 #[test]
 fn sections_follow_the_answer_by_tag() {
     let sections = [
@@ -833,31 +1127,34 @@ fn sections_follow_the_answer_by_tag() {
         PrintSection::new("cost", "$0.02"),
         PrintSection::new("empty", ""),
     ];
-    let printed = output(Some("Fixed.\n"), &sections);
+    let printed = output(Some("Fixed.\n"), &sections, None);
     assert_eq!(
         printed.as_deref(),
         Some("Fixed.\n\n$0.02\n\ntodo 1/2\n[x] read\n[ ] fix")
     );
-    assert_eq!(output(None, &[]), None);
+    assert_eq!(output(None, &[], None), None);
 }
 
+/// A prompt takes what is piped in after it, however late it comes: the
+/// run reads stdin to its end.
 #[test]
-fn a_prompt_takes_what_is_piped_in_and_never_waits_on_a_silent_stdin() {
-    let wait = Duration::from_millis(50);
-    let on = || false;
-    let piped = |prompt: &str, text: &'static [u8]| with_piped(prompt, text, wait, on);
+fn a_prompt_takes_what_is_piped_in_however_late() {
+    let piped = |prompt: &str, text: &'static [u8]| {
+        with_piped(prompt, text, PIPED_LIMIT, Builder::new(), || false)
+            .ok()
+            .flatten()
+    };
     assert_eq!(piped("Review", b"diff").as_deref(), Some("Review\n\ndiff"));
     assert_eq!(piped("", b"diff").as_deref(), Some("diff"));
-    // A pipe whose writer stays open and silent, as an agent's shell may
-    // leave stdin.
-    let Ok((silent, writer)) = std::io::pipe() else {
+    let Ok((late, mut writer)) = std::io::pipe() else {
         return;
     };
-    assert_eq!(
-        with_piped("Review", silent, wait, on).as_deref(),
-        Some("Review")
-    );
-    drop(writer);
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(1500));
+        writer.write_all(b"late").ok();
+    });
+    let read = with_piped("Review", late, PIPED_LIMIT, Builder::new(), || false);
+    assert_eq!(read.ok().flatten().as_deref(), Some("Review\n\nlate"));
 }
 
 /// A run waiting for its whole prompt on stdin, which may never come, stops
@@ -869,8 +1166,58 @@ fn an_interrupted_run_stops_waiting_for_stdin() {
     };
     let since = std::time::Instant::now();
     let interrupted = move || since.elapsed() > Duration::from_millis(100);
-    assert_eq!(with_piped("", silent, Duration::MAX, interrupted), None);
+    let waited = with_piped("", silent, PIPED_LIMIT, Builder::new(), interrupted);
+    assert_eq!(waited, Ok(None));
     drop(writer);
+}
+
+/// What is piped in may be exactly the limit; one byte more is refused,
+/// with or without a prompt before it.
+#[test]
+fn piped_input_past_its_limit_is_refused() {
+    let read =
+        |prompt: &str, text: &'static [u8]| with_piped(prompt, text, 4, Builder::new(), || false);
+    assert_eq!(read("", b"abcd"), Ok(Some("abcd".to_owned())));
+    let large = Unpiped::TooLarge(TooLarge { limit: 4, asked: 5 });
+    assert_eq!(read("", b"abcde"), Err(large.clone()));
+    assert_eq!(read("Review", b"abcdefgh"), Err(large));
+}
+
+/// What is piped in that is not text, or that could not be read, refuses
+/// the run rather than going to the model mangled or cut short, as does a
+/// reader thread that could not start.
+#[test]
+fn piped_input_that_is_not_text_or_fails_is_refused() {
+    let read =
+        |prompt: &str, text: &'static [u8]| with_piped(prompt, text, 64, Builder::new(), || false);
+    assert_eq!(read("", b"ok \xff no"), Err(Unpiped::NotText(3)));
+    assert_eq!(read("Review", b"\xc3"), Err(Unpiped::NotText(0)));
+    /// A reader that fails after its first bytes.
+    struct Broken(bool);
+    impl Read for Broken {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            match std::mem::replace(&mut self.0, true) {
+                false => buf
+                    .first_mut()
+                    .map(|byte| *byte = b'a')
+                    .map_or(Ok(0), |()| Ok(1)),
+                true => Err(std::io::Error::other("the pipe broke")),
+            }
+        }
+    }
+    let failed = with_piped("", Broken(false), 64, Builder::new(), || false);
+    assert_eq!(failed, Err(Unpiped::Failed("the pipe broke".to_owned())));
+    // A stack no system can give: the reader thread really fails to start.
+    let unstartable = Builder::new().stack_size(usize::MAX / 2);
+    let unstarted = with_piped("Review", &b"diff"[..], 64, unstartable, || false);
+    assert!(
+        matches!(unstarted, Err(Unpiped::Failed(_))),
+        "{unstarted:?}"
+    );
+    assert_eq!(
+        Unpiped::NotText(3).to_string(),
+        "what was piped in is not UTF-8 text from byte 3 on: pipe in text"
+    );
 }
 
 /// A long recalled text, such as a big input piped in after the prompt,
@@ -955,7 +1302,7 @@ struct Waiting;
 fn json_run(
     model: &MockCompletionModel,
     approve: bool,
-) -> (App, Receiver<()>, Lines, Sender<String>) {
+) -> (App, Receiver<()>, Lines, Sender<RequestLine>) {
     let lines = Lines::default();
     let (input, requests) = JsonIn::channel();
     let invoked = Invocation {
@@ -965,6 +1312,7 @@ fn json_run(
     let (mut app, wakes) = noting(&MemoryStore::default(), invoked);
     app.insert_resource(JsonOut::new(lines.clone()))
         .insert_resource(requests)
+        .insert_resource(scripted_models([(MODEL, model)]))
         .add_plugins((SessionLogPlugin, ExitPlugin, PrintPlugin))
         .add_open_tool(
             "wait",
@@ -988,16 +1336,15 @@ fn json_run(
     }
     app.finish();
     app.update();
-    let world = app.world_mut();
-    if let (Some(agent), Some(connection)) = (first_agent(world), connect(model)) {
-        world.entity_mut(agent).insert(connection);
-    }
     (app, wakes, lines, input)
 }
 
 /// Sends `line` as a request.
-fn send(input: &Sender<String>, line: Value) {
-    assert!(input.try_send(line.to_string()).is_ok(), "the run reads");
+fn send(input: &Sender<RequestLine>, line: Value) {
+    assert!(
+        input.try_send(Ok(line.to_string().into_bytes())).is_ok(),
+        "the run reads"
+    );
 }
 
 /// Whether a `wait` call runs.
@@ -1031,7 +1378,7 @@ fn a_held_start_holds_a_drivers_first_request() {
     }
     send(
         &input,
-        json!({ "v": 1, "type": "send", "id": 1, "text": "hi" }),
+        json!({ "v": VERSION, "type": "send", "id": 1, "text": "hi" }),
     );
     for _ in 0..20 {
         app.update();
@@ -1041,6 +1388,168 @@ fn a_held_start_holds_a_drivers_first_request() {
     app.world_mut().despawn(starting);
     test_support::run_until(&mut app, &wakes, |_| !lines.of("turn_end").is_empty());
     assert_eq!(model.request_count(), 1);
+}
+
+/// Each model call's usage is a `usage` line once it is recorded, before
+/// the `turn_end` that sums it, and so is one a plugin records for a call
+/// made elsewhere, such as a helper child's: so a parent reading these
+/// lines counts its helper's helpers too.
+#[test]
+fn each_recorded_call_is_a_usage_line() {
+    let model =
+        MockCompletionModel::from_stream_turns([calls("c1", "wait", json!({})), reply("Done.")]);
+    let lines = Lines::default();
+    let (input, requests) = JsonIn::channel();
+    let invoked = Invocation {
+        flags: vec![(JSON.to_owned(), None)],
+        ..Invocation::default()
+    };
+    let (mut app, wakes) = noting(&MemoryStore::default(), invoked);
+    app.insert_resource(JsonOut::new(lines.clone()))
+        .insert_resource(requests)
+        .insert_resource(scripted_models([(MODEL, &model)]))
+        .add_plugins((SessionLogPlugin, ExitPlugin, PrintPlugin, UsagePlugin))
+        .add_open_tool(
+            "wait",
+            "Wait.",
+            ToolOptions::default(),
+            |called: On<ToolCalled<Value>>, mut commands: Commands| {
+                let done = rig_core::tool::ToolResult::success("Waited.".into());
+                commands.entity(called.call).insert(Outcome::from(done));
+            },
+        );
+    app.finish();
+    app.update();
+    send(
+        &input,
+        json!({ "v": VERSION, "type": "send", "text": "Go." }),
+    );
+    test_support::run_until(&mut app, &wakes, |_| !lines.of("turn_end").is_empty());
+    let world = app.world_mut();
+    let agent = first_agent(world);
+    world.trigger(Spent {
+        agent,
+        turn: None,
+        model: Some("test/other".to_owned()),
+        purpose: Some("helper".to_owned()),
+        usage: Usage::new().input_tokens(7).output_tokens(3),
+    });
+    app.update();
+
+    let kinds: Vec<String> = lines
+        .parsed()
+        .iter()
+        .filter_map(|line| at(line, "type").as_str().map(str::to_owned))
+        .collect();
+    let usage = |n: usize| {
+        kinds
+            .iter()
+            .enumerate()
+            .filter(|(_, kind)| *kind == "usage")
+            .nth(n)
+            .map(|(at, _)| at)
+    };
+    let end = kinds.iter().position(|kind| kind == "turn_end");
+    let before = usage(1).zip(end).is_some_and(|(usage, end)| usage < end);
+    let after = usage(2).zip(end).is_some_and(|(usage, end)| usage > end);
+    assert!(before && after, "{kinds:?}");
+    let used = lines.of("usage");
+    let fields = |line: &Value| {
+        (
+            at(line, "v").clone(),
+            at(line, "purpose").clone(),
+            at(line, "model").clone(),
+        )
+    };
+    let helper = used.get(2).map(fields);
+    assert_eq!(
+        helper,
+        Some((json!(3), json!("helper"), json!("test/other")))
+    );
+    let turn = used.first().map(fields);
+    assert_eq!(turn.map(|(_, purpose, _)| purpose), Some(json!("turn")));
+    let named = used.iter().all(|line| at(line, "agent").is_string());
+    assert!(named && used.len() == 3, "{used:?}");
+    let tokens = used
+        .get(2)
+        .map(|line| at(at(line, "usage"), "output_tokens").clone());
+    assert_eq!(tokens, Some(json!(3)));
+}
+
+/// A request already waiting on stdin when the run starts is answered
+/// after `ready`, which stays the first line.
+#[test]
+fn ready_comes_first_when_a_request_is_already_waiting() {
+    let lines = Lines::default();
+    let (input, requests) = JsonIn::channel();
+    let invoked = Invocation {
+        flags: vec![(JSON.to_owned(), None)],
+        ..Invocation::default()
+    };
+    let (mut app, wakes) = noting(&MemoryStore::default(), invoked);
+    send(&input, json!({ "v": VERSION, "type": "state", "id": "a" }));
+    // The request stream wakes the app once it holds the line, and nothing
+    // else here wakes it before the first update: so the first update
+    // polls the request, as when stdin had it at the start.
+    let wakes = Arc::new(Mutex::new(wakes));
+    let woken = Arc::clone(&wakes);
+    let streamed = move || {
+        if let Ok(wakes) = woken.lock() {
+            wakes.recv_timeout(Duration::from_secs(10)).ok();
+        }
+    };
+    // On main `ready` ran in `Update`, unordered against the requests: a
+    // system between them has the reply written first, as the default
+    // plugins' order did.
+    let between = || {};
+    app.insert_resource(JsonOut::new(lines.clone()))
+        .insert_resource(requests)
+        .add_plugins((SessionLogPlugin, ExitPlugin, PrintPlugin))
+        .add_systems(PostStartup, streamed)
+        .add_systems(
+            Update,
+            between.after(rig_ecs::tasks::PollTasks).before(ready),
+        );
+    app.finish();
+    app.update();
+    if let Ok(wakes) = wakes.lock() {
+        reply_to(&mut app, &wakes, &lines, "a");
+    }
+    let kinds: Vec<(Value, Value)> = lines
+        .parsed()
+        .iter()
+        .map(|line| (at(line, "type").clone(), at(line, "id").clone()))
+        .collect();
+    let first = [(json!("ready"), Value::Null), (json!("reply"), json!("a"))];
+    assert_eq!(kinds.get(..2), Some(&first[..]), "{kinds:?}");
+}
+
+/// `rig -r <id> --json` on a session killed while it waited on the model:
+/// `ready` comes before the restored turn's `turn_start`.
+#[test]
+fn ready_comes_first_when_a_restored_turn_resumes() {
+    let store = MemoryStore::default();
+    killed_two_frames_in(&store);
+    let lines = Lines::default();
+    let (_input, requests) = JsonIn::channel();
+    let invoked = Invocation {
+        flags: vec![(JSON.to_owned(), None)],
+        ..Invocation::default()
+    };
+    let (mut app, wakes) = noting(&store, invoked);
+    let model = silent();
+    app.insert_resource(JsonOut::new(lines.clone()))
+        .insert_resource(requests)
+        .insert_resource(scripted_models([(MODEL, &model)]))
+        .add_plugins((SessionLogPlugin, ExitPlugin, PrintPlugin));
+    app.finish();
+    test_support::run_until(&mut app, &wakes, |_| !lines.of("turn_start").is_empty());
+    let kinds: Vec<Value> = lines
+        .parsed()
+        .iter()
+        .map(|line| at(line, "type").clone())
+        .collect();
+    assert_eq!(kinds.first(), Some(&json!("ready")), "{kinds:?}");
 }
 
 #[test]
@@ -1053,14 +1562,14 @@ fn a_driver_sends_a_message_mid_turn_and_reads_the_answer() {
     let text = "Fix the tests.";
     send(
         &input,
-        json!({ "v": 1, "type": "send", "id": 1, "text": text }),
+        json!({ "v": VERSION, "type": "send", "id": 1, "text": text }),
     );
     test_support::run_until(&mut app, &wakes, waits);
     // While the tool call runs: it reaches the turn's next model call.
     let text = "Also the docs.";
     send(
         &input,
-        json!({ "v": 1, "type": "send", "id": 2, "text": text }),
+        json!({ "v": VERSION, "type": "send", "id": 2, "text": text }),
     );
     test_support::run_until(&mut app, &wakes, |_| lines.of("reply").len() == 2);
     let world = app.world_mut();
@@ -1118,17 +1627,20 @@ fn an_approval_is_answered_over_the_pipe_and_eof_ends_the_run() {
     let model =
         MockCompletionModel::from_stream_turns([calls("c1", "wait", json!({})), reply("ok")]);
     let (mut app, wakes, lines, input) = json_run(&model, true);
-    send(&input, json!({ "v": 1, "type": "send", "text": "Wait." }));
+    send(
+        &input,
+        json!({ "v": VERSION, "type": "send", "text": "Wait." }),
+    );
     test_support::run_until(&mut app, &wakes, |_| !lines.of("ask").is_empty());
     let ask = lines.of("ask").first().cloned().unwrap_or_default();
     let choices = at(&ask, "choices").as_array().into_iter().flatten();
     let ids: Vec<&str> = choices.filter_map(|c| at(c, "id").as_str()).collect();
     assert_eq!(ids, ["deny", "allow"], "{ask}");
-    send(&input, json!({ "v": 1, "type": "state", "id": "s" }));
+    send(&input, json!({ "v": VERSION, "type": "state", "id": "s" }));
     let id = at(&ask, "ask");
     send(
         &input,
-        json!({ "v": 1, "type": "answer", "id": "a", "ask": id, "choices": ["allow"] }),
+        json!({ "v": VERSION, "type": "answer", "id": "a", "ask": id, "choices": ["allow"] }),
     );
     test_support::run_until(&mut app, &wakes, waits);
     let replies = lines.of("reply");
@@ -1158,9 +1670,12 @@ fn an_approval_is_answered_over_the_pipe_and_eof_ends_the_run() {
 fn a_line_of_another_version_is_refused_naming_the_side_to_update() {
     let model = MockCompletionModel::from_stream_turns([reply("ok")]);
     let (mut app, wakes, lines, input) = json_run(&model, false);
-    send(&input, json!({ "v": 2, "type": "state", "id": 1 }));
+    send(
+        &input,
+        json!({ "v": VERSION + 1, "type": "state", "id": 1 }),
+    );
     send(&input, json!({ "type": "state", "id": 2 }));
-    send(&input, json!({ "v": 1, "type": "sned", "id": 3 }));
+    send(&input, json!({ "v": VERSION, "type": "sned", "id": 3 }));
     test_support::run_until(&mut app, &wakes, |_| lines.of("reply").len() == 3);
     let errors: Vec<String> = lines
         .of("reply")
@@ -1177,6 +1692,166 @@ fn a_line_of_another_version_is_refused_naming_the_side_to_update() {
     let driver = older.starts_with("false") && older.contains("update the driver");
     assert!(driver, "{older}");
     assert!(unknown.contains("sned"), "{unknown}");
+}
+
+/// A reader that stopped reading: every write waits until `go`.
+struct Stalled(Arc<std::sync::atomic::AtomicBool>);
+
+impl Write for Stalled {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        while !self.0.load(std::sync::atomic::Ordering::Acquire) {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+/// While the reader is behind, the agent's work waits; a signal still ends
+/// the run, as its exit is an effect of the same loop.
+#[test]
+fn a_run_whose_reader_stalled_waits_and_still_exits() {
+    let model = MockCompletionModel::from_stream_turns([reply("ok")]);
+    let (mut app, _, _, _input) = json_run(&model, false);
+    let go = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let writer = Writer::spawn(
+        Stalled(go.clone()),
+        std::io::sink(),
+        Wake::default(),
+        || true,
+    );
+    writer.write(Stream::Out, vec![b'x'; pipes::ROOM + 1]);
+    app.world_mut().resource_mut::<JsonOut>().out = writer;
+    let room = app.world_mut().run_system_cached(output_has_room);
+    assert_eq!(room.ok(), Some(false));
+    app.world_mut().trigger(Exit(ExitReason::Signal));
+    run_until(&mut app, |_| false);
+    go.store(true, std::sync::atomic::Ordering::Release);
+    assert_eq!(app.should_exit(), Some(ExitReason::Signal.exit()));
+}
+
+/// Input that ends in the frame its replies passed the backlog limit
+/// unread, before any later frame could see it, ends the run as cut off,
+/// not as a clean end.
+#[test]
+fn input_that_ends_past_the_backlog_limit_is_cut_off() {
+    let model = MockCompletionModel::from_stream_turns([reply("ok")]);
+    let (mut app, _, _, _input) = json_run(&model, false);
+    let go = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let writer = Writer::spawn(
+        Stalled(go.clone()),
+        std::io::sink(),
+        Wake::default(),
+        || true,
+    );
+    writer.write(Stream::Out, vec![b'x'; pipes::BACKLOG_LIMIT + 1]);
+    // In one go, as within the frame a last batch of replies passed the
+    // limit: the writer is gone, and the input ends.
+    let world = app.world_mut();
+    world.resource_mut::<JsonOut>().out = writer;
+    let requests = world
+        .query_filtered::<Entity, With<Requests>>()
+        .single(world);
+    assert!(requests.is_ok());
+    if let Ok(requests) = requests {
+        world.entity_mut(requests).remove::<Running>();
+    }
+    world.flush();
+    go.store(true, std::sync::atomic::Ordering::Release);
+    assert_eq!(
+        world.get_resource::<ExitReason>(),
+        Some(&ExitReason::Signal)
+    );
+}
+
+/// A reader that takes its first write, then stops reading until `1`.
+struct OnceThenStalled(bool, Arc<std::sync::atomic::AtomicBool>);
+
+impl Write for OnceThenStalled {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        while std::mem::replace(&mut self.0, true)
+            && !self.1.load(std::sync::atomic::Ordering::Acquire)
+        {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+/// A backlog that passed its limit, then drained a little before the
+/// frame looked, still ends the run as cut off.
+#[test]
+fn a_backlog_that_passed_its_limit_ends_the_run_though_it_drained() {
+    let model = MockCompletionModel::from_stream_turns([reply("ok")]);
+    let (mut app, _, _, _input) = json_run(&model, false);
+    let go = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let reader = OnceThenStalled(false, go.clone());
+    let writer = Writer::spawn(reader, std::io::sink(), Wake::default(), || false);
+    writer.write(Stream::Out, vec![b'x'; pipes::BACKLOG_LIMIT + 1]);
+    writer.write(Stream::Out, b"stalled".to_vec());
+    let since = Instant::now();
+    while !writer.has_room() && since.elapsed() < Duration::from_secs(10) {
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(writer.has_room());
+    app.world_mut().resource_mut::<JsonOut>().out = writer;
+    run_until(&mut app, |_| false);
+    go.store(true, std::sync::atomic::Ordering::Release);
+    assert_eq!(app.should_exit(), Some(ExitReason::Signal.exit()));
+}
+
+/// A request line that is not UTF-8 is answered with why, and the
+/// driver's next line is still served.
+#[test]
+fn a_request_line_not_utf8_is_refused_and_the_next_is_served() {
+    let model = MockCompletionModel::from_stream_turns([reply("ok")]);
+    let (mut app, wakes, lines, input) = json_run(&model, false);
+    assert!(input.try_send(Ok(vec![b'{', 0xff, b'}'])).is_ok());
+    send(&input, json!({ "v": VERSION, "type": "state", "id": 2 }));
+    test_support::run_until(&mut app, &wakes, |_| lines.of("reply").len() == 2);
+    let replies = lines.of("reply");
+    let [refused, served] = replies.as_slice() else {
+        return assert_eq!(replies.len(), 2, "{replies:?}");
+    };
+    let why = at(refused, "error").as_str().unwrap_or_default();
+    assert!(why.starts_with("not a UTF-8 line"), "{why}");
+    assert_eq!(
+        (at(served, "id"), at(served, "ok")),
+        (&json!(2), &json!(true))
+    );
+}
+
+/// A request line past its limit is answered with why, and the driver's
+/// next line is still served.
+#[test]
+fn a_request_line_past_its_limit_is_refused_and_the_next_is_served() {
+    let model = MockCompletionModel::from_stream_turns([reply("ok")]);
+    let (mut app, wakes, lines, input) = json_run(&model, false);
+    let refused = TooLarge {
+        limit: REQUEST_LIMIT,
+        asked: REQUEST_LIMIT + 1,
+    };
+    assert!(input.try_send(Err(refused)).is_ok());
+    send(&input, json!({ "v": VERSION, "type": "state", "id": 2 }));
+    test_support::run_until(&mut app, &wakes, |_| lines.of("reply").len() == 2);
+    let replies = lines.of("reply");
+    let [refused, served] = replies.as_slice() else {
+        return assert_eq!(replies.len(), 2, "{replies:?}");
+    };
+    assert_eq!(at(refused, "ok"), &json!(false));
+    let why = at(refused, "error").as_str().unwrap_or_default();
+    assert!(why.contains(&REQUEST_LIMIT.to_string()), "{why}");
+    assert_eq!(
+        (at(served, "id"), at(served, "ok")),
+        (&json!(2), &json!(true))
+    );
 }
 
 /// A one-shot run of `prompt` on `model`, `--model named` when given,
@@ -1212,15 +1887,37 @@ fn one_shot_on(
     app.insert_resource(JsonOut::new(lines.clone()))
         .insert_resource(scripted_models([(MODEL, model)]))
         .add_plugins((SessionLogPlugin, ExitPlugin, PrintPlugin));
-    if named.is_some() {
-        app.add_plugins(crate::models::ModelsPlugin);
-    }
     setup(&mut app);
     app.finish();
     app.cleanup();
     // As the runner does, nothing after the frame that exits.
     run_until(&mut app, |_| false);
     (app, lines)
+}
+
+/// Without the model picker, a run with nothing named, restored or saved
+/// still starts on the first pick and answers.
+#[test]
+fn a_run_without_the_model_picker_takes_the_first_pick() {
+    let model = MockCompletionModel::from_stream_turns([reply("Hello.")]);
+    let lines = Lines::default();
+    let invoked = Invocation {
+        print: Some("hi".to_owned()),
+        flags: vec![(JSON.to_owned(), None)],
+        ..Invocation::default()
+    };
+    let (mut app, _) = unpicked(&MemoryStore::default(), invoked);
+    app.insert_resource(JsonOut::new(lines.clone()))
+        .insert_resource(scripted_models([(MODEL, &model)]))
+        .add_plugins((SessionLogPlugin, ExitPlugin, PrintPlugin));
+    app.finish();
+    app.cleanup();
+    assert!(!app.is_plugin_added::<crate::models::ModelsPlugin>());
+    run_until(&mut app, |_| false);
+    let exit = lines.of("exit").first().cloned().unwrap_or_default();
+    assert_eq!(at(&exit, "code"), 0, "{exit}");
+    assert_eq!(at(&exit, "answer"), "Hello.", "{exit}");
+    assert_eq!(model.request_count(), 1);
 }
 
 /// A model whose provider refuses the call for good.
@@ -1236,11 +1933,13 @@ fn out_of_credit() -> MockCompletionModel {
 fn a_failed_one_shot_run_ends_with_exit_last_naming_its_error() {
     // A provider refusal fails the turn; a `--model` the catalog lacks is
     // refused before it, as a command line.
-    for (named, model, code) in [
-        (None, out_of_credit(), 1),
-        (Some("nobody/nothing"), silent(), 2),
+    for (named, model, code, asked) in [
+        (None, out_of_credit(), 1, 1),
+        (Some("nobody/nothing"), silent(), 2, 0),
     ] {
         let parsed = one_shot("hi", named, &model, true, |_| {}).1.parsed();
+        // The refusal is the scripted model's, not another provider's.
+        assert_eq!(model.request_count(), asked, "{parsed:?}");
         let exit = parsed.last().cloned().unwrap_or_default();
         assert_eq!(at(&exit, "type"), "exit", "{parsed:?}");
         assert_eq!(at(&exit, "code"), code, "{exit}");
@@ -1272,6 +1971,60 @@ fn a_failed_one_shot_run_ends_with_exit_last_naming_its_error() {
         assert_eq!(ms.len(), parsed.len(), "every line is timed");
         assert!(ms.is_sorted(), "{ms:?}");
     }
+}
+
+/// A run refused before it starts, as for what was piped in, says why in
+/// its `exit` line, where a driver such as `helper` reads it.
+#[test]
+fn a_refused_run_says_why_in_its_exit_line() {
+    let parsed = one_shot("hi", None, &silent(), true, |app| {
+        app.insert_resource(PipedIn(Box::new(&b"ok \xff"[..])));
+    })
+    .1
+    .parsed();
+    let exit = parsed.last().cloned().unwrap_or_default();
+    assert_eq!(
+        (at(&exit, "type"), at(&exit, "code")),
+        (&json!("exit"), &json!(2))
+    );
+    let why = at(&exit, "error").as_str().unwrap_or_default();
+    assert!(why.contains("not UTF-8 text from byte 3"), "{exit}");
+}
+
+/// A run whose settings do not read is refused before it waits for what
+/// is piped in, so a stdin that stays open never holds the refusal.
+#[test]
+fn a_run_refused_for_its_settings_never_waits_for_stdin() {
+    #[derive(Resource, serde::Deserialize, Default)]
+    #[serde(default, deny_unknown_fields)]
+    struct Table {
+        #[allow(dead_code, reason = "read only to be checked")]
+        key: u32,
+    }
+    let Ok((silent, held)) = std::io::pipe() else {
+        return;
+    };
+    let invoked = Invocation {
+        print: Some("hi".to_owned()),
+        ..Invocation::default()
+    };
+    let (mut app, _) = noting(&MemoryStore::default(), invoked);
+    app.insert_resource(rig_harness::settings::Settings::from_toml(
+        "[table]\nkye = 1\n",
+    ))
+    .add_setting::<Table>("table")
+    .insert_resource(PipedIn(Box::new(silent)))
+    .add_plugins((
+        SessionLogPlugin,
+        ExitPlugin,
+        rig_harness::host::launcher::LauncherPlugin,
+        PrintPlugin,
+    ));
+    app.finish();
+    app.cleanup();
+    run_until(&mut app, |_| false);
+    drop(held);
+    assert_eq!(app.should_exit(), Some(AppExit::from_code(2)));
 }
 
 #[test]
@@ -1365,6 +2118,7 @@ fn a_one_shot_json_run_cut_off_by_a_signal_closes_what_it_started() {
         let store = MemoryStore::default();
         let model = MockCompletionModel::from_stream_turns([calls("c1", "wait", json!({}))]);
         let (app, lines) = one_shot_on(&store, "Wait.", Some(MODEL), &model, true, |app| {
+            app.add_plugins(crate::redact::RedactPlugin);
             // The signal comes while the call runs, as Ctrl+C or the
             // launcher's death does.
             app.add_open_tool(
@@ -1415,7 +2169,7 @@ fn a_one_shot_json_run_cut_off_by_a_signal_closes_what_it_started() {
                 "Stopped: the run was interrupted. It may have partly run; check before running it again.",
             ),
             // A key it printed is redacted, on the line and in the session.
-            Cut::WithOutput => (true, true, "half [REDACTED]"),
+            Cut::WithOutput => (true, true, "half ‹SECRET_1›"),
             Cut::Answered => (true, false, "Waited."),
         };
         let results = lines.of("tool_result");
@@ -1427,7 +2181,7 @@ fn a_one_shot_json_run_cut_off_by_a_signal_closes_what_it_started() {
         assert_eq!(
             fields,
             [
-                json!("c1"),
+                json!("m1/0"),
                 json!(ok),
                 json!(false),
                 json!(cancelled),
@@ -1497,16 +2251,96 @@ fn a_tool_call_of_no_turn_cut_off_by_a_signal_is_closed_too() {
     });
     assert_eq!(app.should_exit(), Some(AppExit::from_code(130)));
     let results = lines.of("tool_result");
-    let closed = results.iter().find(|line| at(line, "id") == "s1");
-    let fields = closed.map(|line| ["cancelled", "output"].map(|key| at(line, key).clone()));
+    // No reply asked for it, so it has no place to name it by.
+    let closed = results.iter().find(|line| at(line, "name") == "wait");
+    let fields = closed.map(|line| ["id", "cancelled", "output"].map(|key| at(line, key).clone()));
     let cut =
         "Stopped: the run was interrupted. It may have partly run; check before running it again.";
     assert_eq!(
         fields,
-        Some([json!(true), json!(cut)]),
+        Some([Value::Null, json!(true), json!(cut)]),
         "{:?}",
         lines.parsed()
     );
+}
+
+/// A plugin's stop that reaches the agent fails the run with its reason,
+/// also after the agent answered, as a budget's stop of a subagent's
+/// helper does once the main agent's turn ended.
+#[test]
+fn a_plugins_stop_of_the_work_fails_the_run_after_an_answer() {
+    let model = answering(&["hello"]);
+    let (app, lines) = one_shot("hi", Some(MODEL), &model, true, |app| {
+        app.add_observer(
+            |settled: On<Add<Settled>>,
+             turns: Query<(&TurnOutcome, &ForAgent)>,
+             mut commands: Commands| {
+                if let Ok((TurnOutcome::Answered(_), &ForAgent(agent))) = turns.get(settled.entity)
+                {
+                    commands.trigger(StopTurn::plugin(agent, "budget", "Budget reached."));
+                }
+            },
+        );
+    });
+    assert_eq!(app.should_exit(), Some(AppExit::from_code(1)));
+    let exits = lines.of("exit");
+    let fields = exits
+        .first()
+        .map(|exit| ["code", "answer", "error"].map(|key| at(exit, key).clone()));
+    assert_eq!(
+        fields,
+        Some([json!(1), json!("hello"), json!("Budget reached.")]),
+        "{exits:?}"
+    );
+}
+
+/// A plugin's stop of only its own other agent, as a plugin ends its
+/// helpers' work, fails nothing.
+#[test]
+fn a_plugins_stop_of_another_agent_fails_nothing() {
+    let model = answering(&["hello"]);
+    let (app, lines) = one_shot("hi", Some(MODEL), &model, true, |app| {
+        app.add_observer(
+            |settled: On<Add<Settled>>,
+             turns: Query<&TurnOutcome>,
+             mut spawner: Spawner,
+             mut commands: Commands| {
+                if let Ok(TurnOutcome::Answered(_)) = turns.get(settled.entity) {
+                    let spec = rig_ecs::spawn::AgentSpec::default();
+                    let spawned = spawner.spawn(rig_ecs::spawn::Origin::Root, spec);
+                    if let Ok(helper) = spawned.map(|helper| helper.id()) {
+                        commands.trigger(StopTurn::plugin(helper, "review", "the review ended"));
+                    }
+                }
+            },
+        );
+    });
+    assert_eq!(app.should_exit(), Some(AppExit::Success));
+    let exits = lines.of("exit");
+    let fields = exits
+        .first()
+        .map(|exit| ["code", "answer", "error"].map(|key| at(exit, key).clone()));
+    assert_eq!(
+        fields,
+        Some([json!(0), json!("hello"), Value::Null]),
+        "{exits:?}"
+    );
+}
+
+/// The `exit` line says whether all the session's spend is known: not
+/// once a helper's was not.
+#[test]
+fn the_exit_line_says_whether_all_spend_is_known() {
+    for (unknown, complete) in [(0, true), (1, false)] {
+        let model = answering(&["hello"]);
+        let (_app, lines) = one_shot("hi", Some(MODEL), &model, true, |app| {
+            app.add_plugins(UsagePlugin)
+                .insert_resource(UnknownSpend(unknown));
+        });
+        let exits = lines.of("exit");
+        let said = exits.first().map(|exit| at(exit, "usage_complete").clone());
+        assert_eq!(said, Some(json!(complete)), "{exits:?}");
+    }
 }
 
 /// Holds each exit asked for until the run's own end, as a plugin that
@@ -1622,7 +2456,9 @@ fn a_turn_without_text_fails_the_run_only_when_no_later_turn_answers() {
         (vec![&said, &silent], None, no_answer),
     ] {
         let mut run = Run::default();
-        turns.into_iter().for_each(|turn| run.turn_ended(turn));
+        turns
+            .into_iter()
+            .for_each(|turn| run.turn_ended(TurnEnd::of(turn)));
         assert_eq!(run.settled().as_deref(), answer);
         assert_eq!(run.failed, fails);
     }
@@ -1637,9 +2473,10 @@ fn a_recovered_error_does_not_fail_a_later_settlement() {
         notice: Some("Compaction failed: the summary was cut".to_owned()),
         ..Run::default()
     };
-    run.turn_ended(&TurnOutcome::Answered(Message::assistant("done")));
+    let answered = TurnOutcome::Answered(Message::assistant("done"));
+    run.turn_ended(TurnEnd::of(&answered));
     assert_eq!(run.settled().as_deref(), Some("done"));
-    run.turn_ended(&TurnOutcome::Stopped(None));
+    run.turn_ended(TurnEnd::Stopped(None));
     assert_eq!(run.settled(), None);
     assert_eq!(run.failed, None);
 }
@@ -1647,9 +2484,9 @@ fn a_recovered_error_does_not_fail_a_later_settlement() {
 #[test]
 fn a_failed_turn_fails_the_run_whatever_turn_settles_with_it() {
     let (answered, failed, stopped) = (
-        TurnOutcome::Answered(Message::assistant("done")),
-        TurnOutcome::Failed("out of credit".to_owned()),
-        TurnOutcome::Stopped(None),
+        TurnEnd::of(&TurnOutcome::Answered(Message::assistant("done"))),
+        TurnEnd::of(&TurnOutcome::Failed("out of credit".to_owned())),
+        TurnEnd::Stopped(None),
     );
     let failure = Some(Failure {
         code: 1,
@@ -1662,7 +2499,9 @@ fn a_failed_turn_fails_the_run_whatever_turn_settles_with_it() {
         ([&answered, &stopped], Some("done"), None),
     ] {
         let mut run = Run::default();
-        turns.into_iter().for_each(|turn| run.turn_ended(turn));
+        turns
+            .into_iter()
+            .for_each(|turn: &TurnEnd| run.turn_ended(turn.clone()));
         assert_eq!(run.settled().as_deref(), answer);
         assert_eq!(run.failed, fails);
     }
@@ -1670,8 +2509,8 @@ fn a_failed_turn_fails_the_run_whatever_turn_settles_with_it() {
 
 #[test]
 fn a_failed_plain_run_writes_its_reason_once() {
-    // The third call of a tool nobody has fails the turn with a notice that
-    // wraps the reason.
+    // A tool nobody has is refused at each call; the turn fails once the
+    // scripted model has no reply left, with a notice that wraps the reason.
     let unknown = MockCompletionModel::from_stream_turns(
         ["c1", "c2", "c3"].map(|id| calls(id, "bash", json!({}))),
     );
@@ -1792,4 +2631,280 @@ fn an_error_before_the_run_looked_fails_it_only_when_the_agent_never_connects() 
     let ends = &app.world().resource::<Ends>().0;
     let codes: Vec<u8> = ends.iter().map(|ended| ended.code).collect();
     assert_eq!(codes, [0], "{ends:?}");
+}
+
+/// A prompt that starts with a path, `//` or a `/` and a space goes to the
+/// model as it is, where it was refused as an unknown command.
+#[test]
+fn a_prompt_starting_with_a_path_goes_to_the_model() {
+    for prompt in [
+        "/etc/hostname: what kind of path? one line",
+        "//x",
+        "/ model",
+    ] {
+        let model = answering(&["a file"]);
+        let (app, _) = one_shot(prompt, Some(MODEL), &model, false, |app| {
+            app.add_command("echo", "Echoes", |_: In<CommandArgs>| {});
+        });
+        let ends = &app.world().resource::<Ends>().0;
+        let codes: Vec<u8> = ends.iter().map(|ended| ended.code).collect();
+        assert_eq!(codes, [0], "{prompt}: {ends:?}");
+        assert_eq!(model.request_count(), 1, "{prompt}");
+    }
+}
+
+/// Done item: `rig -p /model` and `/effort` exit 2 saying what to type,
+/// where they exited 0 having shown nothing.
+#[test]
+fn a_command_that_opens_a_picker_is_refused_with_what_to_type_instead() {
+    for (command, said) in [
+        (
+            "/model",
+            "rig: Model: rig cannot show a list to pick from here; type one of: /model ",
+        ),
+        ("/effort", "rig: Reasoning for "),
+    ] {
+        let model = answering(&["unused"]);
+        let stderr = Lines::default();
+        let (app, _) = one_shot(command, Some(MODEL), &model, false, |app| {
+            app.insert_resource(Printed::to(stderr.clone()))
+                .add_plugins(rig_harness::pick::PickPlugin);
+        });
+        assert_eq!(app.should_exit(), Some(AppExit::from_code(2)), "{command}");
+        let lines = stderr.text();
+        assert!(lines.iter().any(|line| line.starts_with(said)), "{lines:?}");
+        assert_eq!(model.request_count(), 0);
+    }
+    // Without a model, `/effort` is refused too.
+    let model = answering(&["unused"]);
+    let stderr = Lines::default();
+    let (app, _) = one_shot("/effort", None, &model, false, |app| {
+        app.insert_resource(Printed::to(stderr.clone()))
+            .insert_resource(scripted_models([]));
+    });
+    assert_eq!(app.should_exit(), Some(AppExit::from_code(2)));
+    let lines = stderr.text();
+    let said = "rig: Pick a model first: /model <vendor/model>.";
+    assert!(lines.iter().any(|line| line == said), "{lines:?}");
+}
+
+/// A key the model streams in pieces reaches no line: the text, the turn's
+/// answer and the exit's answer say it redacted, and so does the session.
+#[test]
+fn a_key_streamed_in_pieces_is_redacted_on_every_line() {
+    let pieces = [
+        "Use (GITHUB_TOKEN=gh",
+        "p_abcdefghijklmnopqrst",
+        "uvwxyz0123456789). Now.",
+    ];
+    let mut events: Vec<_> = pieces
+        .iter()
+        .map(|piece| MockStreamEvent::text(*piece))
+        .collect();
+    events.push(MockStreamEvent::final_response_with_default_usage());
+    let model = MockCompletionModel::from_stream_turns([events]);
+    let store = MemoryStore::default();
+    let (_, lines) = one_shot_on(&store, "Key?", None, &model, true, |app| {
+        app.add_plugins(crate::redact::RedactPlugin);
+    });
+    let redacted = "Use (GITHUB_TOKEN=‹SECRET_1›). Now.";
+    let text: String = lines
+        .of("text")
+        .iter()
+        .filter_map(|line| at(line, "text").as_str())
+        .collect();
+    assert_eq!(text, redacted);
+    let answers = ["turn_end", "exit"].map(|kind| {
+        lines
+            .of(kind)
+            .first()
+            .map(|line| at(line, "answer").clone())
+    });
+    assert_eq!(answers, [Some(json!(redacted)), Some(json!(redacted))]);
+    let all = lines.text().concat();
+    assert!(!all.contains("ghp_"), "{all}");
+    let logs = store.logs().unwrap_or_default();
+    let saved: Vec<u8> = logs
+        .iter()
+        .flat_map(|log| store.read_log(log).unwrap_or_default())
+        .collect();
+    let saved = String::from_utf8_lossy(&saved);
+    assert!(
+        saved.contains(redacted) && !saved.contains("ghp_"),
+        "{saved}"
+    );
+}
+
+/// A notice quoting a file the prompt names that is not there is redacted
+/// on its line, whichever stage after the one that wrote it reads it: here
+/// `--json` also flushes in Gate, before the turn starts.
+#[test]
+fn a_notice_naming_a_missing_file_is_redacted_on_its_line() {
+    let model = answering(&["done"]);
+    let prompt = "Read @ghp_nofilenofilenofilenofilenofile123456.txt";
+    let (_, lines) = one_shot_on(&MemoryStore::default(), prompt, None, &model, true, |app| {
+        app.add_plugins((
+            crate::coding_tools::AttachPlugin,
+            crate::redact::RedactPlugin,
+        ))
+        .add_systems(AgentPass, flush.in_set(Stage::Gate));
+    });
+    let notices = lines.of("notice");
+    let texts: Vec<_> = notices.iter().map(|line| at(line, "text")).collect();
+    assert_eq!(texts, [&json!("@‹SECRET_1›.txt: no such file")]);
+    let all = lines.text().concat();
+    assert!(!all.contains("nofilenofile"), "{all}");
+}
+
+/// A notice naming a file after a secret the prompt gives, which is learned
+/// a stage after the notice is written, is redacted of it too.
+#[test]
+fn a_notice_is_redacted_of_a_secret_learned_after_it() {
+    let model = answering(&["done"]);
+    let prompt = "PASSWORD=hunter2hunter2 Read @hunter2hunter2.txt";
+    let (_, lines) = one_shot_on(&MemoryStore::default(), prompt, None, &model, true, |app| {
+        app.add_plugins((
+            crate::coding_tools::AttachPlugin,
+            crate::redact::RedactPlugin,
+        ));
+    });
+    let notices = lines.of("notice");
+    let texts: Vec<_> = notices.iter().map(|line| at(line, "text")).collect();
+    assert_eq!(texts, [&json!("@‹SECRET_1›.txt: no such file")]);
+    let all = lines.text().concat();
+    assert!(!all.contains("hunter2"), "{all}");
+}
+
+/// The `reply` to the request `id`, run until it comes.
+fn reply_to(app: &mut App, wakes: &Receiver<()>, lines: &Lines, id: &str) -> Value {
+    let replied = |lines: &Lines| lines.of("reply").into_iter().find(|r| at(r, "id") == id);
+    test_support::run_until(app, wakes, |_| replied(lines).is_some());
+    replied(lines).unwrap_or_default()
+}
+
+/// An approval, which takes one choice, answered over the pipe with both
+/// `deny` and `allow` is refused, and the call it gates does not run.
+#[test]
+fn several_choices_for_a_question_of_one_are_refused() {
+    let model =
+        MockCompletionModel::from_stream_turns([calls("c1", "wait", json!({})), reply("ok")]);
+    let (mut app, wakes, lines, input) = json_run(&model, true);
+    send(
+        &input,
+        json!({ "v": VERSION, "type": "send", "text": "Wait." }),
+    );
+    test_support::run_until(&mut app, &wakes, |_| !lines.of("ask").is_empty());
+    let ask = lines.of("ask").first().cloned().unwrap_or_default();
+    let answer = json!({ "v": VERSION, "type": "answer", "id": "a", "ask": at(&ask, "ask"),
+        "choices": ["deny", "allow"] });
+    send(&input, answer);
+    let refused = reply_to(&mut app, &wakes, &lines, "a");
+    for _ in 0..20 {
+        app.update();
+    }
+    let error = at(&refused, "error").as_str().unwrap_or_default();
+    assert!(
+        error.contains("one choice") && !waits(app.world()),
+        "{refused}"
+    );
+}
+
+/// No choice answers a question of several over the pipe, as in the
+/// picker.
+#[test]
+fn no_choice_answers_a_question_of_several() {
+    let model = MockCompletionModel::from_stream_turns([reply("ok")]);
+    let (mut app, wakes, lines, input) = json_run(&model, false);
+    let several = Ask::new("Which?").choice("a", "A").choice("b", "B");
+    let several = app.world_mut().spawn(several.multiple()).id();
+    send(
+        &input,
+        json!({ "v": VERSION, "type": "answer", "id": "none", "ask": several.to_bits(),
+            "choices": [] }),
+    );
+    let replied = reply_to(&mut app, &wakes, &lines, "none");
+    assert_eq!(at(&replied, "ok"), &json!(true), "{replied}");
+}
+
+/// A second answer to a question already answered is refused, not
+/// acknowledged as if it counted.
+#[test]
+fn an_answer_to_a_question_already_answered_is_refused() {
+    let model = MockCompletionModel::from_stream_turns([reply("ok")]);
+    let (mut app, wakes, lines, input) = json_run(&model, false);
+    let ask = app.world_mut().spawn(Ask::yes_no("Run?")).id();
+    for (id, choice) in [("first", "yes"), ("second", "no")] {
+        send(
+            &input,
+            json!({ "v": VERSION, "type": "answer", "id": id, "ask": ask.to_bits(),
+                "choices": [choice] }),
+        );
+    }
+    let replies = ["first", "second"].map(|id| reply_to(&mut app, &wakes, &lines, id));
+    let oks = replies.each_ref().map(|reply| at(reply, "ok").clone());
+    assert_eq!(oks, [json!(true), json!(false)], "{replies:?}");
+    let outcome = app.world().get::<Outcome>(ask).and_then(Answer::of);
+    assert_eq!(outcome, Some(Answer::choice("yes")));
+}
+
+/// `rig -p --json /new` and `/resume <id>` end on a session switch the
+/// launcher does not follow and exits 0 for, so the exit line says 0 and
+/// no error, as `rig help agents` promises for a run that succeeded.
+#[test]
+fn a_one_shot_session_switch_exits_0_on_its_exit_line() {
+    let other = "1700000000-1".parse::<rig_harness::harness_protocol::SessionId>();
+    assert!(other.is_ok(), "{other:?}");
+    for (command, target) in [("/new", None), ("/resume", other.ok())] {
+        let switch = ExitReason::Switch(target);
+        let (app, lines) = one_shot(command, None, &silent(), true, |app| {
+            let name = command.trim_start_matches('/');
+            app.add_command(
+                name,
+                "Switches sessions as the launcher's agent does",
+                move |_: In<CommandArgs>,
+                      mut commands: Commands,
+                      mut exits: MessageWriter<AppExit>| {
+                    exits.write(switch.exit());
+                    commands.insert_resource(switch.clone());
+                },
+            );
+        });
+        assert!(app.should_exit().is_some(), "{command}");
+        let parsed = lines.parsed();
+        let exit = parsed.last().cloned().unwrap_or_default();
+        assert_eq!(at(&exit, "type"), "exit", "{command}: {parsed:?}");
+        assert_eq!(at(&exit, "code"), 0, "{command}: {exit}");
+        assert_eq!(at(&exit, "error"), &Value::Null, "{command}: {exit}");
+    }
+}
+
+/// `/plugins defaults` where no picker shows (`rig -p`) asks nothing: it
+/// ends, refused with the shell commands that go back to the defaults, and
+/// writes nothing.
+#[test]
+fn plugins_defaults_without_pickers_says_what_to_run_instead() {
+    let home = test_support::scratch_home("print-plugins-defaults");
+    assert!(std::fs::create_dir_all(home.root()).is_ok());
+    let changed = "[plugins]\ndisable = [\"rig_basics::welcome::WelcomePlugin\"]\n";
+    assert!(std::fs::write(home.settings(), changed).is_ok());
+    let model = answering(&["unused"]);
+    let stderr = Lines::default();
+    let (app, _) = one_shot("/plugins defaults", Some(MODEL), &model, false, |app| {
+        app.insert_resource(Printed::to(stderr.clone()))
+            .insert_resource(RigHome(home.clone()))
+            .add_plugins((
+                rig_harness::pick::PickPlugin,
+                crate::reload::plugins::PluginsPlugin,
+            ));
+    });
+    assert_eq!(app.should_exit(), Some(AppExit::from_code(2)));
+    let lines = stderr.text();
+    assert!(
+        lines
+            .iter()
+            .any(|line| line.contains("rig plugin enable rig_basics::welcome::WelcomePlugin")),
+        "{lines:?}"
+    );
+    let after = std::fs::read_to_string(home.settings()).unwrap_or_default();
+    assert_eq!(after, changed);
 }

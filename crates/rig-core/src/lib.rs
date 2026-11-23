@@ -23,8 +23,8 @@
 //! `serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }`.
 //!
 //! Cargo unifies these features: `rig-cassette` with `traffic` (including
-//! `rig-traffic`) enables both; `rig-claude-cloak`, `rig-mcp-client` and
-//! `rig-mongodb` through BSON enable `preserve_order`. Rig has no forwarding feature for either setting.
+//! `rig-traffic`) enables both; `rig-mcp-client` and `rig-mongodb`
+//! through BSON enable `preserve_order`. Rig has no forwarding feature for either setting.
 //!
 //! ```no_run
 //! use rig_core::DynModel;
@@ -40,8 +40,6 @@
 
 extern crate self as rig;
 
-#[cfg(feature = "audio")]
-#[cfg_attr(docsrs, doc(cfg(feature = "audio")))]
 pub mod audio_generation;
 pub mod catalog;
 pub mod client;
@@ -53,8 +51,6 @@ pub mod embeddings;
 pub mod error;
 pub use rig_http::http_client;
 pub mod id;
-#[cfg(feature = "image")]
-#[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 pub mod image_generation;
 /// Internal JSON helpers shared with sibling runtime crates (e.g. `rig-agent`).
 /// Not part of rig-core's stable public API.
@@ -63,7 +59,6 @@ pub mod json_utils;
 pub mod loaders;
 pub mod markers;
 pub mod model;
-pub mod observe;
 pub mod operation;
 pub mod prelude;
 pub(crate) mod provider_response;
@@ -82,8 +77,6 @@ pub mod transcription;
 pub mod vector_store;
 pub use rig_http::wasm_compat;
 pub mod wire;
-#[cfg(feature = "websocket")]
-#[cfg_attr(docsrs, doc(cfg(feature = "websocket")))]
 pub use rig_http::ws_client;
 
 pub use completion::message;
@@ -121,6 +114,13 @@ pub fn millis(at: web_time::SystemTime) -> u64 {
 /// Milliseconds since the Unix epoch, also on the web.
 pub fn now_ms() -> u64 {
     millis(web_time::SystemTime::now())
+}
+
+/// Lock `mutex`, taking the guard even if a panicking holder poisoned it.
+pub(crate) fn lock<T>(mutex: &std::sync::Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 // Native runtime values must retain their thread-safety bounds.

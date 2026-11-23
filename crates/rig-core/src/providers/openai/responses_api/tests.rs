@@ -504,7 +504,7 @@ fn completion_response_incomplete_reports_the_truncation_reason() {
 #[test]
 fn file_id_document_serializes_as_input_item_content() {
     let message = completion::Message::User {
-        content: vec![message::UserContent::Document(message::Document {
+        content: vec![message::UserContent::Document(message::DocumentContent {
             data: DocumentSourceKind::FileId("file_abc".to_string()).into(),
             media_type: None,
             additional_params: None,
@@ -565,7 +565,7 @@ fn completion_response_with_unknown_output_keeps_usage() {
     assert_eq!(completion.usage.reasoning_tokens, Some(15));
 }
 
-// Regression tests for issue #1429: `file_url` and `filename` are mutually
+// `file_url` and `filename` are mutually
 // exclusive on OpenAI's Responses API (400 `mutually_exclusive_parameters`),
 // so URL-backed PDFs must not carry the hardcoded `filename`. These tests
 // cover the `TryFrom<crate::completion::Message> for Vec<InputItem>` path
@@ -641,7 +641,7 @@ fn url_pdf_via_input_item_path_omits_filename() {
 #[test]
 fn base64_pdf_via_input_item_path_keeps_filename() {
     let input = message::Message::User {
-        content: vec![message::UserContent::Document(message::Document {
+        content: vec![message::UserContent::Document(message::DocumentContent {
             data: DocumentSourceKind::base64("dGVzdA==").into(),
             media_type: Some(message::DocumentMediaType::PDF),
             additional_params: None,
@@ -839,7 +839,7 @@ fn base64_pdf_is_data_and_document_text_is_text() -> anyhow::Result<()> {
         let request = completion::CompletionRequest::new(message::Message::User {
             content: vec![
                 message::UserContent::text("Summarize the file."),
-                message::UserContent::Document(message::Document {
+                message::UserContent::Document(message::DocumentContent {
                     data,
                     media_type: Some(message::DocumentMediaType::PDF),
                     additional_params: None,
@@ -879,7 +879,7 @@ fn an_unprepared_part_with_no_responses_form_is_refused() {
         .map(|body| body.to_string())
         .map_err(|error| error.to_string())
     };
-    let document = refused(message::UserContent::Document(message::Document {
+    let document = refused(message::UserContent::Document(message::DocumentContent {
         data: DocumentSourceKind::base64("aGVsbG8=").into(),
         media_type: Some(message::DocumentMediaType::TXT),
         additional_params: None,
@@ -1119,4 +1119,16 @@ fn a_request_with_no_input_item_is_refused() {
     let error = convert("gpt-5.4", completion::CompletionRequest::new(" "))
         .expect_err("blank text encodes no item");
     assert!(error.to_string().contains("at least one item"), "{error}");
+}
+
+#[test]
+fn accepts_reads_the_tools_rule_past_a_vendor_prefix() {
+    use crate::completion::ReplayTarget;
+    let wire = openai_wire("o1-mini");
+    assert!(!wire.accepts("o1-mini").tools, "control: bare id");
+    assert!(!wire.accepts("o1-preview").tools, "control: bare id");
+    assert!(
+        !wire.accepts("openai/o1-mini").tools,
+        "openai/o1-mini reports tools: true"
+    );
 }

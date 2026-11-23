@@ -7,17 +7,17 @@ use std::ffi::{OsStr, OsString};
 use std::fmt;
 use std::fs::{self, File};
 use std::io::{self, ErrorKind, Read as _};
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::SystemTime;
 
 use ignore::WalkBuilder;
-use ignore::overrides::OverrideBuilder;
+use ignore::overrides::{Override, OverrideBuilder};
 use rig_core::tool::{ContentHash, ToolExecutionError, content_hash};
 
-use crate::fs::{Previous, io_error, write_atomic};
+use crate::fs::{Previous, io_error, real_path, write_atomic, write_atomic_if, write_new};
 use crate::process::{Launcher, Process, Spawn};
-pub use crate::watch::Watch;
+pub use crate::watch::{Watch, WatchEvent};
 use crate::{MAX_BYTES, MAX_FILE_BYTES, shell_path};
 
 /// The disk and the commands the tools act on: this machine's ([`Local`]),
@@ -28,8 +28,9 @@ use crate::{MAX_BYTES, MAX_FILE_BYTES, shell_path};
 ///
 /// Synchronous, as the rest of rig-tools: the tools call it inside
 /// [`blocking`](crate::blocking). Code on a thread that must not wait, such
-/// as an app's main thread, calls it inline only when [`host`](Self::host)
-/// is `None`, and otherwise off that thread.
+/// as an app's main thread, calls it inline on a path only when
+/// [`host_for`](Self::host_for) that path is `None`, and otherwise off that
+/// thread.
 ///
 /// A workspace of your own implements every method; [`Local`] is the
 /// reference for what each does.
@@ -38,6 +39,14 @@ pub trait Workspace: Send + Sync + fmt::Debug + 'static {
     /// `None` for this machine.
     fn host(&self) -> Option<&str> {
         None
+    }
+
+    /// Where a path, as [`join`](Self::join) gives it, is when it is not on
+    /// this machine: by default [`host`](Self::host), the whole
+    /// workspace's. A workspace that routes some paths to another machine,
+    /// such as [`Hosts`](crate::remote::Hosts), says it for each.
+    fn host_for(&self, _: &Path) -> Option<&str> {
+        self.host()
     }
 
     /// What `path` is, its links followed: a file (its size, whether it is
@@ -50,11 +59,14 @@ pub trait Workspace: Send + Sync + fmt::Debug + 'static {
     /// a FIFO or a device can block forever.
     fn read(&self, path: &Path, limit: u64) -> io::Result<Contents>;
 
-    /// The whole content of each of `paths` that is a regular file of at
-    /// most `limit` bytes, in order: `None` for any other path, and for one
-    /// that could not be read. What a search reads; a workspace where each
-    /// call costs a round trip, such as a remote one, reads them in one.
-    fn read_files(&self, paths: &[PathBuf], limit: u64) -> Vec<Option<Vec<u8>>> {
+    /// What each of `paths` holds, in order: the whole content of a
+    /// regular file of at most `limit` bytes; any other file is
+    /// [`Excluded`](Observation::Excluded), nothing there
+    /// [`Missing`](Observation::Missing), and a path that could not be
+    /// read [`Failed`](Observation::Failed) with why. What a search reads;
+    /// a workspace where each call costs a round trip, such as a remote
+    /// one, reads them in one.
+    fn read_files(&self, paths: &[PathBuf], limit: u64) -> Vec<Observation<Vec<u8>>> {
         paths
             .iter()
             .map(|path| read_file(self, path, limit))
@@ -80,37 +92,36 @@ pub trait Workspace: Send + Sync + fmt::Debug + 'static {
     /// anything but a regular file (see [`write_atomic`]).
     fn write(&self, path: &Path, bytes: &[u8]) -> io::Result<()>;
 
-    /// [`write`](Self::write)s `bytes` to `path` and says what the file
-    /// held before, as [`read`](Self::read) with `limit` reads it: a
-    /// [`NotFound`](ErrorKind::NotFound) error when there was no file, the
-    /// file's own when it could not be read. What a tool that writes a
-    /// file diffs against; a workspace where each call costs a round trip,
-    /// such as a remote one, does both in one.
+    /// [`write`](Self::write)s `bytes` to `path` only while it is the
+    /// regular file holding the text whose [`content_hash`] is `held`, or,
+    /// with no `held`, while there is no file there: `None` when it wrote.
+    /// Otherwise nothing is written and it says what the file holds
+    /// instead, as [`read`](Self::read) with a limit of [`MAX_FILE_BYTES`]
+    /// reads it; with a `held`, no file there is a
+    /// [`NotFound`](ErrorKind::NotFound) error. What a tool that writes
+    /// over text seen before, or only a new file, writes with.
     ///
-    /// By default it reads, then writes.
-    fn replace(&self, path: &Path, bytes: &[u8], limit: u64) -> io::Result<io::Result<Contents>> {
-        let before = self.read(path, limit);
-        self.write(path, bytes)?;
-        Ok(before)
-    }
-
-    /// [`write`](Self::write)s `bytes` to the regular file `path` only
-    /// while it holds the text whose [`content_hash`] is `held`: `None`
-    /// when it did. Otherwise nothing is written and it says what the file
-    /// holds instead, as [`read`](Self::read) with a limit of
-    /// [`MAX_FILE_BYTES`] reads it. What an edit made from text seen
-    /// before writes with; a workspace where each call costs a round trip,
-    /// such as a remote one, checks and writes in one.
-    ///
-    /// By default it reads, then writes.
+    /// By default it reads, then writes, so a file changed between the two
+    /// is replaced. [`Local`] and a remote workspace create a new file in a
+    /// step that never replaces one ([`write_new`]),
+    /// and check the text again just before replacing it
+    /// ([`write_atomic_if`]).
     fn write_if(
         &self,
         path: &Path,
         bytes: &[u8],
-        held: &ContentHash,
+        held: Option<&ContentHash>,
     ) -> io::Result<Option<Contents>> {
-        let now = self.read(path, MAX_FILE_BYTES)?;
-        if now.size > MAX_FILE_BYTES || content_hash(&now.bytes) != *held {
+        let now = match self.read(path, MAX_FILE_BYTES) {
+            Err(error) if held.is_none() && error.kind() == ErrorKind::NotFound => {
+                self.write(path, bytes)?;
+                return Ok(None);
+            }
+            now => now?,
+        };
+        let holds =
+            |held: &ContentHash| now.size <= MAX_FILE_BYTES && content_hash(&now.bytes) == *held;
+        if !held.is_some_and(holds) {
             return Ok(Some(now));
         }
         self.write(path, bytes)?;
@@ -124,8 +135,8 @@ pub trait Workspace: Send + Sync + fmt::Debug + 'static {
     /// replacing a file there.
     fn rename(&self, from: &Path, to: &Path) -> io::Result<()>;
 
-    /// `path` made absolute, with the links of its longest existing part
-    /// followed (the file's own too, when it exists) and `..` folded, so two
+    /// `path` made absolute, with every link on it followed (a dangling one
+    /// to where a write would create its file) and `..` folded, so two
     /// spellings of one file come out alike. A footprint is made with it,
     /// which may be on a thread that must not wait: a remote workspace may
     /// answer from a cache, or fold `..` only.
@@ -145,9 +156,10 @@ pub trait Workspace: Send + Sync + fmt::Debug + 'static {
     /// The regular files under `root` (or `root` itself when it is a file),
     /// in walk order, as `root` joined with their path below it: those
     /// `listing` keeps ([`Listing`]), and only those matching `glob`, such
-    /// as `*.rs`, when it is given. A malformed glob is an
-    /// [`InvalidInput`](ErrorKind::InvalidInput) error that says so.
-    fn files(&self, root: &Path, glob: Option<&str>, listing: Listing) -> io::Result<Vec<PathBuf>>;
+    /// as `*.rs`, when it is given; and the paths under `root` it could not
+    /// look into, such as a directory it may not read. A malformed glob is
+    /// an [`InvalidInput`](ErrorKind::InvalidInput) error that says so.
+    fn files(&self, root: &Path, glob: Option<&str>, listing: Listing) -> io::Result<Listed>;
 
     /// Starts `program` with `args` in `dir` (`None`: the launcher's own
     /// directory) under `launcher`'s policy: its wrapper and variables.
@@ -161,13 +173,17 @@ pub trait Workspace: Send + Sync + fmt::Debug + 'static {
     ) -> io::Result<Process>;
 
     /// Watches `root`, a file or a directory (with `recursive`, every
-    /// directory under it too), from now on: a batch of the paths created,
-    /// changed or removed each time something changed, of the files
-    /// [`files`](Self::files) would list with `listing`.
-    /// Dropping the [`Watch`] stops it. To miss nothing, list the files
-    /// once after the watch has started.
+    /// directory under it too), from now on, telling of the files
+    /// [`files`](Self::files) would list with `listing`: a
+    /// [`Snapshot`](WatchEvent::Snapshot) of those there once it could
+    /// list them, then the paths created, changed or removed each time
+    /// something changed, and [`Unavailable`](WatchEvent::Unavailable)
+    /// while listing fails, trying again every second: the next listing
+    /// that works is a `Snapshot` again, then the paths changed meanwhile.
+    /// A root that does not exist has no files until it appears. Dropping
+    /// the [`Watch`] stops it.
     ///
-    /// By default it looks at what [`files`](Self::files) lists every
+    /// By default it lists what [`files`](Self::files) lists every
     /// second, on a thread of its own, comparing each file's
     /// size and change time (its hash when [`stat`](Self::stat) cannot tell
     /// the time). [`Local`] hears of changes from the system instead.
@@ -193,40 +209,62 @@ pub enum Listing {
 }
 
 impl Listing {
-    /// The listing of a tool call's `hidden` and `glob` arguments.
+    /// The listing of a tool call's `hidden` and `glob` arguments: `Hidden`
+    /// when `hidden` is set or the glob names a hidden file or directory,
+    /// such as `.github/**` or `**/.env*`, so asking for one finds it.
     pub(crate) fn from_options(hidden: bool, glob: Option<&str>) -> Self {
-        match hidden {
-            true => Self::Hidden,
-            false => Self::Visible,
-        }
-        .for_glob(glob)
-    }
-
-    /// The listing a search or listing for `glob` uses: `Visible` becomes
-    /// `Hidden` when the glob names a hidden file or directory, such as
-    /// `.github/**` or `**/.env*`, so asking for one finds it.
-    pub fn for_glob(self, glob: Option<&str>) -> Self {
         let names_hidden = glob.is_some_and(|glob| {
             glob.split(['/', '\\'])
                 .any(|part| part.starts_with('.') && part != "." && part != "..")
         });
-        match self {
-            Self::Visible if names_hidden => Self::Hidden,
-            other => other,
+        match hidden || names_hidden {
+            true => Self::Hidden,
+            false => Self::Visible,
         }
     }
 
     /// Whether this listing keeps `below`, a path below the listed root, by
     /// its names alone (the ignore rules aside): `Visible` none of whose
-    /// parts is hidden or `target`, `Hidden` none of whose parts is `.git`.
-    pub fn keeps(self, below: &Path) -> bool {
+    /// parts is hidden or a `target` directory, `Hidden` none of whose parts
+    /// is `.git`. `dir` says whether `below` itself is a directory.
+    pub fn keeps(self, below: &Path, dir: bool) -> bool {
         let mut parts = below.iter();
         match self {
-            Self::Visible => !parts.any(|part| part == "target" || is_hidden(Path::new(part))),
+            Self::Visible => {
+                let last = parts.next_back();
+                !last.is_some_and(|last| (dir && last == "target") || is_hidden(Path::new(last)))
+                    && !parts.any(|part| part == "target" || is_hidden(Path::new(part)))
+            }
             Self::Hidden => !parts.any(|part| part == ".git"),
             Self::All => true,
         }
     }
+}
+
+/// What looking at one path found. Only [`Missing`](Self::Missing) says
+/// nothing is there: a look that failed says why, so it is never taken
+/// for absence.
+#[derive(Debug)]
+pub enum Observation<T> {
+    /// It is there, and this is what was found.
+    Found(T),
+    /// Nothing is there.
+    Missing,
+    /// Something is there that this look leaves out, such as a directory
+    /// or a file larger than the limit.
+    Excluded,
+    /// The look failed, so whether something is there is not known.
+    Failed(io::Error),
+}
+
+/// What [`Workspace::files`] listed.
+#[derive(Debug, Default)]
+pub struct Listed {
+    /// The regular files, in walk order.
+    pub files: Vec<PathBuf>,
+    /// The paths it could not look into, and why: what is under them is
+    /// not known, not absent.
+    pub failed: Vec<(PathBuf, io::Error)>,
 }
 
 /// What [`Workspace::read`] read.
@@ -251,6 +289,41 @@ pub struct Excerpt {
     /// that much costs about what a call does, and an edit after the read
     /// starts from it instead of fetching the file.
     pub whole: Option<String>,
+    /// How the whole file's lines end, when known: a workspace that sends
+    /// only the lines asked of a large file, such as a remote one, may not
+    /// know.
+    pub endings: Option<Endings>,
+}
+
+/// How a text's lines end.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Endings {
+    /// In LF, or no line ends.
+    Lf,
+    /// Every line that ends ends in CRLF: [`Edit`](crate::Edit) writes
+    /// the lines it changes with CRLF too.
+    Crlf,
+    /// Some in CRLF, some in LF.
+    Mixed,
+}
+
+impl Endings {
+    /// How the lines of `text` end.
+    ///
+    /// ```
+    /// use rig_tools::workspace::Endings;
+    ///
+    /// assert_eq!(Endings::of("a\r\nb\r\nc"), Endings::Crlf);
+    /// assert_eq!(Endings::of("a\r\nb\n"), Endings::Mixed);
+    /// assert_eq!(Endings::of("a\rb"), Endings::Lf);
+    /// ```
+    pub fn of(text: &str) -> Self {
+        match text.matches("\r\n").count() {
+            0 => Self::Lf,
+            crlf if crlf == text.matches('\n').count() => Self::Crlf,
+            _ => Self::Mixed,
+        }
+    }
 }
 
 impl Excerpt {
@@ -269,6 +342,7 @@ impl Excerpt {
             total: text.lines().count(),
             hash: content_hash(text.as_bytes()),
             whole: (text.len() <= MAX_BYTES).then(|| text.to_owned()),
+            endings: Some(Endings::of(text)),
         }
     }
 }
@@ -298,14 +372,19 @@ pub enum Stat {
 impl dyn Workspace {
     /// `path` as the file tools name it: [`join`](Workspace::join)ed onto
     /// `base` (`None`: the working directory), then made
-    /// [`canonical`](Workspace::canonical).
+    /// [`canonical`](Workspace::canonical). Two spellings of one file
+    /// resolve alike, so this is how the facts the tools publish and their
+    /// footprints name files.
     pub fn resolve(&self, base: Option<&Path>, path: &str) -> PathBuf {
         self.canonical(&self.join(base.unwrap_or(Path::new("")), path.as_ref()))
     }
 
     /// `path` `resolve`d against `base`, as a file tool
     /// opens it; with `confine`, refused before any other I/O when it lies
-    /// outside `base` (`None`: the working directory).
+    /// outside `base` (`None`: the working directory). The check is of the
+    /// path when it is made: a link another process puts in `base` before
+    /// the tool's I/O can still lead that I/O out. On another machine the
+    /// check compares path text and does not see a link already there.
     ///
     /// ```
     /// use rig_tools::workspace::{Local, Workspace};
@@ -381,6 +460,27 @@ pub(crate) fn not_text() -> io::Error {
     io::Error::new(ErrorKind::InvalidData, "stream did not contain valid UTF-8")
 }
 
+/// The error for a path the tools only treat as a regular file.
+pub(crate) fn not_a_file() -> io::Error {
+    io::Error::new(ErrorKind::InvalidInput, "not a regular file")
+}
+
+/// The error for a write to a read-only file.
+pub(crate) fn read_only() -> io::Error {
+    io::Error::new(
+        ErrorKind::PermissionDenied,
+        "the file is read-only; leave it unchanged or ask the user",
+    )
+}
+
+/// The matcher for `glob` below `root`, or `InvalidInput` naming why it is bad.
+pub(crate) fn globbed(root: &Path, glob: &str) -> io::Result<Override> {
+    OverrideBuilder::new(root)
+        .add(glob)
+        .and_then(|builder| builder.build())
+        .map_err(|error| io::Error::new(ErrorKind::InvalidInput, format!("bad glob: {error}")))
+}
+
 /// A model-visible error for a failed text read of `shown`
 /// (`read_text`, [`Workspace::excerpt`]).
 pub(crate) fn text_error(shown: &str, error: io::Error) -> ToolExecutionError {
@@ -412,18 +512,25 @@ pub(crate) fn excerpt_of<W: Workspace + ?Sized>(
     Ok(Excerpt::of(&text, first, count))
 }
 
-/// `path`'s whole content when it is a regular file of at most `limit`
-/// bytes, as [`Workspace::read_files`] reads each by default.
+/// What `path` holds, as [`Workspace::read_files`] reads each file by
+/// default: its whole content when it is a regular file of at most `limit`
+/// bytes.
 pub(crate) fn read_file<W: Workspace + ?Sized>(
     workspace: &W,
     path: &Path,
     limit: u64,
-) -> Option<Vec<u8>> {
-    let small = matches!(workspace.stat(path), Ok(Stat::File { size, .. }) if size <= limit);
-    small
-        .then(|| workspace.read(path, limit).ok())
-        .flatten()
-        .map(|contents| contents.bytes)
+) -> Observation<Vec<u8>> {
+    match workspace.stat(path) {
+        Ok(Stat::File { size, .. }) if size <= limit => match workspace.read(path, limit) {
+            Ok(contents) if contents.size <= limit => Observation::Found(contents.bytes),
+            Ok(_) => Observation::Excluded,
+            Err(error) if error.kind() == ErrorKind::NotFound => Observation::Missing,
+            Err(error) => Observation::Failed(error),
+        },
+        Ok(Stat::Missing) => Observation::Missing,
+        Ok(Stat::File { .. } | Stat::Dir | Stat::Other) => Observation::Excluded,
+        Err(error) => Observation::Failed(error),
+    }
 }
 
 /// `path` in this machine's home directory when its first component is
@@ -437,9 +544,87 @@ pub(crate) fn home_path(path: &Path) -> Option<PathBuf> {
     })
 }
 
+/// Where a file tool works: a [`Workspace`], the directory a relative
+/// path is taken from, and whether a path outside it is refused.
+#[derive(Clone, Debug)]
+pub struct Root {
+    /// Where the files are.
+    pub workspace: Arc<dyn Workspace>,
+    /// The directory a relative path is taken from; `None` is the
+    /// workspace's working directory.
+    pub base: Option<PathBuf>,
+    /// Whether a path that resolves outside `base` is refused, before any
+    /// other I/O.
+    pub confine: bool,
+}
+
+impl Default for Root {
+    /// This machine's files, from this process's working directory.
+    fn default() -> Self {
+        Self::from(Arc::new(Local) as Arc<dyn Workspace>)
+    }
+}
+
+impl From<Arc<dyn Workspace>> for Root {
+    /// `workspace`, from its working directory, unconfined.
+    fn from(workspace: Arc<dyn Workspace>) -> Self {
+        Self {
+            workspace,
+            base: None,
+            confine: false,
+        }
+    }
+}
+
+impl Root {
+    /// `path` resolved against the base, as `<dyn Workspace>::resolve` does.
+    pub fn resolve(&self, path: &str) -> PathBuf {
+        self.workspace.resolve(self.base.as_deref(), path)
+    }
+
+    /// `path` placed in the base, as `<dyn Workspace>::place` does.
+    ///
+    /// # Errors
+    ///
+    /// [`ToolExecutionError::permission_denied`] when confined and `path`
+    /// lies outside the base.
+    pub fn place(&self, path: &str) -> Result<PathBuf, ToolExecutionError> {
+        self.workspace
+            .place(self.base.as_deref(), self.confine, path)
+    }
+}
+
 /// This machine: its file system and its processes.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Local;
+
+/// Whether a rename that succeeded left `from` in its directory still
+/// naming the file at `to`, so it moved nothing. The directory's own entries decide, not a
+/// lookup: after a case-only rename on a case-insensitive filesystem the
+/// old spelling still resolves, but no entry is spelled that way.
+#[cfg(unix)]
+fn left_behind(from: &Path, to: &Path) -> io::Result<bool> {
+    use std::os::unix::fs::MetadataExt;
+    let same = match (fs::symlink_metadata(from), fs::symlink_metadata(to)) {
+        (Ok(from), Ok(to)) => from.dev() == to.dev() && from.ino() == to.ino(),
+        _ => false,
+    };
+    let (true, Some(dir), Some(name)) = (same, from.parent(), from.file_name()) else {
+        return Ok(false);
+    };
+    for entry in fs::read_dir(dir)? {
+        if entry?.file_name() == name {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// Only POSIX rename(2) leaves both names of one file in place.
+#[cfg(not(unix))]
+fn left_behind(_from: &Path, _to: &Path) -> io::Result<bool> {
+    Ok(false)
+}
 
 impl Workspace for Local {
     fn stat(&self, path: &Path) -> io::Result<Stat> {
@@ -458,10 +643,7 @@ impl Workspace for Local {
 
     fn read(&self, path: &Path, limit: u64) -> io::Result<Contents> {
         if !fs::metadata(path)?.is_file() {
-            return Err(io::Error::new(
-                ErrorKind::InvalidInput,
-                "not a regular file",
-            ));
+            return Err(not_a_file());
         }
         let file = File::open(path)?;
         let size = file.metadata()?.len();
@@ -472,6 +654,28 @@ impl Workspace for Local {
 
     fn write(&self, path: &Path, bytes: &[u8]) -> io::Result<()> {
         write_atomic(path, bytes)
+    }
+
+    fn write_if(
+        &self,
+        path: &Path,
+        bytes: &[u8],
+        held: Option<&ContentHash>,
+    ) -> io::Result<Option<Contents>> {
+        let wrote = match held {
+            None => match write_new(path, bytes) {
+                Err(error) if error.kind() == ErrorKind::AlreadyExists => false,
+                created => created.map(|()| true)?,
+            },
+            Some(held) => write_atomic_if(path, bytes, || {
+                let now = self.read(path, MAX_FILE_BYTES)?;
+                Ok(now.size <= MAX_FILE_BYTES && content_hash(&now.bytes) == *held)
+            })?,
+        };
+        if wrote {
+            return Ok(None);
+        }
+        self.read(path, MAX_FILE_BYTES).map(Some)
     }
 
     fn remove(&self, path: &Path) -> io::Result<()> {
@@ -487,6 +691,12 @@ impl Workspace for Local {
                 fs::copy(from, to)?;
                 fs::remove_file(from)
             }
+            // Between two names of one file rename(2) succeeds and does
+            // nothing: say so rather than report a move.
+            Ok(()) if from != to && left_behind(from, to)? => Err(io::Error::new(
+                ErrorKind::InvalidInput,
+                "both names are links to one file; nothing was moved",
+            )),
             moved => moved,
         }
     }
@@ -497,48 +707,15 @@ impl Workspace for Local {
     }
 
     fn canonical(&self, path: &Path) -> PathBuf {
-        let joined = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
-        let real = joined.ancestors().find_map(|ancestor| {
-            let real = fs::canonicalize(ancestor).ok()?;
-            Some((real, joined.strip_prefix(ancestor).ok()?))
-        });
-        let (mut out, rest) = real.unwrap_or((PathBuf::new(), &joined));
-        for component in rest.components() {
-            match component {
-                Component::ParentDir => {
-                    out.pop();
-                }
-                Component::CurDir => {}
-                other => out.push(other),
-            }
-        }
-        out
+        real_path(path)
     }
 
-    fn files(&self, root: &Path, glob: Option<&str>, listing: Listing) -> io::Result<Vec<PathBuf>> {
-        let mut walk = WalkBuilder::new(root);
-        match listing {
-            Listing::All => walk.standard_filters(false),
-            Listing::Visible | Listing::Hidden => walk.hidden(false).filter_entry(move |entry| {
-                entry.depth() == 0 || listing.keeps(Path::new(entry.file_name()))
-            }),
-        };
+    fn files(&self, root: &Path, glob: Option<&str>, listing: Listing) -> io::Result<Listed> {
+        let mut walk = walk(root, listing, |_| true);
         if let Some(glob) = glob {
-            let overrides = OverrideBuilder::new(root)
-                .add(glob)
-                .and_then(|builder| builder.build())
-                .map_err(|error| {
-                    io::Error::new(ErrorKind::InvalidInput, format!("bad glob: {error}"))
-                })?;
-            walk.overrides(overrides);
+            walk.overrides(globbed(root, glob)?);
         }
-        // Only regular files: symbolic links are not followed.
-        Ok(walk
-            .build()
-            .flatten()
-            .filter(|entry| entry.file_type().is_some_and(|kind| kind.is_file()))
-            .map(ignore::DirEntry::into_path)
-            .collect())
+        Ok(listed(&walk))
     }
 
     fn spawn(
@@ -555,12 +732,81 @@ impl Workspace for Local {
         }
     }
 
-    /// The system's file events under `root`, filtered as
-    /// [`files`](Workspace::files) lists with `listing`, gathered into a
-    /// batch until no event came for 50 ms. A `root` that does not exist
-    /// yet is looked at every second, as the default does.
+    /// The system's file events under `root`, gathered into a batch until
+    /// no event came for 50 ms, and the places they name listed again as
+    /// [`files`](Workspace::files) lists with `listing`. A `root` that
+    /// does not exist yet is looked at every second, as the default does.
     fn watch(self: Arc<Self>, root: &Path, recursive: bool, listing: Listing) -> io::Result<Watch> {
         crate::watch::notified(root, recursive, listing)
+    }
+}
+
+/// The walk [`Local`] lists the files under `root` with: the ignore rules
+/// `listing` follows, going only into the paths `within` keeps (the root
+/// always).
+pub(crate) fn walk(
+    root: &Path,
+    listing: Listing,
+    within: impl Fn(&Path) -> bool + Send + Sync + 'static,
+) -> WalkBuilder {
+    let mut walk = WalkBuilder::new(root);
+    walk.standard_filters(listing != Listing::All)
+        .hidden(false)
+        .filter_entry(move |entry| {
+            entry.depth() == 0
+                || (listing.keeps(
+                    Path::new(entry.file_name()),
+                    entry.file_type().is_some_and(|kind| kind.is_dir()),
+                ) && within(entry.path()))
+        });
+    walk
+}
+
+/// The regular files `walk` finds, in walk order, and the paths it could
+/// not look into. Symbolic links are not followed.
+pub(crate) fn listed(walk: &WalkBuilder) -> Listed {
+    let mut listed = Listed::default();
+    for entry in walk.build() {
+        match entry {
+            Ok(entry) if entry.file_type().is_some_and(|kind| kind.is_file()) => {
+                listed.files.push(entry.into_path());
+            }
+            Ok(_) => {}
+            // What the ignore rules say wrong about themselves, such as a
+            // bad glob in a `.gitignore`, hides no file, and a path gone
+            // since it was listed is absent.
+            Err(error) => {
+                let path = walk_path(&error).map(Path::to_path_buf);
+                let error = error.into_io_error();
+                if let (Some(path), Some(error)) = (path, error)
+                    && error.kind() != ErrorKind::NotFound
+                {
+                    listed.failed.push((path, unwrapped(error)));
+                }
+            }
+        }
+    }
+    listed
+}
+
+/// `error` without the path a walk put in its message, which the listing
+/// names beside it: the system's own error under it, when there is one.
+fn unwrapped(error: io::Error) -> io::Error {
+    let code = (error.get_ref())
+        .and_then(|inner| inner.source())
+        .and_then(|source| source.downcast_ref::<io::Error>())
+        .and_then(io::Error::raw_os_error);
+    code.map_or(error, io::Error::from_raw_os_error)
+}
+
+/// The path a walk's `error` is about, if it names one.
+fn walk_path(error: &ignore::Error) -> Option<&Path> {
+    match error {
+        ignore::Error::WithPath { path, .. } => Some(path),
+        ignore::Error::WithDepth { err, .. } | ignore::Error::WithLineNumber { err, .. } => {
+            walk_path(err)
+        }
+        _ => None,
     }
 }
 

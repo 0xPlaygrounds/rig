@@ -18,7 +18,7 @@ use syn::{Expr, ExprCall, ExprLit, ItemFn, ItemMod, Lit};
 /// What recording a fixture takes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Owner {
-    /// The test that records it: its nextest name within the provider binary.
+    /// The test that records it: its nextest name within the package's `integration` binary.
     Test(String),
     /// The test only replays a hand-derived fixture.
     HandDerived(String),

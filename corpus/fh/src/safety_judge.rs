@@ -20,7 +20,7 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::CompletionRequest;
 use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
 use rig_harness::rig_core::message::Message;
-use rig_harness::rig_tools::fs::place;
+use rig_harness::rig_tools::workspace::{Local, Workspace};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -194,7 +194,7 @@ these rules. Answer only with JSON: {\"verdict\": \"allow\" | \"deny\" | \"ask\"
 fn top_agent(agent: Entity, spawners: &Query<&SpawnedBy>) -> Entity {
     let mut top = agent;
     let mut seen = 0;
-    while let Ok(&SpawnedBy(parent)) = spawners.get(top)
+    while let Ok(parent) = spawners.get(top).map(SpawnedBy::parent)
         && seen < 64
     {
         top = parent;
@@ -230,7 +230,7 @@ fn is_judged(
             .arguments
             .get("path")
             .and_then(|path| path.as_str());
-        path.is_some_and(|path| place(Some(dir), true, path).is_err())
+        path.is_some_and(|path| <dyn Workspace>::place(&Local, Some(dir), true, path).is_err())
     };
     listed(&config.tools)
         || (listed(&config.outside_project) && outside())
@@ -295,7 +295,10 @@ fn send_to_judge(
             request.call.function.name.as_str(),
             request.call.function.raw_arguments()
         );
-        let connection = match models.connect(model) {
+        let connection = match models
+            .connect(model)
+            .map_err(|why| Models::cannot_use(model, why))
+        {
             Ok(connection) => connection,
             Err(why) => {
                 let reason = format!("the judge cannot be reached ({why})");

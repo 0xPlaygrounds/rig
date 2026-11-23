@@ -46,20 +46,18 @@ pub struct ModelInfo {
     /// Distinct from context length and not automatically applied to requests.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_output_tokens: Option<u32>,
+
+    /// Provider-reported tool-call support, or `None` when unreported.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub supports_tool_calls: Option<bool>,
 }
 
 impl ModelInfo {
     /// Creates a model with an ID and display name; other metadata is absent.
     pub fn new(id: impl Into<String>, name: impl Into<String>) -> Self {
         Self {
-            id: id.into(),
             name: Some(name.into()),
-            description: None,
-            r#type: None,
-            created_at: None,
-            owned_by: None,
-            context_length: None,
-            max_output_tokens: None,
+            ..Self::from_id(id)
         }
     }
 
@@ -74,6 +72,7 @@ impl ModelInfo {
             owned_by: None,
             context_length: None,
             max_output_tokens: None,
+            supports_tool_calls: None,
         }
     }
 

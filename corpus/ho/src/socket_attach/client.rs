@@ -41,7 +41,7 @@ pub(crate) fn build(app: &mut App) {
             }
             Err(why) => {
                 eprintln!("rig: {why}");
-                commands.trigger(Exit(ExitReason::Failed(1)));
+                commands.trigger(Exit(ExitReason::Failed(FailCode::FAILURE)));
             }
         }
     })

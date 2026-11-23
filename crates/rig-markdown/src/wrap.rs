@@ -1,0 +1,236 @@
+//! Word wrapping of styled lines to a width: at word boundaries, a list
+//! item's continuation rows under its text.
+//!
+//! ```
+//! use ratatui_core::text::Line;
+//! use rig_markdown::wrap::wrap_all;
+//!
+//! let rows = wrap_all(&[Line::from("one two three")], 8);
+//! assert_eq!(rows.len(), 2);
+//! ```
+
+use ratatui_core::style::Style;
+use ratatui_core::text::{Line, Span};
+use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
+
+/// Markers after which a wrapped line's continuation rows are indented, so
+/// a list item or a tool result keeps its left edge.
+const HANGING_MARKERS: [&str; 5] = ["•", "-", "*", "›", ">"];
+
+/// How a wrapped row continues the row before it: the line is the row
+/// before, then `gap`, then this row's text past its `indent`.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct RowWrap {
+    /// The blanks the wrap dropped at the break.
+    pub gap: String,
+    /// How many spaces the row starts with that the line does not have,
+    /// such as those keeping a list item's wrapped text under its text.
+    pub indent: usize,
+}
+
+/// `line` wrapped at word boundaries into rows at most `width` columns
+/// wide, each with how it continues the row before it (`None` for the
+/// first). A word wider than a row is broken. Continuation rows are
+/// indented like the text after the line's leading spaces and list marker,
+/// or after its first word when two or more spaces follow that, by at most
+/// half the width.
+/// Every row keeps the line's style, so a background fills each. Where it
+/// breaks depends on its text alone, not on its styles, so a line of code
+/// wraps the same plain as colored.
+pub fn wrap(line: &Line<'_>, width: usize) -> Vec<(Line<'static>, Option<RowWrap>)> {
+    wrap_hanging(line, width, true)
+}
+
+/// [`wrap`] for text a person types: a first word's column does not set
+/// the indent, as two spaces after it are more likely a slip than a column.
+pub fn wrap_typed(line: &Line<'_>, width: usize) -> Vec<(Line<'static>, Option<RowWrap>)> {
+    wrap_hanging(line, width, false)
+}
+
+/// [`wrap`], with or without a first word's `columns` setting the indent.
+fn wrap_hanging(
+    line: &Line<'_>,
+    width: usize,
+    columns: bool,
+) -> Vec<(Line<'static>, Option<RowWrap>)> {
+    let width = width.max(1);
+    let text: String = line.spans.iter().map(|span| &*span.content).collect();
+    let cells = cells(line, &text);
+    let total: usize = cells.iter().map(|(symbol, _)| symbol.width()).sum();
+    if total <= width {
+        return vec![(join(&cells).style(line.style), None)];
+    }
+    let indent = hanging_indent(&cells, columns).min(width / 2);
+    let mut rows = Vec::new();
+    let mut row: Vec<(&str, Style)> = Vec::new();
+    let mut row_width = 0;
+    // How the row being filled continues the one before it.
+    let mut joint: Option<RowWrap> = None;
+    for word in words(&cells) {
+        let word_width: usize = word.iter().map(|(symbol, _)| symbol.width()).sum();
+        let blank = word.iter().all(|(symbol, _)| symbol.trim().is_empty());
+        if row_width + word_width > width && row_width > indent {
+            // Spaces at a break are dropped rather than carried over, but
+            // not the indent the row starts with.
+            let kept = if joint.is_some() { indent } else { 0 };
+            let mut gap = Vec::new();
+            while row.len() > kept
+                && let Some(&(symbol, _)) =
+                    row.last().filter(|(symbol, _)| symbol.trim().is_empty())
+            {
+                gap.push(symbol);
+                row.pop();
+            }
+            gap.reverse();
+            rows.push((join(&row), joint.take()));
+            row.clear();
+            row.extend(std::iter::repeat_n((" ", Style::default()), indent));
+            row_width = indent;
+            if blank {
+                gap.extend(word.iter().map(|(symbol, _)| *symbol));
+            }
+            joint = Some(RowWrap {
+                gap: gap.concat(),
+                indent,
+            });
+            if blank {
+                continue;
+            }
+        }
+        for &(symbol, style) in word {
+            let cell = symbol.width();
+            // A row breaks inside a word once it holds more than its indent,
+            // which the first row does not have.
+            let start = if joint.is_some() { indent } else { 0 };
+            if row_width + cell > width && row_width > start {
+                rows.push((join(&row), joint.take()));
+                row.clear();
+                row.extend(std::iter::repeat_n((" ", Style::default()), indent));
+                row_width = indent;
+                joint = Some(RowWrap {
+                    gap: String::new(),
+                    indent,
+                });
+            }
+            row.push((symbol, style));
+            row_width += cell;
+        }
+    }
+    if !row.is_empty() || rows.is_empty() {
+        rows.push((join(&row), joint));
+    }
+    let styled = rows
+        .into_iter()
+        .map(|(row, joint)| (row.style(line.style), joint));
+    styled.collect()
+}
+
+/// Every line of `lines` wrapped to `width`.
+pub fn wrap_all(lines: &[Line<'_>], width: usize) -> Vec<Line<'static>> {
+    let rows = lines.iter().flat_map(|line| wrap(line, width));
+    rows.map(|(row, _)| row).collect()
+}
+
+/// The graphemes of `text`, `line`'s text, each in the style of the span
+/// its first byte is in, over the line's: found in the whole text, so a
+/// grapheme whose spans split it is one cell. A tab is four spaces, as
+/// [`crate::code::untabbed`] draws code; other graphemes with a control
+/// character are left out, as ratatui draws a line.
+fn cells<'a>(line: &Line<'_>, text: &'a str) -> Vec<(&'a str, Style)> {
+    let mut spans = line.spans.iter().scan(0, |end, span| {
+        *end += span.content.len();
+        Some((*end, line.style.patch(span.style)))
+    });
+    let mut span = spans.next();
+    let cells = text.grapheme_indices(true).flat_map(|(at, grapheme)| {
+        while let Some((end, _)) = span
+            && end <= at
+        {
+            span = spans.next();
+        }
+        let style = span.map_or(line.style, |(_, style)| style);
+        let (symbol, count) = match grapheme {
+            "\t" => (" ", 4),
+            _ if grapheme.contains(char::is_control) => (grapheme, 0),
+            _ => (grapheme, 1),
+        };
+        std::iter::repeat_n((symbol, style), count)
+    });
+    cells.collect()
+}
+
+/// The cells split into words, each with the spaces that follow it.
+fn words<'a, 'b>(cells: &'b [(&'a str, Style)]) -> impl Iterator<Item = &'b [(&'a str, Style)]> {
+    let space = |symbol: &str| symbol.trim().is_empty();
+    cells.chunk_by(move |(before, _), (after, _)| !space(before) || space(after))
+}
+
+/// The width of the leading spaces, plus a list marker and its space, or
+/// else, with `columns`, a first word and the two or more spaces after it
+/// that start a column, such as a line number's or a command's.
+fn hanging_indent(cells: &[(&str, Style)], columns: bool) -> usize {
+    let spaces = cells
+        .iter()
+        .take_while(|(symbol, _)| *symbol == " ")
+        .count();
+    let rest = cells.get(spaces..).unwrap_or_default();
+    let marker: usize = match rest {
+        [(first, _), (" ", _), ..] if HANGING_MARKERS.contains(first) => first.width() + 1,
+        _ => match numbered_marker(rest) {
+            0 if columns => column(rest),
+            marker => marker,
+        },
+    };
+    spaces + marker
+}
+
+/// The width of a first word and the two or more spaces after it, when
+/// text follows them, else 0.
+fn column(cells: &[(&str, Style)]) -> usize {
+    let word = cells
+        .iter()
+        .take_while(|(symbol, _)| *symbol != " ")
+        .count();
+    let rest = cells.get(word..).unwrap_or_default();
+    let gap = rest.iter().take_while(|(symbol, _)| *symbol == " ").count();
+    match word > 0 && gap >= 2 && rest.len() > gap {
+        true => cells
+            .get(..word + gap)
+            .unwrap_or_default()
+            .iter()
+            .map(|(symbol, _)| symbol.width())
+            .sum(),
+        false => 0,
+    }
+}
+
+/// The width of a leading `12. ` or `3) `, else 0.
+fn numbered_marker(cells: &[(&str, Style)]) -> usize {
+    let digits = cells
+        .iter()
+        .take_while(|(symbol, _)| symbol.len() == 1 && symbol.bytes().all(|b| b.is_ascii_digit()))
+        .count();
+    match cells.get(digits..digits + 2) {
+        Some([(dot, _), (" ", _)]) if digits > 0 && (*dot == "." || *dot == ")") => digits + 2,
+        _ => 0,
+    }
+}
+
+/// One row from its cells, neighbouring cells of one style in one span.
+fn join(cells: &[(&str, Style)]) -> Line<'static> {
+    let spans: Vec<Span<'static>> = cells
+        .chunk_by(|(_, before), (_, after)| before == after)
+        .map(|run| {
+            let style = run.first().map(|(_, style)| *style).unwrap_or_default();
+            Span::styled(
+                run.iter().map(|(symbol, _)| *symbol).collect::<String>(),
+                style,
+            )
+        })
+        .collect();
+    Line::from(spans)
+}
+
+#[cfg(test)]
+mod tests;

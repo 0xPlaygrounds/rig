@@ -20,8 +20,8 @@ fn drawn(tool: &str, args: Value, output: &str, cut: Option<OutputCut>) -> Vec<S
         context.insert_result(cut).ok();
     }
     let facts = context.result_context();
-    let mut view = ToolCallView::new(&call, Some(&result), CallState::Done);
-    view.facts = Some(&facts);
+    let mut view = ToolRender::new(call, Some(result), CallState::Done);
+    view.facts = Some(facts);
     let lines = view.default_lines();
     lines.iter().map(ToString::to_string).collect()
 }
@@ -64,16 +64,8 @@ fn a_result_is_drawn_whole_with_its_cut_marker_on_its_side() {
 /// of it stays dim and italic.
 #[test]
 fn reasoning_is_dimmed_markdown() {
-    let view = MessageView {
-        role: Role::Reasoning,
-        message: None,
-        block: 0,
-        text: "**Planning the search**\n\nCheck the `cache` first.",
-        marks: &[],
-        width: 80,
-        theme: Theme::default(),
-    };
-    let lines = view.default_lines();
+    let text = "**Planning the search**\n\nCheck the `cache` first.";
+    let lines = reasoning_lines(text, 80, &Theme::default());
     let text: Vec<String> = lines.iter().map(ToString::to_string).collect();
     assert_eq!(
         text,
@@ -81,7 +73,8 @@ fn reasoning_is_dimmed_markdown() {
         "{lines:?}"
     );
     let dim_italic = Modifier::DIM | Modifier::ITALIC;
-    let drawn = |line: &Line<'_>| {
+    let drawn = |line: &crate::LookLine| {
+        let line = line.colored();
         let mut spans = line.spans.iter();
         spans.all(|span| {
             line.style
@@ -103,8 +96,8 @@ fn a_calls_row_is_tinted_by_where_it_stands_and_has_no_marker() {
     let mut failed = done.clone();
     failed.is_error = true;
     let theme = Theme::default();
-    let header = |result, state| {
-        let mut view = ToolCallView::new(&call, result, state);
+    let header = |result: Option<&ToolResult>, state| {
+        let mut view = ToolRender::new(call.clone(), result.cloned(), state);
         view.theme = theme;
         view.header("shell", "ls")
     };
@@ -127,6 +120,77 @@ fn a_calls_row_is_tinted_by_where_it_stands_and_has_no_marker() {
 }
 
 #[test]
+fn a_line_of_code_is_drawn_in_its_colors_under_the_styles_around_and_over_it() {
+    let code = Code::new(
+        "let x = 1; // one\n",
+        crate::highlight::Language::File("a.rs"),
+    );
+    let colors = code.spans(0).unwrap_or_default();
+    assert!(
+        colors.iter().any(|span| span.style.fg.is_some()),
+        "{colors:?}"
+    );
+    let spans = |line: &Line<'static>| -> Vec<(String, Style)> {
+        let spans = line.spans.iter();
+        spans
+            .map(|span| (span.content.to_string(), span.style))
+            .collect()
+    };
+    // After a line number, as a read draws it.
+    let number = Span::from("  7  ").dim();
+    let numbered = code.line(0, vec![number.clone()]).colored();
+    let mut expected = vec![number];
+    expected.extend(colors.iter().cloned());
+    assert_eq!(spans(&numbered), spans(&Line::from(expected)));
+    // In a header, with its state after it.
+    let Ok(name) = ToolName::new("shell") else {
+        return;
+    };
+    let call = ToolCall::from_wire("c1", ToolFunction::new(name, json!({})));
+    let view = ToolRender::new(call, None, CallState::Running(None));
+    let header = view.header_code("$", &code, 0);
+    let drawn = header.colored();
+    assert_eq!(drawn.to_string(), header.to_string());
+    assert_eq!(drawn.to_string(), " $ let x = 1; // one · running");
+    assert_eq!(drawn.style, view.header("$", "").style);
+    assert_eq!(drawn.spans.last(), Some(&Span::from(" · running").italic()));
+    // A blank first line draws no detail, as a header without one.
+    let blank = Code::new("\nsleep 1", crate::highlight::Language::Named("bash"));
+    let header = view.header_code("$", &blank, 0);
+    assert_eq!(header.colored(), view.header("$", ""));
+    assert!(drawn.spans.iter().any(|span| span.style.fg.is_some()));
+    // Under a shade on a word and a background, as a diff draws them.
+    let shade = Style::new().bg(ratatui::style::Color::Indexed(1));
+    let marked = LookLine {
+        line: Line::from(vec![
+            Span::raw("+ let x = "),
+            Span::styled("1", shade),
+            Span::raw("; // one"),
+        ])
+        .bg(ratatui::style::Color::Indexed(2)),
+        code: Some(CodeLine {
+            code: code.clone(),
+            index: 0,
+            at: 2,
+        }),
+    };
+    let drawn = marked.colored();
+    assert_eq!(drawn.to_string(), "+ let x = 1; // one");
+    // A code line said to start elsewhere keeps its text, plain.
+    let mut astray = marked.clone();
+    if let Some(code) = &mut astray.code {
+        code.at = 1;
+    }
+    assert_eq!(astray.colored(), astray.line().clone());
+    assert_eq!(drawn.style, marked.line().style);
+    let one = drawn.spans.iter().find(|span| span.content == "1");
+    let color = colors.iter().find(|span| span.content.contains('1'));
+    let laid = color.map(|color| color.style.patch(shade));
+    assert_eq!(one.map(|span| span.style), laid);
+    assert!(laid.is_some_and(|laid| laid.fg.is_some() && laid.bg == shade.bg));
+}
+
+#[test]
 fn a_command_that_exits_non_zero_is_a_failed_call() {
     use rig_core::tool::ExitStatus;
 
@@ -141,8 +205,8 @@ fn a_command_that_exits_non_zero_is_a_failed_call() {
         let mut context = ToolContext::default();
         context.insert_result(status).ok();
         let facts = context.result_context();
-        let mut view = ToolCallView::new(&call, Some(&result), CallState::Done);
-        view.facts = Some(&facts);
+        let mut view = ToolRender::new(call.clone(), Some(result.clone()), CallState::Done);
+        view.facts = Some(facts);
         (view.failed(), view.header("ls", ""))
     };
     let theme = Theme::default();
@@ -168,16 +232,23 @@ fn note_requests(batch: Res<RenderBatch>, mut seen: ResMut<RequestsSeen>) {
 
 #[test]
 fn unchanged_messages_do_not_enter_the_render_schedule_again() {
-    use rig_core::completion::Message;
+    use rig_core::completion::{AssistantContent, AssistantMessage, Message};
     use rig_ecs::agent::Conversation;
 
+    let Ok(name) = ToolName::new("probe") else {
+        return;
+    };
+    let call = |id: String| {
+        let call = AssistantContent::tool_call(id, name.clone(), json!({}));
+        Message::Assistant(AssistantMessage::new(vec![call]))
+    };
     let (mut app, agent) = crate::tests::view_app();
     app.insert_resource(crate::TuiTestScreen::new(80, 24))
         .init_resource::<RequestsSeen>()
         .add_systems(TranscriptRender, note_requests.in_set(RenderSystems::Edit));
     if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
         for n in 0..500 {
-            conversation.push(Message::assistant(format!("message {n}")));
+            conversation.push(call(format!("c{n}")));
         }
     }
     app.update();
@@ -194,7 +265,7 @@ fn unchanged_messages_do_not_enter_the_render_schedule_again() {
     app.update();
     assert!(app.world().resource::<RequestsSeen>().0.is_empty());
     if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
-        conversation.push(Message::assistant("new tail"));
+        conversation.push(call("tail".to_owned()));
     }
     app.update();
     let added: usize = app
@@ -210,7 +281,6 @@ fn unchanged_messages_do_not_enter_the_render_schedule_again() {
     );
     use rig_core::streaming::{Part, PartKind, StreamEvent};
     use rig_ecs::agent::{CallOf, Partial, TurnOf};
-    use rig_ecs::turn::StreamDelta;
     let turn = app.world_mut().spawn(TurnOf(agent)).id();
     let effect = app
         .world_mut()
@@ -232,11 +302,9 @@ fn unchanged_messages_do_not_enter_the_render_schedule_again() {
         },
     ] {
         app.world_mut().resource_mut::<RequestsSeen>().0.clear();
-        app.world_mut().write_message(StreamDelta {
-            effect,
-            agent: Some(agent),
-            event,
-        });
+        if let Some(mut partial) = app.world_mut().get_mut::<Partial>(effect) {
+            partial.follow(&event);
+        }
         app.world_mut().write_message(crate::RequestRedraw);
         app.update();
         let seen = &app.world().resource::<RequestsSeen>().0;
@@ -264,7 +332,7 @@ struct Label(&'static str);
 
 fn label_tools(mut batch: ResMut<RenderBatch>, label: Res<Label>) {
     for (_, output) in batch.tools_mut("probe") {
-        output.lines = vec![Line::from(label.0)];
+        output.lines = vec![Line::from(label.0).into()];
     }
 }
 
@@ -352,8 +420,9 @@ struct OriginalLook;
 
 #[test]
 fn a_later_system_can_replace_lines_and_edit_named_decorations() {
-    use crate::{TranscriptItem, TranscriptLayout, TranscriptView};
+    use crate::{CallItem, TranscriptItem, TranscriptLayout, TranscriptView};
     use rig_core::completion::{AssistantContent, AssistantMessage, Message};
+    use rig_core::conversation::CallRef;
     use rig_ecs::agent::Conversation;
 
     let (mut app, agent) = crate::tests::view_app();
@@ -361,12 +430,14 @@ fn a_later_system_can_replace_lines_and_edit_named_decorations() {
         return;
     };
     let call = ToolCall::from_wire("call", ToolFunction::new(name, json!({})));
-    let id = call.id.clone();
-    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
-        conversation.push(Message::Assistant(AssistantMessage::new(vec![
-            AssistantContent::ToolCall(call),
-        ])));
-    }
+    let asked = AssistantMessage::new(vec![AssistantContent::ToolCall(call)]);
+    let conversation = app.world_mut().get_mut::<Conversation>(agent);
+    let Some(reply) =
+        conversation.map(|mut conversation| conversation.push(Message::Assistant(asked)))
+    else {
+        return;
+    };
+    let id = CallItem::Reply(CallRef { reply, index: 0 });
     app.insert_resource(Label("original"))
         .add_systems(
             TranscriptRender,
@@ -378,7 +449,7 @@ fn a_later_system_can_replace_lines_and_edit_named_decorations() {
             TranscriptRender,
             (|mut batch: ResMut<RenderBatch>| {
                 for (_, output) in batch.tools_mut("probe") {
-                    output.lines = vec![Line::from("replacement")];
+                    output.lines = vec![Line::from("replacement").into()];
                 }
             })
             .in_set(RenderSystems::Render)
@@ -419,7 +490,7 @@ fn a_later_system_can_replace_lines_and_edit_named_decorations() {
 fn label_by_argument(mut batch: ResMut<RenderBatch>) {
     for (call, output) in batch.tools_mut("probe") {
         let n = call.call.function.arguments.get("n").cloned();
-        output.lines = vec![Line::from(format!("probe {}", n.unwrap_or_default()))];
+        output.lines = vec![Line::from(format!("probe {}", n.unwrap_or_default())).into()];
     }
 }
 
@@ -478,7 +549,6 @@ fn streaming_calls_sharing_a_provider_id_each_get_their_own_look() {
     use rig_core::completion::AssistantContent;
     use rig_core::streaming::{Part, PartKind, StreamEvent};
     use rig_ecs::agent::{CallOf, Partial, TurnOf};
-    use rig_ecs::turn::StreamDelta;
 
     let (mut app, agent) = crate::tests::view_app();
     let name = ToolName::new("probe");
@@ -514,11 +584,9 @@ fn streaming_calls_sharing_a_provider_id_each_get_their_own_look() {
                 content: AssistantContent::ToolCall(done),
             },
         ] {
-            app.world_mut().write_message(StreamDelta {
-                effect,
-                agent: Some(agent),
-                event,
-            });
+            if let Some(mut partial) = app.world_mut().get_mut::<Partial>(effect) {
+                partial.follow(&event);
+            }
         }
     }
     app.world_mut().write_message(crate::RequestRedraw);
@@ -527,4 +595,25 @@ fn streaming_calls_sharing_a_provider_id_each_get_their_own_look() {
     looks.sort();
     looks.dedup();
     assert_eq!(looks, ["probe 1", "probe 2"]);
+}
+
+/// A result's images, which are not drawn, are counted on a line of their
+/// own, and its JSON is drawn as JSON, so no block is left out silently.
+#[test]
+fn a_results_images_are_counted_and_its_json_shown() {
+    let Ok(name) = ToolName::new("read") else {
+        return;
+    };
+    let call = ToolCall::from_wire("c1", ToolFunction::new(name, json!({})));
+    let result = call.result(vec![
+        ToolResultContent::text("a.png: a PNG image of 1 KB"),
+        ToolResultContent::image_base64("AAAA", None, None),
+        ToolResultContent::Json {
+            value: json!({ "count": 3 }),
+        },
+    ]);
+    assert_eq!(
+        result_text(&result),
+        "a.png: a PNG image of 1 KB\n{\"count\":3}\n[1 image]"
+    );
 }

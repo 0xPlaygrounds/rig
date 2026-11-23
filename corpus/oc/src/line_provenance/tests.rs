@@ -5,7 +5,7 @@ use rig_basics::coding_tools::{EditTool, ShellTool, WriteTool};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::harness_protocol::Invocation;
 use rig_harness_test_support::{
-    Ended, app_in, calls, connect, first_agent, log_ended, press, reply, run_until, scratch_home,
+    Ended, app_in, calls, connect, first_agent, log_ended, press, reply, say, scratch_home,
     tui_view,
 };
 use rig_tui::TuiTestScreen;
@@ -54,12 +54,7 @@ fn session(home: &Home, dir: &Path, model: &MockCompletionModel) -> (App, Receiv
 
 /// Sends `text` from the user and runs until its turn ended.
 fn prompt(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str) {
-    let ended = app.world().resource::<Ended>().0.len();
-    app.world_mut()
-        .trigger(Deliver::new(agent, text, DeliveryMode::Steer));
-    run_until(app, wakes, |world| {
-        world.resource::<Ended>().0.len() > ended
-    });
+    say(app, wakes, agent, text);
     for _ in 0..5 {
         app.update();
     }
@@ -127,11 +122,6 @@ fn lines_are_attributed_to_the_prompt_that_wrote_them_after_moving() {
     let net = dir.join("net.rs");
     assert!(std::fs::write(&net, NET).is_ok(), "net.rs is written");
     assert!(std::fs::write(dir.join("other.rs"), "untouched\n").is_ok());
-    let git = std::process::Command::new("git")
-        .args(["init", "-q"])
-        .current_dir(&dir)
-        .status();
-    assert!(git.is_ok_and(|status| status.success()), "git init");
 
     // Session 1: "add retry" inserts lines 10-12.
     let model = MockCompletionModel::from_stream_turns([
@@ -217,13 +207,13 @@ fn lines_are_attributed_to_the_prompt_that_wrote_them_after_moving() {
         "{untouched}"
     );
 
+    // `shell` names no files it changed, so its line is no agent's.
     prompt(&mut app, &wakes, agent, "rename");
     let renamed = cli(&home, &data, &dir, &["net.rs:8", "--json"]);
-    let call = renamed.pointer("/spans/0/record/call_id");
-    assert_eq!(call, Some(&json!("s2-3")), "{renamed}");
     assert_eq!(
-        spans(&renamed),
-        vec![by(8, 8, &second, "rename", "shell", false)]
+        renamed.pointer("/spans/0/by_agent"),
+        Some(&json!(false)),
+        "{renamed}"
     );
 
     // `/provenance` offers the turn that wrote a line; choosing it opens

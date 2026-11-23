@@ -1,7 +1,7 @@
 //! ChatGPT cassette coverage for terminal responses that omit `output`.
 
+use super::GPT_5_4;
 use rig::message::{AssistantContent, ToolChoice};
-use rig::providers::chatgpt;
 use serde_json::json;
 
 use super::super::support::with_chatgpt_cassette;
@@ -35,7 +35,7 @@ async fn nonstreaming_tool_call_completed_response_without_output() {
     with_chatgpt_cassette(
         "streaming_tools/tool_call_completed_response_without_output",
         |client| async move {
-            let model = client.completion(chatgpt::GPT_5_4);
+            let model = client.completion(GPT_5_4);
             let request = CompletionRequest::new(
                     "Call the ping tool with no arguments. Do not write any normal text before the tool call.",
                 )

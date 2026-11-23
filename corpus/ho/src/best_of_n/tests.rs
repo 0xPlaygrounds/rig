@@ -1,13 +1,13 @@
 use std::path::PathBuf;
 use std::process::Command;
 
-use rig_basics::coding_tools::WriteTool;
+use rig_basics::coding_tools::{ReadTool, WriteTool};
 use rig_core::test_utils::MockCompletionModel;
 use serde_json::json;
 
 use super::*;
 use rig_harness_test_support::{
-    Collected, MemoryStore, app_on, calls, collect, reply, run_until, scripted_models,
+    Collected, MemoryStore, app_on, calls, collect, reply, rewrites, run_until, scripted_models,
 };
 
 /// What `file.txt` in the project held as the apply started.
@@ -56,12 +56,16 @@ fn the_passing_candidate_is_applied_and_the_worktrees_go() {
     }
 
     let main = MockCompletionModel::from_stream_turns([reply("unused")]);
-    let write =
-        |path: &str, text: &str| calls("w1", "write", json!({ "path": path, "content": text }));
+    let write = |path: &str, text: &str| rewrites("w1", path, text);
     // Candidate 1 first tries the project's own file, from its worktree
     // `.rig/best-of/<id>/1`.
     let one = MockCompletionModel::from_stream_turns([
-        write("../../../../file.txt", "escaped\n"),
+        // A bare write: confinement refuses it before any read could.
+        calls(
+            "w1",
+            "write",
+            json!({ "path": "../../../../file.txt", "content": "escaped\n" }),
+        ),
         write("file.txt", "wrong\n"),
         reply("wrote wrong"),
     ]);
@@ -75,13 +79,16 @@ fn the_passing_candidate_is_applied_and_the_worktrees_go() {
     app.insert_resource(models)
         .insert_resource(ProjectRoot(repo.clone()))
         .init_resource::<BeforeApply>()
-        .add_plugins((AgentPlugin, SessionLogPlugin, WriteTool, BestOfPlugin))
+        .add_plugins((
+            AgentPlugin,
+            SessionLogPlugin,
+            ReadTool,
+            WriteTool,
+            BestOfPlugin,
+        ))
         .add_observer(note_before_apply);
     collect::<Notice>(&mut app);
-    let host = app
-        .world_mut()
-        .spawn((Agent, ModelChoice("best-main/m".to_owned())))
-        .id();
+    let host = spawn_root(app.world_mut(), ModelChoice("best-main/m".to_owned())).id();
     app.finish();
     app.update();
 

@@ -5,7 +5,7 @@ use testcontainers::{
     runners::AsyncRunner,
 };
 
-use crate::common::{WORD_DEFINITIONS, mock_embeddings, openai_client, skip_if_docker_unavailable};
+use crate::common::{WORD_DEFINITIONS, mock_embeddings, openai_client};
 use qdrant_client::{
     Payload, Qdrant,
     qdrant::{
@@ -33,10 +33,6 @@ struct Word {
 
 #[tokio::test]
 async fn vector_search_test() {
-    if skip_if_docker_unavailable("vector_search_test") {
-        return;
-    }
-
     // Setup a local qdrant container for testing. NOTE: docker service must be running.
     // Pinned like `pgvector:pg17` / `scylla:5.4`: a floating `latest` defeats
     // layer caching and lets a rerun silently test a different database version.

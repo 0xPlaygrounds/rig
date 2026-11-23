@@ -1,7 +1,7 @@
 //! Matrix O's mock cells: a rerank through a mock `RerankModel` behind a
 //! `ModelAdapter` on a host's bus (no keyed provider in the tree has a
-//! rerank cassette suite), and a `Prompted` answer the run returns
-//! unvalidated.
+//! rerank cassette suite), and a `Prompted` answer the run refuses because
+//! it misses the output schema.
 
 use rig::agent::AgentBuilder;
 use rig::effect::{EffectFamily, HandlerKey};
@@ -67,11 +67,11 @@ async fn oracle_rerank_effect_log_is_the_golden_fixture() {
     crate::goldens::golden_effects("mock_oracle_rerank", &log);
 }
 
-/// A `Prompted` answer the model gives as prose: the run returns it as it
-/// is — the consumer's deserialization validates a prompted answer, the
-/// run does not.
+/// A `Prompted` answer the model gives as prose misses the output schema:
+/// with no turn left to reprompt, the run fails on it after the one
+/// completion.
 #[tokio::test]
-async fn oracle_prompted_unvalidated_effect_log_is_the_golden_fixture() {
+async fn oracle_prompted_misses_schema_effect_log_is_the_golden_fixture() {
     let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
     let agent = AgentBuilder::new(MockCompletionModel::text("not an object"))
         .name("golden")
@@ -80,13 +80,18 @@ async fn oracle_prompted_unvalidated_effect_log_is_the_golden_fixture() {
         .output_mode(OutputMode::Prompted)
         .record_to(recorder.clone())
         .build();
-    let output = agent
+    let error = agent
         .prompt("Return a concise event object for a local Rust meetup in Seattle.")
         .await
-        .expect("the run does not validate a prompted answer")
-        .output();
-    assert_eq!(output, "not an object");
+        .expect_err("the run refuses a prompted answer that misses the schema");
+    assert!(
+        matches!(
+            &error,
+            rig::completion::PromptError::OutputSchemaMismatch { output, .. } if output == "not an object"
+        ),
+        "{error:?}"
+    );
     let log = agent.stamp(recorder.take());
     assert_eq!(families(&log), [EffectFamily::Completion]);
-    crate::goldens::golden_effects("mock_oracle_prompted_unvalidated", &log);
+    crate::goldens::golden_effects("mock_oracle_prompted_misses_schema", &log);
 }

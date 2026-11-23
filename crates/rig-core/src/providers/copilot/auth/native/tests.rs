@@ -4,10 +4,8 @@ use super::{
     should_retry_with_fresh_access_token_status,
 };
 use crate::error::BoxError;
-use crate::providers::copilot::auth::{
-    AuthError, AuthSource, Authenticator, DeviceCodeHandler, MemoryTokenStore, STORE_KEY,
-    TokenStore,
-};
+use crate::providers::auth::{AuthError, DeviceCodeHandler, MemoryTokenStore, TokenStore};
+use crate::providers::copilot::auth::{AuthSource, Authenticator, STORE_KEY};
 use crate::test_utils::{MockHttpResponse, RecordingHttpClient, SequencedHttpClient};
 use crate::wasm_compat::WasmBoxedFuture;
 use http::StatusCode;
@@ -59,8 +57,8 @@ fn api_key_record_reuse_requires_matching_bootstrap_token_for_explicit_auth() {
         bootstrap_token_fingerprint: Some(bootstrap_token_fingerprint("github-token-a")),
     };
 
-    assert!(record.can_reuse_for_bootstrap_token("github-token-a"));
-    assert!(!record.can_reuse_for_bootstrap_token("github-token-b"));
+    assert!(record.reusable_for(Some("github-token-a")));
+    assert!(!record.reusable_for(Some("github-token-b")));
 }
 
 #[test]
@@ -73,9 +71,9 @@ fn api_key_record_oauth_reuse_requires_match_when_bootstrap_token_is_available()
         bootstrap_token_fingerprint: Some(bootstrap_token_fingerprint("github-token-a")),
     };
 
-    assert!(record.can_reuse_for_oauth(Some("github-token-a")));
-    assert!(!record.can_reuse_for_oauth(Some("github-token-b")));
-    assert!(record.can_reuse_for_oauth(None));
+    assert!(record.reusable_for(Some("github-token-a")));
+    assert!(!record.reusable_for(Some("github-token-b")));
+    assert!(record.reusable_for(None));
 }
 
 #[test]
@@ -88,9 +86,8 @@ fn api_key_record_without_fingerprint_forces_refresh_when_bootstrap_token_is_kno
         bootstrap_token_fingerprint: None,
     };
 
-    assert!(!record.can_reuse_for_bootstrap_token("github-token-a"));
-    assert!(!record.can_reuse_for_oauth(Some("github-token-a")));
-    assert!(record.can_reuse_for_oauth(None));
+    assert!(!record.reusable_for(Some("github-token-a")));
+    assert!(record.reusable_for(None));
 }
 
 #[test]
@@ -323,4 +320,75 @@ async fn api_key_exchange_rejects_a_blank_token() {
         .to_string();
 
     assert!(err.contains("did not include a token"), "{err}");
+}
+
+/// While the device flow waits for the user, the store's lock is free.
+#[tokio::test]
+async fn device_flow_does_not_hold_the_store_lock() -> anyhow::Result<()> {
+    use crate::providers::auth::FileTokenStore;
+    let dir = assert_fs::TempDir::new()?;
+    let store = FileTokenStore::new(dir.path());
+    let mut replies = vec![MockHttpResponse::success(
+        r#"{"device_code":"dc","user_code":"UC-1","verification_uri":"https://github.com/login/device","interval":1}"#,
+    )];
+    replies
+        .extend((0..10).map(|_| MockHttpResponse::success(r#"{"error":"authorization_pending"}"#)));
+    let http = SequencedHttpClient::new(replies);
+    let auth = Authenticator::new(
+        AuthSource::OAuth,
+        store.clone(),
+        DeviceCodeHandler::new(|_| {}),
+        true,
+    );
+    let other_process = store.with_lock_wait(std::time::Duration::from_millis(200));
+    tokio::select! {
+        ended = auth.auth_context(&http) => anyhow::bail!("the flow ended early: {:?}", ended.map(|_| ())),
+        lock = async {
+            tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+            other_process.lock(STORE_KEY).await
+        } => {
+            if let Err(error) = lock {
+                anyhow::bail!("lock refused while the device flow waits for the user: {error}");
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Two clones signing in at once run one device flow: the second waits for
+/// the first and takes the session it kept.
+#[tokio::test]
+async fn concurrent_device_sign_ins_on_clones_run_one_flow() -> anyhow::Result<()> {
+    let http = SequencedHttpClient::new([
+        MockHttpResponse::success(
+            r#"{"device_code":"dc","user_code":"UC-1","verification_uri":"https://github.com/login/device","interval":1}"#,
+        ),
+        // The first flow waits a poll, so the second call runs meanwhile.
+        MockHttpResponse::success(r#"{"error":"authorization_pending"}"#),
+        MockHttpResponse::success(r#"{"access_token":"gho_fresh"}"#),
+        MockHttpResponse::success(r#"{"token":"tid=fresh","expires_at":4102444800}"#),
+    ]);
+    let shown = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let count = shown.clone();
+    let auth = Authenticator::new(
+        AuthSource::OAuth,
+        MemoryTokenStore::default(),
+        DeviceCodeHandler::new(move |_| {
+            count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }),
+        true,
+    );
+    let other = auth.clone();
+    let (first, second) = tokio::join!(auth.auth_context(&http), other.auth_context(&http));
+    anyhow::ensure!(first?.api_key.expose() == "tid=fresh");
+    anyhow::ensure!(second?.api_key.expose() == "tid=fresh");
+    anyhow::ensure!(shown.load(std::sync::atomic::Ordering::SeqCst) == 1);
+    Ok(())
+}
+
+/// The stored fingerprint is a SHA-256 prefix, so it reads the same after a
+/// toolchain update.
+#[test]
+fn bootstrap_token_fingerprint_is_a_sha256_prefix() {
+    assert_eq!(bootstrap_token_fingerprint("abc"), "ba7816bf8f01cfea");
 }

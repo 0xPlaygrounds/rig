@@ -1,14 +1,21 @@
 //! The user's settings for plugins: `RIG_HOME/settings.toml`, one table
-//! per plugin. A plugin names its table and a type that reads it, and gets
+//! per plugin, beside the `[plugins]` table that says which run
+//! ([`config`](crate::harness_protocol::config)). A plugin names its table and a type that reads it, and gets
 //! that type as a resource, its `Default` where the user set nothing. A
-//! table that does not read as the type leaves the default and says why
-//! at startup, as does a file that is not TOML.
+//! table that does not read as the type refuses the run, naming the file,
+//! the table and the key, as does a file that is not TOML or cannot be
+//! read ([`Settings::problems`]), with exit code 2
+//! ([`AppCliExt::refuse_run`](crate::prelude::AppCliExt::refuse_run)). A plugin reads its table in `build`,
+//! whatever front takes the run, so a build describing itself checks it
+//! as a start does: a table read once the run's front is chosen refuses
+//! the run. The harness chooses it as its own plugins finish, so in
+//! practice any table read in a `finish` refuses the run. A table no
+//! plugin reads is said at
+//! startup: an error when it is a likely misspelling of one a plugin reads
+//! (`[trafic]` for `[traffic]`), else a note, such as for a disabled
+//! plugin's table.
 //!
-//! A plugin may let a project override its table
-//! ([`add_project_setting`](AppSettingsExt::add_project_setting)): the same
-//! table of the project's `.rig/settings.toml`, merged key by key over the
-//! user's when the app starts. Only tables declared that way are read from
-//! the project, so a cloned repository cannot change any other setting.
+//! A project has no settings: rig never reads its `.rig/settings.toml`.
 //!
 //! ```
 //! use rig_harness::prelude::*;
@@ -28,20 +35,21 @@
 //! assert_eq!(app.world().resource::<Confirm>().patterns, ["rm -rf"]);
 //! ```
 
+use std::collections::BTreeSet;
 use std::io::ErrorKind;
-use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 
 use bevy_app::prelude::*;
-use bevy_ecs::entity_disabling::Disabled;
 use bevy_ecs::prelude::*;
-use bevy_ecs::query::Allow;
 use bevy_log::warn;
+use rig_core::catalog::closest_name;
+use rig_ecs::agent::Notice;
+use rig_harness_protocol::config::SettingsFile;
 use serde::de::DeserializeOwned;
 
-use crate::host::cli::Declared;
-use crate::services::{ProjectRoot, RigHome};
-use crate::workspace::ProjectWorkspace;
+use crate::describe::described_settings;
+use crate::host::cli::Cli;
+use crate::services::RigHome;
 
 /// A settings file's tables, and what was wrong with it. Each problem
 /// names the file.
@@ -50,6 +58,10 @@ pub struct Settings {
     file: String,
     tables: toml::Table,
     problems: Vec<String>,
+    /// The tables a plugin read.
+    read: BTreeSet<String>,
+    /// Why a plugin read a table too late, once the run's front was chosen.
+    late: Vec<String>,
 }
 
 impl Default for Settings {
@@ -89,28 +101,36 @@ impl Settings {
             file,
             tables: toml::Table::new(),
             problems: Vec::new(),
+            read: BTreeSet::new(),
+            late: Vec::new(),
         }
     }
 
-    /// The settings `text` of `file` holds.
+    /// The settings `text` of `file` holds; a text that is not TOML holds
+    /// none and says why, at its line and column.
     fn parse(file: String, text: &str) -> Self {
-        match text.parse::<toml::Table>() {
+        let read = SettingsFile::parse(PathBuf::from(&file), text)
+            .map_err(|failure| failure.to_string())
+            .and_then(|_| {
+                (text.parse::<toml::Table>())
+                    .map_err(|failure| format!("{file}: not TOML: {}", failure.message()))
+            });
+        match read {
             Ok(tables) => Self {
                 tables,
                 ..Self::empty(file)
             },
-            Err(failure) => {
-                let problem = format!("{file}: not TOML: {failure}");
-                Self {
-                    problems: vec![problem],
-                    ..Self::empty(file)
-                }
-            }
+            Err(problem) => Self {
+                problems: vec![problem],
+                ..Self::empty(file)
+            },
         }
     }
 
     /// The `[section]` table as a `T`: `T::default()` without one, and the
-    /// reason when it does not read as `T`.
+    /// reason when it does not read as `T`. A key `T` does not have, such
+    /// as one a later rig removed, says to delete it, and from which table
+    /// when the file has that table: a nested one is `[section.inner]`.
     pub fn get<T: DeserializeOwned + Default>(&self, section: &str) -> Result<T, String> {
         let Some(table) = self.tables.get(section) else {
             return Ok(T::default());
@@ -118,13 +138,96 @@ impl Settings {
         table
             .clone()
             .try_into()
-            .map_err(|failure| format!("{} [{section}]: {failure}", self.file))
+            .map_err(|failure: toml::de::Error| {
+                let text = failure.to_string();
+                let unknown = (failure.message().strip_prefix("unknown field `"))
+                    .and_then(|rest| rest.split_once('`'))
+                    .map(|(key, _)| {
+                        // toml names the table within `section` only in its
+                        // text, its keys joined by dots and unquoted.
+                        let within = (text.lines())
+                            .find_map(|line| line.strip_prefix("in `")?.strip_suffix('`'))
+                            .map_or_else(Vec::new, |within| within.split('.').collect());
+                        if holds_table(table, &within) {
+                            let table = [&[section][..], &within].concat().join(".");
+                            format!("; delete `{key}` from [{table}]")
+                        } else {
+                            format!("; delete `{key}`")
+                        }
+                    });
+                format!(
+                    "{} [{section}]: {}{}",
+                    self.file,
+                    text.trim_end(),
+                    unknown.unwrap_or_default()
+                )
+            })
     }
 
     /// What was wrong with the file or with a table a plugin read, to show
-    /// the user.
+    /// the user; they refuse the run.
     pub fn problems(&self) -> &[String] {
         &self.problems
+    }
+
+    /// The tables read too late and the [`problems`](Self::problems), on
+    /// one line, as the run is refused over them; none without either.
+    pub(crate) fn refusal(&self) -> Option<String> {
+        let problems: Vec<String> = (self.problems.iter())
+            .map(|problem| problem.trim_end().replace('\n', " "))
+            .collect();
+        let problems = (!problems.is_empty())
+            .then(|| format!("{}; fix the file and start again", problems.join("; ")));
+        let refusals: Vec<String> = self.late.iter().cloned().chain(problems).collect();
+        (!refusals.is_empty()).then(|| refusals.join("; "))
+    }
+
+    /// Inserts the settings of `world`'s home, unless it has some: those of
+    /// the file the launcher names while the build describes itself
+    /// ([`described_settings`]), else `RIG_HOME/settings.toml`.
+    pub(crate) fn init(world: &mut World) {
+        if !world.contains_resource::<Self>() {
+            let path = described_settings().unwrap_or_else(|| RigHome::of(world).settings());
+            world.insert_resource(Self::read(&path));
+        }
+    }
+
+    /// A notice for each table of the file no plugin read: an error naming
+    /// the read table it likely misspells, within a quarter of its length
+    /// (at least one edit), else an info notice.
+    pub fn unread(&self) -> Vec<Notice> {
+        let read: Vec<&str> = self.read.iter().map(String::as_str).collect();
+        // `[plugins]` is the launcher's and the agent's own.
+        let unread =
+            (self.tables.keys()).filter(|table| *table != "plugins" && !self.read.contains(*table));
+        unread
+            .map(|table| match closest_name(table, read.iter().copied()) {
+                Some(meant) => Notice::error(
+                    None,
+                    format!(
+                        "{}: no plugin reads [{table}]; did you mean [{meant}]?",
+                        self.file
+                    ),
+                ),
+                None => Notice::info(
+                    None,
+                    format!("{}: no enabled plugin reads [{table}].", self.file),
+                ),
+            })
+            .collect()
+    }
+}
+
+/// Whether `path` leads from `value` to a table, through any entry of an
+/// array of tables.
+fn holds_table(value: &toml::Value, path: &[&str]) -> bool {
+    match (path.split_first(), value) {
+        (None, toml::Value::Table(_)) => true,
+        (Some((key, rest)), toml::Value::Table(table)) => table
+            .get(*key)
+            .is_some_and(|value| holds_table(value, rest)),
+        (_, toml::Value::Array(entries)) => entries.iter().any(|entry| holds_table(entry, path)),
+        _ => false,
     }
 }
 
@@ -133,38 +236,12 @@ pub trait AppSettingsExt {
     /// Inserts `T` from the `[section]` table of the [`Settings`], read
     /// from `RIG_HOME/settings.toml` the first time (unless the app
     /// inserted some, as a test does). A table that does not read as `T`
-    /// inserts `T::default()` and is one of [`Settings::problems`].
+    /// inserts `T::default()` and is one of [`Settings::problems`], which
+    /// refuse the run. Call it in the plugin's `build`: a table read once
+    /// the run's front is chosen, which in practice is any read in a
+    /// `finish`, refuses the run.
     fn add_setting<T: Resource + DeserializeOwned + Default>(&mut self, section: &str)
     -> &mut Self;
-
-    /// As [`add_setting`](Self::add_setting), then, when the app starts
-    /// ([`PreStartup`]), the same table of the project's
-    /// `.rig/settings.toml`, read through the [`ProjectWorkspace`] under the
-    /// [`ProjectRoot`], merged key by key over the user's: so read `T` in
-    /// systems, not while building. A project file that is not TOML, or a
-    /// merged table that does not read as `T`, keeps the user's value and
-    /// is one of [`Settings::problems`].
-    ///
-    /// ```
-    /// use rig_harness::prelude::*;
-    /// use serde::Deserialize;
-    ///
-    /// /// `[large-change]`, which a project may tighten.
-    /// #[derive(Resource, Deserialize, Default)]
-    /// #[serde(default, deny_unknown_fields)]
-    /// struct Limits {
-    ///     lines: usize,
-    /// }
-    ///
-    /// let mut app = App::new();
-    /// app.insert_resource(Settings::from_toml("[large-change]\nlines = 400"));
-    /// app.add_project_setting::<Limits>("large-change");
-    /// assert_eq!(app.world().resource::<Limits>().lines, 400);
-    /// ```
-    fn add_project_setting<T: Resource + DeserializeOwned + Default>(
-        &mut self,
-        section: &str,
-    ) -> &mut Self;
 }
 
 impl AppSettingsExt for App {
@@ -173,177 +250,21 @@ impl AppSettingsExt for App {
         section: &str,
     ) -> &mut Self {
         let world = self.world_mut();
-        if !world.contains_resource::<Settings>() {
-            let settings = Settings::read(&RigHome::of(world).settings());
-            world.insert_resource(settings);
-        }
+        Settings::init(world);
+        let late = world.get_resource::<Cli>().is_some_and(Cli::decided);
         let mut settings = world.resource_mut::<Settings>();
+        if late {
+            settings.late.push(format!(
+                "a plugin read [{section}] once the run's front was chosen; it must read it in its `build`, so a build describing itself checks it"
+            ));
+        }
+        settings.read.insert(section.to_owned());
         let value = settings.get::<T>(section).unwrap_or_else(|problem| {
             warn!("{problem}");
             settings.problems.push(problem);
             T::default()
         });
         self.insert_resource(value)
-    }
-
-    fn add_project_setting<T: Resource + DeserializeOwned + Default>(
-        &mut self,
-        section: &str,
-    ) -> &mut Self {
-        self.add_setting::<T>(section);
-        if !self.is_plugin_added::<ProjectSettingsPlugin>() {
-            self.add_plugins(ProjectSettingsPlugin);
-        }
-        let world = self.world_mut();
-        // A declaration turned off still means its type's system was added.
-        let read = world
-            .query_filtered::<(), (With<ReadAs<T>>, Allow<Disabled>)>()
-            .iter(world)
-            .next()
-            .is_some();
-        let order = Declared::next(world);
-        world.spawn((
-            ProjectSetting(section.to_owned()),
-            order,
-            ReadAs::<T>(PhantomData),
-            Name::new(format!("project setting [{section}]")),
-        ));
-        if !read {
-            self.add_systems(
-                PreStartup,
-                apply_project_setting::<T>.in_set(ProjectSettingsSystems::Apply),
-            );
-        }
-        self
-    }
-}
-
-/// A table of `settings.toml` that a project's `.rig/settings.toml` may
-/// override, on an entity of its own for each
-/// [`add_project_setting`](AppSettingsExt::add_project_setting): its
-/// section's name.
-#[derive(Component, Clone, Debug, PartialEq, Eq)]
-pub struct ProjectSetting(pub String);
-
-/// Beside a [`ProjectSetting`]: the type its merged table is read into.
-#[derive(Component)]
-struct ReadAs<T>(PhantomData<fn() -> T>);
-
-/// The project's `.rig/settings.toml`, as read when the app starts, once a
-/// plugin declared a [`ProjectSetting`]; absent without that file.
-#[derive(Resource, Clone, Debug)]
-pub struct ProjectSettings(pub Settings);
-
-/// The phases, in [`PreStartup`], in which the project's settings are read
-/// and the tables declared for it are inserted.
-#[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum ProjectSettingsSystems {
-    /// The project's file becomes [`ProjectSettings`].
-    Read,
-    /// Each [`ProjectSetting`] the project's file has is merged over the
-    /// user's table and inserted as its type.
-    Apply,
-}
-
-/// Reads the project's settings once a table is declared for it.
-struct ProjectSettingsPlugin;
-
-impl Plugin for ProjectSettingsPlugin {
-    fn build(&self, app: &mut App) {
-        app.configure_sets(
-            PreStartup,
-            (ProjectSettingsSystems::Read, ProjectSettingsSystems::Apply).chain(),
-        )
-        .add_systems(
-            PreStartup,
-            read_project_settings.in_set(ProjectSettingsSystems::Read),
-        );
-    }
-}
-
-/// Reads the project's `.rig/settings.toml` into [`ProjectSettings`],
-/// saying what was wrong with it.
-fn read_project_settings(
-    root: Option<Res<ProjectRoot>>,
-    workspace: Option<Res<ProjectWorkspace>>,
-    settings: Option<ResMut<Settings>>,
-    mut commands: Commands,
-) {
-    let root = root.map_or_else(|| ProjectRoot::default().0, |root| root.0.clone());
-    let workspace = workspace.map(|it| it.clone()).unwrap_or_default();
-    let path: PathBuf = root.join(".rig").join("settings.toml");
-    let file = path.display().to_string();
-    let project = match workspace.0.read(&path, rig_tools::MAX_FILE_BYTES) {
-        Ok(contents) => Settings::parse(file, &String::from_utf8_lossy(&contents.bytes)),
-        Err(failure) if failure.kind() == ErrorKind::NotFound => return,
-        Err(failure) => Settings {
-            problems: vec![format!("{file}: could not read: {failure}")],
-            ..Settings::empty(file)
-        },
-    };
-    for problem in &project.problems {
-        warn!("{problem}");
-    }
-    if let Some(mut settings) = settings {
-        settings.problems.extend(project.problems.iter().cloned());
-    }
-    commands.insert_resource(ProjectSettings(project));
-}
-
-/// Inserts `T` from each table declared as read into it that the project
-/// overrides, merged over the user's, in the order declared, so the last
-/// one wins; a table that does not read as `T` keeps the user's value and
-/// is one of [`Settings::problems`].
-fn apply_project_setting<T: Resource + DeserializeOwned>(
-    declared: Query<(&Declared, Entity, &ProjectSetting), With<ReadAs<T>>>,
-    project: Option<Res<ProjectSettings>>,
-    mut settings: Option<ResMut<Settings>>,
-    mut commands: Commands,
-) {
-    let Some(ProjectSettings(project)) = project.as_deref() else {
-        return;
-    };
-    let mut declared: Vec<_> = declared.iter().collect();
-    declared.sort_unstable_by_key(|&(&order, entity, _)| (order, entity));
-    for (_, _, ProjectSetting(section)) in declared {
-        let Some(over) = project.tables.get(section) else {
-            continue;
-        };
-        let user = settings
-            .as_ref()
-            .and_then(|settings| settings.tables.get(section).cloned());
-        let merged = match user {
-            Some(user) => merge(user, over.clone()),
-            None => over.clone(),
-        };
-        match merged.try_into::<T>() {
-            Ok(value) => commands.insert_resource(value),
-            Err(failure) => {
-                let problem = format!("{} [{section}]: {failure}", project.file);
-                warn!("{problem}");
-                if let Some(settings) = settings.as_mut() {
-                    settings.problems.push(problem);
-                }
-            }
-        }
-    }
-}
-
-/// `over` merged key by key onto `base`: a table's keys one by one, a
-/// table inside it the same way, anything else replaced.
-fn merge(base: toml::Value, over: toml::Value) -> toml::Value {
-    match (base, over) {
-        (toml::Value::Table(mut base), toml::Value::Table(over)) => {
-            for (key, value) in over {
-                let merged = match base.remove(&key) {
-                    Some(was) => merge(was, value),
-                    None => value,
-                };
-                base.insert(key, merged);
-            }
-            toml::Value::Table(base)
-        }
-        (_, over) => over,
     }
 }
 

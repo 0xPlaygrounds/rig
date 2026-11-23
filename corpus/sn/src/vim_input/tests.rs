@@ -91,6 +91,7 @@ fn edits_the_input_as_vim_does_and_leaves_other_keys_alone() {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model: "test/model".to_owned(),
+        kind: ChoiceKind::ForThisRun,
     });
     app.insert_resource(ShownAgent(Some(agent)));
     app.update();

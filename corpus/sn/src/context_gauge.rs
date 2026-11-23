@@ -1,13 +1,11 @@
-//! SN-19: a context gauge. Each agent's status line item reads
-//! `ctx 43% · 86k/200k`: the tokens its latest model reply read and wrote
-//! (the kernel's [`LastUsage`]) against the input limit of its current model
-//! (its [`Connection`]'s catalog spec), dimmed below 70%, yellow to 90%
-//! and red above. Without a known input limit it reads `ctx 86k`, before the
-//! agent's first reply `ctx —`. The terminal view shows the focused
-//! agent's items, so focusing a subagent shows its own gauge.
+//! A context gauge. Each agent's status line item reads `ctx 43% · 86k/200k`: the tokens its latest
+//! model reply read and wrote (the kernel's [`LastUsage`]) against the input limit of its current
+//! model (its [`Connection`]'s catalog spec), dimmed below 70%, yellow to 90% and red above.
+//! Without a known input limit it reads `ctx 86k`, before the agent's first reply `ctx —`. The
+//! terminal view shows the focused agent's items, so focusing a subagent shows its own gauge.
 //!
-//! The first time an agent goes above 90% in a session, a notice suggests
-//! condensing or handing off; that it was given is saved with the agent.
+//! The first time an agent goes above 90% in a session, a notice suggests condensing or handing
+//! off; that it was given is saved with the agent.
 //!
 //! The gauge replaces `rig_basics::telemetry`'s item named `context` (right, 40) in
 //! `StatusSystems::Edit`, so the line shows one context item, not two.
@@ -116,7 +114,7 @@ pub fn label(context: Option<ContextUse>) -> String {
 /// Each agent's gauge, whenever its tokens, its model, its line or whether
 /// its context is known changed (another plugin may have put its item at
 /// the same place). Writes only when the item differs, so its own write
-/// does not make it run again. Unknown after a compaction: `ctx ?`.
+/// does not make it run again. After a compaction it shows `ctx ?`.
 fn show(
     mut agents: Query<
         (
@@ -135,19 +133,23 @@ fn show(
         let changed = items.is_changed()
             || last.is_changed()
             || connection.as_ref().is_some_and(Ref::is_changed)
-            || stale.as_ref().is_some_and(Ref::is_added)
+            || stale.as_ref().is_some_and(Ref::is_changed)
             || known.contains(&agent);
         if !changed {
             continue;
         }
         let connection = connection.as_deref();
-        let context = context_of(&last, connection).filter(|_| stale.is_none());
-        let text = if stale.is_some() {
-            let limit = connection.and_then(|connection| connection.spec.input_limit());
-            let limit = limit.map(|limit| format!("/{}", tokens_label(u64::from(limit))));
-            format!("ctx ?{}", limit.unwrap_or_default())
-        } else {
-            label(context)
+        let limit = connection.and_then(|connection| connection.spec.input_limit());
+        let context = match stale {
+            Some(_) => None,
+            None => context_of(&last, connection),
+        };
+        let text = match stale {
+            Some(_) => {
+                let limit = limit.map(|limit| format!("/{}", tokens_label(u64::from(limit))));
+                format!("ctx ?{}", limit.unwrap_or_default())
+            }
+            None => label(context),
         };
         let item = GAUGE.says(text, Fill::of(context).tone());
         if !items.iter().any(|shown| *shown == item) {

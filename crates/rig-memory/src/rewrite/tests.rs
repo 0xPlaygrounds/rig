@@ -6,7 +6,7 @@ use rig_core::conversation::{Aside, Author, Change, Conversation};
 use rig_core::message::{ImageMediaType, UserContent};
 use serde_json::json;
 
-use super::{Messages, Place, Rewrite, Strings, rewrite_file, rewrite_value};
+use super::{Messages, Place, Rewrite, Strings, rewrite_file};
 use crate::format::stamp_of;
 use crate::{
     Files, LogRewrite, MemoryStore, SESSION, Session, SessionError, Store, Writer, load, rewrite,
@@ -298,17 +298,60 @@ fn what_a_plugin_keeps_outside_the_store_maps_through_the_same_rewrite() {
     let mapped = kept.read_file("tui/history.jsonl").expect("read");
     assert_eq!(mapped, b"\"my key is [R]\"\n\"hello\"\n");
     assert!(!rewrite_file(&kept, "tui/missing.jsonl", &redact()).expect("left"));
+}
 
-    let at = Place::File { name: "copy" };
-    let mut call = Message::user("run `echo sk-1`");
-    assert!(rewrite_value(&redact(), &at, "copy", &mut call).expect("reads back"));
-    assert_eq!(call, Message::user("run `echo [R]`"));
-    assert!(!rewrite_value(&redact(), &at, "copy", &mut call).expect("reads back"));
-    // A map that leaves the value unreadable leaves it as it was.
-    let everything = Strings(|text: &mut String| {
-        *text = "x".to_owned();
-        true
-    });
-    assert!(rewrite_value(&everything, &at, "copy", &mut call).is_err());
-    assert_eq!(call, Message::user("run `echo [R]`"));
+/// What the calls of an entry published is rewritten with it, in a push
+/// and in a reset, so a redaction or a path remap reaches a saved diff.
+#[test]
+fn a_rewrite_reaches_what_the_calls_of_an_entry_published() {
+    use rig_core::conversation::{CallRef, Entry, ResultFacts};
+    use rig_core::message::{CallId, ToolName};
+    use rig_core::tool::{FileRead, FilesRead, ToolContext, content_hash};
+
+    let store = Arc::new(MemoryStore::default());
+    let (writer, _) = Writer::open(store.clone()).expect("opened");
+    writer.start();
+    let call = CallId::from_wire("c1");
+    let mut context = ToolContext::new();
+    let read = FileRead::new("/home/sk-1/a.rs", content_hash(b""));
+    context
+        .insert_result(FilesRead(vec![read]))
+        .expect("inserted");
+    let facts: ResultFacts = [(call.clone(), context.result_context())]
+        .into_iter()
+        .collect();
+    let name = ToolName::new("read").expect("a name");
+    let results = Message::tool_result(call.clone(), name, "a.rs");
+    let results = Entry::new(results).with_facts(facts);
+    let mut pushed = Conversation::new();
+    pushed.push(results.clone());
+    writer.save("pushed", &mut pushed);
+    let mut first = Conversation::from_messages([Message::user("before")]);
+    writer.save("reset", &mut first);
+    let mut replaced = Conversation::new();
+    replaced.push(results);
+    let reset = writer.save("reset", &mut replaced);
+    assert!(matches!(reset.as_slice(), [only] if matches!(only.change, Change::Reset { .. })));
+    writer.flush().expect("flushed");
+
+    rewrite(&*store, Author::plugin("redact"), &redact()).expect("rewritten");
+    let session = Session::read(&*store).expect("read");
+    for agent in session.agents {
+        let facts = agent.conversation.entries().find_map(|entry| {
+            // Facts saved without their call's place pair with it by id.
+            let at = CallRef {
+                reply: entry.id,
+                index: 0,
+            };
+            let facts = entry.facts.of([(at, &call)]).into_iter().next()??;
+            let read = facts.get::<FilesRead>().ok()??;
+            Some(read.paths().map(str::to_owned).collect::<Vec<_>>())
+        });
+        assert_eq!(
+            facts,
+            Some(vec!["/home/[R]/a.rs".to_owned()]),
+            "{}",
+            agent.id
+        );
+    }
 }

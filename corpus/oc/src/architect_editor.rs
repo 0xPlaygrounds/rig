@@ -1,15 +1,12 @@
-//! Architect and editor models (held-out spec 15). `/architect on` (or
-//! `--architect`) puts the shown agent in architect mode: its turns go to
-//! the architect model of the `[architect]` settings table, offer only the
-//! read-only tools and `implement`, and any other call is refused. An
-//! `implement` call starts a one-job editor helper on the editor model,
-//! with the file tools, a short system prompt, the change description and
-//! the listed files, and none of the architect's conversation. The call
-//! answers with the files the editor changed and their diffs, how its
-//! checks ended and its final message. The editor's work is recorded under
-//! the call, so the terminal view nests it there, and `rig_basics::telemetry` counts
-//! each model's usage apart. `/architect off` gives the agent back its own
-//! model and tools.
+//! Architect and editor models. `/architect on` (or `--architect`) puts the shown agent in
+//! architect mode: its turns go to the architect model of the `[architect]` settings table, offer
+//! only the read-only tools and `implement`, and any other call is refused. An `implement` call
+//! starts a one-job editor helper on the editor model, with the file tools, a short system prompt,
+//! the change description and the listed files, and none of the architect's conversation. The call
+//! answers with the files the editor changed and their diffs, how its checks ended and its final
+//! message. The editor's work is recorded under the call, so the terminal view nests it there, and
+//! `rig_basics::telemetry` counts each model's usage apart. `/architect off` gives the agent back
+//! its own model and tools.
 //!
 //! ```toml
 //! [architect]
@@ -50,9 +47,7 @@ pub const ARCHITECT_PROMPT: &str = "Architect mode: you read and plan, and an ed
 pub const REFUSED: &str = "architect mode: only reading tools and `implement` may be used";
 
 /// The tools an editor may get, those the app has.
-const EDITOR_TOOLS: [&str; 8] = [
-    "read", "search", "list", "edit", "write", "delete", "move", "shell",
-];
+const EDITOR_TOOLS: [&str; 7] = ["read", "search", "list", "edit", "write", "delete", "shell"];
 
 /// The most diff lines of one file an `implement` result shows.
 const DIFF_LINES: usize = 200;
@@ -158,9 +153,7 @@ pub struct ArchitectEditorPlugin;
 
 impl Plugin for ArchitectEditorPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<SubagentsPlugin>() {
-            app.add_plugins(SubagentsPlugin);
-        }
+        rig_harness::load::<SubagentsPlugin>(app, "rig-basics", "");
         let options = ToolOptions {
             footprint: Some(Touches::Writes(Scope::Anything)),
         };
@@ -284,7 +277,10 @@ fn architect_requests(
                 .push(Section::new("architect_mode", ARCHITECT_PROMPT));
         }
         if let Some(model) = &settings.architect {
-            match models.connect(model) {
+            match models
+                .connect(model)
+                .map_err(|why| Models::cannot_use(model, why))
+            {
                 Ok(connection) => call.connection = Some(connection),
                 Err(why) => {
                     notices.write(Notice::warn(
@@ -429,7 +425,7 @@ fn brief_editor(
     let registered: Vec<&str> = tools.iter().map(|def| def.0.name.as_str()).collect();
     let editor_tools = EDITOR_TOOLS
         .iter()
-        .filter(|name| registered.contains(name) && access.is_none_or(|access| access.allows(name)))
+        .filter(|name| registered.contains(name) && access.is_none_or(|access| access.keeps(name)))
         .map(|name| (*name).to_owned())
         .collect();
     let editor = SpawnSubagent {
@@ -547,9 +543,7 @@ fn editor_finished(
     let said = match outcome {
         TurnOutcome::Answered(message) => message.final_answer().unwrap_or_default(),
         TurnOutcome::Failed(why) => format!("(the editor failed: {why})"),
-        TurnOutcome::Stopped(why) => {
-            format!("(the editor was stopped: {})", why.as_deref().unwrap_or(""))
-        }
+        TurnOutcome::Stopped(stop) => format!("(the editor was stopped: {})", stop.cause()),
     };
     let report = report(work, &said);
     let result = match outcome {
@@ -571,11 +565,8 @@ fn stop_editor(
         return;
     }
     for (editor, _) in editors.iter().filter(|(_, of)| of.0 == settled.entity) {
-        let reason = Some("the `implement` call it worked for ended".to_owned());
-        commands.trigger(StopTurn {
-            entity: editor,
-            reason,
-        });
+        let why = "the `implement` call it worked for ended";
+        commands.trigger(StopTurn::plugin(editor, "architect-editor", why));
     }
 }
 
@@ -646,7 +637,7 @@ fn shown(base: &Path, path: &str) -> String {
 mod look {
     use rig_harness::prelude::*;
     use rig_tui::ratatui::text::Line;
-    use rig_tui::{RenderBatch, RenderSystems, ToolCallView, TranscriptRender};
+    use rig_tui::{LookLine, RenderBatch, RenderSystems, ToolRender, TranscriptRender};
 
     use super::IMPLEMENT;
 
@@ -656,19 +647,19 @@ mod look {
 
     fn draw(mut batch: ResMut<RenderBatch>) {
         for (call, output) in batch.tools_mut(IMPLEMENT) {
-            output.lines = look(&call.view());
+            output.lines = look(call);
         }
     }
 
-    fn look(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
+    fn look(view: &ToolRender) -> Vec<LookLine> {
         let description = view.argument("description").unwrap_or_default();
-        let mut lines = vec![view.header("Implement", description.to_owned())];
-        for child in view.children {
+        let mut lines = vec![view.header("Implement", description.to_owned()).into()];
+        for child in &view.children {
             let indent = "  ".repeat(child.depth + 2);
             let mut said = child.answer.as_deref().unwrap_or_default().lines();
             let first = said.next().unwrap_or_default();
-            lines.push(Line::from(format!("{indent}↳ {} {first}", child.name)));
-            lines.extend(said.map(|line| Line::from(format!("{indent}  {line}"))));
+            lines.push(Line::from(format!("{indent}↳ {} {first}", child.name)).into());
+            lines.extend(said.map(|line| Line::from(format!("{indent}  {line}")).into()));
         }
         lines.extend(view.result_lines());
         lines

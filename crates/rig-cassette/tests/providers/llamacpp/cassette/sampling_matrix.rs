@@ -1,29 +1,16 @@
 //! Sampling parameters, crossed against what `llama-server` does with them.
 //!
-//! **Server**: the default configuration — `unsloth/Qwen3-1.7B-GGUF` Q4_K_M,
-//! `--jinja --seed 42 --temp 0 -c 4096`, `llama-server` b10964-b29c606e2 —
-//! except where a cell names another. The smoke tier is enough for every cell
-//! here: what is under test is whether a parameter reaches the wire and what
-//! the server does with it, not whether the model is clever.
+//! A present `seed` round-trips, and an absent one falls back to the
+//! server's `--seed` ([`a_fixed_seed_and_an_absent_seed_are_both_accepted`]).
+//! `additional_params` is merged into the body last, so it silently overrides
+//! a typed builder field it collides with
+//! ([`additional_params_wins_over_the_typed_field_it_collides_with`]). These
+//! cells send stop sequences through `additional_params`.
 //!
-//! | Cell | Parameter | Pinned |
-//! | --- | --- | --- |
-//! | [`a_fixed_seed_and_an_absent_seed_are_both_accepted`] | `seed` | present round-trips; absent falls back to the server's `--seed` |
-//! | [`additional_params_wins_over_the_typed_field_it_collides_with`] | precedence | `additional_params` overrides a typed builder call, silently |
-//!
-//! # Two things worth knowing
-//!
-//! `stop` is **not** a field on rig's [`CompletionRequest`], so every stop cell
-//! goes through `additional_params`. That is the supported route — the shared
-//! OpenAI request merges `additional_params` into the body — but it means stop
-//! sequences are untyped for every provider, and a caller gets no help with
-//! case: stop matching is case-sensitive.
-//!
-//! `temperature: 0.0` is the interesting half of the temperature cell.
-//! Serializing a zero as "absent" is a classic defect in OpenAI-compatible
-//! clients — it turns a deterministic request into a sampled one and nothing
-//! in the response says so. The cell reads the recorded request bytes rather
-//! than trusting the builder.
+//! Cells run on the default configuration, `unsloth/Qwen3-1.7B-GGUF` Q4_K_M
+//! with `--jinja --seed 42 --temp 0 -c 4096`, unless a cell names another:
+//! what is under test is whether a parameter reaches the wire, not whether
+//! the model is clever.
 
 use rig::providers::openai::wire::Chat;
 use rig::providers::openai::wire::{LLAMACPP, OpenAIConfig};

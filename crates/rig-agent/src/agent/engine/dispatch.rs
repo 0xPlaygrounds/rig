@@ -113,9 +113,9 @@ pub(crate) fn model_step<'a, S: TurnSource>(
     request: CompletionRequest,
     prepared: PreparedCompletionRequest,
     chat_span: tracing::Span,
-    agent_span: &'a tracing::Span,
 ) -> DriveStream<'a> {
     Box::pin(async_stream::stream! {
+        hook_ctx.set_output_tool(prepared.policy.output_tool());
         let kind = EffectKind::Completion { request: request.into(), stream: S::STREAMS };
         let opened = DispatchScope::open(runner, hook_ctx, kind, None)
             .instrument(chat_span.clone())
@@ -142,7 +142,7 @@ pub(crate) fn model_step<'a, S: TurnSource>(
         let (answer, state, source_marker) = (None, State::Open, PhantomData);
         let mut scope = CompletionScope::<S> { scope, answer, state, source: source_marker };
         let mut turn =
-            source.run_model_turn(runner, hook_ctx, run, prepared, chat_span, agent_span, &mut scope);
+            source.run_model_turn(runner, hook_ctx, run, prepared, chat_span, &mut scope);
         let error = loop {
             match turn.next().await {
                 Some(Ok(item)) => yield Ok(item),
@@ -236,11 +236,7 @@ impl CompletionScope<UnaryTurnSource> {
             .config
             .handlers
             .serve(id, model.key().clone(), kind, Beside::default());
-        let answer = match served.await {
-            Ok(Answered::Completion(response)) => Ok(std::sync::Arc::unwrap_or_clone(response)),
-            Ok(other) => Err(wrong_outcome("a completion", &other)),
-            Err(report) => Err(report),
-        };
+        let answer = served.await.and_then(family::Completion::unwrap);
         let answer = self.answer.insert(answer).as_ref();
         answer.map_err(|report| PromptError::Report(report.clone()))
     }

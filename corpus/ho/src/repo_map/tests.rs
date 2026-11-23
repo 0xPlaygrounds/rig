@@ -6,7 +6,7 @@ use rig_basics::coding_tools::{EditTool, ReadTool};
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness_test_support::{
     Ended, MemoryStore, ToolOutputs, app_on, calls, connect, first_agent, log_ended,
-    log_tool_outputs, reply, run_until,
+    log_tool_outputs, reply, run_until, scratch_dir,
 };
 use serde_json::json;
 
@@ -14,10 +14,7 @@ use super::*;
 
 /// A git project beside the test's binary with `a.rs`, `b.rs` and `c.rs`.
 fn project() -> std::io::Result<PathBuf> {
-    let dir = std::env::current_exe()?.with_file_name("repo-map-project");
-    std::fs::remove_dir_all(&dir).ok();
-    std::fs::create_dir_all(&dir)?;
-    let dir = std::fs::canonicalize(dir)?;
+    let dir = std::fs::canonicalize(scratch_dir("repo-map-project"))?;
     std::fs::write(dir.join("a.rs"), "fn alpha() {}\n")?;
     std::fs::write(
         dir.join("b.rs"),

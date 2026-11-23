@@ -1,12 +1,9 @@
-//! Plugin corpus: 52. Touched-files panel (spec `52-files-panel.md`).
-//!
-//! Every file an agent of the session read or changed, with the lines its
-//! changes added and removed and their diffs, kept as a saved resource so
-//! `/resume` brings the same list back. It is what tools publish
-//! ([`FilesRead`], [`FilesChanged`]), whatever the tool. In the terminal
-//! view, `ctrl+f` opens the panel on the right with the keys, up and down
-//! select, Enter shows the selected file's session diff over the screen
-//! and Esc closes it; `/files` lists the files in any front.
+//! Touched-files panel. Every file an agent of the session read or changed, with the lines its
+//! changes added and removed and their diffs, kept as a saved resource so `/resume` brings the
+//! same list back. It is what tools publish ([`FilesRead`], [`FilesChanged`]), whatever the
+//! tool. In the terminal view, `ctrl+f` opens the panel on the right with the keys, up and down
+//! select, Enter shows the selected file's session diff over the screen and Esc closes it;
+//! `/files` lists the files in any front.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -210,9 +207,7 @@ struct DiffBox {
 
 impl Plugin for FilesPanelPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<TuiPlugin>() {
-            app.add_plugins(TuiPlugin);
-        }
+        rig_harness::load::<TuiPlugin>(app, "rig-tui", "");
         let panel = app.world_mut().spawn(FilesPanel::default()).id();
         let diff = app.world_mut().spawn(DiffBox::default()).id();
         let key = |code| Keys::from(KeyPress::key(code));
@@ -444,8 +439,10 @@ fn draw_diff(
             .get(&diff.path)
             .map(TouchedFile::session_diff)
             .unwrap_or_default();
-        let lines = rig_tui::diff::unified_lines(&text, &theme)
-            .unwrap_or_else(|| vec![Line::from("No diff for this file.").dim()]);
+        let lines = match rig_tui::diff::unified_lines(&text, &theme) {
+            Some(lines) => lines.iter().map(rig_tui::LookLine::colored).collect(),
+            None => vec![Line::from("No diff for this file.").dim()],
+        };
         let title = format!("{} (Esc closes)", shown(&diff.path, &root.0));
         let area = canvas.area();
         Paragraph::new(lines)

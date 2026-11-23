@@ -4,22 +4,22 @@
 use rig_harness::prelude::*;
 use rig_tui::ratatui::style::{Style, Stylize};
 use rig_tui::ratatui::text::{Line, Span};
-use rig_tui::{CallState, ChildCall, RenderBatch, ToolCallView};
+use rig_tui::{CallState, ChildCall, LookLine, RenderBatch, ToolRender};
 
 use super::CONSULT;
 
 /// Draws the `consult` calls.
 pub(crate) fn draw(mut batch: ResMut<RenderBatch>) {
     for (call, output) in batch.tools_mut(CONSULT) {
-        output.lines = consult(&call.view());
+        output.lines = consult(call);
     }
 }
 
 /// A `consult` call.
-pub(crate) fn consult(view: &ToolCallView) -> Vec<Line<'static>> {
+pub(crate) fn consult(view: &ToolRender) -> Vec<LookLine> {
     let question = view.argument("question").unwrap_or_default();
-    let mut lines = vec![view.header("Consult", question)];
-    lines.extend(view.children.iter().flat_map(child));
+    let mut lines = vec![LookLine::from(view.header("Consult", question))];
+    lines.extend(view.children.iter().flat_map(child).map(LookLine::from));
     lines.extend(view.result_lines());
     lines
 }
@@ -31,7 +31,7 @@ fn child(child: &ChildCall) -> Vec<Line<'static>> {
     let indent = "  ".repeat(child.depth + 1);
     let what = match &child.call {
         Some(call) => {
-            let arguments = serde_json::Value::Object(call.function.arguments.clone());
+            let arguments = serde_json::Value::Object(call.arguments.clone());
             format!("{} {arguments}", child.name)
         }
         None => child.name.clone(),

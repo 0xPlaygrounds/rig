@@ -134,3 +134,31 @@ fn normalized_folds_dots_and_widens_relative_paths() {
     );
     assert_eq!(Touches::Independent.normalized(), Touches::Independent);
 }
+
+/// A call waits for an earlier unsettled call it conflicts with, and for
+/// no other; with nothing earlier it never waits.
+#[test]
+fn a_call_waits_only_for_an_earlier_call_it_conflicts_with() {
+    let write_a = Touches::Writes(paths(&["/w/a.rs"]));
+    let write_b = Touches::Writes(paths(&["/w/b.rs"]));
+    let read_a = Touches::Reads(paths(&["/w/a.rs"]));
+
+    assert!(!write_a.must_wait([]));
+    assert!(write_a.must_wait([&write_a]));
+    assert!(!write_a.must_wait([&write_b]));
+    assert!(write_a.must_wait([&write_b, &read_a]));
+    assert!(!read_a.must_wait([&read_a, &write_b]));
+}
+
+/// A tool that declares nothing may change anything: its call waits for
+/// any earlier call and holds back any later one, a reader included.
+#[test]
+fn a_call_that_declares_nothing_may_change_anything() {
+    let undeclared = Touches::default();
+    let read_b = Touches::Reads(paths(&["/w/b.rs"]));
+
+    assert_eq!(undeclared, Touches::Writes(Scope::Anything));
+    assert!(undeclared.must_wait([&read_b]));
+    assert!(read_b.must_wait([&undeclared]));
+    assert!(Touches::Independent.must_wait([&undeclared]));
+}

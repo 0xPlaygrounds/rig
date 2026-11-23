@@ -24,7 +24,7 @@ use std::sync::Arc;
 use super::wire::Messages;
 use crate::catalog::{ModelFacts, ModelSpec};
 use crate::completion::options::{BaseInput, FinalBody, RawAt, Rewrite, request_params};
-use crate::completion::{self, CompletionRequest, Replay};
+use crate::completion::{self, CompletionRequest, Replay, ReplayTarget};
 use crate::error::EncodeError;
 use crate::json_utils::Lenient;
 use crate::json_utils::remove_preserving_order;
@@ -36,6 +36,11 @@ use crate::providers::internal::set_fields;
 use crate::providers::internal::wire_ids::WireIds;
 use crate::wire::Mode;
 
+/// Claude Fable 5.2, API ID `claude-fable-5-2`: 128K default `max_tokens`,
+/// mid-conversation system messages kept in `messages`. It rejects a forced
+/// tool choice, so the extractor uses native structured output instead of
+/// forcing its `submit` tool.
+pub const CLAUDE_FABLE_5_2: &str = "claude-fable-5-2";
 /// Claude Fable 5.1, API ID `claude-fable-5-1`: 128K default `max_tokens`,
 /// mid-conversation system messages kept in `messages`. It rejects a forced
 /// tool choice, so the extractor uses native structured output instead of
@@ -69,8 +74,6 @@ pub const CLAUDE_SONNET_4_6: &str = "claude-sonnet-4-6";
 pub const CLAUDE_HAIKU_4_5: &str = "claude-haiku-4-5";
 
 /// An `anthropic-version` header value.
-pub const ANTHROPIC_VERSION_2023_01_01: &str = "2023-01-01";
-/// An `anthropic-version` header value.
 pub const ANTHROPIC_VERSION_2023_06_01: &str = "2023-06-01";
 /// The `anthropic-version` header value rig sends.
 pub const ANTHROPIC_VERSION_LATEST: &str = ANTHROPIC_VERSION_2023_06_01;
@@ -89,10 +92,15 @@ pub enum CacheTtl {
 
 /// The facts of Anthropic's `model`: the spec the wire was connected to,
 /// else its catalog's entry by the one lookup rule (an id as listed, or a
-/// dated snapshot of one). `None` for a model the catalog does not list,
-/// which gets the newest models' behaviour.
+/// dated snapshot of one). A gateway's `anthropic/` spelling of an id names
+/// that id. `None` for a model the catalog does not list, which gets the
+/// newest models' behaviour.
 pub(super) fn spec<'f>(facts: &'f ModelFacts, model: &str) -> Option<&'f ModelSpec> {
-    facts.for_model(super::ANTHROPIC.name, model)
+    let vendor = super::ANTHROPIC.name;
+    facts.for_model(vendor, model).or_else(|| {
+        let id = model.strip_prefix(vendor)?.strip_prefix('/')?;
+        facts.for_model(vendor, id)
+    })
 }
 
 /// The published synchronous output limit of a listed model. A model the
@@ -148,9 +156,7 @@ pub(super) fn drops_unbound_thinking(
     thinking: Option<&Value>,
 ) -> bool {
     let adaptive = thinking.is_none_or(|thinking| thinking.str("type") == Some("adaptive"));
-    wire.provider.dialect.name == super::ANTHROPIC.name
-        && binds_context(&wire.facts, model)
-        && adaptive
+    wire.binds_context(model) && adaptive
 }
 
 /// `body`'s `thinking` with `drop_block` set: the caller's adaptive
@@ -187,20 +193,11 @@ pub(super) fn body(
     mode: Mode,
 ) -> Result<FinalBody, EncodeError> {
     let model = request.model.clone().unwrap_or_else(|| wire.model.clone());
-    // A request that addresses another model gets that model's default; the
-    // wire's own model keeps the one it was built with.
-    let max_tokens = match request.max_tokens {
-        Some(tokens) => Some(tokens),
-        None if model == wire.model => wire.default_max_tokens,
-        None => wire
-            .provider
-            .dialect
-            .default_max_tokens(&wire.facts, &model)
-            .or(wire.default_max_tokens),
-    }
-    .ok_or_else(|| EncodeError::request("`max_tokens` must be set for Anthropic"))?;
+    let max_tokens = wire
+        .max_tokens(request, &model)
+        .ok_or_else(|| EncodeError::request("`max_tokens` must be set for Anthropic"))?;
     let mut rewrites = Vec::new();
-    if wire.provider.dialect.name == super::ANTHROPIC.name && binds_context(&wire.facts, &model) {
+    if wire.binds_context(&model) {
         rewrites.push(Rewrite::DropUnboundThinking);
     }
     if wire.provider.addressing == super::wire::Addressing::Url {
@@ -451,7 +448,7 @@ fn image_part(image: &message::Image) -> Result<Value, EncodeError> {
 
 /// A document block: its source, and the `title`, `context` and
 /// `citations` its `additional_params` name.
-fn document_part(document: &message::Document) -> Result<Value, EncodeError> {
+fn document_part(document: &message::DocumentContent) -> Result<Value, EncodeError> {
     let params = document.additional_params.as_ref();
     let param = |key: &str| params.and_then(|params| params.get(key));
     let text = |key: &str| param(key).filter(|value| value.is_string()).cloned();
@@ -560,7 +557,7 @@ pub(super) fn image_source(image: &message::Image) -> Option<Value> {
 /// A document's source on the wire: a Files API id, a PDF as data or by
 /// URL, or any other document as the text it holds. `None` for any other
 /// form.
-pub(super) fn document_source(document: &message::Document) -> Option<Value> {
+pub(super) fn document_source(document: &message::DocumentContent) -> Option<Value> {
     let text = |data: &str| json!({ "type": "text", "media_type": "text/plain", "data": data });
     let source = match &document.data {
         DocumentData::Text(data) => return Some(text(data)),
@@ -601,9 +598,10 @@ fn tool_choice(choice: message::ToolChoice) -> Result<Value, EncodeError> {
     })
 }
 
-/// The request's tools: Rig's, strict when `strict` and asking for their
-/// input as it is written when `eager`, then `extra`, the tools
-/// `additional_params` names, verbatim.
+/// The request's tools: Rig's, strict when `strict` (otherwise with their
+/// root combinators nested) and asking for their input as it is written
+/// when `eager`, then `extra`, the tools `additional_params` names,
+/// verbatim.
 fn tools(
     tools: &[Arc<completion::ToolDefinition>],
     extra: Vec<Value>,
@@ -614,6 +612,8 @@ fn tools(
         let mut schema = tool.parameters.clone();
         if strict {
             sanitize_strict_tool_schema(&mut schema);
+        } else {
+            nest_root_combinators(&mut schema);
         }
         Value::Object(set_fields([
             ("name", Some(Value::from(tool.name.as_str()))),
@@ -624,6 +624,136 @@ fn tools(
         ]))
     });
     rig.chain(extra).collect()
+}
+
+/// The keywords Anthropic refuses at the root of a tool's input schema.
+const ROOT_COMBINATORS: [&str; 3] = ["allOf", "anyOf", "oneOf"];
+
+/// The root keywords that read what the root's other keywords evaluate.
+const ROOT_UNEVALUATED: [&str; 2] = ["unevaluatedProperties", "unevaluatedItems"];
+
+/// The root keywords that stay at the root when every keyword that
+/// validates moves: its type, what names it or holds its definitions, and
+/// its annotations.
+const ROOT_KEPT: [&str; 9] = [
+    "type",
+    "$schema",
+    "$id",
+    "$anchor",
+    "$dynamicAnchor",
+    "$defs",
+    "definitions",
+    "title",
+    "description",
+];
+
+/// Move a root `allOf`, `anyOf` or `oneOf`, with any root `not`, under
+/// `not: {not: ...}`, which accepts the same inputs, and type the root
+/// `object`, the root Anthropic takes. A subschema under `not` reports no
+/// evaluated properties or items, so with a root `unevaluatedProperties` or
+/// `unevaluatedItems` every root keyword but [`ROOT_KEPT`] moves. Local
+/// `#/...` pointer references into a moved keyword follow it; a percent
+/// encoded pointer, or one through the root's `$id`, is left as written. A schema with no
+/// root combinator is left as written.
+fn nest_root_combinators(schema: &mut Value) {
+    let Value::Object(root) = schema else {
+        return;
+    };
+    if !ROOT_COMBINATORS.iter().any(|key| root.contains_key(*key)) {
+        return;
+    }
+    let unevaluated = ROOT_UNEVALUATED.iter().any(|key| root.contains_key(*key));
+    let moved: Vec<String> = root
+        .keys()
+        .filter(|key| {
+            let key = key.as_str();
+            if unevaluated {
+                !ROOT_KEPT.contains(&key)
+            } else {
+                ROOT_COMBINATORS.contains(&key) || key == "not"
+            }
+        })
+        .cloned()
+        .collect();
+    repoint_moved_references(root, &moved);
+    let nested: Map<String, Value> = moved
+        .into_iter()
+        .filter_map(|key| {
+            let value = remove_preserving_order(root, &key)?;
+            Some((key, value))
+        })
+        .collect();
+    root.entry("type").or_insert_with(|| json!("object"));
+    root.insert("not".to_owned(), json!({ "not": nested }));
+}
+
+/// The keywords whose value is a subschema or an array of them.
+const SUBSCHEMA_KEYWORDS: [&str; 16] = [
+    "allOf",
+    "anyOf",
+    "oneOf",
+    "not",
+    "if",
+    "then",
+    "else",
+    "items",
+    "prefixItems",
+    "additionalItems",
+    "contains",
+    "additionalProperties",
+    "unevaluatedProperties",
+    "unevaluatedItems",
+    "propertyNames",
+    "contentSchema",
+];
+
+/// The keywords whose value maps names to subschemas; draft-07
+/// `dependencies` may map a name to a list of names instead.
+const SUBSCHEMA_MAP_KEYWORDS: [&str; 6] = [
+    "properties",
+    "patternProperties",
+    "dependentSchemas",
+    "dependencies",
+    "$defs",
+    "definitions",
+];
+
+/// Point each `#/<key>/...` reference in `schema`, the root or a subschema
+/// of it, whose `key` is in `moved` at `#/not/not/<key>/...`, where the key
+/// moves. A subschema with its own `$id` is a resource of its own, which
+/// its pointers resolve against, so it is left as written.
+fn repoint_moved_references(schema: &mut Map<String, Value>, moved: &[String]) {
+    for keyword in ["$ref", "$dynamicRef"] {
+        if let Some(Value::String(reference)) = schema.get_mut(keyword)
+            && let Some(pointer) = reference.strip_prefix("#/")
+            && moved.iter().any(|key| {
+                let token = key.replace('~', "~0").replace('/', "~1");
+                pointer.split('/').next() == Some(token.as_str())
+            })
+        {
+            *reference = format!("#/not/not/{pointer}");
+        }
+    }
+    let mut pending: Vec<&mut Value> = Vec::new();
+    for (key, value) in schema.iter_mut() {
+        if SUBSCHEMA_KEYWORDS.contains(&key.as_str()) {
+            match value {
+                Value::Array(items) => pending.extend(items.iter_mut()),
+                value => pending.push(value),
+            }
+        } else if SUBSCHEMA_MAP_KEYWORDS.contains(&key.as_str())
+            && let Value::Object(subschemas) = value
+        {
+            pending.extend(subschemas.values_mut());
+        }
+    }
+    for value in pending {
+        if let Value::Object(subschema) = value
+            && !subschema.contains_key("$id")
+        {
+            repoint_moved_references(subschema, moved);
+        }
+    }
 }
 
 /// Split `history` into the top-level `system` blocks and the messages.
@@ -880,8 +1010,8 @@ fn spot_block<'a>(
 /// take the markers left, ahead of manual caching's last-message marker:
 /// when too few are left, the points furthest into the request win, and a
 /// block already marked takes no second one. Markers a tool already
-/// carries are kept and count toward the budget, and every one-hour marker
-/// must precede the five-minute ones.
+/// carries are kept and count toward the budget. `validate_cache_control`
+/// checks the order of the markers the final body sends.
 fn apply_cache_control(
     wire: &Messages,
     Markers {
@@ -970,23 +1100,6 @@ fn apply_cache_control(
             .and_then(Value::as_object_mut);
         if let Some(block) = block {
             block.insert("cache_control".into(), ephemeral(None));
-        }
-    }
-    let mut short_seen = false;
-    let markers = tools
-        .iter()
-        .chain(system.iter())
-        .chain(messages.iter().flat_map(|message| message.arr("content")))
-        .filter_map(|block| block.get("cache_control"))
-        .chain(top);
-    for marker in markers {
-        if !is_1h(marker) {
-            short_seen = true;
-        } else if short_seen {
-            return Err(EncodeError::request(
-                "Anthropic cache_control markers with ttl `1h` must appear before markers with \
-                 the default 5-minute TTL",
-            ));
         }
     }
     Ok(())

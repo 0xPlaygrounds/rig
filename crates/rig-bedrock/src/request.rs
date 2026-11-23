@@ -13,7 +13,7 @@ use rig_core::completion::options::{BaseInput, FinalBody, RawAt, request_params}
 use rig_core::completion::{CacheRetention, CompletionRequest, Message, Replay};
 use rig_core::error::EncodeError;
 use rig_core::message::{
-    AssistantContent, Document, DocumentData, DocumentMediaType, DocumentSourceKind, Image,
+    AssistantContent, DocumentContent, DocumentData, DocumentMediaType, DocumentSourceKind, Image,
     MimeType, ToolChoice, ToolResultContent, UserContent, Video,
 };
 use rig_core::providers::internal::wire_ids::WireIds;
@@ -132,13 +132,15 @@ fn base(
             }
         }
     }
-    // Bedrock rejects a cache point anywhere after a reasoning turn, even on
-    // the user's side, so that checkpoint is refused rather than skipped.
+    // A cache point after a reasoning turn, even on the user's side, goes
+    // only to a Claude model rig's shipped catalog lists. Any other model is
+    // refused it: Nova rejects one after a tool result, and the rest are
+    // unknown.
     if let Some(cache) = cache {
         let reasoning = blocks(&mut messages).any(|block| block.get("reasoningContent").is_some());
-        if reasoning {
+        if reasoning && !wire.listed_claude(model) {
             input.refuse_cache(
-                "Bedrock rejects a message cache checkpoint after a reasoning turn",
+                "this model is not known to take a message cache checkpoint after a reasoning turn",
             )?;
         } else if let Some(Value::Array(last)) =
             messages.last_mut().and_then(|last| last.get_mut("content"))
@@ -388,7 +390,7 @@ pub(crate) fn video(video: &Video) -> Result<Value, EncodeError> {
 /// not list is plain text. The name is the content's digest, so a request
 /// is byte-stable across turns and runs, which prompt-cache prefixes and
 /// recorded replays rely on.
-pub(crate) fn document(document: &Document) -> Result<Value, EncodeError> {
+pub(crate) fn document(document: &DocumentContent) -> Result<Value, EncodeError> {
     let mime = document
         .media_type
         .as_ref()

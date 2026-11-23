@@ -1,14 +1,9 @@
-//! Plugin corpus (held-out): H20: Cut messages out of a conversation (spec
-//! `H20-conversation-surgery.md`).
-//!
-//! `/history` lists the focused agent's messages, numbered, with their
-//! rough size. `/stub <n>` replaces the content of the tool results in
-//! message `n` with a stub naming their size. `/drop <n>` or
-//! `/drop <a>-<b>` cuts messages out, taking each tool call and its result
-//! together and joining the messages the cut leaves side by side.
-//! `/drop undo` puts back what the agent's last edit changed. Every edit
-//! is a logged splice, so the session log keeps the edited conversation;
-//! it is refused while the agent's turn runs.
+//! Cut messages out of a conversation. `/history` lists the focused agent's messages, numbered,
+//! with their rough size. `/stub <n>` replaces the content of the tool results in message `n` with
+//! a stub naming their size. `/drop <n>` or `/drop <a>-<b>` cuts messages out, taking each tool
+//! call and its result together and joining the messages the cut leaves side by side. `/drop undo`
+//! puts back what the agent's last edit changed. Every edit is a logged splice, so the session log
+//! keeps the edited conversation; it is refused while the agent's turn runs.
 
 #[cfg(test)]
 mod tests;
@@ -21,7 +16,7 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::tokens_label;
 use rig_harness::rig_core::message::{CallId, Message, ToolResultContent};
 use rig_harness::rig_core::serde_json;
-use rig_memory::{HeuristicTokenCounter, TokenCounter};
+use rig_memory::HeuristicTokenCounter;
 
 /// Who the edits are recorded as made by.
 const PLUGIN: &str = "conversation-surgery";
@@ -54,12 +49,9 @@ impl Plugin for ConversationSurgeryPlugin {
 fn call_ids(message: &Message) -> Vec<CallId> {
     match message {
         Message::Assistant(turn) => turn.tool_calls().map(|call| call.id.clone()).collect(),
-        Message::User { content } => content
-            .iter()
-            .filter_map(|item| match item {
-                UserContent::ToolResult(result) => Some(result.call.clone()),
-                _ => None,
-            })
+        Message::User { .. } => message
+            .results()
+            .map(|result| result.call.clone())
             .collect(),
         Message::System { .. } => Vec::new(),
     }

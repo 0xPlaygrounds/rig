@@ -4,15 +4,14 @@
 //! each the other's last answer. Then the judge reads the whole exchange,
 //! and its verdict goes to the agent's conversation as a note and to the
 //! user as a notice. The debaters keep their conversations, so `/agents`
-//! shows the exchange, and each one's line there what it spent.
+//! shows the exchange, and, with `rig_basics::telemetry`'s usage, what
+//! each one spent.
 //!
 //! Debaters may use the agent's read-only tools; the judge has none.
 //! `/debate stop`, or interrupting the agent, stops all three. The models
 //! come from the `[debate]` settings table ([`DebateConfig`]).
 
-use rig_basics::sessions::agents::{AgentColumn, ColumnOf};
 use rig_basics::subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
-use rig_basics::telemetry::usage::AgentUsage;
 use rig_harness::prelude::*;
 use serde::Deserialize;
 
@@ -99,10 +98,6 @@ pub struct Debater(pub Role);
 #[derive(Component, Clone, Copy, Debug)]
 struct Seat(Role);
 
-/// On the `/agents` column that shows what a debater spent.
-#[derive(Component)]
-struct SpentColumn;
-
 /// One round's answers.
 #[derive(Clone, Debug, Default)]
 pub struct Round {
@@ -165,9 +160,7 @@ pub struct DebatePlugin;
 
 impl Plugin for DebatePlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<SubagentsPlugin>() {
-            app.add_plugins(SubagentsPlugin);
-        }
+        rig_harness::load::<SubagentsPlugin>(app, "rig-basics", "");
         app.add_setting::<DebateConfig>("debate")
             .add_command(
                 "debate",
@@ -177,10 +170,8 @@ impl Plugin for DebatePlugin {
             )
             .add_observer(seat)
             .add_observer(follow_successor::<Seat>)
-            .add_observer(add_spent_column)
             .add_observer(step)
-            .add_observer(stop_on_interrupt)
-            .add_systems(Update, show_spent);
+            .add_observer(stop_on_interrupt);
     }
 }
 
@@ -249,7 +240,7 @@ fn debate(
     // The agent's read-only tools; the judge gets none.
     let read_only: Vec<String> = tools
         .iter()
-        .filter(|(def, footprint)| footprint.0.reads_only() && access.allows(def.0.name.as_str()))
+        .filter(|(def, footprint)| footprint.0.reads_only() && access.keeps(def.0.name.as_str()))
         .map(|(def, _)| def.0.name.as_str().to_owned())
         .collect();
     let brief = format!("The question: {question}\n\nRound 1 of {rounds}: make your case.");
@@ -349,38 +340,14 @@ fn seat(
 fn stop(commands: &mut Commands, host: Entity, debate: &Debate) {
     commands.entity(host).remove::<Debate>();
     for &(_, agent) in &debate.seated {
-        let reason = Some("the debate stopped".to_owned());
-        commands.trigger(StopTurn {
-            entity: agent,
-            reason,
-        });
+        commands.trigger(StopTurn::plugin(agent, "debate", "the debate stopped"));
     }
 }
 
-/// Interrupting the agent stops its debate.
-fn stop_on_interrupt(interrupt: On<StopTurn>, debates: Query<&Debate>, mut commands: Commands) {
-    if let Ok(debate) = debates.get(interrupt.entity) {
-        stop(&mut commands, interrupt.entity, debate);
-    }
-}
-
-/// Gives a debater, spawned or restored, its spend column in `/agents`.
-fn add_spent_column(inserted: On<Insert<Debater>>, mut commands: Commands) {
-    let column = AgentColumn::new("debate-spent", "");
-    commands.spawn((column, ColumnOf(inserted.entity), SpentColumn));
-}
-
-/// Keeps each debater's spend column current.
-fn show_spent(
-    mut columns: Query<(&mut AgentColumn, &ColumnOf), With<SpentColumn>>,
-    spent: Query<Ref<AgentUsage>>,
-) {
-    for (mut column, &ColumnOf(agent)) in &mut columns {
-        if let Ok(spending) = spent.get(agent)
-            && (spending.is_changed() || column.is_added())
-        {
-            column.text = format!("spent {}", spending.total.cost_or_tokens());
-        }
+/// A stop that reaches the agent stops its debate.
+fn stop_on_interrupt(interrupt: On<StopReached>, debates: Query<&Debate>, mut commands: Commands) {
+    if let Ok(debate) = debates.get(interrupt.event_target()) {
+        stop(&mut commands, interrupt.event_target(), debate);
     }
 }
 
@@ -399,7 +366,7 @@ fn step(
     let Ok((outcome, &ForAgent(agent))) = turns.get(settled.entity) else {
         return;
     };
-    let Ok(&SpawnedBy(host)) = parents.get(agent) else {
+    let Ok(host) = parents.get(agent).map(SpawnedBy::parent) else {
         return;
     };
     let Ok(mut debate) = debates.get_mut(host) else {

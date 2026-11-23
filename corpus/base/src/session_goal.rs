@@ -1,14 +1,10 @@
-//! Plugin corpus: 44. Session goal (saved custom state) (spec `44-session-goal.md`).
-//!
-//! `/goal <text>` sets the session's goal, `/goal` shows it and
-//! `/goal clear` removes it. The goal is a saved, immutable resource: each
-//! change inserts a new value, which the session log records and a
-//! restart, `/reload` and `/resume` bring back. Each insertion, restored
-//! ones too, rewrites one entity's [`PromptSection`], in every agent's
-//! system prompt (subagents too) from the next request on, and its
-//! [`ResumeLabel`], the goal in this session's `/resume` line, and the
-//! status line's goal item. A new session starts without one. The model
-//! has no tool to change it.
+//! Session goal. `/goal <text>` sets the session's goal, `/goal` shows it and `/goal clear`
+//! removes it. The goal is a saved, immutable resource: each change inserts a new value, which
+//! the session log records and a restart, `/reload` and `/resume` bring back. Each insertion,
+//! restored ones too, rewrites one entity's [`PromptSection`], in every agent's system prompt
+//! (subagents too) from the next request on, and its [`ResumeLabel`], the goal in this
+//! session's `/resume` line, and the status line's goal item. A new session starts without one.
+//! The model has no tool to change it.
 
 use rig_basics::sessions::ResumeLabel;
 use rig_harness::prelude::*;

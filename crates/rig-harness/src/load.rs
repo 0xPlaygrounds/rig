@@ -1,9 +1,10 @@
-//! What each plugin added, as data in the world: one entity per plugin
-//! `plugins.toml` lists (its `Name` and [`PluginSource`]), and
+//! What each plugin added, as data in the world: one entity per plugin the
+//! agent is built with ([`Loaded`], its `Name` and [`PluginSource`]), and
 //! [`ProvidedBy`] on what that plugin spawned, such as its commands,
-//! tools, prompt sections and observers. "What did plugin X add" is a
-//! query for `ProvidedBy(x)`; which plugin added a schedule's system is in
-//! [`PluginSystems`]; what it keeps with the session is its [`Keeps`].
+//! tools, prompt sections, observers and the plugins it loads. "What did
+//! plugin X add" is a query for `ProvidedBy(x)`; which plugin added a
+//! schedule's system is in [`PluginSystems`]; what it keeps with the
+//! session is its [`Keeps`].
 //!
 //! Every named entity, observer and schedule system a plugin adds in its
 //! `build`, `finish` and `cleanup` is attributed. What it spawns later, such as a
@@ -47,8 +48,9 @@ use rig_ecs::stage::AgentPass;
 pub struct PluginSource {
     /// Its package, such as `rig-harness`.
     pub package: String,
-    /// Where the package is built from, as `plugins.toml` names it, such
-    /// as `path /home/me/.rig/plugins/viz` or `version 0.3`.
+    /// Where the package is built from, as the launcher names it, such
+    /// as `path /home/me/.rig/plugins/viz` or `version 0.3`; empty for a
+    /// plugin another plugin loaded.
     pub source: String,
 }
 
@@ -95,13 +97,6 @@ impl PluginSystems {
         self.0.get(&key).copied().flatten()
     }
 
-    /// Each system recorded, as its name and its schedule's label, with
-    /// the plugin that added it, if one plugin did, in no particular order.
-    pub fn iter(&self) -> impl Iterator<Item = (&str, &str, Option<Entity>)> {
-        (self.0.iter())
-            .map(|((system, schedule), plugin)| (system.as_str(), schedule.as_str(), *plugin))
-    }
-
     /// Records each system added since `before` as `plugin`'s.
     fn record(
         world: &mut World,
@@ -134,7 +129,7 @@ impl PluginSystems {
 /// for the harness's, the kernel's and Bevy's own), the systems and the
 /// data. It initializes the agent loop, as the loop's first run would; an
 /// app without one has none. `rig plugin check --build` reports these for
-/// the plugins `plugins.toml` lists, and a debug build at its start
+/// the plugins the settings turn on, and a debug build at its start
 /// ([`check_stages_at_start`]).
 pub fn stage_conflicts(world: &mut World) -> Vec<String> {
     let label = format!("{AgentPass:?}");
@@ -229,9 +224,58 @@ fn systems(world: &World) -> HashSet<(InternedScheduleLabel, SystemKey)> {
     systems.collect()
 }
 
+/// The plugin `P` added through [`load`], from `package` at `source`: how
+/// the generated program's `PluginGroup` adds each plugin the settings turn
+/// on, so each gets its entity and [`PluginSource`].
+///
+/// ```no_run
+/// use rig_harness::prelude::*;
+/// use rig_harness::{Loaded, PluginGroupBuilder};
+///
+/// #[derive(Default)]
+/// struct MyPlugin;
+///
+/// impl Plugin for MyPlugin {
+///     fn build(&self, _app: &mut App) {}
+/// }
+///
+/// struct Chosen;
+///
+/// impl PluginGroup for Chosen {
+///     fn build(self) -> PluginGroupBuilder {
+///         PluginGroupBuilder::start::<Self>().add(Loaded::<MyPlugin>::new("my-plugin", "version 0.1"))
+///     }
+/// }
+/// ```
+pub struct Loaded<P> {
+    package: &'static str,
+    source: &'static str,
+    plugin: PhantomData<fn() -> P>,
+}
+
+impl<P> Loaded<P> {
+    /// The plugin `P`, from `package` at `source`, as the launcher names
+    /// it, such as `path /home/me/.rig/plugins/viz` or `version 0.3`.
+    pub const fn new(package: &'static str, source: &'static str) -> Self {
+        Self {
+            package,
+            source,
+            plugin: PhantomData,
+        }
+    }
+}
+
+impl<P: Plugin + Default> Plugin for Loaded<P> {
+    fn build(&self, app: &mut App) {
+        load::<P>(app, self.package, self.source);
+    }
+}
+
 /// Adds `P`, unless the app has it already (another plugin added it), as
-/// the generated `main.rs` adds each plugin `plugins.toml` lists: with an
-/// entity of its own, named after it, from `package` at `source`.
+/// [`Loaded`] adds each plugin the settings turn on: with an entity of its
+/// own, named after it, from `package` at `source`. Loaded in another
+/// plugin's `build`, its entity is [`ProvidedBy`] that plugin, which is how
+/// a plugin adds one it needs so the running agent shows who added it.
 pub fn load<P: Plugin + Default>(app: &mut App, package: &str, source: &str) {
     if app.is_plugin_added::<P>() {
         return;
@@ -241,30 +285,35 @@ pub fn load<P: Plugin + Default>(app: &mut App, package: &str, source: &str) {
         package: package.to_owned(),
         source: source.to_owned(),
     };
-    let entity = app
+    // A plugin loaded in another's `build` ends the other's attribution,
+    // which resumes once this one is built.
+    let outer = app
+        .world()
+        .get_resource::<Attributing>()
+        .map(|it| it.plugin);
+    Attribute::Close.bracket(app);
+    let mut entity = app
         .world_mut()
-        .spawn((Name::new(plugin.name().to_owned()), source))
-        .id();
+        .spawn((Name::new(plugin.name().to_owned()), source));
+    if let Some(outer) = outer {
+        entity.insert(ProvidedBy(outer));
+    }
+    let entity = entity.id();
     app.insert_resource(PluginEntity::<P> {
         entity,
         plugin: PhantomData,
     });
-    let attribute = attribute(app.world_mut(), entity);
-    let before = systems(app.world());
-    let outer = app.world_mut().remove_resource::<Loading>();
-    app.insert_resource(Loading(entity));
+    Attribute::Open(entity).bracket(app);
     // `Attribute` before and after it brackets its `finish` and `cleanup`
     // (and the plugins it adds), which run in the order plugins were
-    // added.
+    // added; after it, the outer's attribution resumes.
     app.add_plugins(Attribute::Open(entity));
     app.add_plugins(plugin);
-    app.add_plugins(Attribute::Close);
-    app.world_mut().remove_resource::<Loading>();
+    app.add_plugins(outer.map_or(Attribute::Close, Attribute::Open));
+    Attribute::Close.bracket(app);
     if let Some(outer) = outer {
-        app.insert_resource(outer);
+        Attribute::Open(outer).bracket(app);
     }
-    PluginSystems::record(app.world_mut(), &before, entity);
-    stop_attributing(app.world_mut(), attribute);
 }
 
 /// What a plugin keeps with the session, on the entity [`load`] spawned for
@@ -378,8 +427,7 @@ impl AppKeepsExt for App {
 /// Adds `what` to the list `of` of the [`Keeps`] of the plugin being
 /// built, finished or cleaned up, once.
 fn keep(world: &mut World, of: fn(&mut Keeps) -> &mut Vec<String>, what: &str) {
-    let loading = world.get_resource::<Loading>().map(|loading| loading.0);
-    let plugin = loading.or_else(|| Some(world.get_resource::<Attributing>()?.plugin));
+    let plugin = world.get_resource::<Attributing>().map(|it| it.plugin);
     let Some(mut plugin) = plugin.and_then(|plugin| world.get_entity_mut(plugin).ok()) else {
         return;
     };
@@ -394,10 +442,6 @@ fn keep(world: &mut World, of: fn(&mut Keeps) -> &mut Vec<String>, what: &str) {
         list.push(what.to_owned());
     }
 }
-
-/// The plugin [`load`] is building.
-#[derive(Resource)]
-struct Loading(Entity);
 
 /// Marks each named entity and observer spawned from now on as
 /// `plugin`'s, until [`stop_attributing`].
@@ -419,15 +463,15 @@ fn stop_attributing(world: &mut World, attribute: Entity) {
     world.despawn(attribute);
 }
 
-/// Attributes what a plugin spawns in `finish` and `cleanup`, from its
-/// [`Attribute::Open`] to the [`Attribute::Close`] after it.
+/// Attributes what a plugin spawns in its build, `finish` and `cleanup`,
+/// from its [`Attribute::Open`] to the next `Open` or [`Attribute::Close`].
 enum Attribute {
     Open(Entity),
     Close,
 }
 
-/// The plugin being finished or cleaned up, the observer attributing to
-/// it, and the systems before it.
+/// The plugin being built, finished or cleaned up, the observer
+/// attributing to it, and the systems before it.
 #[derive(Resource)]
 struct Attributing {
     plugin: Entity,
@@ -436,24 +480,22 @@ struct Attributing {
 }
 
 impl Attribute {
+    /// Ends the attribution open before it, if any, recording its systems;
+    /// an `Open` then starts its plugin's.
     fn bracket(&self, app: &mut App) {
         let world = app.world_mut();
-        match self {
-            Self::Open(plugin) => {
-                let observer = attribute(world, *plugin);
-                let before = systems(world);
-                world.insert_resource(Attributing {
-                    plugin: *plugin,
-                    observer,
-                    before,
-                });
-            }
-            Self::Close => {
-                if let Some(attributing) = world.remove_resource::<Attributing>() {
-                    PluginSystems::record(world, &attributing.before, attributing.plugin);
-                    stop_attributing(world, attributing.observer);
-                }
-            }
+        if let Some(attributing) = world.remove_resource::<Attributing>() {
+            PluginSystems::record(world, &attributing.before, attributing.plugin);
+            stop_attributing(world, attributing.observer);
+        }
+        if let Self::Open(plugin) = self {
+            let observer = attribute(world, *plugin);
+            let before = systems(world);
+            world.insert_resource(Attributing {
+                plugin: *plugin,
+                observer,
+                before,
+            });
         }
     }
 }

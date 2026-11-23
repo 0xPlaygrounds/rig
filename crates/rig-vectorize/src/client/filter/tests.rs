@@ -134,3 +134,42 @@ fn test_multiple_and_filters() {
     assert!(obj.contains_key("score"));
     assert!(obj.contains_key("price"));
 }
+
+#[test]
+fn test_and_keeps_every_predicate_on_one_field() {
+    let range =
+        VectorizeFilter::gt("price", json!(10)).and(VectorizeFilter::lt("price", json!(20)));
+    assert!(range.validate().is_ok());
+    assert_eq!(
+        range.into_inner(),
+        json!({ "price": { "$gt": 10, "$lt": 20 } })
+    );
+
+    let conflict =
+        VectorizeFilter::gt("price", json!(10)).and(VectorizeFilter::gt("price", json!(20)));
+    assert!(
+        matches!(
+            conflict.validate(),
+            Err(VectorizeError::UnsupportedFilterOperation(_))
+        ),
+        "a repeated operator with another value must not replace the first"
+    );
+
+    let same_number =
+        VectorizeFilter::gt("price", json!(10)).and(VectorizeFilter::gt("price", json!(10.0)));
+    assert!(same_number.validate().is_ok());
+    assert_eq!(
+        same_number.into_inner(),
+        json!({ "price": { "$gt": 10.0 } })
+    );
+
+    let same_list = VectorizeFilter::in_values("size", &[json!(1), json!(2)]).and(
+        VectorizeFilter::in_values("size", &[json!(1.0), json!(2.0)]),
+    );
+    assert!(same_list.validate().is_ok());
+
+    // Both round to the same f64, but they are different numbers.
+    let past_f64 = VectorizeFilter::gt("id", json!(9_007_199_254_740_993_u64))
+        .and(VectorizeFilter::gt("id", json!(9_007_199_254_740_992.0)));
+    assert!(past_f64.validate().is_err());
+}

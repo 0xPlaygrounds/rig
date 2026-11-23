@@ -35,9 +35,6 @@ pub(crate) struct CrateRefs {
     /// dispatch context in the expanding crate: `rig-core` (which owns it),
     /// and `rig-agent` / the `rig` facade (which re-export it).
     context_roots: Vec<String>,
-    /// First path segments under which `<root>::agent::tool::ToolContext`
-    /// names the runtime context (the facade's explicit runtime module).
-    facade_roots: Vec<String>,
 }
 
 impl CrateRefs {
@@ -55,7 +52,6 @@ impl CrateRefs {
             (None, None) => quote!(::rig_core),
         };
 
-        let facade_roots = facade_dep.iter().cloned().collect();
         let context_roots = [core_dep, agent_dep, facade_dep]
             .into_iter()
             .flatten()
@@ -64,7 +60,6 @@ impl CrateRefs {
         Self {
             core,
             context_roots,
-            facade_roots,
         }
     }
 
@@ -74,12 +69,6 @@ impl CrateRefs {
         match segments {
             [root, tool, context] => {
                 self.context_roots.iter().any(|known| known == root)
-                    && tool == "tool"
-                    && context == "ToolContext"
-            }
-            [root, agent, tool, context] => {
-                self.facade_roots.iter().any(|known| known == root)
-                    && agent == "agent"
                     && tool == "tool"
                     && context == "ToolContext"
             }

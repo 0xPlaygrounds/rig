@@ -13,22 +13,12 @@ use crate::support::{
     assert_smoke_structured_output, collect_stream_final_response_and_provider_final,
 };
 
-/// rig#2322 — Regression: a native structured-output turn that sets **no**
-/// `max_tokens` must not acquire one.
+/// A native structured-output turn that sets no `max_tokens` must not acquire
+/// one, nor a `temperature`. `create_request_body`'s `output_schema` arm seeds
+/// its config from `GenerationConfig::default()`, which must stay all-`None`.
 ///
-/// This is the reported bug's primary path. `create_request_body`'s
-/// `output_schema` arm seeded its config with `GenerationConfig::default()`,
-/// which hardcoded `temperature: Some(1.0)` and `max_output_tokens: Some(4096)`.
-/// Any structured-output call was therefore capped at 4096 output tokens and
-/// pinned to temperature 1.0 regardless of the caller's budget — silently, since
-/// neither field appears anywhere in the caller's code.
-///
-/// The #2283 fix that introduced the sibling arm below it deliberately avoided
-/// `Default::default()` for exactly this reason, but did not fix this arm; the
-/// hazard is now removed at the root by making the `Default` all-`None`.
-///
-/// **The recorded request body is the assertion** — an injected
-/// `maxOutputTokens` reappears in the cassette and fails the check below.
+/// The recorded request body is the assertion: an injected `maxOutputTokens`
+/// reappears in the cassette and fails the check below.
 #[tokio::test]
 async fn structured_output_without_max_tokens_sends_no_sampling_fields() {
     super::super::support::with_gemini_cassette(
@@ -61,13 +51,11 @@ async fn structured_output_without_max_tokens_sends_no_sampling_fields() {
     assert_recorded_sampling_fields("regression/structured_output_without_max_tokens", &[]);
 }
 
-/// rig#2322 — Regression: a native structured-output turn that *does* set
-/// `max_tokens` sends the caller's value and still acquires no `temperature`.
+/// A native structured-output turn that *does* set `max_tokens` sends the
+/// caller's value and still acquires no `temperature`.
 ///
-/// The complement of the test above: the previous code overwrote the injected
-/// 4096 with the caller's value at the `max_tokens` arm, so an explicit budget
-/// masked the defect. Pinning this direction keeps a future fix from
-/// "resolving" the bug by dropping the caller's value instead.
+/// The complement of the test above: an explicit budget overwrites any injected
+/// default, so this direction keeps a fix from dropping the caller's value.
 #[tokio::test]
 async fn structured_output_with_max_tokens_sends_only_the_caller_value() {
     super::super::support::with_gemini_cassette(
@@ -102,16 +90,11 @@ async fn structured_output_with_max_tokens_sends_only_the_caller_value() {
     );
 }
 
-/// rig#2322 — Regression: a caller who supplies an `additional_params`
-/// `generationConfig` for `thinkingConfig` gets *that* on the wire and nothing
-/// else.
+/// A caller who supplies an `additional_params` `generationConfig` for
+/// `thinkingConfig` gets *that* on the wire and nothing else.
 ///
-/// This is the usage pattern that hid the original #2283 defect: every
-/// pre-existing Gemini cassette passed a `GenerationConfig` for thinking, which
-/// made the `Option` `Some` and masked the dropped `max_tokens`. It is also the
-/// pattern most exposed to a reintroduced non-`None` `Default`, because callers
-/// build these configs with `..Default::default()` — so a value restored to the
-/// `Default` would silently ride along with every thinking request.
+/// Callers build these configs with `..Default::default()`, so a non-`None`
+/// value in the `Default` would silently ride along with every thinking request.
 #[tokio::test]
 async fn thinking_config_without_max_tokens_sends_no_sampling_fields() {
     super::super::support::with_gemini_cassette(
@@ -146,8 +129,8 @@ async fn thinking_config_without_max_tokens_sends_no_sampling_fields() {
     assert_recorded_sampling_fields("regression/thinking_config_without_max_tokens", &[]);
 
     // The point of the scenario: thinkingConfig survived, so the assertion
-    // above is proving absence in a request that *did* carry a generationConfig
-    // — not one that omitted the object entirely.
+    // above is proving absence in a request that *did* carry a generationConfig,
+    // not one that omitted the object entirely.
     let recorded = std::fs::read_to_string(crate::cassettes::cassette_path(
         "gemini",
         "regression/thinking_config_without_max_tokens",
@@ -159,13 +142,11 @@ async fn thinking_config_without_max_tokens_sends_no_sampling_fields() {
     );
 }
 
-/// rig#2322 — Regression: the streaming surface gets the same request-boundary
-/// guarantee as the blocking one for native structured output.
+/// The streaming surface gets the same request-boundary guarantee as the
+/// blocking one for native structured output.
 ///
-/// `create_request_body` is shared, so this cannot diverge by construction
-/// today — but the streaming path is the one that truncated silently (a
-/// content-less `MAX_TOKENS` turn used to finalize as a successful empty
-/// answer), so it is pinned explicitly rather than left implied.
+/// `create_request_body` is shared, but a cap on the streaming path truncates
+/// silently, so it is pinned explicitly rather than left implied.
 #[tokio::test]
 async fn streaming_structured_output_without_max_tokens_sends_no_sampling_fields() {
     super::super::support::with_gemini_cassette(

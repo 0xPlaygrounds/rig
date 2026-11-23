@@ -10,7 +10,8 @@ use std::sync::{Arc, Mutex};
 use futures::channel::oneshot;
 use futures::future::Shared;
 use rig_ecs::agent::{AgentId, TurnOutcome};
-use rig_ecs::prelude::{Author, RequestId};
+use rig_ecs::prelude::{Author, RequestId, StopCause};
+use rig_ecs::spawn::AgentSpec;
 use serde_json::{Map, Value};
 use steel::SteelVal;
 use steel::parser::lexer::TokenStream;
@@ -19,10 +20,7 @@ use steel::rerrs::{ErrorKind, SteelErr};
 use steel::steel_vm::builtin::BuiltInModule;
 use steel::steel_vm::engine::Engine;
 
-use crate::{AgentSpec, Control, Harness, MAX_OUTPUT_BYTES, RUN_STEEL, capped, wait};
-
-/// How many host function calls a program may make.
-const MAX_HOST_CALLS: u32 = 1000;
+use crate::{Control, Harness, Limits, RUN_STEEL, capped, wait};
 
 /// Steel's modules that reach the host. Steel's sandboxed engine still
 /// registers some of them for `require-builtin`; each is replaced by an
@@ -74,6 +72,11 @@ const DENIED_PREFIXES: [&str; 3] = ["#", "%", "Engine::"];
 /// prefix keeps it out of the program's reach.
 const OUTPUT_PORT: &str = "#%rig-steel-output";
 
+/// Why an agent function is refused without Subagents.
+const NO_SUBAGENTS: &str = "agents come with the Subagents plugin, which is off; the user turns \
+     it on with `rig plugin enable rig_basics::subagents::SubagentsPlugin`, and it applies after \
+     a restart";
+
 /// Why a host function stops when its call is cancelled.
 const CANCELLED: &str = "the run_steel call was cancelled";
 
@@ -87,7 +90,7 @@ pub(crate) struct Ended {
 
 /// Runs `code` to its end on the calling thread.
 pub(crate) fn run(code: String, host: Host) -> Ended {
-    let printed = Printed::default();
+    let printed = Printed::new(host.limits.max_output_bytes);
     let outcome = run_program(code, host, printed.clone());
     Ended {
         printed: printed.text(),
@@ -117,7 +120,10 @@ fn run_program(code: String, host: Host, printed: Printed) -> Result<String, Str
     let ran = engine.run(code);
     host.control.pause_clock();
     match ran {
-        Ok(values) => Ok(capped(text_of_value(values.last()))),
+        Ok(values) => Ok(capped(
+            text_of_value(values.last()),
+            host.limits.max_output_bytes,
+        )),
         Err(error) => Err(engine
             .raise_error_to_string(error.clone())
             .unwrap_or_else(|| error.to_string())),
@@ -139,7 +145,7 @@ fn refuse_denied(code: &str) -> Result<(), String> {
         if denied {
             return Err(format!(
                 "`{name}` is not available: a {RUN_STEEL} program reaches the host only \
-                 through spawn-agent, send, reply and call-tool. Nothing ran."
+                 through its host functions. Nothing ran."
             ));
         }
     }
@@ -209,32 +215,38 @@ fn options(value: Option<&SteelVal>, what: &str) -> Result<Map<String, Value>, S
     }
 }
 
-/// Binds the host functions in `engine`, each to one [`Host`] method.
+/// Binds the host functions in `engine`, each to one [`Host`] method; the
+/// agent functions refuse every call when the host has no agents.
 fn register_host_functions(engine: &mut Engine, host: &Arc<Host>) {
-    let functions: [(&'static str, HostFunction); 4] = [
-        ("spawn-agent", |host, args| match args {
+    let functions: [(&'static str, bool, HostFunction); 4] = [
+        ("spawn-agent", true, |host, args| match args {
             [name] => host.spawn_agent(name, None),
             [name, options] => host.spawn_agent(name, Some(options)),
             _ => Err("expects a name and optionally an options hash".to_owned()),
         }),
-        ("send", |host, args| match args {
+        ("send", true, |host, args| match args {
             [agent, text] => host.send(agent, text),
             _ => Err("expects an agent id and a text".to_owned()),
         }),
-        ("reply", |host, args| match args {
+        ("reply", true, |host, args| match args {
             [request] => host.reply(request),
             _ => Err("expects a request id".to_owned()),
         }),
-        ("call-tool", |host, args| match args {
+        ("call-tool", false, |host, args| match args {
             [name] => host.call_tool(name, None),
             [name, args] => host.call_tool(name, Some(args)),
             _ => Err("expects a tool name and optionally an args hash".to_owned()),
         }),
     ];
-    for (name, function) in functions {
+    for (name, agent, function) in functions {
         let host = host.clone();
         let bound = move |args: &[SteelVal]| {
-            host.count_call()
+            let allowed = if agent && !host.agents {
+                Err(NO_SUBAGENTS.to_owned())
+            } else {
+                host.count_call()
+            };
+            allowed
                 .and_then(|()| function(&host, args))
                 .map_err(|why| SteelErr::new(ErrorKind::Generic, format!("{name}: {why}")))
         };
@@ -252,6 +264,8 @@ pub(crate) struct Host {
     harness: Harness,
     /// The calling agent.
     me: AgentId,
+    /// Whether the agent functions work: Subagents is on.
+    agents: bool,
     /// The `run_steel` call's id, which prefixes the ids of its requests.
     call: String,
     /// The execution clock and the interrupt switch.
@@ -260,6 +274,8 @@ pub(crate) struct Host {
     cancelled: Shared<oneshot::Receiver<()>>,
     /// How many host functions the program called.
     calls: AtomicU32,
+    /// The bounds it runs within.
+    limits: Limits,
     /// How many requests it sent, which numbers their ids.
     sent: AtomicU32,
     /// The agents it spawned, which `send` reaches.
@@ -269,30 +285,28 @@ pub(crate) struct Host {
 impl Host {
     pub(crate) fn new(
         harness: Harness,
-        me: AgentId,
-        call: String,
+        (me, call, agents): (AgentId, String, bool),
         control: Arc<Control>,
         cancelled: Shared<oneshot::Receiver<()>>,
+        limits: Limits,
     ) -> Self {
         Self {
             harness,
             me,
+            agents,
             call,
             control,
             cancelled,
             calls: AtomicU32::new(0),
+            limits,
             sent: AtomicU32::new(0),
             spawned: Mutex::new(Vec::new()),
         }
     }
 
     fn count_call(&self) -> Result<(), String> {
-        if self.calls.fetch_add(1, Ordering::Relaxed) >= MAX_HOST_CALLS {
-            return Err(format!(
-                "the program made more than {MAX_HOST_CALLS} host function calls"
-            ));
-        }
-        Ok(())
+        let made = self.calls.fetch_add(1, Ordering::Relaxed);
+        self.limits.call(made)
     }
 
     /// Waits for a [`Harness`] call on this thread.
@@ -366,12 +380,10 @@ impl Host {
                 message.final_answer().unwrap_or_default().into(),
             )),
             TurnOutcome::Failed(why) => Err(format!("the agent's turn failed: {why}")),
-            TurnOutcome::Stopped(None) => {
-                Err("the agent was stopped before it answered".to_owned())
-            }
-            TurnOutcome::Stopped(Some(why)) => {
-                Err(format!("the agent was stopped before it answered: {why}"))
-            }
+            TurnOutcome::Stopped(stop) => match stop.cause() {
+                StopCause::User => Err("the agent was stopped before it answered".to_owned()),
+                cause => Err(format!("the agent was stopped before it answered: {cause}")),
+            },
         }
     }
 
@@ -390,10 +402,7 @@ impl Host {
             .output()
             .as_content()
             .iter()
-            .map(|item| match item.as_json() {
-                Some(value) => value.to_string(),
-                None => item.as_text().unwrap_or("[image]").to_owned(),
-            })
+            .map(|item| item.to_text("[image]"))
             .collect::<Vec<_>>()
             .join("\n");
         if !result.is_success() {
@@ -404,26 +413,45 @@ impl Host {
     }
 }
 
-/// The program's output port: keeps the first [`MAX_OUTPUT_BYTES`] bytes
-/// written to it and drops the rest.
-#[derive(Clone, Default)]
+/// The program's output port: keeps the first [`Limits::max_output_bytes`]
+/// bytes written to it and drops the rest.
+#[derive(Clone)]
 struct Printed(Arc<Mutex<PrintedBytes>>);
 
-#[derive(Default)]
 struct PrintedBytes {
     bytes: Vec<u8>,
+    most: usize,
     cut: bool,
 }
 
 impl Printed {
+    fn new(most: usize) -> Self {
+        let bytes = PrintedBytes {
+            bytes: Vec::new(),
+            most,
+            cut: false,
+        };
+        Self(Arc::new(Mutex::new(bytes)))
+    }
+
     fn text(&self) -> String {
         let Ok(printed) = self.0.lock() else {
             return String::new();
         };
-        let mut text = String::from_utf8_lossy(&printed.bytes).into_owned();
+        let mut bytes = printed.bytes.as_slice();
+        // The cap can split the last character: drop only that incomplete tail.
+        if printed.cut
+            && let Some(lead) = bytes.iter().rposition(|byte| byte & 0xC0 != 0x80)
+            && let Some((whole, tail)) = bytes.split_at_checked(lead)
+            && std::str::from_utf8(tail).is_err_and(|error| error.error_len().is_none())
+        {
+            bytes = whole;
+        }
+        let mut text = String::from_utf8_lossy(bytes).into_owned();
         if printed.cut {
             text.push_str(&format!(
-                "\n[printed output cut at {MAX_OUTPUT_BYTES} bytes]"
+                "\n[printed output cut at {} bytes (`[steel] max_output_bytes`)]",
+                printed.most
             ));
         }
         text
@@ -433,7 +461,7 @@ impl Printed {
 impl Write for Printed {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         if let Ok(mut printed) = self.0.lock() {
-            let room = MAX_OUTPUT_BYTES.saturating_sub(printed.bytes.len());
+            let room = printed.most.saturating_sub(printed.bytes.len());
             printed.bytes.extend(buf.iter().take(room));
             if buf.len() > room {
                 printed.cut = true;

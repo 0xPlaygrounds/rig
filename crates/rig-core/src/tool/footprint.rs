@@ -39,12 +39,11 @@ pub enum Touches {
 /// What a footprint names: these paths (absolute; a directory covers what
 /// is under it), or anything at all. A guard compares paths as they are,
 /// so a host makes a footprint [`normalized`](Touches::normalized) before
-/// any guard sees it; the rig kernel does so for every tool call.
+/// any guard sees it, for every tool call.
 ///
 /// Normalizing folds `.` and `..` by the text alone and follows no link,
 /// so a tool declares canonical paths: the files it will open once links
-/// are resolved, as rig-tools' file tools do through their workspace's
-/// `canonical`. A guard that must not be fooled by a link a tool did not
+/// are resolved. A guard that must not be fooled by a link a tool did not
 /// resolve canonicalizes the paths it compares itself.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -107,6 +106,14 @@ fn normal(path: PathBuf) -> Option<PathBuf> {
     Some(normal)
 }
 
+impl Default for Touches {
+    /// `Writes(Anything)`: a tool that declares nothing may change
+    /// anything, so its calls wait for, and hold back, every other.
+    fn default() -> Self {
+        Self::Writes(Scope::Anything)
+    }
+}
+
 impl Touches {
     /// Whether a call touching `self` must not run beside one touching
     /// `other`: one of them writes what the other reads or writes.
@@ -115,6 +122,17 @@ impl Touches {
         let (ours, we_write) = self.parts();
         let (theirs, they_write) = other.parts();
         (we_write || they_write) && ours.overlaps(theirs)
+    }
+
+    /// Whether a call touching `self` waits, before it starts, for any of
+    /// `earlier`: the calls before it in its reply that are not settled,
+    /// held ones included, so a call is never overtaken by one it
+    /// conflicts with. A call that declared nothing counts as
+    /// [`Touches::default`].
+    pub fn must_wait<'a>(&self, earlier: impl IntoIterator<Item = &'a Touches>) -> bool {
+        earlier
+            .into_iter()
+            .any(|before| self.conflicts_with(before))
     }
 
     /// Whether it only reads: [`Reads`](Self::Reads), and nothing else.
@@ -138,7 +156,7 @@ impl Touches {
     pub fn from_annotations(annotations: &ToolAnnotations) -> Self {
         match annotations.read_only() {
             true => Self::Reads(Scope::Anything),
-            false => Self::Writes(Scope::Anything),
+            false => Self::default(),
         }
     }
 
@@ -151,7 +169,7 @@ impl Touches {
     pub fn from_hints(annotations: &ToolAnnotations) -> Self {
         match annotations.read_only() {
             true => Self::Independent,
-            false => Self::Writes(Scope::Anything),
+            false => Self::default(),
         }
     }
 

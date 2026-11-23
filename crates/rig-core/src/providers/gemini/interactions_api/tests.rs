@@ -518,18 +518,16 @@ async fn a_polled_interaction_folds_its_steps_and_keeps_the_document() {
     assert_eq!(response.raw["status"], "completed");
 }
 
-/// Interactions has no payload projector, yet its usage is observed: the
-/// driver observes it once, from the usage the decoder normalized.
+/// An interaction's reply carries the usage the decoder normalized.
 #[tokio::test]
-async fn an_interaction_observes_its_usage_once() {
-    let (observed, usage) = crate::driver::tests::observed_usage(
+async fn an_interaction_reports_its_usage() {
+    let usage = crate::driver::tests::reply_usage(
         interactions_wire(),
         RecordingHttpClient::new(UNARY_INTERACTION),
         Mode::Unary,
     )
     .await;
     assert!(usage.input_tokens.is_some(), "{usage:?}");
-    assert_eq!(observed, [crate::wire::AdapterUsage::from(&usage)]);
 }
 
 /// Every `data` string in `value`, in document order.
@@ -587,7 +585,7 @@ fn a_string_source_is_the_same_inline_data_on_both_gemini_wires() -> anyhow::Res
                     media_type: Some(message::ImageMediaType::PNG),
                     ..message::Image::default()
                 }),
-                message::UserContent::Document(message::Document {
+                message::UserContent::Document(message::DocumentContent {
                     data: message::DocumentSourceKind::base64(pdf).into(),
                     media_type: Some(message::DocumentMediaType::PDF),
                     additional_params: None,
@@ -656,4 +654,17 @@ fn a_resume_keeps_the_facts_it_is_given() {
             .and_then(|spec| spec.max_output_tokens),
         Some(1_234)
     );
+}
+
+#[test]
+fn resume_refuses_an_id_that_retargets_the_path() {
+    let gemini = crate::providers::gemini::GeminiConfig::new("test-key");
+    for id in ["../cachedContents/abc", "abc?alt=json", "a/b", "abc#frag"] {
+        let encoded = InteractionResume::new(gemini.clone(), id).encode(probe(), Mode::Unary);
+        assert!(
+            encoded.is_err(),
+            "id `{id}` encoded to {:?}",
+            encoded.as_ref().map(|e| e.request.uri().to_string())
+        );
+    }
 }

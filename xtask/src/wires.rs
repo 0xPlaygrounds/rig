@@ -1,22 +1,13 @@
 //! `check-wires`: inside `crates/rig-core/src/providers/`, everything is a
-//! wire.
-//!
-//! A wire is data plus an encoder and a decoder, which keeps providers testable
+//! wire: data plus an encoder and a decoder, which keeps providers testable
 //! from bytes and independent of the host's I/O.
 //!
-//! The rules, each with the failure it prevents:
-//!
-//! | rule | what it prevents |
-//! |---|---|
-//! | no `.await`, `async fn`, or `async` block | a provider owning its transport |
-//! | no `Arc`, `Box<dyn`, or `impl Future` in an `impl Wire` block | a wire that is not data |
-//! | no `struct`/`enum` parameter bounded by `HttpClientExt` or defaulted to `DynHttpClient` | the transport parameter returning |
-//! | no `Transport` impl | a provider owning how its payloads are sent |
-//!
-//! `openai/responses_api/websocket.rs` is exempt because a session spans many
-//! turns over one connection rather than a single exchange. The credential
-//! exchanges named in [`CREDENTIAL_EXCHANGES`] are exempt from the `async` rules
-//! only.
+//! The check rejects `.await`, `async fn` and `async` blocks; `Arc`, `Box<dyn`
+//! and `impl Future` in an `impl Wire` block; a `struct` or `enum` parameter
+//! bounded by `HttpClientExt` or defaulted to `DynHttpClient`; and any
+//! `Transport` impl. `openai/responses_api/websocket.rs` is exempt because a
+//! session spans many turns over one connection, and the credential exchanges
+//! named in [`CREDENTIAL_EXCHANGES`] are exempt from the `async` rules only.
 //!
 //! Source is parsed with `syn`, so awaits in comments or strings cannot trip the
 //! check and an unparsable file is an error. Because `syn` does not descend into
@@ -51,9 +42,12 @@ const CREDENTIAL_EXCHANGES: &[&str] = &[
     "chatgpt/auth/mod.rs",
     "chatgpt/auth/native.rs",
     // The request/send helpers both exchanges round-trip through.
-    "internal/auth.rs",
+    "auth.rs",
     // The token stores both exchanges keep their credentials in.
-    "internal/auth/store.rs",
+    "auth/store.rs",
+    // The browser sign-in's loopback listener: its socket is served on a
+    // thread of its own, and only the wait for the returned code is async.
+    "auth/loopback.rs",
 ];
 
 /// Run the check over `crates/rig-core/src/providers/`.
@@ -215,7 +209,7 @@ fn is_transport_parameter(parameter: &syn::TypeParam, generics: &syn::Generics) 
         || parameter
             .default
             .as_ref()
-            .is_some_and(|default| source_text(default).contains("DynHttpClient"))
+            .is_some_and(|(_, default)| source_text(default).contains("DynHttpClient"))
 }
 
 impl<'ast> Visit<'ast> for Wires {
@@ -260,7 +254,7 @@ impl<'ast> Visit<'ast> for Wires {
         let implemented = item
             .trait_
             .as_ref()
-            .and_then(|(_, path, _)| path.segments.last())
+            .and_then(|(path, _)| path.segments.last())
             .map(|segment| segment.ident.to_string());
 
         if let Some(name) = &implemented {

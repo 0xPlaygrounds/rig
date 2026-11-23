@@ -2,11 +2,9 @@
 //!
 //! These are the tests that used to live per provider or in
 //! `http_client/sse/tests.rs`: the non-success funnel's four cells, the
-//! observation fact order, the connect-error-is-the-only-item rule, paging,
-//! and the property the whole model exists for — a unary reply and a
-//! streamed reply of the same content fold to the same response.
-
-use std::sync::Arc;
+//! connect-error-is-the-only-item rule, paging, and the property the whole
+//! model exists for: a unary reply and a streamed reply of the same content
+//! fold to the same response.
 
 use bytes::Bytes;
 use futures::StreamExt;
@@ -17,7 +15,6 @@ use crate::completion::CompletionRequest;
 use crate::error::{EncodeError, ProviderError};
 use crate::http_client::framing::Framing;
 use crate::message::{CallId, ToolName};
-use crate::observe::{AdapterContext, AdapterVerdict, ObservationLog, Subject};
 use crate::operation::{Block, Completion, Finish};
 use crate::streaming::Streamed;
 use crate::test_utils::{
@@ -25,8 +22,7 @@ use crate::test_utils::{
     RecordingHttpClient, SequencedHttpClient, SilentStreamingClient, TraceCapture,
 };
 use crate::wire::{
-    Body, Decoder, Descriptor, Encoded, Flow, Mode, ObservationSink, Out, Wire, WireEvent,
-    WireFrame,
+    Body, Decoder, Descriptor, Encoded, Flow, Mode, Out, Wire, WireEvent, WireFrame,
 };
 
 /// Fold one reply of `wire` over `http`.
@@ -34,17 +30,12 @@ pub(crate) async fn call<W, H>(
     wire: &W,
     http: &H,
     request: crate::wire::Request<W>,
-    context: Option<AdapterContext>,
 ) -> Result<crate::wire::Response<W>, ProviderError>
 where
     W: Wire,
     H: Transport<W>,
 {
-    let model = Model::new(wire.clone(), http.clone());
-    match context {
-        Some(context) => model.call_observed(request, context).await,
-        None => model.call(request).await,
-    }
+    Model::new(wire.clone(), http.clone()).call(request).await
 }
 
 /// One streamed reply of `wire` over `http`.
@@ -52,60 +43,39 @@ pub(crate) fn stream<W, H>(
     wire: &W,
     http: &H,
     request: crate::wire::Request<W>,
-    context: Option<AdapterContext>,
 ) -> Result<Streamed<W::Op>, ProviderError>
 where
     W: Wire,
     H: Transport<W>,
 {
-    let model = Model::new(wire.clone(), http.clone());
-    match context {
-        Some(context) => model.stream_observed(request, context),
-        None => model.stream(request),
-    }
+    Model::new(wire.clone(), http.clone()).stream(request)
 }
 
-/// One observed reply of `wire` over `http` in `mode`: the usage
-/// observations it emitted, in order, and the response's usage.
+/// The usage of one reply of `wire` over `http` in `mode`.
 ///
 /// # Panics
 ///
 /// When the reply does not fold.
-pub(crate) async fn observed_usage<W, T>(
+pub(crate) async fn reply_usage<W, T>(
     wire: W,
     http: T,
     mode: crate::wire::Mode,
-) -> (Vec<crate::observe::AdapterUsage>, crate::completion::Usage)
+) -> crate::completion::Usage
 where
     W: crate::wire::Wire<Op = crate::operation::Completion>,
     T: Transport<W>,
 {
-    use crate::observe::{Action, AdapterContext, AdapterEvent, ObservationLog, Subject};
-    let log = std::sync::Arc::new(ObservationLog::default());
-    let context = AdapterContext::new(log.clone(), Subject::default(), "call");
     let model = Model::new(wire, http);
     let request = crate::completion::CompletionRequest::new("hi");
     let response = match mode {
-        crate::wire::Mode::Unary => model.call_observed(request, context).await,
-        crate::wire::Mode::Streaming => match model.stream_observed(request, context) {
+        crate::wire::Mode::Unary => model.call(request).await,
+        crate::wire::Mode::Streaming => match model.stream(request) {
             Ok(stream) => stream.finish().await,
             Err(error) => Err(error),
         },
     }
     .unwrap_or_else(|error| panic!("the reply folds: {error}"));
-    let observed = log
-        .trace()
-        .observations
-        .iter()
-        .filter_map(|observation| match &observation.action {
-            Action::Adapter { observation } => match &observation.event {
-                AdapterEvent::Usage { usage } => Some(usage.clone()),
-                _ => None,
-            },
-            _ => None,
-        })
-        .collect();
-    (observed, response.usage)
+    response.usage
 }
 
 // ── the fake completion wire ────────────────────────────────────────────
@@ -245,21 +215,6 @@ impl<'id> EchoDecoder<'id> {
     }
 }
 
-impl EchoDecoder<'_> {
-    fn project(payload: &[u8], sink: &mut ObservationSink<'_>) {
-        if serde_json::from_slice::<serde_json::Value>(payload).is_err() {
-            return;
-        }
-        sink.provider(
-            AdapterVerdict {
-                model: Some(sink.scrub("echo-1")),
-                ..AdapterVerdict::default()
-            },
-            None,
-        );
-    }
-}
-
 impl crate::completion::ReplayTarget for Echo {
     fn map_options(
         &self,
@@ -357,9 +312,8 @@ impl Wire for Echo {
         }))?;
         let request =
             http::Request::post("https://echo.invalid/v1/messages").body(Body::Bytes(body))?;
-        let encoded = Encoded::new(request, self.framing)
-            .with_request_id_header(self.request_id_header)
-            .with_projection(EchoDecoder::project);
+        let encoded =
+            Encoded::new(request, self.framing).with_request_id_header(self.request_id_header);
         Ok(if self.relaxed_content_type {
             encoded.with_relaxed_content_type()
         } else {
@@ -393,7 +347,7 @@ async fn a_unary_reply_that_is_not_the_event_stream_it_asked_for_fails_the_call(
         r#"{"error":"this endpoint speaks JSON"}"#,
         "application/json",
     )]);
-    let error = call(&Echo::sse_unary(), &http, prompt(), None)
+    let error = call(&Echo::sse_unary(), &http, prompt())
         .await
         .expect_err("a JSON reply to an SSE wire is the wrong endpoint");
     assert!(
@@ -408,7 +362,7 @@ async fn a_unary_reply_that_is_not_the_event_stream_it_asked_for_fails_the_call(
 async fn a_relaxed_wire_still_reads_a_unary_reply_that_names_no_content_type() {
     let http =
         SequencedHttpClient::new([MockHttpResponse::success(format!("data: {UNARY_BODY}\n\n"))]);
-    let response = call(&Echo::sse_unary().relaxed(), &http, prompt(), None)
+    let response = call(&Echo::sse_unary().relaxed(), &http, prompt())
         .await
         .expect("the reply decodes");
     assert_eq!(text_of(&response), Some("hi there"));
@@ -429,7 +383,7 @@ async fn a_non_success_streaming_response_is_rejected_as_the_streams_only_item()
         headers,
         body: Bytes::from_static(b"{\"error\":\"down\"}"),
     };
-    let frames = stream(&Echo::streaming(), &http, prompt(), None).expect("the stream opens");
+    let frames = stream(&Echo::streaming(), &http, prompt()).expect("the stream opens");
     let items: Vec<_> = frames.collect().await;
     assert_eq!(items.len(), 1, "nothing follows the rejection: {items:?}");
     let error = items
@@ -472,6 +426,30 @@ impl Transport<Echo> for Broken {
             ))])
             .collect::<Vec<_>>();
         super::Opening::ready(super::Opened::new(futures::stream::iter(frames)))
+    }
+}
+
+/// A transport whose reply opens `opens_after` it is sent, then sends
+/// `frame` `gap` later, then nothing more, without ending.
+#[derive(Clone)]
+struct LateOpening {
+    opens_after: std::time::Duration,
+    gap: std::time::Duration,
+    frame: &'static str,
+}
+
+impl Transport<Echo> for LateOpening {
+    fn send(&self, _payload: Encoded, _exchange: super::Exchange) -> super::Opening<WireFrame> {
+        let (opens_after, gap, frame) = (self.opens_after, self.gap, self.frame);
+        super::Opening::new(async move {
+            tokio::time::sleep(opens_after).await;
+            let frames = futures::stream::once(async move {
+                tokio::time::sleep(gap).await;
+                Ok(WireFrame::Text(frame.to_owned()))
+            })
+            .chain(futures::stream::pending());
+            Ok(super::Opened::new(frames))
+        })
     }
 }
 
@@ -535,44 +513,18 @@ async fn a_streamed_reply_that_falls_silent_stalls() {
     }
 }
 
-/// An event stream that sends only comments for longer than the idle
-/// timeout, as a provider pings while its model thinks, does not stall.
+/// An event stream that sends only comments, as a provider pings while it
+/// sends nothing, stalls an idle timeout after it opened, however often it
+/// pings.
 #[tokio::test]
-async fn comments_keep_a_streamed_reply_from_stalling() {
-    let idle = std::time::Duration::from_millis(200);
-    let pinging = PacedStreamingClient {
-        chunks: vec![
-            ": ping\n\n",
-            ": ping\n\n",
-            ": ping\n\n",
-            ": ping\n\n",
-            ": ping\n\n",
-            ": ping\n\n",
-            "data: {\"type\":\"delta\",\"text\":\"hi\"}\n\n\
-             data: {\"type\":\"stop\",\"usage\":{\"output_tokens\":1}}\n\n",
-        ],
-        gap: idle / 4,
-    };
-    let response = Model::new(Echo::streaming(), pinging)
-        .with_idle_timeout(Some(idle))
-        .stream(prompt())
-        .expect("the stream opens")
-        .finish()
-        .await;
-    assert!(response.is_ok(), "a pinging reply ends: {response:?}");
-}
-
-/// A reply that pings once and then falls silent stalls the idle timeout
-/// after the ping, not a whole timeout after the timer next looked.
-#[tokio::test]
-async fn a_ping_then_silence_stalls_an_idle_timeout_after_the_ping() {
+async fn comments_alone_stall_a_streamed_reply() {
     let idle = std::time::Duration::from_millis(400);
-    let once = PacedStreamingClient {
-        chunks: vec![": ping\n\n"],
-        gap: idle / 4,
+    let pinging = PacedStreamingClient {
+        chunks: vec![": keep-alive\n\n"; 64],
+        gap: idle / 8,
     };
     let started = std::time::Instant::now();
-    let stalled = Model::new(Echo::streaming(), once)
+    let stalled = Model::new(Echo::streaming(), pinging)
         .with_idle_timeout(Some(idle))
         .stream(prompt())
         .expect("the stream opens")
@@ -580,21 +532,61 @@ async fn a_ping_then_silence_stalls_an_idle_timeout_after_the_ping() {
         .await;
     let took = started.elapsed();
     assert!(
-        matches!(stalled, Err(ProviderError::Stalled(_))),
-        "a silent reply stalls: {stalled:?}"
+        matches!(stalled, Err(ProviderError::Stalled(after)) if after == idle),
+        "a reply of comments stalls: {stalled:?}"
     );
-    // The ping at 100 ms moves the stall to about 500 ms; timing from the
-    // timer's next look would take 800 ms.
+    assert!(took < idle * 2, "stalled {took:?} after it opened");
+}
+
+/// A reply that sends a frame now and then, each within the idle timeout,
+/// never stalls, however long it runs in all and whatever comes between.
+#[tokio::test]
+async fn frames_within_the_idle_timeout_never_stall() {
+    let idle = std::time::Duration::from_millis(200);
+    let mut chunks = Vec::new();
+    for _ in 0..6 {
+        chunks.push(": keep-alive\n\n");
+        chunks.push("data: {\"type\":\"delta\",\"text\":\"hi\"}\n\n");
+    }
+    chunks.push("data: {\"type\":\"stop\",\"usage\":{\"output_tokens\":1}}\n\n");
+    let trickle = PacedStreamingClient {
+        chunks,
+        gap: idle / 6,
+    };
+    let response = Model::new(Echo::streaming(), trickle)
+        .with_idle_timeout(Some(idle))
+        .stream(prompt())
+        .expect("the stream opens")
+        .finish()
+        .await;
+    assert!(response.is_ok(), "a trickling reply ends: {response:?}");
+}
+
+/// Opening a reply and its first frame share one idle timeout: a reply that
+/// opens late and sends its first frame as late again stalls.
+#[tokio::test]
+async fn opening_and_the_first_frame_share_the_idle_timeout() {
+    let idle = std::time::Duration::from_millis(400);
+    let late = LateOpening {
+        opens_after: idle * 3 / 4,
+        gap: idle * 3 / 4,
+        frame: r#"{"type":"delta","text":"hi"}"#,
+    };
+    let mut stream = Model::new(Echo::streaming(), late)
+        .with_idle_timeout(Some(idle))
+        .stream(prompt())
+        .expect("the stream opens");
+    let first = stream.next().await;
     assert!(
-        took < idle + idle * 3 / 4,
-        "stalled {took:?} after it opened"
+        matches!(first, Some(Err(ProviderError::Stalled(after))) if after == idle),
+        "a late first frame stalls: {first:?}"
     );
 }
 
 /// A reader that pauses between frames does not move the stall: it comes
-/// the idle timeout after the last bytes, however long the reader took.
+/// the idle timeout after the last frame, however long the reader took.
 #[tokio::test]
-async fn a_slow_reader_stalls_an_idle_timeout_after_the_last_bytes() {
+async fn a_slow_reader_stalls_an_idle_timeout_after_the_last_frame() {
     let idle = std::time::Duration::from_millis(400);
     let once = PacedStreamingClient {
         chunks: vec!["data: {\"type\":\"delta\",\"text\":\"hi\"}\n\n"],
@@ -619,9 +611,9 @@ async fn a_slow_reader_stalls_an_idle_timeout_after_the_last_bytes() {
         matches!(last, Some(Err(ProviderError::Stalled(_)))),
         "a silent reply stalls: {last:?}"
     );
-    // The bytes came at once, so the stall is due at about 400 ms; timing
+    // The frame came at once, so the stall is due at about 400 ms; timing
     // from when the reader came back would take 700 ms.
-    assert!(took < idle + idle / 2, "stalled {took:?} after the bytes");
+    assert!(took < idle + idle / 2, "stalled {took:?} after the frame");
 }
 
 /// An idle timeout longer than a browser's timer takes waits indefinitely,
@@ -643,16 +635,13 @@ async fn an_idle_timeout_past_the_timer_waits_indefinitely() {
     assert!(response.is_ok(), "the reply ends: {response:?}");
 }
 
-/// A streamed reply that never opens stalls too, and its attempt ends on
-/// the stall, not as dropped.
+/// A streamed reply that never opens stalls too.
 #[tokio::test]
-async fn a_reply_that_never_opens_ends_its_attempt_on_the_stall() {
-    use crate::observe::{Action, AdapterEnding, AdapterEvent};
+async fn a_reply_that_never_opens_stalls() {
     let idle = std::time::Duration::from_millis(100);
-    let (log, context) = observed();
     let stalled = match Model::new(Echo::streaming(), SilentStreamingClient)
         .with_idle_timeout(Some(idle))
-        .stream_observed(prompt(), context)
+        .stream(prompt())
     {
         Ok(stream) => stream.finish().await,
         Err(error) => Err(error),
@@ -660,28 +649,6 @@ async fn a_reply_that_never_opens_ends_its_attempt_on_the_stall() {
     assert!(
         matches!(stalled, Err(ProviderError::Stalled(after)) if after == idle),
         "a reply that never opens stalls: {stalled:?}"
-    );
-    let endings: Vec<AdapterEnding> = log
-        .trace()
-        .observations
-        .iter()
-        .filter_map(|observation| match &observation.action {
-            Action::Adapter { observation } => match &observation.event {
-                AdapterEvent::Finished { ending } => Some(ending.clone()),
-                _ => None,
-            },
-            _ => None,
-        })
-        .collect();
-    assert!(
-        matches!(
-            endings.as_slice(),
-            [AdapterEnding::Error {
-                retryable: true,
-                ..
-            }]
-        ),
-        "the attempt ends once, on the stall: {endings:?}"
     );
 }
 
@@ -755,32 +722,6 @@ async fn a_stream_the_caller_stopped_polling_records_no_raw() {
     assert!(stream.partial().raw.is_null());
 }
 
-// ── observation ────────────────────────────────────────────────────────
-
-fn observed() -> (Arc<ObservationLog>, AdapterContext) {
-    let log = Arc::new(ObservationLog::with_capacity(64));
-    let context = AdapterContext::new(log.clone(), Subject::default(), "driver-test".to_owned());
-    (log, context)
-}
-
-/// The names of the adapter events a trace recorded, in order.
-fn events(log: &ObservationLog) -> Vec<String> {
-    log.trace()
-        .observations
-        .iter()
-        .filter_map(|observation| match &observation.action {
-            crate::observe::Action::Adapter { observation } => Some(
-                serde_json::to_value(&observation.event)
-                    .ok()?
-                    .get("event")?
-                    .as_str()?
-                    .to_owned(),
-            ),
-            _ => None,
-        })
-        .collect()
-}
-
 /// A tool call whose input is not JSON never fails the reply: the call is
 /// kept with its raw text, in both modes.
 #[tokio::test]
@@ -788,7 +729,7 @@ async fn a_malformed_tool_input_is_kept_with_its_raw_text() {
     let http = RecordingHttpClient::new(
         r#"{"type":"tool","name":"add","arguments":"{not json","usage":{"output_tokens":1}}"#,
     );
-    let response = call(&Echo::unary(), &http, prompt(), None)
+    let response = call(&Echo::unary(), &http, prompt())
         .await
         .expect("a malformed call does not fail the reply");
     let call_of = |response: &crate::completion::CompletionResponse| {
@@ -822,110 +763,26 @@ async fn a_malformed_tool_input_is_kept_with_its_raw_text() {
     assert_eq!(call_of(&streamed), call_of(&response));
 }
 
+/// A reply's usage is the usage the decoder normalized into its end,
+/// unary or streamed.
 #[tokio::test]
-async fn a_failed_unary_call_projects_the_reply_it_failed_on() {
-    let (log, context) = observed();
-    let http = RecordingHttpClient::with_error_response(
-        http::StatusCode::BAD_REQUEST,
-        r#"{"usage":{"output_tokens":0}}"#,
-    );
-    call(&Echo::unary(), &http, prompt(), Some(context))
-        .await
-        .expect_err("a 400 fails the call");
-    let events = events(&log);
-    assert!(
-        events.contains(&"provider".to_owned()),
-        "the failed reply's facts are still projected: {events:?}"
-    );
-    assert_eq!(events.last().map(String::as_str), Some("finished"));
-}
-
-/// The driver observes a reply's usage once, when it ends, from the usage
-/// the decoder normalized into its end: unary or streamed, it is the
-/// response's usage, with no invented total.
-#[tokio::test]
-async fn a_reply_observes_its_finish_usage_once() {
+async fn a_reply_reports_its_finish_usage() {
     let streamed = MockStreamingClient {
         sse_bytes: Bytes::from_static(
             b"data: {\"type\":\"delta\",\"text\":\"hi\"}\n\n\
               data: {\"type\":\"stop\",\"usage\":{\"output_tokens\":3}}\n\n",
         ),
     };
-    for (observed, usage) in [
-        crate::driver::tests::observed_usage(
+    for usage in [
+        reply_usage(
             Echo::unary(),
             RecordingHttpClient::new(UNARY_BODY),
             Mode::Unary,
         )
         .await,
-        crate::driver::tests::observed_usage(Echo::streaming(), streamed, Mode::Streaming).await,
+        reply_usage(Echo::streaming(), streamed, Mode::Streaming).await,
     ] {
-        let expected = crate::observe::AdapterUsage {
-            output_tokens: Some(3),
-            ..Default::default()
-        };
-        assert_eq!(observed, std::slice::from_ref(&expected));
-        assert_eq!(expected, crate::observe::AdapterUsage::from(&usage));
-    }
-}
-
-/// A stream that carries usage and then fails has no end, so it observes
-/// no usage, and its attempt closes on the failure, not as `Terminal`.
-/// Before usage was observed from the end, the raw-bytes projector reported
-/// the failing stream's usage frame.
-#[tokio::test]
-async fn a_failed_stream_observes_no_usage() {
-    use crate::observe::{Action, AdapterEnding, AdapterEvent};
-    // Each frame carries usage the old projector would have reported.
-    let usage_frame =
-        "data: {\"type\":\"delta\",\"text\":\"hi\",\"usage\":{\"output_tokens\":3}}\n\n";
-    let in_band =
-        format!("{usage_frame}data: {{\"type\":\"error\",\"message\":\"overloaded\"}}\n\n");
-    for (sse, ended) in [
-        (
-            in_band,
-            (|ending: &AdapterEnding| matches!(ending, AdapterEnding::Error { .. }))
-                as fn(&AdapterEnding) -> bool,
-        ),
-        (usage_frame.to_owned(), |ending| {
-            matches!(ending, AdapterEnding::Eof { after: 1 })
-        }),
-    ] {
-        let (log, context) = observed();
-        let http = MockStreamingClient {
-            sse_bytes: Bytes::from(sse),
-        };
-        let result = match Model::new(Echo::streaming(), http).stream_observed(prompt(), context) {
-            Ok(stream) => stream.finish().await,
-            Err(error) => Err(error),
-        };
-        assert!(result.is_err(), "the stream fails");
-        let adapter: Vec<AdapterEvent> = log
-            .trace()
-            .observations
-            .iter()
-            .filter_map(|observation| match &observation.action {
-                Action::Adapter { observation } => Some(observation.event.clone()),
-                _ => None,
-            })
-            .collect();
-        assert!(
-            !adapter
-                .iter()
-                .any(|event| matches!(event, AdapterEvent::Usage { .. })),
-            "a failed stream observes no usage: {adapter:?}"
-        );
-        let endings: Vec<&AdapterEnding> = adapter
-            .iter()
-            .filter_map(|event| match event {
-                AdapterEvent::Finished { ending } => Some(ending),
-                _ => None,
-            })
-            .collect();
-        assert!(
-            matches!(endings.as_slice(), [ending] if ended(ending)),
-            "the attempt closes once, on the failure: {endings:?}"
-        );
+        assert_eq!(usage.output_tokens, Some(3), "{usage:?}");
     }
 }
 
@@ -1044,7 +901,7 @@ fn a_stream_the_driver_cannot_send_is_a_request_failure() {
 
     let http = crate::test_utils::RecordingHttpClient::new("");
     let items: Vec<_> = futures::executor::block_on(
-        stream(&Multipart, &http, prompt(), None)
+        stream(&Multipart, &http, prompt())
             .expect("the request encodes")
             .collect::<Vec<_>>(),
     );
@@ -1056,53 +913,132 @@ fn a_stream_the_driver_cannot_send_is_a_request_failure() {
         "RequestError: a multipart request cannot open a streamed reply"
     );
     assert_eq!(error.kind(), crate::error::ErrorKind::Request);
-    assert_eq!(
-        error.boundary(),
-        crate::observe::AdapterErrorBoundary::Request
-    );
     assert!(!error.is_retryable());
     assert!(http.requests().is_empty(), "nothing was sent");
 }
 
 // ── request validation ─────────────────────────────────────────────────
 
-/// An erased model observed under a context records the adapter events the
-/// model it was made from records, called or streamed.
-#[tokio::test]
-async fn an_erased_model_is_observed_as_the_model_it_was_made_from() {
-    let reply = r#"{"type":"text","text":"hi","usage":{"output_tokens":1}}"#;
-    let direct = {
-        let (log, context) = observed();
-        let _ = Model::new(Echo::unary(), RecordingHttpClient::new(reply))
-            .call_observed(prompt(), context)
-            .await;
-        events(&log)
-    };
-    let erased = {
-        let (log, context) = observed();
-        let _ = Model::new(Echo::unary(), RecordingHttpClient::new(reply))
-            .erase()
-            .call_observed(prompt(), context)
-            .await;
-        events(&log)
-    };
-    assert!(!direct.is_empty(), "the direct call is observed");
-    assert_eq!(direct, erased);
+// ── unfinished calls ───────────────────────────────────────────────────
 
-    let streamed = |erase: bool| async move {
-        let (log, context) = observed();
-        let model = Model::new(Echo::streaming(), RecordingHttpClient::new(reply));
-        let opened = if erase {
-            model.erase().stream_observed(prompt(), context)
-        } else {
-            model.stream_observed(prompt(), context)
-        };
-        if let Ok(stream) = opened {
-            let _ = stream.finish().await;
-        }
-        events(&log)
+/// The ids of the calls whose `End` was read before the stream said how
+/// the reply ended, and the ids of the reply's unfinished calls, for a
+/// reply on `wire` whose frames `chunks` each arrive in a read of their
+/// own.
+async fn calls_ended_before_the_end<W>(
+    wire: W,
+    chunks: Vec<&'static str>,
+) -> (Vec<CallId>, Vec<CallId>)
+where
+    W: Wire<Op = Completion, Payload = crate::wire::Encoded, Frame = WireFrame> + 'static,
+{
+    let paced = PacedStreamingClient {
+        chunks,
+        gap: std::time::Duration::from_millis(5),
     };
-    let direct = streamed(false).await;
-    assert!(!direct.is_empty(), "the direct stream is observed");
-    assert_eq!(direct, streamed(true).await);
+    let mut stream = Model::new(wire, paced)
+        .stream(prompt())
+        .expect("the stream opens");
+    let mut early = Vec::new();
+    while let Some(item) = stream.next().await {
+        if let Ok(crate::streaming::Item::Event(crate::streaming::StreamEvent::End {
+            content: crate::message::AssistantContent::ToolCall(call),
+            ..
+        })) = item
+            && stream.partial().finish_reason().is_none()
+        {
+            early.push(call.id);
+        }
+    }
+    let unfinished = stream
+        .partial()
+        .unfinished_calls()
+        .map(|call| call.id.clone())
+        .collect();
+    (early, unfinished)
+}
+
+/// On every wire, an unfinished call's end comes with the reply's end:
+/// whoever reads the call's end can read how the reply ended, though each
+/// frame arrives in a read of its own. Responses states a cut call done
+/// (`status: incomplete`) a frame before the reply ends; Anthropic and Chat
+/// leave it to the reply's end.
+#[tokio::test]
+async fn an_unfinished_calls_end_comes_with_the_replys_end() {
+    use crate::providers::anthropic::AnthropicConfig;
+    use crate::providers::openai::wire::{OPENAI, OpenAIConfig};
+
+    let responses = vec![
+        "event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\",\"object\":\"response\",\"status\":\"in_progress\",\"model\":\"gpt-5.4\",\"output\":[]}}\n\n",
+        "event: response.output_item.added\ndata: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"id\":\"fc_1\",\"call_id\":\"call_1\",\"name\":\"add\",\"arguments\":\"\",\"status\":\"in_progress\"}}\n\n",
+        "event: response.function_call_arguments.delta\ndata: {\"type\":\"response.function_call_arguments.delta\",\"output_index\":0,\"item_id\":\"fc_1\",\"delta\":\"{\\\"x\\\":481\"}\n\n",
+        "event: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"id\":\"fc_1\",\"call_id\":\"call_1\",\"name\":\"add\",\"arguments\":\"{\\\"x\\\":481\",\"status\":\"incomplete\"}}\n\n",
+        "event: response.incomplete\ndata: {\"type\":\"response.incomplete\",\"response\":{\"id\":\"resp_1\",\"object\":\"response\",\"status\":\"incomplete\",\"model\":\"gpt-5.4\",\"incomplete_details\":{\"reason\":\"max_output_tokens\"},\"output\":[{\"type\":\"function_call\",\"id\":\"fc_1\",\"call_id\":\"call_1\",\"name\":\"add\",\"arguments\":\"{\\\"x\\\":481\",\"status\":\"incomplete\"}]}}\n\n",
+    ];
+    let anthropic = vec![
+        "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-sonnet-4-6\",\"content\":[],\"stop_reason\":null,\"usage\":{\"input_tokens\":3,\"output_tokens\":1}}}\n\n",
+        "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"add\",\"input\":{}}}\n\n",
+        "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"x\\\":481\"}}\n\n",
+        "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"max_tokens\"},\"usage\":{\"output_tokens\":16}}\n\n",
+        "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+    ];
+    let chat = vec![
+        "data: {\"id\":\"c\",\"object\":\"chat.completion.chunk\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"add\",\"arguments\":\"{\\\"x\\\":481\"}}]},\"finish_reason\":null}]}\n\n",
+        "data: {\"id\":\"c\",\"object\":\"chat.completion.chunk\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"length\"}]}\n\n",
+        "data: [DONE]\n\n",
+    ];
+    let cases = [
+        (
+            "responses",
+            calls_ended_before_the_end(
+                OpenAIConfig::with_key(&OPENAI, "key").responses("gpt-5.4"),
+                responses,
+            )
+            .await,
+        ),
+        (
+            "anthropic",
+            calls_ended_before_the_end(
+                AnthropicConfig::new("key").completion("claude-sonnet-4-6"),
+                anthropic,
+            )
+            .await,
+        ),
+        (
+            "chat",
+            calls_ended_before_the_end(OpenAIConfig::with_key(&OPENAI, "key").chat("m"), chat)
+                .await,
+        ),
+    ];
+    for (wire, (early, unfinished)) in cases {
+        assert_eq!(unfinished.len(), 1, "{wire}: the cut call is unfinished");
+        let early_unfinished: Vec<&CallId> =
+            early.iter().filter(|id| unfinished.contains(id)).collect();
+        assert!(
+            early_unfinished.is_empty(),
+            "{wire}: an unfinished call ended before the reply did: {early_unfinished:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_streamed_reply_with_another_2xx_status_is_read() {
+    for status in [http::StatusCode::OK, http::StatusCode::ACCEPTED] {
+        let http = NonSuccessStreamingClient {
+            status,
+            headers: http::HeaderMap::new(),
+            body: Bytes::from_static(
+                b"data: {\"type\":\"delta\",\"text\":\"hi\"}\n\ndata: {\"type\":\"stop\",\"usage\":{\"output_tokens\":1}}\n\n",
+            ),
+        };
+        let response = stream(&Echo::streaming().relaxed(), &http, prompt())
+            .expect("the stream opens")
+            .finish()
+            .await;
+        assert_eq!(
+            response.as_ref().ok().and_then(text_of),
+            Some("hi"),
+            "status {status}: {response:?}"
+        );
+    }
 }

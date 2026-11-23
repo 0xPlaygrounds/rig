@@ -88,25 +88,46 @@ pub struct CostDetails {
 #[serde(default)]
 pub struct Rates {
     /// Uncached input.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::json_utils::floats"
+    )]
     pub input: Option<f64>,
     /// Output.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::json_utils::floats"
+    )]
     pub output: Option<f64>,
     /// Input read from the cache.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::json_utils::floats"
+    )]
     pub cache_read: Option<f64>,
     /// Input written to the cache.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::json_utils::floats"
+    )]
     pub cache_write: Option<f64>,
     /// Reasoning tokens.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::json_utils::floats"
+    )]
     pub reasoning: Option<f64>,
     /// Audio input tokens.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::json_utils::floats"
+    )]
     pub input_audio: Option<f64>,
     /// Audio output tokens.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::json_utils::floats"
+    )]
     pub output_audio: Option<f64>,
 }
 

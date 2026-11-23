@@ -11,7 +11,6 @@ use rig_harness_test_support::{
 use serde_json::json;
 
 use super::*;
-use rig_basics::checkpoint::CheckpointPlugin;
 
 /// How many turns started.
 #[derive(Resource, Default)]
@@ -21,13 +20,13 @@ fn count_turns(_: On<Add<TurnOf>>, mut turns: ResMut<Turns>) {
     turns.0 += 1;
 }
 
-/// An app with the real `edit` and checkpointed `shell` tools and this
+/// An app with the real `edit` and `shell` tools and this
 /// plugin on the project `dir`, answered by `model`, and its agent.
 fn start(model: &MockCompletionModel, dir: &Path) -> (App, Receiver<()>, Entity) {
     let store = MemoryStore::default();
     let (mut app, wakes) = app_on(&store);
     app.insert_resource(ProjectRoot(dir.to_path_buf()))
-        .add_plugins((AgentPlugin, SessionLogPlugin, CheckpointPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin))
         .add_plugins((EditTool, ShellTool, WatchAiCommentsPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended)
@@ -52,7 +51,7 @@ fn settle(app: &mut App, wakes: &Receiver<()>, path: &Path, times: usize) {
         let changes = &world.resource::<Collected<FileChanges>>().0;
         let seen = changes
             .iter()
-            .filter(|change| change.paths.iter().any(|p| p == path));
+            .filter(|change| change.event.paths().iter().any(|p| p == path));
         seen.count() >= times
     };
     run_until(app, wakes, reported);
@@ -68,7 +67,7 @@ fn reports(app: &App, path: &Path) -> usize {
     let changes = &app.world().resource::<Collected<FileChanges>>().0;
     changes
         .iter()
-        .filter(|change| change.paths.iter().any(|p| p == path))
+        .filter(|change| change.event.paths().iter().any(|p| p == path))
         .count()
 }
 
@@ -118,7 +117,10 @@ fn saved_ai_comments_start_turns_once_and_are_taken_out() {
     app.world_mut()
         .trigger(Deliver::new(agent, "/watch on", DeliveryMode::Queue));
     run_until(&mut app, &wakes, |world| {
-        world.resource::<Watching>().primed
+        let changes = &world.resource::<Collected<FileChanges>>().0;
+        changes
+            .iter()
+            .any(|change| matches!(change.event, WatchEvent::Snapshot(_)))
     });
     // The watch keeps a `--print` run going.
     let kept = app
@@ -165,7 +167,7 @@ fn saved_ai_comments_start_turns_once_and_are_taken_out() {
     assert_eq!(app.world().resource::<Turns>().0, 2);
 
     // Two saves while a turn's `shell` call runs: one queued turn, with the
-    // newest comment, though the call's checkpoint lists the user's save.
+    // newest comment.
     app.world_mut()
         .trigger(Deliver::new(agent, "hello", DeliveryMode::Queue));
     run_until(&mut app, &wakes, |_| ready.exists());
@@ -194,7 +196,53 @@ fn saved_ai_comments_start_turns_once_and_are_taken_out() {
     assert_eq!(text(&d), "");
 }
 
+rig_defaults_test_support::stages_ordered_test!(WatchAiCommentsPlugin);
+
+/// A project whose watch cannot start holds no `--print` run open while
+/// it cannot: the user is told, and once the project opens and the watch
+/// lists it, it holds the run again.
+#[cfg(unix)]
 #[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(WatchAiCommentsPlugin);
+fn a_watch_that_cannot_start_keeps_no_run_going() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let home = scratch_home("watch-ai-comments-locked");
+    let dir = home.root().join("project");
+    std::fs::create_dir_all(&dir).ok();
+    let dir = std::fs::canonicalize(&dir).unwrap_or(dir);
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o000)).ok();
+    // Whoever may read it anyway (root) can watch it.
+    if std::fs::read_dir(&dir).is_ok() {
+        return;
+    }
+    let model = MockCompletionModel::from_stream_turns([reply("Hi.")]);
+    let (mut app, wakes, agent) = start(&model, &dir);
+    app.world_mut()
+        .trigger(Deliver::new(agent, "/watch on", DeliveryMode::Queue));
+    let told = |kind: fn(&WatchEvent) -> bool| {
+        move |world: &World| {
+            let changes = &world.resource::<Collected<FileChanges>>().0;
+            changes.iter().any(|change| kind(&change.event))
+        }
+    };
+    let kept = |app: &mut App| {
+        let world = app.world_mut();
+        world.query::<&KeepRunning>().iter(world).count()
+    };
+    run_until(
+        &mut app,
+        &wakes,
+        told(|event| matches!(event, WatchEvent::Unavailable(_))),
+    );
+    app.update();
+    let locked = kept(&mut app);
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).ok();
+    run_until(
+        &mut app,
+        &wakes,
+        told(|event| matches!(event, WatchEvent::Snapshot(_))),
+    );
+    app.update();
+    let opened = kept(&mut app);
+    let on = app.world().resource::<Watching>().on;
+    assert_eq!((locked, opened, on), (0, 1, true));
 }

@@ -6,7 +6,7 @@ use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     Collected, Ended, ToolOutputs, app_on, calls, collect, connect, first_agent, log_ended,
-    log_tool_outputs, reply, run_until,
+    log_tool_outputs, reply, run_until, scratch_dir,
 };
 use serde_json::json;
 
@@ -15,11 +15,7 @@ use super::*;
 /// A fresh `project`, `home` and `tmp` under the test binary's directory,
 /// in the target directory.
 fn scratch(name: &str) -> Option<PathBuf> {
-    let exe = std::env::current_exe().ok()?;
-    let base = exe
-        .parent()?
-        .join(format!("shell-sandbox-{name}-{}", std::process::id()));
-    std::fs::remove_dir_all(&base).ok();
+    let base = scratch_dir(&format!("shell-sandbox-{name}-{}", std::process::id()));
     for dir in ["project", "home", "tmp"] {
         std::fs::create_dir_all(base.join(dir)).ok()?;
     }
@@ -148,7 +144,4 @@ fn without_a_sandbox_program_calls_are_refused() {
     std::fs::remove_dir_all(&base).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(ShellSandboxPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(ShellSandboxPlugin);

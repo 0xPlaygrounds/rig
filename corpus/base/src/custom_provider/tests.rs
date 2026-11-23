@@ -134,8 +134,8 @@ fn a_configured_gateway_model_answers_with_its_headers_and_survives_a_restart() 
     let Some(agent) = agent else {
         return;
     };
-    // Both models complete `/model`'s argument, once it is typed; the
-    // keyless one says why.
+    // The model with a key completes `/model`'s argument, once it is typed;
+    // the keyless one is left out.
     let mut typed = Editor::default();
     typed.set("/model ");
     app.world_mut().spawn((typed, MainEditor));
@@ -149,14 +149,7 @@ fn a_configured_gateway_model_answers_with_its_headers_and_survives_a_restart() 
         .map(|item| (item.text.clone(), item.detail.clone()))
         .collect();
     let texts: Vec<&str> = offered.iter().map(|(text, _)| text.as_str()).collect();
-    assert_eq!(texts, ["corp/big", "keyless/small"], "{offered:?}");
-    let keyless = offered.iter().find(|(text, _)| text == "keyless/small");
-    assert!(
-        keyless.is_some_and(
-            |(_, detail)| detail.ends_with("(no key: set CORPUS_CUSTOM_PROVIDER_UNSET_KEY)")
-        ),
-        "{offered:?}"
-    );
+    assert_eq!(texts, ["corp/big"], "{offered:?}");
 
     app.world_mut()
         .trigger(RunCommand::new(agent, "model corp/big".to_owned()));
@@ -198,12 +191,12 @@ fn a_configured_gateway_model_answers_with_its_headers_and_survives_a_restart() 
         (Some("corp/big".to_owned()), Some(64_000))
     );
 
-    // Choosing the keyless model is refused when it connects.
+    // Choosing the keyless model is refused, and the agent stays on its own.
     app.world_mut()
         .trigger(RunCommand::new(restored, "model keyless/small".to_owned()));
     app.update();
     assert_eq!(
         chosen(&app, restored),
-        (Some("keyless/small".to_owned()), None)
+        (Some("corp/big".to_owned()), Some(64_000))
     );
 }

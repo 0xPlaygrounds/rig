@@ -23,17 +23,21 @@ use agent_client_protocol::schema::v1 as acp;
 use agent_client_protocol::{Agent, Client, ConnectionTo, Error};
 use async_channel::{Receiver, Sender};
 use bevy_ecs::system::SystemParam;
-use rig_basics::print::{Starting, Work};
+use rig_basics::models::{FirstPick, FirstPickSettled, FirstPickSystems, TypedChoices};
 use rig_harness::harness_protocol::SessionId;
+use rig_harness::host::pipes::Writer;
 use rig_harness::host::signals;
 use rig_harness::prelude::*;
 use rig_harness::rig_ecs::session_log::{SessionRestored, SessionStore};
+use rig_harness::rig_ecs::{Persist, StopTurnsOnExit, WriteLogs};
 use rig_harness::rig_memory::summarized_in_log;
+use rig_harness::run::RunStartSystems;
 use rig_harness::services::WorkDir;
 use rig_mcp_client::{AddMcpServer, ServerSpec};
 
 use rig_harness::rig_core::completion::message::{Message as Said, StopReason as Stop};
 
+use crate::router::GRACE;
 use crate::{Reply, translate};
 
 #[cfg(test)]
@@ -47,6 +51,9 @@ const OPENING: Duration = Duration::from_secs(60);
 
 /// How often that wait looks for the request, and for a signal.
 const WAIT: Duration = Duration::from_millis(5);
+
+/// The most requests that wait for the app; the connection waits for room.
+const REQUESTS: usize = 64;
 
 /// What the ACP connection hands the app.
 pub(crate) enum Request {
@@ -82,6 +89,16 @@ impl Opening {
         }
     }
 
+    /// Refuses to open the session, saying `why`.
+    fn refuse(self, why: String) {
+        let refused = crate::error(Error::invalid_params(), why);
+        match self {
+            Self::New(_, reply) => reply.send(Err(refused)),
+            Self::Load(_, reply) => reply.send(Err(refused)),
+            Self::Resume(_, reply) => reply.send(Err(refused)),
+        }
+    }
+
     /// Answers with the session's options.
     fn answer(self, id: &acp::SessionId, config: Vec<acp::SessionConfigOption>) {
         match self {
@@ -106,9 +123,13 @@ pub(crate) struct Session {
     id: acp::SessionId,
     cx: ConnectionTo<Client>,
     client: acp::ClientCapabilities,
-    /// The request that opened it, until answered.
+    /// The request that opened it, or opens it again, until answered.
     opening: Option<Opening>,
-    /// Whether the main agent was given a model once, before the answer.
+    /// The client's MCP servers it opened with, as rig runs them
+    /// ([`running`]).
+    servers: Running,
+    /// Whether an opening was answered once: only the first says why no
+    /// model can be reached.
     chose: bool,
     /// The options the client was last told of.
     advertised: Vec<acp::SessionConfigOption>,
@@ -122,8 +143,6 @@ pub(crate) struct Session {
     early: VecDeque<Request>,
     /// The client's closes, answered once the prompt they cancelled is.
     closing: Vec<Reply<acp::CloseSessionResponse>>,
-    /// The tasks asking the client a question, by the question's entity.
-    asking: HashMap<Entity, tokio::task::AbortHandle>,
     /// The ACP id of each running call the client was shown, or sees
     /// settle, by the call's entity.
     calls: HashMap<Entity, String>,
@@ -133,6 +152,13 @@ pub(crate) struct Session {
     sender: Sender<Request>,
     runtime: tokio::runtime::Handle,
     wake: Wake,
+    /// The writer of stdout: while it is behind, the agent's work waits.
+    writer: Writer,
+    /// Dropped once every request is answered, which lets the connection
+    /// end, after what it was handed is sent.
+    done: Option<tokio::sync::oneshot::Sender<()>>,
+    /// The connection, done once it ended.
+    served: Option<tokio::task::JoinHandle<()>>,
 }
 
 /// The prompt the app works on.
@@ -182,9 +208,11 @@ impl Session {
         }
     }
 
-    /// Hands `request` from a task to the app, and wakes it.
-    fn post(sender: &Sender<Request>, wake: &Wake, request: Request) {
-        sender.try_send(request).ok();
+    /// Hands `request` from a task to the app, once there is room, and wakes
+    /// it. A request the app no longer takes is dropped, and its reply
+    /// answers that the session ended.
+    async fn post(sender: &Sender<Request>, wake: &Wake, request: Request) {
+        sender.send(request).await.ok();
         wake.wake();
     }
 }
@@ -219,8 +247,23 @@ pub(crate) fn install(app: &mut App) {
             return;
         }
     };
-    let (sender, requests) = async_channel::unbounded();
-    runtime.spawn(serve(sender.clone(), wake.clone()));
+    let (sender, requests) = async_channel::bounded(REQUESTS);
+    let interrupted = signals::interruption(app.world());
+    let writer = Writer::spawn(
+        std::io::stdout(),
+        std::io::stderr(),
+        wake.clone(),
+        interrupted,
+    );
+    let (done, finished) = tokio::sync::oneshot::channel();
+    let limit = crate::LineLimit::of(app.world());
+    let served = runtime.spawn(serve(
+        sender.clone(),
+        wake.clone(),
+        writer.clone(),
+        limit,
+        finished,
+    ));
     // A signal or the router gone ends the wait; the first frame then exits.
     let signalled = signals::interruption(app.world());
     let deadline = Instant::now() + OPENING;
@@ -254,11 +297,16 @@ pub(crate) fn install(app: &mut App) {
         })
         .collect();
     let servers: Vec<AddMcpServer> = declared.into_iter().map(|(_, server)| server).collect();
+    let named = running(opening.servers());
+    // The editor sets the model of every session, so none typed here is
+    // the user's default.
+    app.insert_resource(TypedChoices(ChoiceKind::ForThisRun));
     app.insert_resource(Session {
         id,
         cx,
         client: *client,
         opening: Some(opening),
+        servers: named,
         chose: false,
         advertised: Vec::new(),
         held: Vec::new(),
@@ -266,14 +314,18 @@ pub(crate) fn install(app: &mut App) {
         prompt: None,
         early,
         closing: Vec::new(),
-        asking: HashMap::new(),
         calls: HashMap::new(),
         replay: None,
         requests,
         sender,
         runtime,
         wake,
+        writer,
+        done: Some(done),
+        served: Some(served),
     })
+    // The agent's work waits while the router is behind reading it.
+    .configure_sets(Update, AgentLoop.run_if(has_room))
     .add_systems(PreStartup, move |mut commands: Commands| {
         for server in &servers {
             commands.trigger(server.clone());
@@ -281,30 +333,60 @@ pub(crate) fn install(app: &mut App) {
     })
     .add_systems(
         Update,
-        (requests_in, open, stop_cancelled)
+        (requests_in, open.after(FirstPickSystems), stop_cancelled)
             .chain()
             .after(PollTasks)
+            .after(RunStartSystems)
             .before(AgentLoop),
     )
     .add_systems(
         Update,
         (output::notices, options::changed, settle)
             .chain()
-            .after(AgentLoop),
+            .after(AgentLoop)
+            .after(CurrentAgentSystems),
     )
     .init_resource::<output::Read>()
+    .init_resource::<ProjectWorkspace>()
     .add_systems(PostUpdate, output::stream)
     .add_observer(output::call_asked)
     .add_observer(output::started)
     .add_observer(output::settled)
-    .add_observer(questions::picker)
     .add_observer(ended)
-    .add_observer(questions::forgotten);
+    .add_systems(
+        Last,
+        answer_open
+            .after(StopTurnsOnExit)
+            .in_set(OnAppExitSystems)
+            .run_if(on_message::<AppExit>),
+    )
+    // After the logs are written, so the session log is written before
+    // output may wait.
+    .add_systems(
+        Persist,
+        finish_output.after(WriteLogs).run_if(on_message::<AppExit>),
+    );
     let mut session = app.world_mut().resource_mut::<Session>();
     for note in renamed {
         session.note(note, NoticeLevel::Info);
     }
     app.world_mut().spawn(Answerer::default());
+}
+
+/// The client's MCP servers as rig runs them: each name rig gives one, with
+/// how it is reached.
+type Running = BTreeMap<String, Result<ServerSpec, String>>;
+
+/// The servers rig runs for the client's list `servers`: by name, the first
+/// of a name, as rig-mcp-client keeps it. The list's order and the order of
+/// a server's variables or headers start the same servers, so they are not
+/// part of it; a server's arguments keep their order.
+fn running(servers: &[acp::McpServer]) -> Running {
+    let mut running = Running::new();
+    for (_, server) in servers.iter().filter_map(mcp_server) {
+        running.entry(server.name).or_insert(server.spec);
+    }
+    running
 }
 
 /// One of the client's MCP servers as rig-mcp-client takes it, with the
@@ -323,13 +405,15 @@ fn mcp_server(server: &acp::McpServer) -> Option<(String, AddMcpServer)> {
             (stdio.name.clone(), Ok(spec))
         }
         acp::McpServer::Http(http) => {
-            let headers = http
-                .headers
-                .iter()
-                .map(|header| (&header.name, &header.value));
+            // Header names are alike in any case, and go out lowercase: a
+            // later header of a name replaces an earlier one.
+            let headers = http.headers.iter().map(|header| {
+                let name = header.name.to_ascii_lowercase();
+                (name, header.value.clone())
+            });
             let spec = ServerSpec::Http {
                 url: http.url.clone(),
-                headers: last_of(headers, true),
+                headers: headers.collect(),
             };
             (http.name.clone(), Ok(spec))
         }
@@ -380,31 +464,38 @@ fn last_of<'a>(
     kept.into_iter().collect()
 }
 
-/// Serves ACP on stdio until the connection ends, handing each request to
-/// the app.
-async fn serve(sender: Sender<Request>, wake: Wake) {
-    let post = |request| Session::post(&sender, &wake, request);
+/// Serves ACP on stdio, handing each request to the app, until the app
+/// answered every request and dropped `done`: the end of stdin is a request
+/// too ([`Request::Ended`]), so the answers the exit owes still go out.
+async fn serve(
+    sender: Sender<Request>,
+    wake: Wake,
+    writer: Writer,
+    limit: usize,
+    done: tokio::sync::oneshot::Receiver<()>,
+) {
+    let post = async |request| Session::post(&sender, &wake, request).await;
     let result = Agent
         .builder()
         .name("rig-acp-session")
         .on_receive_request(
             async |request: acp::InitializeRequest, responder, cx: ConnectionTo<Client>| {
                 let client = Box::new(request.client_capabilities.clone());
-                post(Request::Init(client, cx));
+                post(Request::Init(client, cx)).await;
                 responder.respond(crate::initialized())
             },
             agent_client_protocol::on_receive_request!(),
         )
         .on_receive_request(
             async |request: acp::NewSessionRequest, responder, _| {
-                post(Request::Open(Opening::New(request, Reply::new(responder))));
+                post(Request::Open(Opening::New(request, Reply::new(responder)))).await;
                 Ok(())
             },
             agent_client_protocol::on_receive_request!(),
         )
         .on_receive_request(
             async |request: acp::LoadSessionRequest, responder, _| {
-                post(Request::Open(Opening::Load(request, Reply::new(responder))));
+                post(Request::Open(Opening::Load(request, Reply::new(responder)))).await;
                 Ok(())
             },
             agent_client_protocol::on_receive_request!(),
@@ -414,45 +505,75 @@ async fn serve(sender: Sender<Request>, wake: Wake) {
                 post(Request::Open(Opening::Resume(
                     request,
                     Reply::new(responder),
-                )));
+                )))
+                .await;
                 Ok(())
             },
             agent_client_protocol::on_receive_request!(),
         )
         .on_receive_request(
             async |request: acp::PromptRequest, responder, _| {
-                post(Request::Prompt(request, Reply::new(responder)));
+                post(Request::Prompt(request, Reply::new(responder))).await;
                 Ok(())
             },
             agent_client_protocol::on_receive_request!(),
         )
         .on_receive_notification(
             async |_: acp::CancelNotification, _| {
-                post(Request::Cancel);
+                post(Request::Cancel).await;
                 Ok(())
             },
             agent_client_protocol::on_receive_notification!(),
         )
         .on_receive_request(
             async |request: acp::SetSessionConfigOptionRequest, responder, _| {
-                post(Request::Config(request, Reply::new(responder)));
+                post(Request::Config(request, Reply::new(responder))).await;
                 Ok(())
             },
             agent_client_protocol::on_receive_request!(),
         )
         .on_receive_request(
             async |_: acp::CloseSessionRequest, responder, _| {
-                post(Request::Close(Reply::new(responder)));
+                // Closed however the session ends.
+                let closed = Ok(acp::CloseSessionResponse::new());
+                post(Request::Close(Reply::owed(responder, closed, None))).await;
                 Ok(())
             },
             agent_client_protocol::on_receive_request!(),
         )
-        .connect_to(agent_client_protocol::Stdio::new())
+        .connect_with(
+            crate::stdio::stdio(std::io::stdin(), writer.clone(), limit, "rig acp-session"),
+            async |cx: ConnectionTo<Client>| {
+                // The router left: it closed stdin, or stopped reading.
+                let read = async {
+                    futures::future::select(
+                        std::pin::pin!(cx.incoming_closed()),
+                        std::pin::pin!(writer.gone()),
+                    )
+                    .await;
+                    post(Request::Ended).await;
+                    std::future::pending::<()>().await;
+                };
+                tokio::select! {
+                    () = read => {}
+                    _ = done => {}
+                }
+                Ok(())
+            },
+        )
         .await;
     if let Err(error) = result {
-        eprintln!("rig acp-session: {error}");
+        let said = format!("rig acp-session: {error}\n");
+        writer.write(rig_harness::host::pipes::Stream::Err, said.into_bytes());
+        post(Request::Ended).await;
     }
-    post(Request::Ended);
+}
+
+/// Whether the session's work goes on: while the router keeps up reading
+/// what it writes, and once the session exits, whose exit is an effect of
+/// the agent loop.
+fn has_room(session: Res<Session>, exiting: Option<Res<ExitReason>>) -> bool {
+    exiting.is_some() || session.writer.has_room()
 }
 
 /// The main agent, and what a request reads and changes of the app.
@@ -504,7 +625,8 @@ fn requests_in(
                 questions::answer_with(&mut requested.commands, ask, answer);
             }
             Request::Ended => requested.commands.trigger(Exit(ExitReason::Quit)),
-            Request::Init(..) | Request::Open(_) => {}
+            Request::Open(opening) => requested.reopen(opening),
+            Request::Init(..) => {}
         }
     }
 }
@@ -558,6 +680,37 @@ impl Requested<'_, '_> {
         });
     }
 
+    /// Opens the session again for a client that has it open, which [`open`]
+    /// answers as it answered the first opening: a load with the history
+    /// first. A load waits for no prompt, as its history would lack the
+    /// running turn's part, and other MCP servers would need another start.
+    fn reopen(&mut self, opening: Opening) {
+        let session = &*self.session;
+        let refused = if session.opening.is_some() {
+            Some("the session is still opening".to_owned())
+        } else if !session.closing.is_empty() {
+            Some("the session is closing".to_owned())
+        } else if session.prompt.is_some() && matches!(opening, Opening::Load(..)) {
+            Some(
+                "the session is busy: load it once its prompt is answered, or resume it".to_owned(),
+            )
+        } else if running(opening.servers()) != session.servers {
+            Some(format!(
+                "session {} is open with other MCP servers: close it, then load it with these",
+                session.id
+            ))
+        } else {
+            None
+        };
+        match refused {
+            Some(why) => opening.refuse(why),
+            None => {
+                self.session.replay = None;
+                self.session.opening = Some(opening);
+            }
+        }
+    }
+
     /// Marks the prompt cancelled, which stops its work ([`stop_cancelled`]),
     /// and stops the main agent at once, which also ends work that is no
     /// turn, such as a sign-in.
@@ -577,7 +730,7 @@ impl Requested<'_, '_> {
 struct Opened<'w, 's> {
     session: ResMut<'w, Session>,
     restored: Option<Res<'w, SessionRestored>>,
-    starting: Query<'w, 's, (), With<Starting>>,
+    start: ResMut<'w, RunStart>,
     primary: MainAgentQuery<'w, 's>,
     agents: Query<
         'w,
@@ -591,16 +744,28 @@ struct Opened<'w, 's> {
     >,
     store: Option<Res<'w, SessionStore>>,
     root: Res<'w, ProjectRoot>,
+    workspace: Res<'w, ProjectWorkspace>,
     slash: Query<'w, 's, (&'static Name, &'static SlashCommand)>,
     models: Res<'w, Models>,
+    first_pick: Res<'w, FirstPickSettled>,
     options: options::Options<'w, 's>,
+    notices: MessageWriter<'w, Notice>,
     commands: Commands<'w, 's>,
 }
 
-/// Answers the opening request once the session is restored and no MCP
-/// server's first attempt is still out: a loaded session's history first,
-/// then the answer, the updates held meanwhile, the commands and options.
+/// Answers the opening request once the session is restored and the run's
+/// start is over, no MCP server's first attempt still out: a loaded
+/// session's history first, then the answer, the updates held meanwhile,
+/// the commands and options. A start refused for `--tools` refuses the
+/// opening with why, and the session's process exits.
 fn open(mut opened: Opened) {
+    if let Some(why) = opened.start.take_refusal() {
+        if let Some(opening) = opened.session.opening.take() {
+            opening.refuse(why.clone());
+        }
+        opened.commands.trigger(Exit(ExitReason::Refused(why)));
+        return;
+    }
     let restored = opened.restored.is_some() && opened.session.opening.is_some();
     let agent = main_agent(&opened.primary).filter(|_| restored);
     let Some(agent) = agent else {
@@ -618,33 +783,30 @@ fn open(mut opened: Opened) {
                     .store
                     .as_ref()
                     .and_then(|store| summarized_in_log(&*store.0, &id.0).ok())
-                    .map(|summarized| summarized.replaced)
                     .unwrap_or_default();
                 let cwd = translate::cwd_of(work, &opened.root);
-                translate::replay(&id.0, conversation, &replaced, &cwd)
+                translate::replay(&id.0, conversation, &replaced, &cwd, &*opened.workspace.0)
             }
             _ => Vec::new(),
         };
         opened.session.replay = Some(replay);
     }
-    if !opened.starting.is_empty() {
+    if !opened.start.is_over() {
         return;
     }
-    // A new session's agent gets the first model it can reach, as a
-    // headless run's does; the answer waits a frame, so its options show it.
-    if !opened.session.chose {
-        opened.session.chose = true;
-        let reachable = opened.models.0.reachable();
-        if let (None, Some(model)) = (chosen, reachable.first()) {
-            let model = model.reference();
-            opened.commands.trigger(SetModel {
-                entity: agent,
-                model,
-            });
-            opened.session.wake.wake();
-            return;
-        }
+    // The answer lists the models the client can pick, so it waits until
+    // each sign-in knows what its account offers, and the agent's, so it
+    // waits until the first pick is settled.
+    let first = FirstPick::of(&opened.models);
+    if first == FirstPick::Checking || !opened.first_pick.is_settled() {
+        return;
     }
+    let picks = !opened.session.chose && chosen.is_none();
+    if picks && let FirstPick::Nothing(Some(why)) = first {
+        let why = format!("No model can be reached: {why}.");
+        opened.notices.write(Notice::error(agent, why));
+    }
+    opened.session.chose = true;
     let replay = opened.session.replay.take().unwrap_or_default();
     let config = opened.options.of(agent);
     let mut listed: Vec<_> = opened
@@ -726,13 +888,13 @@ fn ended(
 }
 
 /// How a prompt ended, from how the main agent's last turn since it did:
-/// cancelled by the client, or by a stop that gave no reason; a failure as
-/// an error; else the end of the answer, `max_tokens` when the output limit
-/// cut it. A turn a plugin stopped for a reason, as `/compact` does, is no
-/// cancel.
+/// cancelled by the client, or as its stop says ([`stopped`]); a failure
+/// as an error; else the end of the answer, `max_tokens` when the output
+/// limit cut it.
 fn stop_reason(cancelled: bool, ended: Option<&TurnOutcome>) -> Result<acp::StopReason, Error> {
     match (cancelled, ended) {
-        (true, _) | (false, Some(TurnOutcome::Stopped(None))) => Ok(acp::StopReason::Cancelled),
+        (true, _) => Ok(acp::StopReason::Cancelled),
+        (false, Some(TurnOutcome::Stopped(stop))) => Ok(stopped(stop.cause())),
         (false, Some(TurnOutcome::Failed(why))) => Err(crate::error(Error::internal_error(), why)),
         (false, Some(TurnOutcome::Answered(Said::Assistant(reply))))
             if reply.stop == Some(Stop::Length) =>
@@ -741,6 +903,61 @@ fn stop_reason(cancelled: bool, ended: Option<&TurnOutcome>) -> Result<acp::Stop
         }
         (false, _) => Ok(acp::StopReason::EndTurn),
     }
+}
+
+/// How a prompt whose turn was stopped ends: a plugin's stop, as `/compact`
+/// makes, is no cancel; any other is.
+fn stopped(cause: &StopCause) -> acp::StopReason {
+    match cause {
+        StopCause::Plugin { .. } => acp::StopReason::EndTurn,
+        _ => acp::StopReason::Cancelled,
+    }
+}
+
+/// As the app exits, after the exit stopped the turns (each cut call's
+/// update is out already): sends the text streamed and answers the prompt
+/// `cancelled` unless its turn ended otherwise; every other request owed
+/// or still queued answers as it is dropped ([`Reply`]): a close that it
+/// closed, the rest that the session ended. Then it lets the connection
+/// end ([`finish_output`] waits for it).
+fn answer_open(
+    mut out: output::Out,
+    changing: Option<Res<options::Changing>>,
+    asking: Query<&questions::ClientAsk>,
+) {
+    out.stream();
+    let session = &mut *out.session;
+    if let Some(prompt) = session.prompt.take() {
+        let answer = match &prompt.ended {
+            None => Ok(acp::StopReason::Cancelled),
+            ended => stop_reason(prompt.cancelled, ended.as_ref()),
+        };
+        prompt.reply.send(answer.map(acp::PromptResponse::new));
+    }
+    session.closing.clear();
+    for asking in &asking {
+        asking.0.abort();
+    }
+    if let Some(changing) = changing {
+        changing.reply.send(Err(crate::ended()));
+    }
+    session.requests.close();
+    session.early.clear();
+    while session.requests.try_recv().is_ok() {}
+    session.opening.take();
+    session.done.take();
+}
+
+/// As the app exits, after the session log was written: waits (within
+/// [`GRACE`]) until the connection sent what it was handed, and until the
+/// writer wrote it.
+fn finish_output(mut session: ResMut<Session>) {
+    if let Some(served) = session.served.take() {
+        session
+            .runtime
+            .block_on(async { tokio::time::timeout(GRACE, served).await.ok() });
+    }
+    session.writer.finish();
 }
 
 /// Answers the prompt once the work it started settled.

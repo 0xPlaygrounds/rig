@@ -132,6 +132,7 @@ fn a_rate_limited_and_a_refused_key_fail_over_to_the_spare() {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     app.update();
 
@@ -226,7 +227,4 @@ fn walk(dir: &std::path::Path) -> Vec<PathBuf> {
         .collect()
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(KeyPoolPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(KeyPoolPlugin);

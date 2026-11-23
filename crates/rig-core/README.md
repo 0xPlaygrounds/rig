@@ -27,7 +27,7 @@ More information about this crate can be found in the [crate documentation](http
 - Full support for LLM completion and embedding workflows
 - Support for transcription, audio generation and image generation model capabilities
 - Integrate LLMs in your app with minimal boilerplate
-- Full WASM compatibility (core library only)
+- Builds for browser WASM (`wasm32-unknown-unknown`); WASI is not supported
 
 ## Installation
 ```bash
@@ -50,7 +50,7 @@ serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 ```
 
 Cargo unifies features across dependencies. `rig-cassette` with `traffic`
-(and therefore `rig-traffic`) still enables both features. `rig-claude-cloak`,
+(and therefore `rig-traffic`) still enables both features.
 `rig-mcp-client` and `rig-mongodb` through BSON still enable `preserve_order`. These are
 application-level serde_json choices; Rig has no forwarding feature.
 
@@ -95,7 +95,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 Note using `#[tokio::main]` requires you enable tokio's `macros` and `rt-multi-thread` features
 or just `full` to enable all features (`cargo add tokio --features macros,rt-multi-thread`).
 
-You can find more examples in the repository-level `examples/` directory. Many provider-specific examples now also live as ignored live integration tests under the repository-level `tests/providers` directory, organized by provider. When running those provider-backed tests, prefer provider-specific targets such as `cargo test -p rig --test openai -- --ignored --test-threads=1` to avoid rate-limiting. More detailed walkthroughs are regularly published on our Dev.to blog and added to Rig's official documentation at `docs.rig.rs`.
+You can find more examples in the repository-level `examples/` directory.
+Provider suites live under `crates/rig-cassette/tests/providers`, with live-only
+suites under `tests/providers`. Many provider-specific examples are ignored
+live integration tests in those suites. Run them with provider-specific targets
+such as `cargo test -p rig-cassette --features http,agent --test integration openai:: -- --ignored --test-threads=1`
+to avoid rate-limiting. More detailed walkthroughs are regularly published on
+our Dev.to blog and added to Rig's official documentation at [rig.rs/docs](https://rig.rs/docs).
 
 ## Integrations
 Rig supports the following LLM providers out of the box:
@@ -105,6 +111,7 @@ Rig supports the following LLM providers out of the box:
 - ChatGPT and GitHub Copilot auth-backed clients
 - Cohere
 - DeepSeek
+- Doubleword
 - Gemini
 - Groq
 - Hugging Face
@@ -133,7 +140,7 @@ ID callbacks accept closures that capture and mutate application state.
 Vector stores are available as separate companion-crates and as feature-gated modules on the root `rig` facade:
 
 ```toml
-rig = { version = "0.36.0", features = ["lancedb", "fastembed"] }
+rig = { version = "0.47.0", features = ["lancedb", "fastembed"] }
 ```
 
 - MongoDB: [`rig-mongodb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-mongodb)
@@ -283,69 +290,3 @@ retargeted by an invalid handle. A 403 or 404 on an existing handle maps to
 `ProviderError::CacheExpired`, preserving the provider's reply because 403 can
 also indicate credential or quota problems. Cache creation does not apply this
 mapping, so authorization failures do not become recreation loops.
-
-## Provider observations
-
-`observe::AdapterContext` carries a caller-owned operation identity and a
-`Witness` sink. Pass it separately from request data through
-`Model::call_observed(request, context)` or `Model::stream_observed(request,
-context)`; `Model::call` and `Model::stream` record nothing. Request builders
-and request literals contain only provider request data.
-
-Bus-backed `ModelHandle::call_observed` and `ModelHandle::stream_observed`
-take the same context. `ModelAdapter` forwards `Dispatch::adapter_context`;
-explicit caller context takes precedence over Recorder/Observe context for
-that invocation, including through handler layers. It is never serialized into
-provider data or effect records and is not inherited by child calls.
-
-Clone the context for attempts of the same operation;
-use a distinct non-sensitive identity for another logical call.
-`for_host_attempt(subject, ordinal)` rebinds a host retry to its current
-dispatch subject while sharing the logical operation and HTTP send counter.
-Facts carry the optional host ordinal separately: multiple HTTP sends within
-one dispatch share its host ordinal. Already-running attempts keep their
-original subjects and ordinals. A changed logical request needs a new context.
-
-The Gemini unary and SSE paths emit `Action::Adapter` facts for send, HTTP
-response status, provider metadata, error envelopes and closure through their
-shared drivers. Unary closure
-reports decoding, error or drop. SSE closure distinguishes terminal, EOF,
-partial frame, error and drop; recoverable corrupt frames are separate facts.
-Usage facts retain provider-reported optional counts even when decoding or
-normalization rejects a response. Each fact is a cumulative snapshot for its
-attempt: replace earlier snapshots instead of summing them, keep absent counts
-unknown, and do not add overlapping token categories to invent a total.
-Provider verdicts retain reported finish/block reasons and model versions;
-error-envelope fields remain separate from HTTP status and Rig retryability.
-Sparse verdict fields update only when present. Response IDs and allowlisted
-headers are bounded, scrubbed analysis data, excluded from semantic comparison.
-An ID-only payload attaches its latest ID to the next verdict or attempt
-closure without creating an empty semantic event. This also preserves the ID
-on error and consumer drop. Known request credentials are redacted before
-persistence; arbitrary response bodies and headers are not copied wholesale.
-Credential extraction includes URL userinfo and known query keys, including
-origin-form request URIs. Diagnostic comparisons account for percent escapes
-and control removal without rewriting safe diagnostic text. Hosts can reuse
-`observe::diagnostic_url_secrets` for endpoint configuration; its returned
-secrets must stay in memory and must never be persisted or logged.
-The normalized Gemini unary API closes after normalization, so an empty
-decoded response closes as an error; the raw API retains its decode boundary.
-Error closures also preserve the original typed error boundary before report
-conversion erases HTTP subtypes: request construction, provider response,
-response decoding, typed transport termination, or unknown. An opaque client
-error stays unknown; its message is never used to infer a boundary. This field
-does not change the error returned to the caller or its retryability.
-`ObservationLog::with_clock` optionally stamps individual facts with host elapsed
-time. Rig does not calculate run, handler or transport intervals. These stamps
-describe the executing environment, including replay, and do not establish live
-provider performance.
-Partial-frame facts count raw bytes after the last blank SSE delimiter without
-retaining their contents. Complete-frame counts include only frames passed to
-the adapter driver, excluding provider-recognized analysis-only frames (Gemini
-frames containing only a valid string `responseId`). Unknown, malformed and
-otherwise-empty frames still count. Corrupt-frame ordinals start at one using
-the same counting rule. `TransportEof`
-records body completeness independently: a provider terminal followed by
-an incomplete trailing frame retains both its terminal closure and partial
-EOF evidence. The context does not promise cross-execution identity. Response bodies and
-credentials are not copied into these boundary facts.

@@ -8,7 +8,7 @@ use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     Collected, Ended, app_on, collect, log_ended, run_until, scripted_models,
 };
-use rig_tui::TuiPlugin;
+use rig_tui::TuiPlugins;
 use serde_json::json;
 
 use super::*;
@@ -83,7 +83,7 @@ fn the_gauge_follows_tokens_models_and_focus_and_warns_once() {
         .add_plugins((
             AgentPlugin,
             SessionLogPlugin,
-            TuiPlugin,
+            TuiPlugins,
             UsagePlugin,
             SubagentsPlugin,
             ContextGaugePlugin,
@@ -93,9 +93,7 @@ fn the_gauge_follows_tokens_models_and_focus_and_warns_once() {
     collect::<Notice>(&mut app);
     app.finish();
     app.update();
-    let agent = (app.world_mut())
-        .spawn((Agent, ModelChoice("scripted/w200k".to_owned())))
-        .id();
+    let agent = spawn_root(app.world_mut(), ModelChoice("scripted/w200k".to_owned())).id();
     app.update();
     assert!(
         shows(app.world(), agent, "ctx —", Tone::Dim),
@@ -116,6 +114,7 @@ fn the_gauge_follows_tokens_models_and_focus_and_warns_once() {
         app.world_mut().trigger(SetModel {
             entity: agent,
             model,
+            kind: ChoiceKind::ForThisRun,
         });
         app.update();
     };
@@ -129,7 +128,9 @@ fn the_gauge_follows_tokens_models_and_focus_and_warns_once() {
         gauge(app.world(), agent)
     );
 
-    app.world_mut().entity_mut(agent).insert(ContextStale {});
+    app.world_mut()
+        .entity_mut(agent)
+        .insert(ContextStale::default());
     app.update();
     assert!(shows(app.world(), agent, "ctx ?/200k", Tone::Dim));
     app.world_mut().entity_mut(agent).remove::<ContextStale>();

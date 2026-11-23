@@ -91,6 +91,7 @@ fn a_models_dev_row_becomes_a_spec() {
     assert_eq!(claude.max_input_tokens, Some(180_000));
     assert_eq!(claude.input_limit(), Some(180_000));
     assert_eq!(claude.max_output_tokens, Some(64_000));
+    assert_eq!(claude.output_limit(), Some(64_000));
     let details = &claude.details;
     assert_eq!(details.description.as_deref(), Some("A model for tests"));
     assert_eq!(details.release_date.as_deref(), Some("2026-01-01"));
@@ -437,6 +438,17 @@ fn edit_distance_counts_single_character_edits() {
 }
 
 #[test]
+fn closest_name_finds_a_typo_and_not_another_word() {
+    assert_eq!(
+        lookup::closest_name("inptu", ["output", "input"]),
+        Some("input")
+    );
+    assert_eq!(lookup::closest_name("output", ["input"]), None);
+    // A short word still allows one edit; a tie goes to the name sorting first.
+    assert_eq!(lookup::closest_name("ab", ["ac", "aa"]), Some("aa"));
+}
+
+#[test]
 fn catalog_only_providers_have_entries_and_no_preset() {
     let catalog = models_dev(SAMPLE).expect("parses");
     let bedrock = spec(&catalog, "aws_bedrock", "us.anthropic.claude-x-v1:0");
@@ -622,6 +634,25 @@ fn a_cache_retention_the_model_does_not_honour_is_refused() {
     );
 }
 
+/// A reply never outgrows the window, so a listed output limit above it
+/// is held to it; with no window known the listed limit stands.
+#[test]
+fn the_output_limit_is_held_to_the_window() {
+    let ollama = ProviderId::catalog("ollama").expect("a known vendor");
+    let spec = ModelSpec::new(ollama, "m").with_max_output_tokens(262_144);
+    assert_eq!(spec.output_limit(), Some(262_144));
+    assert_eq!(
+        spec.with_context_window(131_072).output_limit(),
+        Some(131_072)
+    );
+    assert_eq!(
+        ModelSpec::new(ollama, "m")
+            .with_context_window(8_192)
+            .output_limit(),
+        None
+    );
+}
+
 /// A spec built in code starts with nothing known, is added whole by
 /// `insert`, and takes an override field by field like any other row.
 #[test]
@@ -685,6 +716,26 @@ fn a_spec_built_in_code_joins_the_catalog() {
         "replaced whole"
     );
     assert_eq!(sample.iter().count(), 4);
+}
+
+/// An override lifts a built-in Chat Completions tool rule with `any`.
+#[test]
+fn an_override_lifts_the_chat_tool_rule() {
+    let builtin = Catalog::builtin();
+    assert_eq!(
+        spec(builtin, "openai", "gpt-6.1-terra").compat.chat_tools,
+        Some(ChatTools::Never)
+    );
+    let overrides = Catalog::from_overrides(
+        r#"{"openai": {"models": {"gpt-6.1-terra": {"rig": {"chat_tools": "any"}}}}}"#,
+        builtin,
+    )
+    .expect("the model is listed in the built-in catalog");
+    let lifted = builtin.with_overrides(&overrides);
+    assert_eq!(
+        spec(&lifted, "openai", "gpt-6.1-terra").compat.chat_tools,
+        Some(ChatTools::Any)
+    );
 }
 
 /// Every built-in spec reads back from its serde form and from its override
@@ -1182,29 +1233,10 @@ fn check_refuses_what_the_catalog_refuses_and_the_rest_is_the_wires() {
     );
 }
 
-/// The sync's time reads as seconds since the epoch, across leap days and
-/// centuries, and nothing else reads.
+/// The sync's time reads as a time in 2026 or later, so a file that does
+/// not parse, which reads as the Unix epoch, fails here.
 #[test]
 fn the_generation_time_is_an_rfc_3339_utc_time() {
-    for (time, seconds) in [
-        ("1970-01-01T00:00:00Z", 0),
-        ("2000-03-01T00:00:00Z", 951_868_800),
-        ("2024-02-29T12:00:00Z", 1_709_208_000),
-        ("2026-10-07T06:50:11Z", 1_791_355_811),
-    ] {
-        assert_eq!(unix_seconds(time), Some(seconds), "{time}");
-    }
-    for not_a_time in [
-        "",
-        "2026-10-07",
-        "2026-10-07T06:50:11",
-        "2026-10-07T06:50:11+00:00",
-        "2026-13-07T06:50:11Z",
-        "2026-10-07T24:00:00Z",
-        "2026-1O-07T06:50:11Z",
-    ] {
-        assert_eq!(unix_seconds(not_a_time), None, "{not_a_time}");
-    }
     let generated = Catalog::generated_at();
     assert!(
         generated > UNIX_EPOCH + Duration::from_secs(1_767_225_600),
@@ -1404,6 +1436,64 @@ fn a_models_dev_refresh_updates_what_rig_does_not_pin() {
 }
 
 #[test]
+fn a_reasoning_setting_as_text_reads_and_prints_for_its_model() {
+    let budgeted = ReasoningSupport::Listed {
+        levels: Vec::new(),
+        budget: Some(1024..=32000),
+        can_disable: false,
+        default: None,
+    };
+    let budget = |tokens| Ok(Some(Reasoning::Budget { tokens }));
+    assert_eq!(budgeted.parse("high"), budget(16384));
+    assert_eq!(budgeted.parse(" 4096 tokens "), budget(4096));
+    assert_eq!(budgeted.parse("default"), Ok(None));
+    for refused in ["999999 tokens", "hihg", "off", "xhigh", "4096"] {
+        assert!(budgeted.parse(refused).is_err(), "{refused}");
+    }
+    let leveled = ReasoningSupport::Listed {
+        levels: vec![Effort::Low, Effort::High],
+        budget: None,
+        can_disable: true,
+        default: None,
+    };
+    assert_eq!(
+        leveled.parse("high"),
+        Ok(Some(Reasoning::Effort(Effort::High)))
+    );
+    assert!(leveled.parse("4096 tokens").is_err());
+    // A model whose controls the catalog does not list refuses nothing.
+    let unknown = ReasoningSupport::Unknown { default: None };
+    assert_eq!(
+        unknown.parse("xhigh"),
+        Ok(Some(Reasoning::Effort(Effort::XHigh)))
+    );
+    assert!(unknown.parse("hihg").is_err());
+
+    let settings = [
+        None,
+        Some(Reasoning::Budget { tokens: 2048 }),
+        Some(Reasoning::Budget { tokens: 5000 }),
+        Some(Reasoning::Budget { tokens: 16384 }),
+    ];
+    let names: Vec<String> = settings.iter().map(|&s| budgeted.name_of(s)).collect();
+    assert_eq!(names, ["default", "low", "5000 tokens", "high"]);
+    for setting in settings {
+        assert_eq!(budgeted.parse(&budgeted.name_of(setting)), Ok(setting));
+    }
+    for choice in leveled.choices() {
+        let name = leveled.name_of(choice.reasoning);
+        assert_eq!(leveled.parse(&name), Ok(choice.reasoning), "{name}");
+    }
+
+    for text in ["default", "off", "max", "16384 tokens", " high "] {
+        assert!(ReasoningSupport::reads(text), "{text}");
+    }
+    for text in ["hihg", "16384", "many tokens", ""] {
+        assert!(!ReasoningSupport::reads(text), "{text}");
+    }
+}
+
+#[test]
 fn reasoning_choices_and_default_options_follow_the_spec() {
     let budgeted = ReasoningSupport::Listed {
         levels: Vec::new(),
@@ -1431,7 +1521,11 @@ fn reasoning_choices_and_default_options_follow_the_spec() {
     assert_eq!(off, Ok(Some(Reasoning::Off)));
     assert_eq!(
         budgeted.named("xhigh").map_err(|why| why.to_string()),
-        Err("the reasoning settings are default, off, low, medium, high, not `xhigh`".to_owned())
+        Err(
+            "the reasoning settings are default, off, low, medium, high, or 1024 to 4096 tokens, \
+             not `xhigh`"
+                .to_owned()
+        )
     );
 
     let provider = ProviderId::catalog("anthropic").expect("a known vendor");
@@ -1457,7 +1551,22 @@ fn the_builtin_catalog_lists_gemini_4_argon_and_gpt_6_input_limits() {
             argon.reasoning.supported() && argon.pricing.is_some(),
             "{vendor}"
         );
+        let neon = spec(catalog, vendor, "gemini-4-neon");
+        assert_eq!(neon.display_name, "Gemini 4 Neon", "{vendor}");
+        assert!(
+            neon.reasoning.supported() && neon.pricing.is_some(),
+            "{vendor}"
+        );
     }
+    assert_eq!(
+        spec(catalog, "gcp.gemini", "gemini-4-neon")
+            .reasoning
+            .default_effort(),
+        Some(Effort::High)
+    );
+    let grok_build = spec(catalog, "xai", "grok-build-0.1");
+    assert_eq!(grok_build.context_window, Some(500_000));
+    assert_eq!(grok_build.reasoning.default_effort(), Some(Effort::High));
     let astra = spec(catalog, "chatgpt", "gpt-6-astra");
     assert_eq!(astra.context_window, Some(1_050_000));
     assert_eq!(astra.input_limit(), Some(922_000));

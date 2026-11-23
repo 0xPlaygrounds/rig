@@ -1,15 +1,9 @@
-//! Inline shell expansion (held-out corpus spec `H04-inline-shell.md`).
-//!
-//! In a message the user typed, each `!{cmd}` runs in the project directory
-//! (the agent's [`WorkDir`] when it has one) and is replaced by a fenced
-//! block of its output. A Prepare system finds the commands in a new
-//! message and holds it with one entity per command, each running its
-//! command off the main thread (rig-tools' `Shell`, raced against the
-//! timeout). Once every command finished, a new message with
-//! the expanded text supersedes the held one, so it goes through Prepare
-//! again (attachments, redaction) and the conversation keeps the expanded
-//! text. A held message is on its way to its agent, so a turn it steers
-//! does not end without it, and if the turn ends anyway it starts the next.
+//! Inline shell expansion. In a message the user typed, each `!{cmd}` runs in the project directory
+//! (the agent's [`WorkDir`] when it has one) and is replaced by a fenced block of its output. The
+//! message is held until every command finished, then a new message with the expanded text
+//! supersedes it, so attachments and redaction apply to the expanded text and the conversation
+//! keeps it. A held message is on its way to its agent, so a turn it steers does not end without
+//! it, and if the turn ends anyway it starts the next.
 
 use std::collections::HashMap;
 use std::time::Duration;
@@ -279,10 +273,7 @@ fn cut(text: &str) -> String {
     if text.len() <= OUTPUT_LIMIT {
         return text.to_owned();
     }
-    let end = (0..=OUTPUT_LIMIT)
-        .rev()
-        .find(|&end| text.is_char_boundary(end))
-        .unwrap_or_default();
+    let end = text.floor_char_boundary(OUTPUT_LIMIT);
     let kept = text.get(..end).unwrap_or_default();
     format!("{kept}\n({} bytes cut)", text.len() - end)
 }

@@ -15,11 +15,12 @@
 //!
 //! A front shows the agents to someone and takes what they type, such as the
 //! terminal view or `--print`. One front takes each run: the one whose
-//! command or flag was given, else the first offered (in `plugins.toml`
-//! order) for the kind of run. Each sets itself up in `finish` only if
-//! `app.runs_front(name)`. The plugin guide's
-//! [fronts section](crate::plugin_guide#fronts-options-and-commands) covers
-//! sessionless fronts and fronts with a store of their own.
+//! command or flag was given, else the first offered (in the order the
+//! plugins are added) for the kind of run. Each sets itself up in `finish` only if
+//! `app.runs_front(name)`, and alone owns stdin and stdout. A command is a
+//! front of its own ([`Front::on_command`]); one that keeps no session is
+//! [`Front::sessionless`], and one whose runs keep their session elsewhere,
+//! such as in a chat thread, says where with [`Front::session_store`].
 //!
 //! ```
 //! use rig_harness::prelude::*;
@@ -143,6 +144,9 @@ pub struct Front {
     /// Where a run it takes keeps its session, in place of
     /// [`StoreOpener`] ([`Self::session_store`]).
     pub session_store: Option<StoreOpener>,
+    /// Whether it shows [`Picker`](crate::pick::Picker)s; the harness
+    /// refuses each one a run whose front does not show them opens.
+    pub pickers: bool,
 }
 
 impl Front {
@@ -156,6 +160,7 @@ impl Front {
             command: None,
             sessionless: false,
             session_store: None,
+            pickers: false,
         }
     }
 
@@ -168,6 +173,12 @@ impl Front {
     /// It takes a run without an interactive terminal.
     pub fn headless(mut self) -> Self {
         self.headless = true;
+        self
+    }
+
+    /// It shows pickers and answers them ([`pick`](crate::pick)).
+    pub fn shows_pickers(mut self) -> Self {
+        self.pickers = true;
         self
     }
 
@@ -199,8 +210,9 @@ impl Front {
 
     /// It takes any run of `rig <name> …`, a command whose arguments are
     /// `usage` and which does what `help` says; the words after the name
-    /// are read with [`Invoked::command`]. Two plugins with one command,
-    /// or a command of the launcher's own name, fail the build.
+    /// are read with [`Invoked::command`]. `rig -r <id or name> <name>`
+    /// runs it in that session. Two plugins with one command, or a command
+    /// of the launcher's own name, fail the build.
     pub fn on_command(
         mut self,
         name: &'static str,
@@ -230,9 +242,21 @@ impl Cli {
         self.chosen().is_some_and(|front| front.sessionless)
     }
 
+    /// Whether the front of this run, once chosen, shows pickers; `None`
+    /// before, or when no front takes the run.
+    pub(crate) fn pickers(&self) -> Option<bool> {
+        self.chosen().map(|front| front.pickers)
+    }
+
     /// Whether the front of this run takes an interactive terminal.
     pub(crate) fn terminal(&self) -> bool {
         self.chosen().is_some_and(|front| front.terminal)
+    }
+
+    /// Whether the run's front was chosen, even as none, as while the
+    /// build describes itself.
+    pub(crate) fn decided(&self) -> bool {
+        self.chosen.is_some()
     }
 
     /// The front of this run, once chosen.
@@ -241,10 +265,9 @@ impl Cli {
     }
 }
 
-/// On the entity of each declaration of an option, front, secret or
-/// [project setting](crate::settings::ProjectSetting): its place in the
-/// order they were declared, which is the order fronts are offered in,
-/// options described and project settings applied.
+/// On the entity of each declaration of an option, front or secret: its
+/// place in the order they were declared, which is the order fronts are
+/// offered in and options described.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Declared(pub usize);
 
@@ -418,10 +441,9 @@ pub trait AppCliExt {
 
     /// Refuses this run, such as for an option value no plugin can take:
     /// says `why` on stderr at once, before any front takes the terminal,
-    /// keeps the run out of its session's directory, and exits with code 2
-    /// at the end of the first frame. Only the first refusal is said. Work
-    /// the restored session left may start in that frame unless the
-    /// plugin holds it.
+    /// keeps the run out of its session's directory, holds the agent loop,
+    /// and exits with code 2 at the end of the first frame. Only the first
+    /// refusal is said.
     fn refuse_run(&mut self, why: String) -> &mut Self;
 }
 

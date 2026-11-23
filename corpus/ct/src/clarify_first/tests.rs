@@ -81,6 +81,7 @@ fn start(
     app.world_mut().trigger(SetModel {
         entity: agent,
         model: "test/main".to_owned(),
+        kind: ChoiceKind::ForThisRun,
     });
     (app, wakes, agent)
 }
@@ -230,7 +231,4 @@ fn auto_mode_lets_a_short_prompt_straight_through() {
     assert!(long.wants_interview("Please build an export button"));
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(ClarifyFirstPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(ClarifyFirstPlugin);

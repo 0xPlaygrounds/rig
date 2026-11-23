@@ -110,11 +110,13 @@ fn items_run_in_order_fail_block_tick_the_file_and_a_rerun_carries_on() {
         ))
         .add_observer(on_item);
     let main = script(vec![reply("noted"), reply("noted again")]);
-    let mut owner = app.world_mut().spawn(Agent);
-    if let Some(connection) = connect(&main) {
-        let choice = ModelChoice(connection.spec.reference());
-        owner.insert((connection, choice));
-    }
+    let owner = match connect(&main) {
+        Some(connection) => {
+            let choice = ModelChoice(connection.spec.reference());
+            spawn_root(app.world_mut(), (connection, choice))
+        }
+        None => spawn_root(app.world_mut(), ()),
+    };
     let owner = owner.id();
     app.finish();
     app.update();
@@ -222,7 +224,4 @@ fn items_run_in_order_fail_block_tick_the_file_and_a_rerun_carries_on() {
     assert!(after.contains(USER_LINE), "{after}");
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(ChecklistRunnerPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(ChecklistRunnerPlugin);

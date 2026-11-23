@@ -169,10 +169,10 @@ impl Untrusted {
 
     /// The marks in `conversation`, oldest first.
     pub fn in_conversation(conversation: &rig_core::conversation::Conversation) -> Vec<Self> {
-        let asides = conversation.asides().map(|(_, aside)| aside);
-        let marks = asides.filter(|aside| aside.kind == Self::KIND);
-        let marks = marks.filter_map(|aside| Self::deserialize(&aside.value).ok());
-        marks.collect()
+        conversation
+            .asides()
+            .filter_map(|(_, aside)| aside.read(Self::KIND))
+            .collect()
     }
 }
 

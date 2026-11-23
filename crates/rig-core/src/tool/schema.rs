@@ -26,9 +26,10 @@ use serde_json::Value;
 
 /// The JSON schema of the arguments type `A`, in the plain shape tool
 /// definitions use: inline, without `$schema`, `title`, `default`, `format`
-/// (providers support it unevenly) or the type's own doc comment, and with
-/// `Option` fields optional, not nullable (no `null` type, enum value or
-/// `anyOf` alternative), and each object refusing keys
+/// (providers support it unevenly) or the type's own doc comment, with an
+/// `Option` property that is not `required` optional, not nullable (no
+/// `null` type, enum value or `anyOf` alternative; every other `null` stays,
+/// as in a `Vec<Option<T>>`'s items), and each object refusing keys
 /// it does not declare (`additionalProperties: false`, as
 /// `deny_unknown_fields` says; a map keeps its own).
 pub fn args_schema<A: JsonSchema>() -> Value {
@@ -44,10 +45,36 @@ pub fn args_schema<A: JsonSchema>() -> Value {
 
 /// Drops from one subschema what [`args_schema`] leaves out, keeping the
 /// other keys' order, closes an object to undeclared keys, joins a doc
-/// comment's lines as rustdoc does, and makes an `Option` optional rather
-/// than nullable: no `null` type or enum value, and no `{"type": "null"}`
-/// alternative (the one left is merged in).
+/// comment's lines as rustdoc does, and makes each property it need not
+/// have non-nullable ([`omit_null`]).
 fn plain(schema: &mut Schema) {
+    let Some(schema) = schema.as_object_mut() else {
+        return;
+    };
+    if let Some(Value::String(text)) = schema.get_mut("description") {
+        let paragraphs: Vec<String> = text.split("\n\n").map(|p| p.replace('\n', " ")).collect();
+        *text = paragraphs.join("\n\n");
+    }
+    for key in ["title", "default", "format"] {
+        remove_preserving_order(schema, key);
+    }
+    if schema.contains_key("properties") && !schema.contains_key("additionalProperties") {
+        schema.insert("additionalProperties".to_owned(), Value::Bool(false));
+    }
+    let required = schema.get("required").cloned().unwrap_or_default();
+    if let Some(Value::Object(properties)) = schema.get_mut("properties") {
+        let required = required.as_array().map(Vec::as_slice).unwrap_or_default();
+        properties
+            .iter_mut()
+            .filter(|(name, _)| !required.iter().any(|r| r.as_str() == Some(name.as_str())))
+            .for_each(|(_, property)| omit_null(property));
+    }
+}
+
+/// Makes an omittable property optional rather than nullable: no `null`
+/// type or enum value, and no `{"type": "null"}` alternative (the one left
+/// is merged in). The validator reads `null` there as the property absent.
+fn omit_null(schema: &mut Value) {
     let Some(schema) = schema.as_object_mut() else {
         return;
     };
@@ -64,16 +91,6 @@ fn plain(schema: &mut Schema) {
                 schema.entry(key).or_insert(value);
             }
         }
-    }
-    if let Some(Value::String(text)) = schema.get_mut("description") {
-        let paragraphs: Vec<String> = text.split("\n\n").map(|p| p.replace('\n', " ")).collect();
-        *text = paragraphs.join("\n\n");
-    }
-    for key in ["title", "default", "format"] {
-        remove_preserving_order(schema, key);
-    }
-    if schema.contains_key("properties") && !schema.contains_key("additionalProperties") {
-        schema.insert("additionalProperties".to_owned(), Value::Bool(false));
     }
     if let Some(Value::Array(types)) = schema.get_mut("type")
         && types.iter().any(|kind| kind == "null")

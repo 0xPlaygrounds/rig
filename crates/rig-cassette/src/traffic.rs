@@ -477,22 +477,19 @@ struct Recorded {
 }
 
 /// The reply `sent` ended with, recorded: a unary body once it is read.
-async fn unary<U>(
+async fn unary(
     opening: Opening,
-    sent: impl Future<Output = http_client::Result<Response<LazyBody<Bytes>>>>,
-) -> http_client::Result<Response<LazyBody<U>>>
-where
-    U: From<Bytes> + WasmCompatSend + 'static,
-{
+    sent: impl Future<Output = http_client::Result<Response<LazyBody>>>,
+) -> http_client::Result<Response<LazyBody>> {
     let mut recording = opening.begin();
     match sent.await {
         Ok(response) => {
             recording.response(&response, false);
-            Ok(response.map(|body| -> LazyBody<U> {
+            Ok(response.map(|body| -> LazyBody {
                 Box::pin(async move {
                     let body = body.await;
                     recording.body(&body);
-                    body.map(U::from)
+                    body
                 })
             }))
         }
@@ -515,39 +512,31 @@ fn uncompressed<B>(mut request: Request<B>) -> Request<B> {
 }
 
 impl HttpClientExt for Recorded {
-    fn send<T, U>(
+    fn send(
         &self,
-        req: Request<T>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        T: Into<Bytes> + WasmCompatSend,
-        U: From<Bytes> + WasmCompatSend + 'static,
+        req: Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
-        let req = uncompressed(req.map(Into::into));
+        let req = uncompressed(req);
         let opening = Opening::of(&self.sink, &req, RequestBody::Bytes(req.body().clone()));
-        unary(opening, self.inner.send::<Bytes, Bytes>(req))
+        unary(opening, self.inner.send(req))
     }
 
-    fn send_multipart<U>(
+    fn send_multipart(
         &self,
         req: Request<MultipartForm>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        U: From<Bytes> + WasmCompatSend + 'static,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody>>> + WasmCompatSend + 'static
     {
         let req = uncompressed(req);
         let opening = Opening::of(&self.sink, &req, RequestBody::Multipart(req.body().clone()));
-        unary(opening, self.inner.send_multipart::<Bytes>(req))
+        unary(opening, self.inner.send_multipart(req))
     }
 
-    fn send_streaming<T>(
+    fn send_streaming(
         &self,
-        req: Request<T>,
-    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
-    where
-        T: Into<Bytes> + WasmCompatSend,
-    {
-        let req = uncompressed(req.map(Into::into));
+        req: Request<Bytes>,
+    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend {
+        let req = uncompressed(req);
         let opening = Opening::of(&self.sink, &req, RequestBody::Bytes(req.body().clone()));
         let sent = self.inner.send_streaming(req);
         async move {

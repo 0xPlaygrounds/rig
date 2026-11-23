@@ -1,15 +1,12 @@
-//! Plan mode (corpus spec `09-plan-mode.md`). `/plan` lets the shown agent
-//! read but not change anything: a Prepare system offers its model calls
-//! only the read-only tools ([`Touches::Reads`], which a tool's
-//! read-only annotation gives it) and tells the model to plan, and a Gate
-//! system refuses, with its own reason, any other call, of the agent or
-//! of an agent it spawned. A tool that changes nothing its reply's other
-//! calls see ([`Touches::Independent`]: starting a subagent, scheduling
-//! a job, a reload) still acts, so it waits until the plan is approved. The answer that ends
-//! a planning turn is the plan: it is written to `.rig/plan.md` and the
-//! user is asked whether to execute it, keep planning or discard it. The
-//! agent's tools are never changed, so leaving gives back exactly what it
-//! had.
+//! Plan mode. `/plan` lets the shown agent read but not change anything: a Prepare system offers
+//! its model calls only the read-only tools ([`Touches::Reads`], which a tool's read-only
+//! annotation gives it) and tells the model to plan, and a Gate system refuses, with its own
+//! reason, any other call, of the agent or of an agent it spawned. A tool that changes nothing its
+//! reply's other calls see ([`Touches::Independent`]: starting a subagent, scheduling a job, a
+//! reload) still acts, so it waits until the plan is approved. The answer that ends a planning turn
+//! is the plan: it is written to `.rig/plan.md` and the user is asked whether to execute it, keep
+//! planning or discard it. The agent's tools are never changed, so leaving gives back exactly what
+//! it had.
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::Section;

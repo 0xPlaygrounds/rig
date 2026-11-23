@@ -3,9 +3,9 @@
 //! the path rules here are this machine's ([`Local`]); a tool reads through
 //! its [`Workspace`].
 
-use std::fs::{self, File};
+use std::fs;
 use std::io::{self, ErrorKind, Write as _};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
@@ -13,15 +13,7 @@ use rig_core::tool::{FileChange, FileState, Hunk, HunkLine, Lines, ToolExecution
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
-use crate::workspace::{Contents, Listing, Local, Stat, Workspace};
-
-/// Reads `path` as text after checking, without opening it, that it is a
-/// regular file of at most [`MAX_FILE_BYTES`](crate::MAX_FILE_BYTES):
-/// opening a FIFO or a device can block forever. [`Local`]'s
-/// `read_text`.
-pub fn read_text(path: &str) -> Result<String, ToolExecutionError> {
-    local().read_text(Path::new(path))
-}
+use crate::workspace::{Contents, Listed, Listing, Local, Stat, Workspace, not_a_file, read_only};
 
 /// The start of a file read by [`read_prefix`].
 pub struct Prefix {
@@ -80,21 +72,94 @@ pub fn read_prefix(path: &Path, cap: usize) -> io::Result<Prefix> {
 /// text) and makes this process the file's owner. A crash between create
 /// and rename can leave a `.name.<pid>-<n>.tmp` beside the file.
 pub fn write_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
-    let (target, permissions) = match fs::metadata(path) {
+    write_atomic_if(path, contents, || Ok(true)).map(drop)
+}
+
+/// [`write_atomic`], but only while the file still holds what `still`
+/// checks for, asked once the new text is in place beside it, just
+/// before the rename: `false`, and nothing written, when it does not. A
+/// save landing between that check and the rename is still replaced; no
+/// portable call compares and replaces a file in one step.
+pub fn write_atomic_if(
+    path: &Path,
+    contents: &[u8],
+    still: impl FnOnce() -> io::Result<bool>,
+) -> io::Result<bool> {
+    publish(path, contents, |temporary, target| {
+        if !still()? {
+            return Ok(false);
+        }
+        fs::rename(temporary, target).map(|()| true)
+    })
+}
+
+/// Creates the file at `path` with `contents` as [`write_atomic`] writes
+/// it, but only while there is no file there: the temporary file is
+/// linked to its name, which fails with an
+/// [`AlreadyExists`](ErrorKind::AlreadyExists) error, the file there kept,
+/// when one appeared at any moment before.
+pub fn write_new(path: &Path, contents: &[u8]) -> io::Result<()> {
+    publish(path, contents, link_new).map(drop)
+}
+
+/// Gives the file `temporary` the name `target` only while nothing has
+/// it, by [`place_new`] with a hard link.
+fn link_new(temporary: &Path, target: &Path) -> io::Result<bool> {
+    place_new(temporary, target, |from, to| fs::hard_link(from, to))
+}
+
+/// Gives the file `temporary` the name `target` with `link` only while
+/// nothing has it, then drops the temporary name. Where `link` fails for
+/// another reason, as hard links do on vfat or some network mounts, the
+/// file is copied to `target` by a create that refuses a name anything
+/// has; one the copy fails to fill is removed, but a crash during it can
+/// leave `target` short.
+fn place_new(
+    temporary: &Path,
+    target: &Path,
+    link: impl FnOnce(&Path, &Path) -> io::Result<()>,
+) -> io::Result<bool> {
+    match link(temporary, target) {
+        Err(error) if error.kind() == ErrorKind::AlreadyExists => return Err(error),
+        Err(_) => {
+            let mut created = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(target)?;
+            let copied = fs::File::open(temporary)
+                .and_then(|mut from| io::copy(&mut from, &mut created))
+                .and_then(|_| created.sync_all());
+            // The file made here holds less than all of it: it goes.
+            copied.inspect_err(|_| {
+                fs::remove_file(target).ok();
+            })?;
+        }
+        Ok(()) => {}
+    }
+    // The file is made; a temporary name left behind is only clutter.
+    fs::remove_file(temporary).ok();
+    Ok(true)
+}
+
+/// Writes `contents` to a temporary file beside `path`'s target, as
+/// [`write_atomic`] says, then hands it and the target to `place`, which
+/// puts it there and says whether it did; the temporary file is removed
+/// when it did not.
+fn publish(
+    path: &Path,
+    contents: &[u8],
+    place: impl FnOnce(&Path, &Path) -> io::Result<bool>,
+) -> io::Result<bool> {
+    let target = real_path(path);
+    let permissions = match fs::symlink_metadata(&target) {
         Ok(meta) if !meta.is_file() => {
-            return Err(io::Error::new(
-                ErrorKind::InvalidInput,
-                "not a regular file",
-            ));
+            return Err(not_a_file());
         }
         Ok(meta) if meta.permissions().readonly() => {
-            return Err(io::Error::new(
-                ErrorKind::PermissionDenied,
-                "the file is read-only; leave it unchanged or ask the user",
-            ));
+            return Err(read_only());
         }
-        Ok(meta) => (fs::canonicalize(path)?, Some(meta.permissions())),
-        Err(error) if error.kind() == ErrorKind::NotFound => (link_target(path), None),
+        Ok(meta) => Some(meta.permissions()),
+        Err(error) if error.kind() == ErrorKind::NotFound => None,
         Err(error) => return Err(error),
     };
     if let Some(parent) = target
@@ -107,34 +172,25 @@ pub fn write_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
         .file_name()
         .ok_or_else(|| io::Error::new(ErrorKind::InvalidInput, "names no file"))?;
     let temporary = temporary_beside(&target, name);
-    let written = File::create_new(&temporary).and_then(|mut file| {
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    // Only a file that exists has a mode to protect; a new one gets the default.
+    #[cfg(unix)]
+    if permissions.is_some() {
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    }
+    let written = options.open(&temporary).and_then(|mut file| {
+        file.write_all(contents)?;
+        file.sync_all()?;
         if let Some(permissions) = permissions {
             file.set_permissions(permissions)?;
         }
-        file.write_all(contents)?;
-        file.sync_all()?;
-        fs::rename(&temporary, &target)
+        place(&temporary, &target)
     });
-    written.inspect_err(|_| {
+    if !matches!(written, Ok(true)) {
         fs::remove_file(&temporary).ok();
-    })
-}
-
-/// Writes `contents` to the file `path` names in one step, as
-/// [`write_atomic`] does, but without forcing it to disk, and with none of
-/// its checks: for scratch that no run after a crash reads, such as a
-/// checkpoint's kept content. A reader never sees it half written.
-pub(crate) fn write_scratch(path: &Path, contents: &[u8]) -> io::Result<()> {
-    let name = path
-        .file_name()
-        .ok_or_else(|| io::Error::new(ErrorKind::InvalidInput, "names no file"))?;
-    let temporary = temporary_beside(path, name);
-    let written = File::create_new(&temporary)
-        .and_then(|mut file| file.write_all(contents))
-        .and_then(|()| fs::rename(&temporary, path));
-    written.inspect_err(|_| {
-        fs::remove_file(&temporary).ok();
-    })
+    }
+    written
 }
 
 /// A temporary file's path beside `target`, whose file name is `name`:
@@ -162,19 +218,53 @@ pub fn write_json(path: &Path, value: &impl Serialize) -> io::Result<()> {
     write_atomic(path, &serde_json::to_vec_pretty(value)?)
 }
 
-/// Where a missing `path` is created: the end of its chain of dangling
-/// symlinks, or `path` itself when it is no link.
-fn link_target(path: &Path) -> PathBuf {
-    /// Linux's own limit on links followed in one lookup.
+/// Where `path` really is: absolute, with every symlink on it followed,
+/// dangling ones included, and `.` and `..` folded. Parts that do not exist
+/// yet are taken as written. A file tool's path is resolved here and
+/// [`write_atomic`] writes here, so the path a tool checks is the one it
+/// changes. Past Linux's limit of 40 links, `path` comes back only made
+/// absolute, still a link, which the I/O on it refuses.
+pub(crate) fn real_path(path: &Path) -> PathBuf {
     const MAX_HOPS: usize = 40;
-    let mut target = path.to_path_buf();
-    for _ in 0..MAX_HOPS {
-        let Ok(link) = fs::read_link(&target) else {
-            break;
-        };
-        target = target.parent().unwrap_or(Path::new("")).join(link);
+    let path = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
+    let mut next = path.clone();
+    for _ in 0..=MAX_HOPS {
+        match follow(&next) {
+            Ok(real) => return real,
+            Err(link) => next = link,
+        }
     }
-    target
+    path
+}
+
+/// `path` with its longest existing start made canonical and the rest
+/// folded onto it, or `Err` with the path the first link in the rest
+/// leads to.
+fn follow(path: &Path) -> Result<PathBuf, PathBuf> {
+    let start = path.ancestors().find_map(|ancestor| {
+        Some((
+            fs::canonicalize(ancestor).ok()?,
+            path.strip_prefix(ancestor).ok()?,
+        ))
+    });
+    let (mut out, rest) = start.unwrap_or((PathBuf::new(), path));
+    let mut rest = rest.components();
+    while let Some(component) = rest.next() {
+        match component {
+            Component::ParentDir => {
+                out.pop();
+            }
+            Component::CurDir => {}
+            other => {
+                out.push(other);
+                if let Ok(link) = fs::read_link(&out) {
+                    out.pop();
+                    return Err(out.join(link).join(rest.as_path()));
+                }
+            }
+        }
+    }
+    Ok(out)
 }
 
 /// A model-visible error for an I/O failure on `path`.
@@ -196,7 +286,7 @@ pub(crate) fn listed(
     root: &Path,
     glob: Option<&str>,
     listing: Listing,
-) -> Result<Vec<PathBuf>, ToolExecutionError> {
+) -> Result<Listed, ToolExecutionError> {
     let shown = root.to_string_lossy();
     let missing = || {
         let missing = io::Error::new(ErrorKind::NotFound, "no such file or directory");
@@ -210,7 +300,8 @@ pub(crate) fn listed(
             _ => io_error(&shown, error),
         })?;
     // Only an empty listing asks whether `root` is there at all.
-    if files.is_empty()
+    if files.files.is_empty()
+        && files.failed.is_empty()
         && workspace
             .stat(root)
             .map_err(|error| io_error(&shown, error))?
@@ -221,27 +312,55 @@ pub(crate) fn listed(
     Ok(files)
 }
 
-/// `path` as the file tools open it: made absolute against `base` (`None`:
-/// this process's working directory) or, when its first component is `~`,
-/// against the home directory, with every symbolic link of its
-/// longest existing part followed (the file's own too, when it exists) and
-/// `..` folded. Two spellings of one file resolve alike, so this is how the
-/// facts the tools publish ([`FilesRead`](rig_core::tool::FilesRead),
-/// [`FileChange::path`]) and their footprints name files. A path that
-/// cannot be made absolute (no working directory) stays relative.
-///
-/// ```
-/// use std::path::Path;
-/// use rig_tools::fs::resolve;
-///
-/// let here = std::fs::canonicalize(".")?;
-/// assert_eq!(resolve(None, "src/../Cargo.toml"), here.join("Cargo.toml"));
-/// assert_eq!(resolve(Some(&here), "gone/../new.rs"), here.join("new.rs"));
-/// assert_eq!(resolve(Some(Path::new("/nowhere")), "/nowhere/a/../b"), Path::new("/nowhere/b"));
-/// # Ok::<(), std::io::Error>(())
-/// ```
-pub fn resolve(base: Option<&Path>, path: &str) -> PathBuf {
-    local().resolve(base, path)
+/// Most paths a tool's note on what it could not read names, the most
+/// bytes of the paths and reasons it shows, and the most characters of
+/// one reason and of one path.
+const MAX_UNREAD: usize = 20;
+const MAX_UNREAD_BYTES: usize = 4 * 1024;
+const MAX_WHY_CHARS: usize = 200;
+const MAX_PATH_CHARS: usize = 500;
+
+/// A tool's last line on the paths it could not read, each shown with why,
+/// as many as fit [`MAX_UNREAD`] and [`MAX_UNREAD_BYTES`], and how many
+/// more: `[could not read 2 paths, so {what}: a (Permission denied), b (…)]`,
+/// `what` said of one path, then of several.
+pub(crate) fn unread(
+    paths: impl ExactSizeIterator<Item = (String, String)>,
+    [of_one, of_many]: [&str; 2],
+) -> String {
+    let count = paths.len();
+    let (noun, what) = if count == 1 {
+        ("path", of_one)
+    } else {
+        ("paths", of_many)
+    };
+    let mut named: Vec<String> = Vec::new();
+    let mut bytes = 0;
+    for (path, why) in paths.take(MAX_UNREAD) {
+        let cut = |text: &str, chars| {
+            let cut = crate::excerpt(text, None, chars);
+            let mark = if cut.is_cut() { crate::CUT_MARK } else { "" };
+            format!("{}{mark}", cut.kept())
+        };
+        let one = format!(
+            "{} ({})",
+            cut(&path, MAX_PATH_CHARS),
+            cut(&why, MAX_WHY_CHARS)
+        );
+        // The first always shows, so the note names one at least.
+        if !named.is_empty() && bytes + one.len() > MAX_UNREAD_BYTES {
+            break;
+        }
+        bytes += one.len();
+        named.push(one);
+    }
+    if count > named.len() {
+        named.push(format!("and {} more", count - named.len()));
+    }
+    format!(
+        "[could not read {count} {noun}, so {what}: {}]",
+        named.join(", ")
+    )
 }
 
 /// `path`, relative to where a tool looked, as the tool shows it: with `./`
@@ -252,34 +371,6 @@ pub(crate) fn shown(path: &Path) -> PathBuf {
         true => Path::new(".").join(path),
         false => path.to_path_buf(),
     }
-}
-
-/// `path` [`resolve`]d against `base`, as a file tool opens it; with
-/// `confine`, refused before any I/O when it lies outside `base` (`None`:
-/// the working directory). The rule the file tools follow, for code that
-/// must decide as they would, such as a preview of a write.
-///
-/// ```
-/// use std::path::Path;
-/// use rig_tools::fs::place;
-///
-/// let base = std::fs::canonicalize(".")?;
-/// assert_eq!(place(Some(&base), true, "src/../a.rs")?, base.join("a.rs"));
-/// assert!(place(Some(&base), true, "../outside.rs").is_err());
-/// assert!(place(Some(&base), false, "../outside.rs").is_ok());
-/// # Ok::<(), Box<dyn std::error::Error>>(())
-/// ```
-pub fn place(
-    base: Option<&Path>,
-    confine: bool,
-    path: &str,
-) -> Result<PathBuf, ToolExecutionError> {
-    local().place(base, confine, path)
-}
-
-/// This machine, as a [`Workspace`].
-fn local() -> &'static dyn Workspace {
-    &Local
 }
 
 /// What turning `before` into `after` did to the file at `path` (`None`:
@@ -340,7 +431,7 @@ pub(crate) fn diff(path: &str, before: Option<&str>, after: Option<&str>) -> Fil
 }
 
 /// The hunk `ops`, a group of [`similar::TextDiff::grouped_ops`], spans.
-fn hunk(diff: &similar::TextDiff<'_, '_, '_, str>, ops: &[similar::DiffOp]) -> Option<Hunk> {
+fn hunk(diff: &similar::TextDiff<'_, '_, str>, ops: &[similar::DiffOp]) -> Option<Hunk> {
     let (first, last) = (ops.first()?, ops.last()?);
     let span = |start: usize, end: usize| Lines {
         start: start + 1,

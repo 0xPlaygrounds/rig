@@ -1,3 +1,4 @@
+use crate::workspace::Root;
 use std::sync::Arc;
 
 use rig_core::tool::{ChangeKind, Tool, ToolContext, ToolExecutionError, ToolOutput, content_hash};
@@ -28,21 +29,27 @@ fn tools_on_an_overlay_leave_the_disk_and_list_their_changes() {
     let workspace: Arc<dyn Workspace> = overlay.clone();
     let base = Some(dir.clone());
     let edit = Edit {
-        workspace: workspace.clone(),
-        base: base.clone(),
-        confine: true,
+        root: Root {
+            workspace: workspace.clone(),
+            base: base.clone(),
+            confine: true,
+        },
         seen: crate::Seen::default(),
     };
     let write = Write {
-        workspace: workspace.clone(),
-        base: base.clone(),
-        confine: true,
+        root: Root {
+            workspace: workspace.clone(),
+            base: base.clone(),
+            confine: true,
+        },
         seen: Default::default(),
     };
     let read = Read {
-        workspace,
-        base,
-        confine: true,
+        root: Root {
+            workspace,
+            base,
+            confine: true,
+        },
         seen: crate::Seen::default(),
     };
     let edited = run(
@@ -92,6 +99,7 @@ fn tools_on_an_overlay_leave_the_disk_and_list_their_changes() {
     );
     let files = overlay
         .files(&dir, Some("*.rs"), Listing::Visible)
+        .map(|listed| listed.files)
         .unwrap_or_default();
     assert_eq!(files, [dir.join("a.rs"), dir.join("new/b.rs")]);
     std::fs::remove_dir_all(dir).ok();
@@ -128,4 +136,15 @@ fn an_overlay_change_gives_each_side_and_a_deletions_text() {
     );
     assert!(dir.join("old.rs").exists());
     std::fs::remove_dir_all(dir).ok();
+}
+
+/// An overlay says a path is on a host as the workspace under it does.
+#[test]
+fn an_overlay_tells_where_a_path_is_as_its_workspace_does() {
+    let bench = crate::remote::Remote::new("bench", ["true"], crate::process::Launcher::default);
+    let hosts = crate::remote::Hosts::new(Arc::new(Local), bench);
+    let overlay = Overlay::new(Arc::new(hosts));
+    let there = overlay.host_for(std::path::Path::new("bench:~/x"));
+    let here = overlay.host_for(std::path::Path::new("/project/x"));
+    assert_eq!((there, here), (Some("bench"), None));
 }

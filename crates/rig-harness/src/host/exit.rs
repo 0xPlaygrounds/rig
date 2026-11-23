@@ -1,16 +1,15 @@
 //! Why the app exits. A plugin that ends the run triggers [`Exit`] with
 //! its reason: the harness keeps the first reason as the [`ExitReason`]
-//! resource at once, tells the launcher what to run next (another session,
-//! or the staged build), and spawns the exit as an app-level effect, an
+//! resource at once and spawns the exit as an app-level effect, an
 //! [`ExitRequest`]. The app exits when that effect settles, whatever
 //! answered it: a plugin delays the exit by holding it (`HoldOf`), and
-//! nothing cancels it. An exit written as a plain `AppExit`, such as a
+//! nothing cancels it. The launcher learns the reason from the agent's
+//! end record ([`AgentEnd`]), so only a reason asks it to reload or run
+//! another session. An exit written as a plain `AppExit`, such as a
 //! window closing, gets its reason from its code and cannot be held. Code
 //! that runs on the way out reads the reason in Bevy's
 //! `OnAppExitSystems`, such as a plugin that leaves its background jobs
 //! running across a reload and stops them on a quit.
-
-use std::fs;
 
 use bevy_app::OnAppExitSystems;
 use bevy_app::prelude::*;
@@ -20,12 +19,10 @@ use rig_ecs::agent::Notice;
 use rig_ecs::stage::{Decision, EffectRequest, Outcome, Settled, Started};
 use rig_ecs::tasks::Wake;
 use rig_ecs::turn::Exiting;
-use rig_harness_protocol::{RELOAD_EXIT_CODE, SessionId};
+use rig_harness_protocol::SessionId;
+use rig_harness_protocol::end::{AgentEnd, FailCode};
 
-use super::session::SessionPaths;
-
-/// The exit code of a signalled exit, as a shell reports Ctrl+C.
-pub const SIGNAL_EXIT_CODE: u8 = 130;
+use super::launcher::LauncherRun;
 
 /// Why the app exits; a resource from the frame the exit was asked for.
 #[derive(Resource, Clone, Debug, PartialEq, Eq)]
@@ -37,21 +34,38 @@ pub enum ExitReason {
     /// The launcher runs another session next: the one named, else a new
     /// one.
     Switch(Option<SessionId>),
+    /// The run was refused before it did its work, for the reason given as
+    /// a sentence, said on stderr as the run was refused.
+    Refused(String),
     /// A signal (SIGINT, SIGTERM, SIGHUP) ended the run, or the launcher
     /// that started it went away.
     Signal,
     /// The run failed with this exit code.
-    Failed(u8),
+    Failed(FailCode),
 }
 
 impl ExitReason {
-    /// The reason an `AppExit` written without one stands for.
+    /// The reason an `AppExit` written without one stands for: a quit, a
+    /// signal for its code, else a failure. A plain exit never reloads nor
+    /// switches sessions: the reload code is a failure
+    /// ([`FailCode::or_failure`]).
     pub fn of(exit: &AppExit) -> Self {
         match exit {
             AppExit::Success => Self::Quit,
-            AppExit::Error(code) if code.get() == RELOAD_EXIT_CODE => Self::Reload,
-            AppExit::Error(code) if code.get() == SIGNAL_EXIT_CODE => Self::Signal,
-            AppExit::Error(code) => Self::Failed(code.get()),
+            AppExit::Error(code) if code.get() == AgentEnd::Signal.code() => Self::Signal,
+            AppExit::Error(code) => Self::Failed(FailCode::or_failure(code.get())),
+        }
+    }
+
+    /// The end the launcher reads for this reason.
+    pub fn end(&self) -> AgentEnd {
+        match self {
+            Self::Quit => AgentEnd::Quit,
+            Self::Reload => AgentEnd::Reload,
+            Self::Switch(session) => AgentEnd::Switch(session.clone()),
+            Self::Refused(why) => AgentEnd::Refused(why.clone()),
+            Self::Signal => AgentEnd::Signal,
+            Self::Failed(code) => AgentEnd::Failed(*code),
         }
     }
 
@@ -64,22 +78,16 @@ impl ExitReason {
         }
     }
 
-    /// The exit code the launcher reads.
+    /// The exit with the code of [`Self::end`].
     pub fn exit(&self) -> AppExit {
-        match self {
-            Self::Quit => AppExit::Success,
-            Self::Reload | Self::Switch(_) => AppExit::from_code(RELOAD_EXIT_CODE),
-            Self::Signal => AppExit::from_code(SIGNAL_EXIT_CODE),
-            Self::Failed(code) => AppExit::from_code(*code),
-        }
+        AppExit::from_code(self.end().code())
     }
 }
 
 /// Asks the app to exit for a reason. The first reason of a run stands;
 /// each exit asked for is an [`ExitRequest`] effect. A
-/// [`ExitReason::Switch`] needs the launcher: without one, or when the
-/// session to run cannot be named to it, the app keeps running and an
-/// error notice says why.
+/// [`ExitReason::Switch`] needs the launcher: without one the app keeps
+/// running and an error notice says why.
 #[derive(Event, Clone, Debug)]
 pub struct Exit(pub ExitReason);
 
@@ -88,7 +96,9 @@ pub struct Exit(pub ExitReason);
 /// answered: a plugin delays the exit only by holding it (`HoldOf`, with a
 /// deadline of its own), and nothing cancels it. Work keeps running while
 /// it is held. A second exit asked for meanwhile is a second effect, which
-/// a holder may take as "stop waiting".
+/// a holder may take as "stop waiting". A signal's exit is held the same
+/// way, but a launcher passing on a signal waits for the agent at most
+/// [`STOP_WAIT`](rig_harness_protocol::STOP_WAIT) before it kills it.
 #[derive(Component, Clone, Debug)]
 pub struct ExitRequest(pub ExitReason);
 
@@ -106,7 +116,25 @@ impl Plugin for ExitPlugin {
                     .chain()
                     .before(OnAppExitSystems)
                     .distributive_run_if(on_message::<AppExit>),
+            )
+            .add_systems(
+                Last,
+                end_left_jobs
+                    .in_set(OnAppExitSystems)
+                    .after(rig_ecs::StopTurnsOnExit)
+                    .run_if(on_message::<AppExit>),
             );
+    }
+}
+
+/// Ends what the calls the exit stopped still run, and, as the agent exits
+/// for good, the jobs its commands left running in the background; across
+/// a reload or a session switch those keep running, for the next agent to
+/// take over (`LauncherPlugin`).
+fn end_left_jobs(reason: Option<Res<ExitReason>>) {
+    match reason.as_deref() {
+        Some(ExitReason::Reload | ExitReason::Switch(_)) => rig_tools::process::end_stopping(),
+        _ => rig_tools::process::end_left(),
     }
 }
 
@@ -117,12 +145,11 @@ fn on_exit(exit: On<Exit>, mut commands: Commands) {
     // were applied sees the first reason.
     commands.queue(move |world: &mut World| {
         if !world.contains_resource::<ExitReason>() {
-            if let ExitReason::Switch(target) = &reason
-                && let Err(why) = name_switch(world, target.as_ref())
-            {
+            if matches!(reason, ExitReason::Switch(_)) && !has_launcher(world) {
                 world.write_message(Notice::error(
                     None,
-                    format!("Could not switch sessions: {why}."),
+                    "Could not switch sessions: switching sessions needs the rig launcher: \
+                     start the agent with `rig`.",
                 ));
                 return;
             }
@@ -146,20 +173,9 @@ fn on_exit(exit: On<Exit>, mut commands: Commands) {
     });
 }
 
-/// Tells the launcher which session to run next.
-fn name_switch(world: &World, target: Option<&SessionId>) -> Result<(), String> {
-    match (
-        world.get_resource::<SessionPaths>(),
-        crate::harness_protocol::launcher(),
-    ) {
-        (Some(paths), Some(_)) => {
-            let target = target.map(SessionId::as_str).unwrap_or_default();
-            fs::write(paths.switch(), target).map_err(|failure| failure.to_string())
-        }
-        _ => {
-            Err("switching sessions needs the rig launcher: start the agent with `rig`".to_owned())
-        }
-    }
+/// Whether the rig launcher started this agent, and so reads its end.
+fn has_launcher(world: &World) -> bool {
+    world.contains_resource::<LauncherRun>() && crate::harness_protocol::launcher().is_some()
 }
 
 /// Answers an exit effect once it starts: nothing held it back.

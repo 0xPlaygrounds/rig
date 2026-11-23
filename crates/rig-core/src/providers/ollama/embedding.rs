@@ -41,11 +41,8 @@ fn model_dimensions_from_identifier(identifier: &str) -> Option<usize> {
 pub struct EmbeddingResponse {
     pub model: String,
     pub embeddings: Vec<Vec<f64>>,
-    #[serde(default)]
     pub total_duration: Option<u64>,
-    #[serde(default)]
     pub load_duration: Option<u64>,
-    #[serde(default)]
     pub prompt_eval_count: Option<u64>,
 }
 

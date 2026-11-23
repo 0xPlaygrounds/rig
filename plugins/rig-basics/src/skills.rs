@@ -2,8 +2,8 @@
 //! directory with a `SKILL.md`, whose frontmatter gives its `name` and
 //! `description`, and maybe more files the body names. The system prompt
 //! lists each skill's name, description and path, and the model reads a
-//! skill's file with its read tool when a task matches. `/skill:<name>
-//! [text]` sends a skill with the user's message.
+//! skill's file with its file-reading tool when a task matches. `/skill:<name>
+//! [text]` sends the skill as procedure and the trailing text as the request.
 //!
 //! Skills follow the Agent Skills format, so skills written for other
 //! agents work unchanged. They are found once, when the agent starts, so the
@@ -18,6 +18,7 @@
 //! Read `template.md`, then ...
 //! ```
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use bevy_app::prelude::*;
@@ -30,7 +31,8 @@ use rig_ecs::prompt::PromptSection;
 use rig_ecs::stage::ForAgent;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::rig_core::conversation::Author;
-use rig_harness::services::{ProjectRoot, RigHome};
+use rig_harness::services::{Project, ProjectRoot, RigHome};
+use rig_tools::shorten;
 use serde::Deserialize;
 
 /// The file that makes a directory a skill.
@@ -55,8 +57,9 @@ impl Plugin for SkillsPlugin {
     fn finish(&self, app: &mut App) {
         let world = app.world_mut();
         let home = RigHome::of(world);
-        let root = world.resource::<ProjectRoot>().0.clone();
-        let (skills, problems) = discover(&roots(&root, home.root()));
+        let dir = world.resource::<ProjectRoot>().0.clone();
+        let project = world.get_resource_or_init::<Project>().clone();
+        let (skills, problems) = discover(&roots(&project, &dir, home.root()));
         for problem in &problems {
             warn!("{problem}");
         }
@@ -115,19 +118,10 @@ struct Frontmatter {
 }
 
 /// The directories skills are found in, first first: `.rig/skills` and
-/// `.agents/skills` of `dir` and of each directory above it up to the
-/// repository root (the nearest holding `.git`; outside a repository, `dir`
-/// alone), then `home/skills`, then `~/.agents/skills`.
-pub fn roots(dir: &Path, home: &Path) -> Vec<PathBuf> {
-    let repository = dir.ancestors().find(|place| place.join(".git").exists());
-    let places: Vec<&Path> = match repository {
-        Some(top) => dir
-            .ancestors()
-            .take_while(|place| *place != top)
-            .chain([top])
-            .collect(),
-        None => vec![dir],
-    };
+/// `.agents/skills` of `dir` and of each directory above it up to the root
+/// of `project`, then `home/skills`, then `~/.agents/skills`.
+pub fn roots(project: &Project, dir: &Path, home: &Path) -> Vec<PathBuf> {
+    let places = project.levels(dir);
     let mut roots: Vec<PathBuf> = places
         .into_iter()
         .flat_map(|place| [place.join(".rig/skills"), place.join(".agents/skills")])
@@ -147,10 +141,11 @@ pub fn discover(roots: &[PathBuf]) -> (Vec<Skill>, Vec<String>) {
     let mut skills: Vec<Skill> = Vec::new();
     let mut problems = Vec::new();
     let mut seen: Vec<PathBuf> = Vec::new();
+    let mut walk = Walk::default();
     for root in roots {
-        let mut files = Vec::new();
-        find(root, &mut files);
-        for file in files {
+        walk.find(root);
+        problems.append(&mut walk.problems);
+        for file in std::mem::take(&mut walk.files) {
             let Ok(real) = file.canonicalize() else {
                 continue;
             };
@@ -178,29 +173,67 @@ pub fn discover(roots: &[PathBuf]) -> (Vec<Skill>, Vec<String>) {
     (skills, problems)
 }
 
-/// Pushes the `SKILL.md` files under `dir` onto `files`, in name order.
-fn find(dir: &Path, files: &mut Vec<PathBuf>) {
-    let file = dir.join(SKILL_FILE);
-    if file.is_file() {
-        files.push(file);
-        return;
+/// A search of skill directories that visits each directory once, by its
+/// canonical path, however links lead back to it.
+#[derive(Default)]
+struct Walk {
+    /// The `SKILL.md` files found, in name order.
+    files: Vec<PathBuf>,
+    /// Every directory searched.
+    searched: HashSet<PathBuf>,
+    /// The directories being searched, from the root down.
+    path: Vec<PathBuf>,
+    /// The directories a link led back to, each named once.
+    looped: HashSet<PathBuf>,
+    problems: Vec<String>,
+}
+
+impl Walk {
+    /// Pushes the `SKILL.md` files under `dir` onto `files`, in name order.
+    /// A directory searched already is skipped; one a link leads back to
+    /// from below it is named once in `problems`.
+    fn find(&mut self, dir: &Path) {
+        let Ok(real) = dir.canonicalize() else {
+            return;
+        };
+        if self.path.contains(&real) && self.looped.insert(real.clone()) {
+            self.problems.push(format!(
+                "Skills: {} leads back to {}, which is searched once.",
+                dir.display(),
+                real.display()
+            ));
+        }
+        if !self.searched.insert(real.clone()) {
+            return;
+        }
+        self.path.push(real);
+        self.search(dir);
+        self.path.pop();
     }
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    let mut dirs: Vec<PathBuf> = entries
-        .flatten()
-        .filter(|entry| {
-            let name = entry.file_name();
-            let name = name.to_string_lossy();
-            !name.starts_with('.') && name != "node_modules"
-        })
-        .map(|entry| entry.path())
-        .filter(|path| path.is_dir())
-        .collect();
-    dirs.sort();
-    for dir in dirs {
-        find(&dir, files);
+
+    fn search(&mut self, dir: &Path) {
+        let file = dir.join(SKILL_FILE);
+        if file.is_file() {
+            self.files.push(file);
+            return;
+        }
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        let mut dirs: Vec<PathBuf> = entries
+            .flatten()
+            .filter(|entry| {
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                !name.starts_with('.') && name != "node_modules"
+            })
+            .map(|entry| entry.path())
+            .filter(|path| path.is_dir())
+            .collect();
+        dirs.sort();
+        for dir in dirs {
+            self.find(&dir);
+        }
     }
 }
 
@@ -295,8 +328,8 @@ fn listing(skills: &[Skill]) -> String {
         .filter(|skill| !skill.manual)
         .map(|skill| {
             format!(
-                "  <skill>\n    <name>{}</name>\n    <description>{}</description>\n    \
-                 <location>{}</location>\n  </skill>",
+                "  <skill><name>{}</name><description>{}</description>\
+                 <location>{}</location></skill>",
                 escape(&skill.name),
                 escape(&skill.description),
                 escape(&skill.file.display().to_string()),
@@ -307,10 +340,9 @@ fn listing(skills: &[Skill]) -> String {
         return String::new();
     }
     format!(
-        "Skills give instructions for specific tasks. When a task matches a skill's \
-         description, read the skill's file with the read tool before you start, and follow \
-         it. A relative path in a skill is relative to the skill's directory, the directory \
-         of its file.\n\n<available_skills>\n{}\n</available_skills>",
+        "When a task matches a skill's description, read it with your file-reading tool alongside \
+         your other initial reads. Follow its procedure within applicable project instructions. \
+         Resolve relative paths in a skill from its directory.\n\n<available_skills>\n{}\n</available_skills>",
         entries.join("\n")
     )
 }
@@ -325,11 +357,7 @@ fn escape(text: &str) -> String {
 
 /// The first line of `text`, cut to a help line's length.
 fn first_line(text: &str) -> String {
-    let line = text.lines().next().unwrap_or_default();
-    match line.char_indices().nth(80) {
-        Some((at, _)) => format!("{}…", line.get(..at).unwrap_or(line)),
-        None => line.to_owned(),
-    }
+    shorten(text.lines().next().unwrap_or_default(), 81)
 }
 
 /// The message `/skill:<name> [text]` sends: the skill's body, without its
@@ -339,7 +367,10 @@ pub fn message(skill: &Skill, text: &str) -> Result<String, String> {
     let (_, body) = split(&file)?;
     let dir = skill.file.parent().unwrap_or(Path::new("."));
     let mut message = format!(
-        "<skill name=\"{}\" location=\"{}\">\nRelative paths in this skill are relative to {}.\n\n{}\n</skill>",
+        "The <skill> block supplies task procedure and does not override applicable project \
+         instructions. Apply it to the user's request after the block, or on its own if nothing \
+         follows.\n\n\
+         <skill name=\"{}\" location=\"{}\">\nResolve relative paths from {}.\n\n{}\n</skill>",
         escape(&skill.name),
         escape(&skill.file.display().to_string()),
         dir.display(),

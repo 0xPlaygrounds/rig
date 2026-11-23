@@ -1,61 +1,24 @@
-//! Edge matrix for a structured-output **refusal** routed through OpenRouter.
+//! Edge matrix for a structured-output refusal routed through OpenRouter.
 //!
-//! **Bug.** OpenRouter forwards OpenAI's chat-completions refusal verbatim: a
-//! *sibling* of `content`, never a content part.
+//! OpenRouter forwards OpenAI's chat-completions refusal verbatim, as a sibling
+//! of `content` rather than a content part, usually with `content: null`. These
+//! cells pin that it surfaces as the turn's text on both transports through the
+//! one rule the OpenAI chat paths share: a delta's text is its `content`, or
+//! else its `refusal`. The chat wire's decoder reads a unary body as a single
+//! delta carrying its message, so the transports cannot disagree.
 //!
-//! ```json
-//! {"role": "assistant", "content": null,
-//!  "refusal": "I'm sorry, I can't assist with that request."}
-//! ```
-//!
-//! OpenRouter re-implemented the reply mapping by hand instead of going
-//! through the shared OpenAI one, and its destructure absorbed
-//! `refusal` into `..`. It mapped only the *content-part* spelling
-//! (`AssistantContent::Refusal`), which is the Responses API's shape and which
-//! chat completions never sends — so with `content: null` the turn normalized
-//! to zero content and failed with the opaque
-//! `Response contained no message or tool call (empty)`.
-//!
-//! The **streaming** path already disagreed with that on `origin/main`: it
-//! uses the shared `delta_text`, which prefers a non-empty `refusal`, so the
-//! same request streamed the refusal fine and only the blocking twin failed.
-//!
-//! The fix applies the one rule the OpenAI chat paths share rather than
-//! inventing a second one: a delta's text is its `content`, or else its
-//! `refusal`. The chat wire's decoder reads a unary body as a single delta
-//! carrying its message, so the two transports cannot disagree about a
-//! refusal at all.
-//!
-//! **Recorded upstreams.** OpenRouter routes `openai/gpt-4o` to either OpenAI
-//! or Azure, so every cell pins its route to `OpenAI` with `provider.order` +
-//! `allow_fallbacks: false` and asserts the recorded `provider` field.
-//!
-//! `gpt-4o` is required: `gpt-4o-mini` answers the refusable prompt *inside*
-//! the schema instead of refusing, so a cheaper route cannot produce the
-//! shape under test. Every cell caps `max_tokens` at 128.
-//!
-//! Each cell re-reads its own fixture and fails if the recorded bytes stopped
-//! carrying the shape it is about, so a provider that stopped refusing leaves
-//! a red test rather than a green one covering nothing.
-//!
-//! | # | cell | transport | level | dimension | status |
-//! |---|------|-----------|-------|-----------|--------|
-//! | 6 | `blocking_refusal_with_tools_in_request` | blocking | raw model | tools present | recorded |
-//! | 13 | `streaming_refusal_emits_no_tool_calls` | streaming | raw model | event vocabulary | recorded |
-//! | 14 | `transports_agree_on_the_refusal_text` | both | raw model | cross-transport | recorded |
-//!
-//! Wire shapes the live gateway will not produce on demand (`content: null`,
-//! `content` absent, `content: ""`, a refusal beside non-empty content, an
-//! empty refusal string, a tool-calls-only turn, a refusal *with* tool calls,
-//! a refusal beside reasoning details, and the Responses-shaped refusal
-//! *part* arriving on this wire) are read by the same rule in
+//! OpenRouter routes `openai/gpt-4o` to either OpenAI or Azure, so every cell
+//! pins `provider.order` with `allow_fallbacks: false` and asserts the
+//! recorded `provider`. `gpt-4o` is required because `gpt-4o-mini` answers
+//! the refusable prompt inside the schema. Each cell re-reads its own fixture
+//! and fails if the recorded bytes stopped carrying a refusal. Wire shapes
+//! the live gateway will not produce on demand are read by the same rule in
 //! `crates/rig-core/src/providers/openai/wire/chat.rs`.
 
-use serde::Deserialize;
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
 
-use super::super::support::with_openrouter_refusal_cassette;
+use super::super::support::with_openrouter_cassette;
 use crate::cassettes;
 use crate::support::{
     assert_nonempty_response, assistant_text_response, collect_raw_stream_observation,
@@ -93,7 +56,7 @@ fn refusal_request_params() -> Value {
 }
 
 // ---------------------------------------------------------------------------
-// Blocking — the surface that threw the refusal away.
+// Blocking.
 // ---------------------------------------------------------------------------
 
 /// Tool schemas in the request must not change the refusal path: the turn
@@ -102,7 +65,7 @@ fn refusal_request_params() -> Value {
 async fn blocking_refusal_with_tools_in_request() {
     const SCENARIO: &str = "refusal_matrix/blocking_refusal_with_tools_in_request";
 
-    with_openrouter_refusal_cassette(
+    with_openrouter_cassette(
         "refusal_matrix/blocking_refusal_with_tools_in_request",
         |client| async move {
             let model = client.completion(REFUSING_MODEL);
@@ -131,14 +94,14 @@ async fn blocking_refusal_with_tools_in_request() {
 }
 
 // ---------------------------------------------------------------------------
-// Streaming — the transport that already worked, kept as the parity reference.
+// Streaming, the parity reference.
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
 async fn streaming_refusal_emits_no_tool_calls() {
     const SCENARIO: &str = "refusal_matrix/streaming_refusal_emits_no_tool_calls";
 
-    with_openrouter_refusal_cassette(
+    with_openrouter_cassette(
         "refusal_matrix/streaming_refusal_emits_no_tool_calls",
         |client| async move {
             let model = client.completion(REFUSING_MODEL);
@@ -177,7 +140,7 @@ async fn transports_agree_on_the_refusal_text() {
     let delivered = Arc::new(Mutex::new((String::new(), String::new())));
     let recorder = delivered.clone();
 
-    with_openrouter_refusal_cassette(
+    with_openrouter_cassette(
         "refusal_matrix/transports_agree_on_the_refusal_text",
         |client| async move {
             let model = client.completion(REFUSING_MODEL);
@@ -229,35 +192,14 @@ async fn transports_agree_on_the_refusal_text() {
 }
 
 // ---------------------------------------------------------------------------
-// A second upstream: the same rig model handle, routed to Azure instead.
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// Controls — turns that must be byte-identical before and after the fix.
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// Premise assertions — every cell is checked against its own recorded bytes.
+// Premise assertions: every cell is checked against its own recorded bytes.
 // ---------------------------------------------------------------------------
 
 fn recorded_response_bodies(scenario: &str) -> Vec<String> {
-    let path = cassettes::cassette_path("openrouter", scenario);
-    let contents = std::fs::read_to_string(&path).unwrap_or_else(|error| {
-        panic!(
-            "provider cassette {} should be readable after recording: {error}",
-            path.display()
-        )
-    });
-
-    serde_yaml::Deserializer::from_str(&contents)
-        .map(|document| serde_yaml::Value::deserialize(document).expect("cassette interaction"))
-        .filter_map(|interaction| {
-            interaction
-                .get("then")
-                .and_then(|then| then.get("body"))
-                .and_then(serde_yaml::Value::as_str)
-                .map(ToOwned::to_owned)
-        })
+    cassettes::recorded_interaction_bodies("openrouter", scenario)
+        .into_iter()
+        .map(|(_, response)| response)
+        .filter(|response| !response.is_empty())
         .collect()
 }
 

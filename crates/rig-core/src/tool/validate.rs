@@ -20,7 +20,9 @@
 //! ```
 //!
 //! It checks a subset of JSON Schema, in plain `serde_json`:
-//! - `type` (a name or a list; `integer` is a number with no fraction),
+//! - `type` (a name or a list; `integer` is a whole number a 64-bit
+//!   integer holds, `30.0` too, as [`decode_args`](crate::tool::decode_args)
+//!   decodes it),
 //!   `enum` and `const`;
 //! - `properties`, `required` and `additionalProperties` (`false` or a
 //!   schema);
@@ -34,6 +36,11 @@
 //!   unresolvable `$ref`, or one that loops back without reaching a value,
 //!   **accepts** the value there.
 //!
+//! A `minItems`, `maxItems`, `minLength` or `maxLength` is a count, `2` or
+//! `2.0`; one that is not (`2.5`, `-1`) is ignored, as an unknown keyword
+//! is: the schema is the tool's to fix, and refusing every call over it
+//! would ask the model for arguments it cannot give.
+//!
 //! A `null` for a declared property the object does not require counts as
 //! absent, as serde reads an `Option` field:
 //! [`args_schema`](crate::tool::args_schema) declares an `Option` optional,
@@ -43,9 +50,14 @@
 //! `patternProperties` (and so `additionalProperties` beside it, since
 //! which keys a pattern allows is not checked), and any keyword not listed.
 
-use std::fmt;
+use std::{cmp::Ordering, fmt};
 
 use serde_json::{Map, Number, Value};
+
+use crate::{
+    json_utils::compare_numbers,
+    tool::decode::{Whole, whole},
+};
 
 /// Where a value does not fit a schema, and how.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -109,7 +121,11 @@ impl<'s> Validator<'s> {
         {
             problems.push(problem(
                 at,
-                format!("expected {}, got {}", expected(types), kind(value)),
+                format!(
+                    "expected {}, got {}",
+                    expected(types),
+                    got(names_integer(types), value)
+                ),
             ));
             return problems;
         }
@@ -287,10 +303,15 @@ fn closest(
         })
         .collect();
     if let Some(types) = types.filter(|types| !types.is_empty()) {
+        let integer = types.iter().any(|types| names_integer(types));
         let names: Vec<String> = types.into_iter().map(expected).collect();
         return vec![problem(
             at,
-            format!("expected {}, got {}", names.join(" or "), kind(value)),
+            format!(
+                "expected {}, got {}",
+                names.join(" or "),
+                got(integer, value)
+            ),
         )];
     }
     results
@@ -306,7 +327,8 @@ fn closest(
 }
 
 /// The problems of a length, in `unit`s, against `schema`'s `min` and
-/// `max` keywords.
+/// `max` keywords. A limit is a count: `2` or `2.0`; any other value
+/// (`2.5`, `-1`, `"2"`) is no limit.
 fn count(
     schema: &Map<String, Value>,
     min: &str,
@@ -315,7 +337,10 @@ fn count(
     length: usize,
     at: &str,
 ) -> Vec<Problem> {
-    let limit = |key| schema.get(key).and_then(Value::as_u64);
+    let limit = |key| match schema.get(key).and_then(Value::as_number).and_then(whole) {
+        Some(Whole::Unsigned(limit)) => Some(limit),
+        _ => None,
+    };
     let plural = |n: u64| {
         if n == 1 {
             format!("{n} {unit}")
@@ -342,20 +367,17 @@ fn count(
 
 /// The problems of a number against `schema`'s bounds.
 fn bounds(schema: &Map<String, Value>, number: &Number, at: &str) -> Vec<Problem> {
-    let Some(n) = number.as_f64() else {
-        return Vec::new();
-    };
-    let checks: [(&str, &str, fn(f64, f64) -> bool); 4] = [
-        ("minimum", "at least", |n, bound| n >= bound),
-        ("maximum", "at most", |n, bound| n <= bound),
-        ("exclusiveMinimum", "more than", |n, bound| n > bound),
-        ("exclusiveMaximum", "less than", |n, bound| n < bound),
+    let checks: [(&str, &str, fn(Ordering) -> bool); 4] = [
+        ("minimum", "at least", Ordering::is_ge),
+        ("maximum", "at most", Ordering::is_le),
+        ("exclusiveMinimum", "more than", Ordering::is_gt),
+        ("exclusiveMaximum", "less than", Ordering::is_lt),
     ];
     checks
         .into_iter()
         .filter_map(|(key, words, fits)| {
-            let bound = schema.get(key).filter(|bound| bound.is_number())?;
-            let fit = bound.as_f64().is_none_or(|bound| fits(n, bound));
+            let bound = schema.get(key)?.as_number()?;
+            let fit = compare_numbers(number, bound).is_none_or(fits);
             (!fit).then(|| problem(at, format!("expected {words} {bound}, got {number}")))
         })
         .collect()
@@ -398,12 +420,36 @@ fn expected(types: &Value) -> String {
     }
 }
 
+/// Whether `types` (a name or a list of them) names `integer`.
+fn names_integer(types: &Value) -> bool {
+    match types {
+        Value::String(name) => name == "integer",
+        Value::Array(names) => names.iter().any(|name| name == "integer"),
+        _ => false,
+    }
+}
+
+/// [`kind`] for a value where an `integer` was or was not expected: a
+/// whole number out of its range says so only where one was.
+fn got(integer: bool, value: &Value) -> &'static str {
+    match value {
+        Value::Number(number)
+            if integer
+                && !integral(number)
+                && number.as_f64().is_some_and(|n| n.fract() == 0.0) =>
+        {
+            "a number out of an integer's range"
+        }
+        value => kind(value),
+    }
+}
+
 /// `value`'s type as words, for a problem's "got".
 fn kind(value: &Value) -> &'static str {
     match value {
         Value::Null => "null",
         Value::Bool(_) => "a boolean",
-        Value::Number(number) if integral(number) => "a number",
+        Value::Number(number) if number.as_f64().is_some_and(|n| n.fract() == 0.0) => "a number",
         Value::Number(_) => "a number with a fraction",
         Value::String(_) => "a string",
         Value::Array(_) => "an array",
@@ -420,9 +466,10 @@ fn shown(value: &Value) -> String {
     }
 }
 
-/// Whether a number has no fraction: `1` and `1.0` do, `1.5` does not.
+/// Whether a number is an integer ([`whole`]): `1` and `1.0` are, `1.5`
+/// and `1e30` are not.
 fn integral(number: &Number) -> bool {
-    number.is_i64() || number.is_u64() || number.as_f64().is_some_and(|n| n.fract() == 0.0)
+    whole(number).is_some()
 }
 
 /// Equality as JSON Schema means it, where `1` and `1.0` are the same
@@ -430,7 +477,7 @@ fn integral(number: &Number) -> bool {
 fn same(a: &Value, b: &Value) -> bool {
     match (a, b) {
         (Value::Number(a), Value::Number(b)) => {
-            a == b || ((a.is_f64() || b.is_f64()) && a.as_f64() == b.as_f64())
+            a == b || compare_numbers(a, b) == Some(Ordering::Equal)
         }
         (Value::Array(a), Value::Array(b)) => {
             a.len() == b.len() && a.iter().zip(b).all(|(a, b)| same(a, b))

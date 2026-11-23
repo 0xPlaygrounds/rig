@@ -18,7 +18,7 @@
           "family": "embed",
           "model": "host",
           "dims": 3072,
-          "max_documents": 1024,
+          "max_documents": 100,
           "modality": "text"
         }
       }

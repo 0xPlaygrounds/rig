@@ -33,6 +33,4 @@ pub mod runtime;
 #[cfg_attr(docsrs, doc(cfg(feature = "test-utils")))]
 pub mod test_utils;
 pub mod wasm_compat;
-#[cfg(feature = "websocket")]
-#[cfg_attr(docsrs, doc(cfg(feature = "websocket")))]
 pub mod ws_client;

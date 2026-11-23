@@ -1,26 +1,18 @@
-//! FH-25: model requests through Anthropic's Message Batches API, for
-//! unattended runs at the batch price.
+//! Model requests through Anthropic's Message Batches API, for unattended runs at the batch price.
+//! Every Anthropic catalog model gets a twin under the vendor `anthropic-batch`, at half its list
+//! price.
 //!
-//! Every Anthropic catalog model gets a twin under the vendor
-//! `anthropic-batch`, at half its list price, connected to a handler that
-//! serves nothing (`ErasedHandler::unavailable`). A model call to a twin is
-//! held in [`GateSystems::After`] (`batch: queued`), and the request Start
-//! would send it ([`Adapted::sent`]), encoded by rig-core's Messages
-//! wire, is queued as a batch item. Items queued within
-//! [`BatchSettings::window_ms`] go together as one batch. The batch is
-//! polled with backoff ([`BatchSettings::first_poll_secs`], doubling up to
-//! [`BatchSettings::max_poll_secs`]); once it ended, each item's result
-//! decides its call: the reply, decoded as a live call would decode it
-//! (`wire::decode_reply`) and priced at the batch price, or the provider's
-//! error. An expired item is sent once more in a new batch.
+//! A model call to a twin is held (`batch: queued`) and its request is queued as a batch item.
+//! Items queued within [`BatchSettings::window_ms`] go together as one batch. The batch is polled
+//! with backoff ([`BatchSettings::first_poll_secs`], doubling up to
+//! [`BatchSettings::max_poll_secs`]). Once it ended, each item's result decides its call: the
+//! reply, priced at the batch price, or the provider's error. An expired item is sent once more in
+//! a new batch.
 //!
-//! A turn's pending item is saved on its agent ([`BatchWait`]), and the
-//! turn carries on across a restart ([`CarryOn`]): a quit leaves it for the
-//! restart, whose restored call is held for the saved item, and polling
-//! goes on; nothing is sent again. Interrupting the turn
-//! cancels its batch at the provider when no other call waits for it.
-//! Requests go through the app's HTTP client, so `wrap_http` wrappers see
-//! them, with the key of [`BatchAccount`].
+//! A turn's pending item is saved on its agent ([`BatchWait`]), and the turn carries on across a
+//! restart ([`CarryOn`]) without sending anything again. Interrupting the turn cancels its batch at
+//! the provider when no other call waits for it. Requests go through the app's HTTP client, so
+//! `wrap_http` wrappers see them, with the key of [`BatchAccount`].
 
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -36,6 +28,7 @@ use rig_harness::rig_core::providers::anthropic::{self, AnthropicConfig};
 use rig_harness::rig_core::providers::registry::ProviderId;
 use rig_harness::rig_core::serve::ErasedHandler;
 use rig_harness::rig_core::wire::{Body, Mode, Wire, WireFrame, decode_reply};
+use rig_harness::rig_ecs::session_log::Reset;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -83,7 +76,7 @@ impl Default for BatchSettings {
 /// The item an agent's turn waits for, saved with the session so a restart
 /// polls it again rather than sending the request again.
 #[derive(Component, Reflect, Clone, Debug, Default, PartialEq)]
-#[reflect(Component, Saved, Default)]
+#[reflect(Component, Saved(Reset), Default)]
 pub struct BatchWait(pub Option<PendingItem>);
 
 /// A submitted batch item.
@@ -448,12 +441,12 @@ async fn send(
     if let Some(slot) = request.headers_mut() {
         *slot = headers;
     }
-    let body = body.map(|body| body.to_string().into_bytes());
+    let body = body.map(|body| Bytes::from(body.to_string()));
     let request = request
         .body(body.unwrap_or_default())
         .map_err(|error| error.to_string())?;
     let response = http
-        .send::<_, Bytes>(request)
+        .send(request)
         .await
         .map_err(|error| error.to_string())?;
     let status = response.status();

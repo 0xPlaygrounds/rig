@@ -1,21 +1,17 @@
-//! Plugin corpus: 47. Chat bot bridge (Slack/Matrix) (spec `47-chat-bridge.md`).
-//!
-//! Each chat thread that mentions the bot gets a top-level agent of its
-//! own. Later messages in the thread are queued to that agent, each turn's
-//! final answer is posted back (split when long), tool activity is one
-//! edited "working…" post, and the questions other plugins ask the agent
-//! ([`Ask`]) are posted as "Reply `yes` or `no`": the thread is the
-//! agent's [`Answerer`]. The thread an agent belongs to is a saved
+//! Chat bot bridge for Slack and Matrix. Each chat thread that mentions the bot gets a
+//! top-level agent of its own. Later messages in the thread are queued to that agent, each
+//! turn's final answer is posted back (split when long), tool activity is one edited "working…"
+//! post, and the questions other plugins ask the agent ([`Ask`]) are posted as "Reply `yes` or
+//! `no`": the thread is the agent's [`Answerer`]. The thread an agent belongs to is a saved
 //! component, so a restart keeps the conversations.
 //!
-//! The network is a [`ChatTransport`] the app inserts with
-//! [`ChatBridge::new`]; posts it cannot send are kept and retried with
-//! backoff. `rig --chat` makes the bridge the run's front, a bot with no
-//! terminal; without it, it runs beside the terminal view.
+//! The network is a [`ChatTransport`] the app inserts with [`ChatBridge::new`]; posts it cannot
+//! send are kept and retried with backoff. `rig --chat` makes the bridge the run's front, a bot
+//! with no terminal; without it, it runs beside the terminal view.
 
 use std::collections::{BTreeMap, VecDeque};
 
-use bevy_log::info;
+use bevy_log::{info, warn};
 use rig_harness::pick::PickPlugin;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::redact;
@@ -232,7 +228,7 @@ fn receive(
     threads: Query<(Entity, &ChatThread)>,
     asks: OpenAsks,
     primaries: MainAgentQuery,
-    models: Query<(Option<&ModelChoice>, &ReasoningSetting, Option<&Connection>)>,
+    mut spawner: Spawner,
     mut commands: Commands,
 ) {
     let Some(transport) = &mut bridge.transport else {
@@ -260,8 +256,10 @@ fn receive(
         let agent = match bound {
             Some(agent) => agent,
             None if message.mentions_bot => {
-                let parent = main_agent(&primaries).and_then(|agent| models.get(agent).ok());
-                let agent = spawn_agent(&mut commands, thread.clone(), parent);
+                let main = main_agent(&primaries);
+                let Some(agent) = spawn_agent(&mut spawner, main, thread.clone()) else {
+                    continue;
+                };
                 spawned.push((agent, thread));
                 agent
             }
@@ -298,27 +296,21 @@ fn choice(ask: &Ask, reply: &str) -> Option<usize> {
     })
 }
 
-/// A top-level agent for `thread`, on the model of the agent the user
-/// talks to.
-fn spawn_agent(
-    commands: &mut Commands,
-    thread: ChatThread,
-    parent: Option<(Option<&ModelChoice>, &ReasoningSetting, Option<&Connection>)>,
-) -> Entity {
-    let name = Name::new(format!("chat {}", thread.thread));
-    let mut agent = commands.spawn((name, thread));
-    if let Some((choice, effort, connection)) = parent {
-        // Before the model choice, so connecting it keeps this connection.
-        if let Some(connection) = connection {
-            agent.insert(connection.clone());
-        }
-        agent.insert(*effort);
-        if let Some(choice) = choice {
-            agent.insert(choice.clone());
+/// A top-level agent for `thread`, like the agent the user talks to,
+/// `main`; `None` when it may not be made.
+fn spawn_agent(spawner: &mut Spawner, main: Option<Entity>, thread: ChatThread) -> Option<Entity> {
+    let name = format!("chat {}", thread.thread);
+    let spec = AgentSpec {
+        name,
+        ..AgentSpec::default()
+    };
+    match spawner.spawn(main.map_or(Origin::Root, Origin::Like), spec) {
+        Ok(mut agent) => Some(agent.insert(thread).id()),
+        Err(why) => {
+            warn!("chat bridge: no agent for a thread: {why}");
+            None
         }
     }
-    agent.insert(Agent);
-    agent.id()
 }
 
 /// Posts each question asked about an agent with a thread.
@@ -424,12 +416,10 @@ fn post_answer(
     let text = match outcome {
         TurnOutcome::Answered(message) => message.final_answer().unwrap_or_default(),
         TurnOutcome::Failed(why) => format!("The turn failed: {why}"),
-        TurnOutcome::Stopped(why) => format!(
-            "Stopped{}.",
-            why.as_ref()
-                .map(|why| format!(": {why}"))
-                .unwrap_or_default()
-        ),
+        TurnOutcome::Stopped(stop) => match stop.cause() {
+            StopCause::User => "Stopped.".to_owned(),
+            cause => format!("Stopped: {cause}."),
+        },
     };
     for part in split(&text, MAX_POST) {
         bridge.post(thread, part);

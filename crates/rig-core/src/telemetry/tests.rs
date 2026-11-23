@@ -179,7 +179,7 @@ fn near_miss_completion_parent_warns_once_per_callsite() {
     // touches.
     reset_near_miss_warnings();
     tracing::subscriber::with_default(capture.subscriber(), || {
-        // The `warn!` callsite lives in `warn_once_on_completion_parent_verdict`
+        // The `warn!` callsite lives in `warn_once_on_missing_fields`
         // and is shared with every other near-miss test, so its interest may
         // already be cached as `never` from a run under a different
         // subscriber. Same hazard `test_utils::scoped_tracing_subscriber_guard`
@@ -275,16 +275,17 @@ fn adopted_completion_parents_report_the_standard_operation_and_stream_flag() {
 #[test]
 fn user_parts_keep_a_document_text_apart_from_media_sources() {
     use crate::message::{
-        Audio, AudioMediaType, Document, DocumentMediaType, ImageMediaType, Video, VideoMediaType,
+        Audio, AudioMediaType, DocumentContent, DocumentMediaType, ImageMediaType, Video,
+        VideoMediaType,
     };
 
     let parts = user_parts(&[
-        UserContent::Document(Document {
+        UserContent::Document(DocumentContent {
             data: DocumentData::Text("notes".to_owned()),
             media_type: Some(DocumentMediaType::TXT),
             ..Default::default()
         }),
-        UserContent::Document(Document {
+        UserContent::Document(DocumentContent {
             data: DocumentSourceKind::Base64("JVBERi0=".to_owned()).into(),
             media_type: Some(DocumentMediaType::PDF),
             ..Default::default()

@@ -25,8 +25,8 @@
 //! let hosts = Hosts::new(
 //!     Arc::new(Local),
 //!     [
-//!         Remote::new("bench", bench, Launcher::default())?,
-//!         Remote::new("box", dev, Launcher::default())?,
+//!         Remote::new("bench", bench, Launcher::default)?,
+//!         Remote::new("box", dev, Launcher::default)?,
 //!     ],
 //! );
 //! let text = hosts.read(Path::new("bench:~/strata/src/lib.rs"), 4096)?;
@@ -36,19 +36,16 @@
 use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
 use std::fmt;
-use std::io::{self, ErrorKind, Write as _};
+use std::io::{self, ErrorKind};
 use std::path::{Component, Path, PathBuf};
-use std::process::Stdio;
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
-use std::thread;
-
-use ignore::overrides::OverrideBuilder;
 
 use rig_core::tool::{ContentHash, content_hash};
 
-use crate::process::{Launcher, Process, STOP_GRACE, Spawn};
+use crate::process::{Launcher, NON_INTERACTIVE, Process, STOP_GRACE, Spawn};
 use crate::workspace::{
-    Contents, Excerpt, Listing, Stat, Workspace, excerpt_of, not_text, read_file, too_large,
+    Contents, Excerpt, Listed, Listing, Observation, Stat, Workspace, excerpt_of, globbed,
+    not_a_file, not_text, read_file, read_only, too_large,
 };
 use crate::{MAX_BYTES, MAX_FILE_BYTES, quote};
 
@@ -68,19 +65,37 @@ const NOT_A_FILE: i32 = 3;
 const READ_ONLY: i32 = 4;
 const A_DIRECTORY: i32 = 5;
 const ROOT_IS_A_FILE: i32 = 6;
+/// A write to a link, which says where it points.
+const A_LINK: i32 = 7;
+
+/// A shell function for the scripts below: whether the path `$1`, which
+/// the shell does not see, is truly not there, since the nearest of its
+/// directories that is there may be searched (or is no directory), and
+/// neither it nor a directory on the way is a link that does not resolve.
+/// A directory that may not be searched hides what is in it, and a link
+/// may point into one, which is not absence.
+const GONE: &str = "gone() { d=$1; while case $d in ?*/) :;; *) false;; esac; do \
+    d=${d%/}; done; [ -L \"$d\" ] && return 1; while :; do \
+    d=$(dirname -- \"$d\"; echo .); d=${d%??}; \
+    if [ -e \"$d\" ]; then [ ! -d \"$d\" ] || [ -x \"$d\" ]; return; fi; \
+    [ -L \"$d\" ] && return 1; case $d in /|.) return 0;; esac; done; }";
 
 /// Another machine, reached through a transport (see the [module](self)
 /// docs). Its paths are that machine's: absolute, or under `~`, its user's
 /// home; a relative path is relative to that home, where the transport
 /// starts. Paths are folded without asking the machine
-/// ([`canonical`](Workspace::canonical)), so links there are not followed.
+/// ([`canonical`](Workspace::canonical)), so confinement here compares
+/// path text and cannot see links there: a link already on that machine
+/// can lead a read, or a write through a linked directory, out of the
+/// confined directory. A write to a file that is itself a link is
+/// refused, as following it would write where no check of the path looked.
 #[derive(Clone)]
 pub struct Remote {
     name: String,
     transport: Vec<OsString>,
-    /// How the transport starts for a file operation: in no directory of
-    /// its own.
-    launcher: Launcher,
+    /// How the transport starts for a file operation, asked for each one
+    /// (in no directory of its own).
+    launcher: Arc<dyn Fn() -> Launcher + Send + Sync>,
     /// The file operations running there now, shared by its clones.
     running: Arc<(Mutex<usize>, Condvar)>,
 }
@@ -146,8 +161,10 @@ impl fmt::Debug for Remote {
 
 impl Remote {
     /// The machine `name`, such as `bench`, reached through `transport`,
-    /// such as `["ssh", "dev@box"]`, which file operations start under
-    /// `launcher`'s policy (its wrapper and variables; not its directory).
+    /// such as `["ssh", "dev@box"]`, which each file operation starts under
+    /// the policy `launcher` gives at that moment (its wrapper and
+    /// variables; not its directory), so a policy that changes, such as a
+    /// sandbox's, holds from the next operation on.
     ///
     /// # Errors
     ///
@@ -156,7 +173,7 @@ impl Remote {
     pub fn new(
         name: impl Into<String>,
         transport: impl IntoIterator<Item = impl Into<OsString>>,
-        mut launcher: Launcher,
+        launcher: impl Fn() -> Launcher + Send + Sync + 'static,
     ) -> io::Result<Self> {
         let name = name.into();
         let transport: Vec<OsString> = transport.into_iter().map(Into::into).collect();
@@ -172,11 +189,10 @@ impl Remote {
                 format!("the transport of {name} is empty"),
             ));
         }
-        launcher.cwd = None;
         Ok(Self {
             name,
             transport,
-            launcher,
+            launcher: Arc::new(launcher),
             running: Arc::default(),
         })
     }
@@ -205,25 +221,18 @@ impl Remote {
     fn once(&self, script: &str, stdin: Option<&[u8]>) -> io::Result<Ran> {
         let (program, args) = self.command(script)?;
         let _turn = Turn::take(&self.running);
-        let mut command = self.launcher.command(&program);
-        command
-            .args(args)
-            .stdin(match stdin {
-                Some(_) => Stdio::piped(),
-                None => Stdio::null(),
-            })
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        let mut child = command
-            .spawn()
-            .map_err(|error| self.unstarted(&program, error))?;
-        let pipe = child.stdin.take();
-        let output = thread::scope(|scope| {
-            if let (Some(mut pipe), Some(bytes)) = (pipe, stdin) {
-                scope.spawn(move || pipe.write_all(bytes).ok());
-            }
-            child.wait_with_output()
-        })?;
+        let mut launcher = (self.launcher)();
+        launcher.cwd = None;
+        let mut command = launcher.command(&program);
+        command.args(args);
+        let how = Spawn {
+            stdin: stdin.map(<[u8]>::to_vec),
+            merge_stderr: false,
+            ..Spawn::default()
+        };
+        let output = Process::start(command, how)
+            .map_err(|error| self.unstarted(&program, error))?
+            .output(None)?;
         #[cfg(unix)]
         let signal = std::os::unix::process::ExitStatusExt::signal(&output.status);
         #[cfg(not(unix))]
@@ -262,15 +271,17 @@ impl Remote {
         match ran.code {
             Some(0) => Ok(ran.out),
             Some(NOT_FOUND) => Err(ErrorKind::NotFound.into()),
-            Some(NOT_A_FILE) => Err(io::Error::new(
-                ErrorKind::InvalidInput,
-                "not a regular file",
-            )),
-            Some(READ_ONLY) => Err(io::Error::new(
-                ErrorKind::PermissionDenied,
-                "the file is read-only; leave it unchanged or ask the user",
-            )),
+            Some(NOT_A_FILE) => Err(not_a_file()),
+            Some(READ_ONLY) => Err(read_only()),
             Some(A_DIRECTORY) => Err(ErrorKind::IsADirectory.into()),
+            Some(A_LINK) => Err(io::Error::new(
+                ErrorKind::Unsupported,
+                format!(
+                    "it is a link there to `{}`, which a write there does not follow; write \
+                     that file instead",
+                    ran.err.lines().last().unwrap_or_default()
+                ),
+            )),
             _ => Err(self.failed(&ran, again)),
         }
     }
@@ -328,13 +339,14 @@ impl Remote {
     /// Runs `script`, which writes `bytes` to the file `path`, once. When
     /// it ends with no exit status it names, such as a transport that
     /// dropped mid-write, the file is hashed there again (a read, so tried
-    /// twice) and the error says whether it holds `bytes`: whether the
-    /// write happened.
+    /// twice) and the error says whether it holds `bytes` now. Only a file
+    /// that does shows the write happened: one that does not may have been
+    /// written and changed again since.
     fn written(&self, path: &Path, script: &str, bytes: &[u8]) -> io::Result<Vec<u8>> {
         let ran = self.once(script, Some(bytes))?;
         if matches!(
             ran.code,
-            Some(0 | NOT_FOUND | NOT_A_FILE | READ_ONLY | A_DIRECTORY)
+            Some(0 | NOT_FOUND | NOT_A_FILE | READ_ONLY | A_DIRECTORY | A_LINK)
         ) {
             return self.outcome(ran, Again::Never);
         }
@@ -350,19 +362,18 @@ impl Remote {
             Ok(hash) if hash.trim() == sent => {
                 "it holds what this write sent, so the write happened".to_owned()
             }
-            Ok(hash) if !hash.trim().is_empty() => "it does not hold what this write sent, so \
-                 the write did not happen; make the change again"
-                .to_owned(),
-            Err(error) if error.kind() == ErrorKind::NotFound => {
-                "it is not there, so the write did not happen; make the change again".to_owned()
+            other => {
+                let how = match other {
+                    Ok(hash) if !hash.trim().is_empty() => "it does not hold what this write sent",
+                    Err(error) if error.kind() == ErrorKind::NotFound => "it is not there",
+                    Ok(_) => "it could not be hashed there",
+                    Err(error) => &format!("that failed too ({error})"),
+                };
+                format!(
+                    "{how}, so the write may or may not have happened; read the file before \
+                     going on"
+                )
             }
-            Ok(_) => "it could not be hashed there, so the write may or may not have \
-                 happened; read the file before going on"
-                .to_owned(),
-            Err(error) => format!(
-                "that failed too ({error}), so the write may or may not have happened; read \
-                 the file before going on"
-            ),
         };
         Err(io::Error::new(
             kind,
@@ -370,13 +381,22 @@ impl Remote {
         ))
     }
 
-    /// What a call fails with when its transport could not start.
+    /// What a call fails with when its transport could not start: never
+    /// an error of the file's own kind, such as `NotFound` for a missing
+    /// transport, unless the call was stopped.
     fn unstarted(&self, program: &OsStr, error: io::Error) -> io::Error {
-        io::Error::other(format!(
-            "could not start `{}`, the transport to {}: {error}",
-            program.to_string_lossy(),
-            self.name
-        ))
+        let kind = match error.kind() {
+            ErrorKind::Interrupted => ErrorKind::Interrupted,
+            _ => ErrorKind::Other,
+        };
+        io::Error::new(
+            kind,
+            format!(
+                "could not start `{}`, the transport to {}: {error}",
+                program.to_string_lossy(),
+                self.name
+            ),
+        )
     }
 }
 
@@ -388,9 +408,10 @@ impl Workspace for Remote {
 
     fn stat(&self, path: &Path) -> io::Result<Stat> {
         let script = format!(
-            "p={}; if [ -f \"$p\" ]; then wc -c < \"$p\" || exit 1; \
+            "{GONE}; p={}; if [ -f \"$p\" ]; then wc -c < \"$p\" || exit 1; \
              if [ -w \"$p\" ]; then echo w; else echo r; fi; \
-             elif [ -d \"$p\" ]; then echo d; elif [ -e \"$p\" ]; then echo o; else echo m; fi",
+             elif [ -d \"$p\" ]; then echo d; elif [ -e \"$p\" ]; then echo o; \
+             elif gone \"$p\"; then echo m; else echo u; fi",
             quote_path(path)
         );
         let out = String::from_utf8_lossy(&self.checked(&script, None, Again::Once)?).into_owned();
@@ -399,6 +420,7 @@ impl Workspace for Remote {
             (Some("d"), _) => Stat::Dir,
             (Some("o"), _) => Stat::Other,
             (Some("m"), _) => Stat::Missing,
+            (Some("u"), _) => return Err(hidden()),
             (Some(size), Some(access)) => Stat::File {
                 size: size.parse().map_err(io::Error::other)?,
                 read_only: access == "r",
@@ -472,117 +494,158 @@ impl Workspace for Remote {
             total: newlines + usize::from(unended),
             hash: ContentHash(hash.to_ascii_lowercase()),
             whole: None,
+            endings: None,
         })
     }
 
     /// The files in scripts of 100 each, every file copied
     /// aside before it is sent, so one that changes meanwhile is sent whole
-    /// as it was.
-    fn read_files(&self, paths: &[PathBuf], limit: u64) -> Vec<Option<Vec<u8>>> {
+    /// as it was. Each file of a script that failed is
+    /// [`Failed`](Observation::Failed) with its error.
+    fn read_files(&self, paths: &[PathBuf], limit: u64) -> Vec<Observation<Vec<u8>>> {
         let mut read = Vec::with_capacity(paths.len());
         for chunk in paths.chunks(FILES_PER_CALL) {
             let quoted: Vec<String> = chunk.iter().map(|path| quote_path(path)).collect();
+            // Each file is its size and bytes, else a letter: `m` missing,
+            // `x` excluded, `d` denied, `h` hidden by its directory, `f`
+            // failed.
             let script = format!(
-                "t=$(mktemp) || exit 1; trap 'rm -f \"$t\"' EXIT; for p in {}; do \
-                 if [ -f \"$p\" ] && n=$(wc -c < \"$p\") && [ $((n)) -le {limit} ] && \
-                 cat -- \"$p\" > \"$t\" 2>/dev/null; then wc -c < \"$t\"; cat \"$t\"; \
-                 else echo -; fi; done",
+                "{GONE}; t=$(mktemp) || exit 1; trap 'rm -f \"$t\"' EXIT; for p in {}; do \
+                 if [ -f \"$p\" ]; then if [ ! -r \"$p\" ]; then echo d; \
+                 elif ! n=$(wc -c < \"$p\"); then echo f; elif [ $((n)) -gt {limit} ]; then echo x; \
+                 elif cat -- \"$p\" > \"$t\" 2>/dev/null; then wc -c < \"$t\"; cat \"$t\"; \
+                 else echo f; fi; elif [ -e \"$p\" ]; then echo x; elif gone \"$p\"; then echo m; \
+                 else echo h; fi; done",
                 quoted.join(" ")
             );
             let out = match self.run(&script, None, Again::Once) {
                 Ok(ran) if ran.code == Some(0) => ran.out,
-                _ => Vec::new(),
+                Ok(ran) => {
+                    let error = self.failed(&ran, Again::Once);
+                    read.extend(chunk.iter().map(|_| failed_like(&error)));
+                    continue;
+                }
+                Err(error) => {
+                    read.extend(chunk.iter().map(|_| failed_like(&error)));
+                    continue;
+                }
             };
             let mut rest = out.as_slice();
             for _ in chunk {
-                let file = split_line(rest).and_then(|(size, after)| {
-                    let size: usize = size.trim().parse().ok()?;
-                    let (bytes, after) = after.split_at_checked(size)?;
-                    Some((bytes, after))
+                let Some((first, after)) = split_line(rest) else {
+                    read.push(Observation::Failed(io::Error::other(
+                        "the remote read stopped short",
+                    )));
+                    continue;
+                };
+                rest = after;
+                read.push(match first.trim() {
+                    "m" => Observation::Missing,
+                    "x" => Observation::Excluded,
+                    "d" => Observation::Failed(io::Error::new(
+                        ErrorKind::PermissionDenied,
+                        "it may not be read there",
+                    )),
+                    "h" => Observation::Failed(hidden()),
+                    "f" => Observation::Failed(io::Error::other("it could not be read there")),
+                    size => {
+                        let file = size
+                            .parse::<usize>()
+                            .ok()
+                            .and_then(|size| after.split_at_checked(size));
+                        match file {
+                            Some((bytes, after)) => {
+                                rest = after;
+                                Observation::Found(bytes.to_vec())
+                            }
+                            None => Observation::Failed(io::Error::other(
+                                "the remote read said no size",
+                            )),
+                        }
+                    }
                 });
-                match file {
-                    Some((bytes, after)) => {
-                        read.push(Some(bytes.to_vec()));
-                        rest = after;
-                    }
-                    None => {
-                        read.push(None);
-                        rest = split_line(rest).map_or(&[][..], |(_, after)| after);
-                    }
-                }
             }
         }
         read
     }
 
-    /// [`replace`](Workspace::replace)s it, sending back nothing of what
-    /// it held.
+    /// Writes a temporary file beside it and moves it over the file only
+    /// once it holds all of `bytes`, so a lost connection or a stopped call
+    /// never leaves it half written, keeping an existing file's
+    /// permissions.
     fn write(&self, path: &Path, bytes: &[u8]) -> io::Result<()> {
-        self.replace(path, bytes, 0).map(drop)
-    }
-
-    /// Writes a temporary file beside it and moves it over the file, so a
-    /// lost connection never leaves it half written, keeping an existing
-    /// file's permissions; the copy the temporary file starts as is what
-    /// is sent back, in the same call.
-    fn replace(&self, path: &Path, bytes: &[u8], limit: u64) -> io::Result<io::Result<Contents>> {
+        let size = bytes.len();
         let script = format!(
-            "p={}; if [ -e \"$p\" ]; then [ -f \"$p\" ] || exit {NOT_A_FILE}; \
+            "p={}; [ -L \"$p\" ] && {{ readlink -- \"$p\" >&2; exit {A_LINK}; }}; \
+             if [ -e \"$p\" ]; then [ -f \"$p\" ] || exit {NOT_A_FILE}; \
              [ -w \"$p\" ] || exit {READ_ONLY}; fi; d=$(dirname -- \"$p\"); \
              mkdir -p -- \"$d\" && t=$(mktemp \"$d/.rig-write.XXXXXX\") || exit 1; \
-             if [ -e \"$p\" ]; then cp -p -- \"$p\" \"$t\" && wc -c < \"$t\" && \
-             head -c {limit} -- \"$t\"; \
+             if [ -e \"$p\" ]; then cp -p -- \"$p\" \"$t\"; \
              else chmod \"$(printf %o $((0666 & ~$(umask))))\" \"$t\"; fi && \
-             cat > \"$t\" && mv -f -- \"$t\" \"$p\" || {{ rm -f -- \"$t\"; exit 1; }}",
+             cat > \"$t\" && [ $(wc -c < \"$t\") -eq {size} ] && mv -f -- \"$t\" \"$p\" || \
+             {{ rm -f -- \"$t\"; exit 1; }}",
             quote_path(path)
         );
-        let out = self.written(path, &script, bytes)?;
-        Ok(match split_line(&out) {
-            None => Err(ErrorKind::NotFound.into()),
-            Some((size, bytes)) => size
-                .trim()
-                .parse()
-                .map(|size| Contents {
-                    bytes: bytes.to_vec(),
-                    size,
-                })
-                .map_err(io::Error::other),
-        })
+        self.written(path, &script, bytes).map(drop)
     }
 
-    /// One script: a copy of the file is made beside it and hashed there,
-    /// then filled with `bytes` and moved over the file when the hash is
-    /// `held`, or sent back when it is not. A machine with neither
-    /// `sha256sum` nor `shasum` always sends it back.
+    /// One script. With a `held`, the file is hashed, and only while the
+    /// hash is `held` is a copy made beside it (for its permissions),
+    /// filled with `bytes` and, once it holds all of them and the file is
+    /// hashed `held` again, moved over it; otherwise the file is sent back.
+    /// A machine with neither `sha256sum` nor `shasum` always sends it
+    /// back. With no `held`, a new file is filled beside the name and
+    /// linked to it (`ln`), which never replaces a file that appeared
+    /// meanwhile, and a directory that took the name is refused, with the
+    /// link `ln` made in it removed; where `ln` cannot link, the name is
+    /// claimed with `set -C`, which refuses an existing file, and the text
+    /// copied in, the file it claimed removed when the copy fails. A file
+    /// there is sent back.
     fn write_if(
         &self,
         path: &Path,
         bytes: &[u8],
-        held: &ContentHash,
+        held: Option<&ContentHash>,
     ) -> io::Result<Option<Contents>> {
+        let size = bytes.len();
+        let Some(held) = held else {
+            let script = format!(
+                "p={}; [ -L \"$p\" ] && {{ readlink -- \"$p\" >&2; exit {A_LINK}; }}; \
+                 back() {{ [ -f \"$p\" ] && [ ! -L \"$p\" ] || exit {NOT_A_FILE}; \
+                 wc -c < \"$p\" && head -c {MAX_FILE_BYTES} -- \"$p\"; }}; \
+                 [ -e \"$p\" ] && {{ back; exit; }}; d=$(dirname -- \"$p\"); \
+                 mkdir -p -- \"$d\" && t=$(mktemp \"$d/.rig-write.XXXXXX\") || exit 1; \
+                 chmod \"$(printf %o $((0666 & ~$(umask))))\" \"$t\" && \
+                 cat > \"$t\" && [ $(wc -c < \"$t\") -eq {size} ] || {{ rm -f -- \"$t\"; exit 1; }}; \
+                 if ln -- \"$t\" \"$p\" 2>/dev/null; then \
+                 if [ -d \"$p\" ]; then rm -f -- \"$p/${{t##*/}}\" \"$t\"; exit {NOT_A_FILE}; fi; \
+                 rm -f -- \"$t\"; echo =; \
+                 elif [ -e \"$p\" ] || [ -L \"$p\" ]; then rm -f -- \"$t\"; back; \
+                 elif (set -C; exec > \"$p\") 2>/dev/null; then \
+                 cat -- \"$t\" > \"$p\" || {{ rm -f -- \"$p\" \"$t\"; exit 1; }}; \
+                 rm -f -- \"$t\"; echo =; \
+                 else rm -f -- \"$t\"; [ -e \"$p\" ] || exit 1; back; fi",
+                quote_path(path)
+            );
+            return compared(&self.written(path, &script, bytes)?);
+        };
         let script = format!(
-            "p={}; [ -f \"$p\" ] || {{ [ -e \"$p\" ] && exit {NOT_A_FILE}; exit {NOT_FOUND}; }}; \
+            "p={}; [ -L \"$p\" ] && {{ readlink -- \"$p\" >&2; exit {A_LINK}; }}; \
+             [ -f \"$p\" ] || {{ [ -e \"$p\" ] && exit {NOT_A_FILE}; exit {NOT_FOUND}; }}; \
              [ -w \"$p\" ] || exit {READ_ONLY}; \
+             held() {{ h=$({{ sha256sum || shasum -a 256; }} < \"$p\" 2>/dev/null); \
+             [ \"${{h%% *}}\" = {} ]; }}; \
+             back() {{ wc -c < \"$p\" && head -c {MAX_FILE_BYTES} -- \"$p\"; }}; \
+             held || {{ back; exit; }}; \
              t=$(mktemp \"$(dirname -- \"$p\")/.rig-write.XXXXXX\") || exit 1; \
-             cp -p -- \"$p\" \"$t\" || {{ rm -f -- \"$t\"; exit 1; }}; \
-             h=$({{ sha256sum || shasum -a 256; }} < \"$t\" 2>/dev/null); \
-             if [ \"${{h%% *}}\" = {} ]; then \
-             cat > \"$t\" && mv -f -- \"$t\" \"$p\" && echo = || {{ rm -f -- \"$t\"; exit 1; }}; \
-             else wc -c < \"$t\" && head -c {MAX_FILE_BYTES} -- \"$t\"; s=$?; rm -f -- \"$t\"; exit $s; fi",
+             cp -p -- \"$p\" \"$t\" && cat > \"$t\" && [ $(wc -c < \"$t\") -eq {size} ] || \
+             {{ rm -f -- \"$t\"; exit 1; }}; \
+             if held; then mv -f -- \"$t\" \"$p\" && echo = || {{ rm -f -- \"$t\"; exit 1; }}; \
+             else rm -f -- \"$t\"; back; fi",
             quote_path(path),
             quote(&held.0)
         );
-        let out = self.written(path, &script, bytes)?;
-        let Some((first, rest)) = split_line(&out) else {
-            return Err(io::Error::other("the remote write said nothing"));
-        };
-        if first == "=" {
-            return Ok(None);
-        }
-        Ok(Some(Contents {
-            bytes: rest.to_vec(),
-            size: first.trim().parse().map_err(io::Error::other)?,
-        }))
+        compared(&self.written(path, &script, bytes)?)
     }
 
     fn remove(&self, path: &Path) -> io::Result<()> {
@@ -637,35 +700,37 @@ impl Workspace for Remote {
         out
     }
 
-    /// As git lists them there in a git work tree (unless `listing` is
-    /// [`All`](Listing::All)), else as `find` does, then filtered by
+    /// The regular files git lists there in a git work tree (unless
+    /// `listing` is [`All`](Listing::All)), else as `find` does: not one
+    /// deleted since it was added, nor a link. Then filtered by
     /// [`Listing::keeps`] and `glob`.
-    fn files(&self, root: &Path, glob: Option<&str>, listing: Listing) -> io::Result<Vec<PathBuf>> {
-        let globs = glob
-            .map(|glob| {
-                OverrideBuilder::new(root)
-                    .add(glob)
-                    .and_then(|builder| builder.build())
-                    .map_err(|error| {
-                        io::Error::new(ErrorKind::InvalidInput, format!("bad glob: {error}"))
-                    })
-            })
-            .transpose()?;
+    fn files(&self, root: &Path, glob: Option<&str>, listing: Listing) -> io::Result<Listed> {
+        let globs = glob.map(|glob| globbed(root, glob)).transpose()?;
         let git = match listing {
             Listing::All => "false",
             Listing::Visible | Listing::Hidden => {
                 "git rev-parse --is-inside-work-tree >/dev/null 2>&1"
             }
         };
+        // A git that fails ends its list with `/`, a name it never lists,
+        // on which the filter, so the listing, fails too.
         let script = format!(
-            "r={}; [ -f \"$r\" ] && exit {ROOT_IS_A_FILE}; cd \"$r\" || exit {NOT_FOUND}; \
-             if {git}; then git ls-files -z -co --exclude-standard; \
+            "{GONE}; r={}; [ -f \"$r\" ] && exit {ROOT_IS_A_FILE}; \
+             [ -e \"$r\" ] || ! gone \"$r\" || exit {NOT_FOUND}; cd \"$r\" || exit 1; \
+             if {git}; then {{ git ls-files -z -co --exclude-standard || printf '\\0/\\0'; }} | \
+             xargs -0 sh -c 'for f do [ \"$f\" != / ] || exit 255; \
+             if [ -f \"$f\" ] && [ ! -L \"$f\" ]; then printf \"%s\\0\" \"$f\"; fi; done' sh; \
              else find . -type f -print0; fi",
             quote_path(root)
         );
         let ran = self.run(&script, None, Again::Once)?;
         match ran.code {
-            Some(ROOT_IS_A_FILE) => return Ok(vec![root.to_path_buf()]),
+            Some(ROOT_IS_A_FILE) => {
+                return Ok(Listed {
+                    files: vec![root.to_path_buf()],
+                    failed: Vec::new(),
+                });
+            }
             Some(0) => {}
             Some(NOT_FOUND) => return Err(ErrorKind::NotFound.into()),
             _ => return Err(self.failed(&ran, Again::Once)),
@@ -673,7 +738,7 @@ impl Workspace for Remote {
         let mut files: Vec<PathBuf> = String::from_utf8_lossy(&ran.out)
             .split('\0')
             .map(|name| Path::new(name.trim_start_matches("./")))
-            .filter(|name| !name.as_os_str().is_empty() && listing.keeps(name))
+            .filter(|name| !name.as_os_str().is_empty() && listing.keeps(name, false))
             .map(|name| root.join(name))
             .filter(|path| {
                 globs
@@ -682,7 +747,10 @@ impl Workspace for Remote {
             })
             .collect();
         files.sort();
-        Ok(files)
+        Ok(Listed {
+            files,
+            failed: Vec::new(),
+        })
     }
 
     /// Runs `program` there in `dir` (`None`: the remote home) with `sh -l`,
@@ -703,7 +771,11 @@ impl Workspace for Remote {
     ) -> io::Result<Process> {
         let dir = dir.unwrap_or(Path::new("~"));
         let mut run = String::from("env");
-        for (name, value) in &launcher.env {
+        let quiet = NON_INTERACTIVE
+            .iter()
+            .filter(|(name, _)| launcher.env.iter().all(|(set, _)| set != name))
+            .map(|&(name, value)| (OsString::from(name), OsString::from(value)));
+        for (name, value) in quiet.chain(launcher.env.iter().cloned()) {
             let set = format!("{}={}", name.to_string_lossy(), value.to_string_lossy());
             run.push_str(&format!(" {}", quote(&set)));
         }
@@ -738,7 +810,8 @@ impl Workspace for Remote {
 /// stays there.
 ///
 /// Its [`host`](Workspace::host) is the inner workspace's, as its project
-/// is there; a call on a `HOST:` path waits for the transport.
+/// is there; a call on a `HOST:` path waits for the transport, which
+/// [`host_for`](Workspace::host_for) that path tells.
 #[derive(Clone, Debug)]
 pub struct Hosts {
     inner: Arc<dyn Workspace>,
@@ -780,6 +853,14 @@ impl Workspace for Hosts {
         self.inner.host()
     }
 
+    /// The remote's for a `HOST:` path, else the inner workspace's.
+    fn host_for(&self, path: &Path) -> Option<&str> {
+        match self.route(path) {
+            Some((remote, _)) => remote.host(),
+            None => self.inner.host_for(path),
+        }
+    }
+
     /// A `HOST:` path stays whole; a path starting with `~` joined onto a
     /// `HOST:` base is in that host's home.
     fn join(&self, base: &Path, path: &Path) -> PathBuf {
@@ -806,7 +887,7 @@ impl Workspace for Hosts {
 
     /// All in one go on their host when every path is on one, else one by
     /// one.
-    fn read_files(&self, paths: &[PathBuf], limit: u64) -> Vec<Option<Vec<u8>>> {
+    fn read_files(&self, paths: &[PathBuf], limit: u64) -> Vec<Observation<Vec<u8>>> {
         let first = paths.first().and_then(|path| self.route(path));
         let there = first.and_then(|(remote, _)| {
             let there: Option<Vec<PathBuf>> = paths
@@ -841,18 +922,11 @@ impl Workspace for Hosts {
         }
     }
 
-    fn replace(&self, path: &Path, bytes: &[u8], limit: u64) -> io::Result<io::Result<Contents>> {
-        match self.route(path) {
-            Some((remote, path)) => remote.replace(&path, bytes, limit),
-            None => self.inner.replace(path, bytes, limit),
-        }
-    }
-
     fn write_if(
         &self,
         path: &Path,
         bytes: &[u8],
-        held: &ContentHash,
+        held: Option<&ContentHash>,
     ) -> io::Result<Option<Contents>> {
         match self.route(path) {
             Some((remote, path)) => remote.write_if(&path, bytes, held),
@@ -889,13 +963,18 @@ impl Workspace for Hosts {
         }
     }
 
-    fn files(&self, root: &Path, glob: Option<&str>, listing: Listing) -> io::Result<Vec<PathBuf>> {
+    fn files(&self, root: &Path, glob: Option<&str>, listing: Listing) -> io::Result<Listed> {
         match self.route(root) {
-            Some((remote, root)) => Ok(remote
-                .files(&root, glob, listing)?
-                .iter()
-                .map(|path| Self::named(remote, path))
-                .collect()),
+            Some((remote, root)) => {
+                let listed = remote.files(&root, glob, listing)?;
+                let named = |path: &Path| Self::named(remote, path);
+                Ok(Listed {
+                    files: listed.files.iter().map(|path| named(path)).collect(),
+                    failed: (listed.failed.into_iter())
+                        .map(|(path, error)| (named(&path), error))
+                        .collect(),
+                })
+            }
             None => self.inner.files(root, glob, listing),
         }
     }
@@ -927,6 +1006,21 @@ impl Workspace for Hosts {
             None => self.inner.clone().watch(root, recursive, listing),
         }
     }
+}
+
+/// What a [`write_if`](Workspace::write_if) script answered, `out`: `=`
+/// when it wrote, else the file's size on a line and its bytes.
+fn compared(out: &[u8]) -> io::Result<Option<Contents>> {
+    let Some((first, rest)) = split_line(out) else {
+        return Err(io::Error::other("the remote write said nothing"));
+    };
+    if first == "=" {
+        return Ok(None);
+    }
+    Ok(Some(Contents {
+        bytes: rest.to_vec(),
+        size: first.trim().parse().map_err(io::Error::other)?,
+    }))
 }
 
 /// `bytes` split at its first `\n`: the line before it, as text, and
@@ -971,6 +1065,22 @@ fn quote_path(path: &Path) -> String {
         None if path == "~" => "\"$HOME\"".to_owned(),
         None => quote(&path),
     }
+}
+
+/// The error for a path in a directory that may not be searched, which
+/// hides whether it is there.
+fn hidden() -> io::Error {
+    io::Error::new(
+        ErrorKind::PermissionDenied,
+        "a directory it is in may not be searched there, or a link on its way does not \
+         resolve",
+    )
+}
+
+/// An error of the kind and message of `error`, for one more path it
+/// stands for.
+fn failed_like(error: &io::Error) -> Observation<Vec<u8>> {
+    Observation::Failed(io::Error::new(error.kind(), error.to_string()))
 }
 
 #[cfg(test)]

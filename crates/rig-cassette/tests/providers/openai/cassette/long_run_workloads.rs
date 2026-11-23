@@ -14,8 +14,8 @@
 //! `tests/README.md`.
 
 use rig::AgentBuilder;
-use rig::completion::CacheRates;
 use rig::providers::openai::GPT_6_SOL;
+use rig_test_support::cache_cost::CacheRates;
 use rig_test_support::cache_longrun::workloads::{self, DOCUMENT_PREAMBLE};
 use rig_test_support::cache_longrun::{
     self, CacheWire, Figures, Limits, LongRun, Recording, RunLog,

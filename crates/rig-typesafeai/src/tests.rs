@@ -162,6 +162,37 @@ fn rejects_labels_that_decode_to_a_different_variant() {
     ));
 }
 
+/// A label `Choice::new` accepts decodes back into its value, string newtypes included.
+#[test]
+fn accepted_labels_decode_into_their_values() -> anyhow::Result<()> {
+    #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+    struct Team(String);
+    fn decodes<T: serde::de::DeserializeOwned + Serialize + Ord + Clone>(
+        first: T,
+        second: T,
+    ) -> anyhow::Result<()> {
+        let choice = Choice::new("Choose", [(first.clone(), "One"), (second.clone(), "Two")])?;
+        let [Value::String(a), Value::String(b)] = [
+            serde_json::to_value(&first)?,
+            serde_json::to_value(&second)?,
+        ] else {
+            anyhow::bail!("labels serialize to strings");
+        };
+        let answer = choice.decode(serde_json::from_value(json!({
+            "type": "choice",
+            "choice": a,
+            "probabilities": BTreeMap::from([(a.clone(), 0.75), (b, 0.25)]),
+            "confidence": 0.5
+        }))?)?;
+        ensure!(answer.choice == first);
+        ensure!(answer.probabilities.get(&second) == Some(&0.25));
+        Ok(())
+    }
+    decodes(Team("billing".into()), Team("other".into()))?;
+    decodes("billing".to_owned(), "other".to_owned())?;
+    decodes(Route::Billing, Route::Other)
+}
+
 /// Replays structured criteria accepted by Jev, including an undescribed choice.
 #[tokio::test]
 async fn recorded_structured_batch_into_named_answers() -> anyhow::Result<()> {
@@ -598,5 +629,99 @@ fn reads_openrouter_usage_cost() -> anyhow::Result<()> {
     let again: types::Response = serde_json::from_value(serde_json::to_value(&response)?)?;
     ensure!(again.model == response.model && again.answers.get() == response.answers.get());
     ensure!(again.usage == response.usage);
+    Ok(())
+}
+
+/// A reloaded configuration keeps its routing preferences, in both forms of
+/// each untagged setting, and one stored without them still loads. Only the
+/// credential must be supplied again.
+#[test]
+fn provider_preferences_survive_reloading_the_configuration() -> anyhow::Result<()> {
+    use rig_core::providers::openrouter::extension::{
+        DataCollection, LatencyThreshold, MaxPrice, PercentileThresholds, ProviderPreferences,
+        ProviderSortConfig, ProviderSortStrategy, Quantization, SortPartition, ThroughputThreshold,
+    };
+
+    let reload = |config: &JevConfig| -> anyhow::Result<JevConfig> {
+        Ok(serde_json::from_value(serde_json::to_value(config)?)?)
+    };
+    let simple = ProviderPreferences::new()
+        .cheapest()
+        .preferred_min_throughput(ThroughputThreshold::Simple(5.0))
+        .preferred_max_latency(LatencyThreshold::Simple(2.0));
+    let detailed = ProviderPreferences::new()
+        .zdr(true)
+        .data_collection(DataCollection::Deny)
+        .only(["typesafe"])
+        .sort(ProviderSortConfig::new(ProviderSortStrategy::Latency).partition(SortPartition::None))
+        .preferred_min_throughput(ThroughputThreshold::Percentile(
+            PercentileThresholds::new().p50(5.0),
+        ))
+        .preferred_max_latency(LatencyThreshold::Percentile(
+            PercentileThresholds::new().p99(2.0),
+        ))
+        .max_price(MaxPrice::new().prompt(1.0))
+        .quantizations([Quantization::Fp8]);
+    for preferences in [simple, detailed] {
+        let config = JevConfig::new("token").provider(preferences.clone());
+        ensure!(reload(&config)? == JevConfig::new("").provider(preferences));
+    }
+    ensure!(reload(&JevConfig::new("token"))? == JevConfig::new(""));
+    Ok(())
+}
+
+/// A stored routing preference with a misspelled key fails to load, naming
+/// the key, instead of loading without that restriction.
+#[test]
+fn a_misspelled_provider_preference_fails_to_load() {
+    let stored = serde_json::json!({
+        "token": "",
+        "model": "jev-latest",
+        "endpoint": "https://api.typesafe.ai/v1/systemone",
+        "provider": { "data_colection": "deny" },
+    });
+    let error = serde_json::from_value::<JevConfig>(stored).map(|_| ());
+    assert!(
+        error
+            .as_ref()
+            .is_err_and(|e| e.to_string().contains("data_colection")),
+        "{error:?}"
+    );
+}
+
+/// A stored configuration with a misspelled top-level key fails to load,
+/// naming the key, instead of loading without the restrictions it meant.
+#[test]
+fn a_misspelled_configuration_key_fails_to_load() {
+    let stored = serde_json::json!({
+        "token": "[redacted]",
+        "model": "jev-latest",
+        "endpoint": "https://api.typesafe.ai/v1/systemone",
+        "provder": { "data_collection": "deny" },
+    });
+    let error = serde_json::from_value::<JevConfig>(stored).map(|_| ());
+    assert!(
+        error
+            .as_ref()
+            .is_err_and(|e| e.to_string().contains("provder")),
+        "{error:?}"
+    );
+}
+
+/// A stored configuration loads without its credential and refuses to send
+/// until one is set again; then its request carries that bearer credential.
+#[test]
+fn a_reloaded_configuration_sends_once_its_token_is_set() -> anyhow::Result<()> {
+    use rig_core::wire::{Mode, Wire};
+
+    let stored = serde_json::to_value(JevConfig::new("stored-token").model("jev-1"))?;
+    let loaded: JevConfig = serde_json::from_value(stored)?;
+    let request = || serde_json::from_value(json!({"state": 1, "questions": {}}));
+    ensure!(loaded.encode(request()?, Mode::Unary).is_err());
+    let encoded = loaded
+        .with_token("fresh-token")
+        .encode(request()?, Mode::Unary)?;
+    let authorization = encoded.request.headers().get(http::header::AUTHORIZATION);
+    ensure!(authorization.is_some_and(|value| value == "Bearer fresh-token"));
     Ok(())
 }

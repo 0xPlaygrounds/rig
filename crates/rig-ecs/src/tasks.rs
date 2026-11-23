@@ -1,5 +1,5 @@
 //! Work that runs off the main thread: a [`Running`] task on an entity
-//! becomes a [`Done`] component when it finishes, through one `poll_tasks`
+//! becomes a [`Done`] component when it finishes, through one `finish`
 //! system, so observers of that component carry on; on an effect, such as
 //! an open tool call, it becomes the effect's
 //! [`Outcome`](super::stage::Outcome) in
@@ -12,23 +12,26 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use async_channel::Receiver;
 use bevy_ecs::prelude::*;
 use bevy_ecs::query::QueryFilter;
 use bevy_tasks::futures::check_ready;
 use bevy_tasks::{ConditionalSend, ConditionalSendFuture, Task, TaskPool};
-use crossbeam_channel::Receiver;
 use futures::{Stream, StreamExt};
 
-use super::stage::{self, Effect};
+use super::stage;
 
 /// Frames run right after a woken one (see [`run_settle_frames`]).
 const SETTLE_FRAMES: u32 = 4;
 
+/// The most items of a [`Running::stream`] that wait for a frame: a frame
+/// that falls behind holds the source back rather than growing memory.
+const STREAM_ITEMS: usize = 256;
+
 /// Wakes the app's loop from another thread: a finished call, a streamed
 /// fragment, terminal input or a signal. The runner that sleeps between
 /// frames inserts its own; the default does nothing, for a loop that never
-/// sleeps for long. A windowed app inserts its own too (rig-harness's
-/// PLUGINS.md, "A window").
+/// sleeps for long. A windowed app inserts its own too.
 ///
 /// A woken frame often leaves work for the next, such as a command's
 /// notice or a task that finished just after it woke the loop, so the
@@ -141,13 +144,14 @@ impl Running {
     /// socket's messages or a thread's channel: each item is inserted on
     /// the entity as a [`Done<T>`], in order, and wakes the loop; once the
     /// last one is in, `Running` is removed. Several items may come in one
-    /// frame, so a reader observes `Insert<Done<T>>`, which sees each.
+    /// frame, so a reader observes `Insert<Done<T>>`, which sees each. At
+    /// most 256 wait; the task waits for room before it reads the next.
     pub fn stream<T: Send + Sync + 'static>(
         pool: &TaskPool,
         wake: &Wake,
         items: impl Stream<Item = T> + ConditionalSend + 'static,
     ) -> Self {
-        let (sender, received) = crossbeam_channel::unbounded();
+        let (sender, received) = async_channel::bounded(STREAM_ITEMS);
         let wake = wake.clone();
         let task = pool.spawn(async move {
             let mut items = std::pin::pin!(items);
@@ -156,7 +160,7 @@ impl Running {
                     entity.insert(Done(item));
                 };
                 // Dropped with its entity: nothing reads the rest.
-                if sender.send(Box::new(insert) as Finish).is_err() {
+                if sender.send(Box::new(insert) as Finish).await.is_err() {
                     break;
                 }
                 wake.wake();
@@ -203,7 +207,10 @@ impl Running {
     }
 }
 
-/// A finished task's output, or a [`Running::stream`]'s latest item.
+/// A finished task's output, or a [`Running::stream`]'s latest item. On a
+/// hold or a plugin's own entity it moves no effect, so no stage runs for
+/// it: react with an `On<Insert<Done<T>>>` observer, such as one that
+/// releases the hold, not with a stage system.
 #[derive(Component)]
 pub struct Done<T: Send + Sync + 'static>(pub T);
 
@@ -218,24 +225,15 @@ impl<T: Send + Sync + 'static> From<T> for Done<T> {
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PollTasks;
 
-/// Replaces each finished [`Running`] task with its output, but an
-/// effect's, which the kernel takes in [`Stage::Arrive`](stage::Stage::Arrive).
-pub(crate) fn poll_tasks(
-    tasks: Query<(Entity, &mut Running), Without<Effect>>,
-    commands: Commands,
-) {
-    finish(tasks, commands);
-}
-
-/// Replaces each finished effect's [`Running`] task with its outcome, in
-/// [`Stage::Arrive`](stage::Stage::Arrive).
-pub(crate) fn arrive(tasks: Query<(Entity, &mut Running), With<Effect>>, commands: Commands) {
-    finish(tasks, commands);
-}
-
 /// Replaces each finished task among `tasks` with its output, and puts a
-/// stream's items on its entity in order, removing it once it ended.
-fn finish<F: QueryFilter>(mut tasks: Query<(Entity, &mut Running), F>, mut commands: Commands) {
+/// stream's items on its entity in order, removing it once it ended. It
+/// runs twice: `finish::<Without<Effect>>` in `Update`, and for effects,
+/// whose output is their outcome, `finish::<With<Effect>>` in
+/// [`Stage::Arrive`](stage::Stage::Arrive).
+pub(crate) fn finish<F: QueryFilter>(
+    mut tasks: Query<(Entity, &mut Running), F>,
+    mut commands: Commands,
+) {
     for (entity, mut running) in &mut tasks {
         match &mut running.bypass_change_detection().0 {
             Work::Task(task) => {
@@ -244,10 +242,13 @@ fn finish<F: QueryFilter>(mut tasks: Query<(Entity, &mut Running), F>, mut comma
                 }
             }
             Work::Stream { items, task } => {
-                // Every item was sent before the task ended.
+                // Every item was sent before the task ended. Only what came
+                // before this look is taken, so a source that keeps sending
+                // never holds the frame.
                 let ended = check_ready(task).is_some();
+                let came = items.len();
                 let mut entity = commands.entity(entity);
-                for insert in items.try_iter() {
+                for insert in std::iter::from_fn(|| items.try_recv().ok()).take(came) {
                     entity.queue(insert);
                 }
                 if ended {

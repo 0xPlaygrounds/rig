@@ -4,6 +4,7 @@ use rig_core::completion::Message;
 use rig_core::conversation::{self, Author, Entry};
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::pick::{Picked, Picker};
+use rig_harness::rig_ecs::spawn::spawn_root;
 use rig_harness::rig_memory::MemoryStore;
 
 use super::*;
@@ -103,7 +104,7 @@ fn up_and_down_walk_past_a_recalled_command_and_typing_still_completes() {
 }
 
 /// What the person typed and did not send goes to the history whenever
-/// the input drops it, once, with secrets redacted, and blank text never.
+/// the input drops it, once, as typed, and blank text never.
 #[test]
 fn text_the_input_drops_unsent_goes_to_the_history() {
     let (mut app, _) = view_app();
@@ -114,12 +115,9 @@ fn text_the_input_drops_unsent_goes_to_the_history() {
     edit(&mut app, |input| drop(input.take()));
     assert_eq!(entries(&app), ["draft one", "old"]);
     // Cleared.
-    type_text(&mut app, "key sk-proj-abcdefghijklmnop1234");
+    type_text(&mut app, "cleared");
     press(&mut app, "ctrl+c");
-    assert_eq!(
-        entries(&app).last().map(String::as_str),
-        Some("key [REDACTED]")
-    );
+    assert_eq!(entries(&app).last().map(String::as_str), Some("cleared"));
     // Cleared while a prompt is recalled: the draft behind it.
     type_text(&mut app, "draft cleared");
     press(&mut app, "ctrl+a up ctrl+c");
@@ -157,7 +155,7 @@ fn text_the_input_drops_unsent_goes_to_the_history() {
     let kept = [
         "draft one",
         "old",
-        "key [REDACTED]",
+        "cleared",
         "draft cleared",
         "draft two",
         "draft three",
@@ -201,6 +199,29 @@ fn a_prompt_filtered_out_before_the_save_never_reaches_the_file() {
     assert_eq!(PromptHistory::load(files).entries, ["hello", "bye"]);
 }
 
+/// A prompt a plugin rewrites before the save, such as with a key
+/// redacted, is kept and saved rewritten.
+#[test]
+fn a_prompt_rewritten_before_the_save_is_saved_rewritten() {
+    let (mut app, _) = view_app();
+    let files: Arc<dyn Files> = Arc::new(MemoryStore::default());
+    app.world_mut().resource_mut::<PromptHistory>().file = Some(files.clone());
+    app.add_systems(
+        Update,
+        (|mut history: ResMut<PromptHistory>| {
+            history.rewrite(|prompt| Some(prompt.replace("sk-123", "‹SECRET_1›")));
+        })
+        .after(HistorySystems::Record)
+        .before(HistorySystems::Save),
+    );
+    type_text(&mut app, "my key is sk-123");
+    press(&mut app, "enter");
+    edit(&mut app, |input| drop(input.take()));
+    let kept = ["my key is ‹SECRET_1›"];
+    assert_eq!(app.world().resource::<PromptHistory>().entries, kept);
+    assert_eq!(PromptHistory::load(files).entries, kept);
+}
+
 #[test]
 fn a_repeated_prompt_moves_to_the_newest_and_is_kept_once() {
     let (mut app, _) = view_app();
@@ -214,23 +235,23 @@ fn a_repeated_prompt_moves_to_the_newest_and_is_kept_once() {
     assert_eq!(PromptHistory::load(files).entries, ["test it", "fix it"]);
 }
 
+/// Every distinct prompt is kept, however many; a file of more than twice
+/// as many lines, as repeats make it, is rewritten with them once each.
 #[test]
-fn a_long_file_loads_the_newest_distinct_prompts_and_is_rewritten() {
+fn a_long_file_loads_every_distinct_prompt_and_is_rewritten_without_repeats() {
     let files: Arc<dyn Files> = Arc::new(MemoryStore::default());
-    // The last 500 lines repeat one prompt, so the distinct ones before
-    // them are kept too.
     let lines: String = (0..700)
         .map(|n| format!("prompt {n}"))
-        .chain(std::iter::repeat_n("prompt 699".to_owned(), 500))
+        .chain(std::iter::repeat_n("prompt 699".to_owned(), 800))
         .map(|prompt| format!("{prompt:?}\n"))
         .chain(["not json\n".to_owned()])
         .collect();
     files.write_file(HISTORY_FILE, lines.as_bytes()).ok();
-    let newest: Vec<String> = (200..700).map(|n| format!("prompt {n}")).collect();
-    assert_eq!(PromptHistory::load(files.clone()).entries, newest);
+    let every: Vec<String> = (0..700).map(|n| format!("prompt {n}")).collect();
+    assert_eq!(PromptHistory::load(files.clone()).entries, every);
     let rewritten = files.read_file(HISTORY_FILE).unwrap_or_default();
-    assert_eq!(String::from_utf8_lossy(&rewritten).lines().count(), 500);
-    assert_eq!(PromptHistory::load(files).entries, newest);
+    assert_eq!(String::from_utf8_lossy(&rewritten).lines().count(), 700);
+    assert_eq!(PromptHistory::load(files).entries, every);
 }
 
 #[test]
@@ -286,10 +307,7 @@ fn a_resumed_conversations_prompts_come_first_filtered_and_are_not_saved_again()
 fn showing_another_agent_seeds_its_prompts_and_keeps_the_draft() {
     let (mut app, _) = view_app();
     app.world_mut().resource_mut::<PromptHistory>().entries = vec!["older".into()];
-    let other = app
-        .world_mut()
-        .spawn((Agent, conversation(&["review the diff"])))
-        .id();
+    let other = spawn_root(app.world_mut(), conversation(&["review the diff"])).id();
     // Picking the agent shows it, and the Up after it in the same frame
     // browses its prompts.
     app.add_observer(move |_: On<Picked>, mut commands: Commands| {
@@ -322,4 +340,24 @@ fn browsing_follows_the_prompt_shown_when_the_history_moves() {
         press(&mut app, "down");
         assert_eq!(typed(&app), expected);
     }
+}
+
+/// More than 500 prompts typed in a run are all kept, in the history and
+/// in the file.
+#[test]
+fn every_prompt_typed_is_kept_and_saved() {
+    let files: Arc<dyn Files> = Arc::new(MemoryStore::default());
+    let mut world = World::new();
+    world.insert_resource(PromptHistory::load(files.clone()));
+    let typed: Vec<String> = (0..600).map(|n| format!("prompt {n}")).collect();
+    {
+        let mut history = world.resource_mut::<PromptHistory>();
+        for prompt in &typed {
+            history.newest(prompt.clone());
+            history.unsaved.push(prompt.clone());
+        }
+    }
+    world.run_system_once(save).ok();
+    assert_eq!(world.resource::<PromptHistory>().entries, typed);
+    assert_eq!(PromptHistory::load(files).entries, typed);
 }

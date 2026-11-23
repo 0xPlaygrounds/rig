@@ -14,7 +14,7 @@ use rig_core::vector_store::{
     VectorSearchIdResult, VectorSearchRequest, VectorSearchResult, VectorStoreError,
     VectorStoreIndex, request::Filter,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, PartialEq, Deserialize, Serialize, JsonSchema)]
 struct Person {
@@ -264,7 +264,16 @@ async fn exhausted_retries_return_last_error() {
         .await
         .expect_err("extraction should fail");
 
-    assert!(matches!(err, StructuredOutputError::EmptyResponse));
+    assert!(
+        matches!(
+            &err,
+            StructuredOutputError::Prompt(PromptError::OutputSchemaMismatch {
+                output,
+                ..
+            }) if output == "no submit call"
+        ),
+        "{err:?}"
+    );
 }
 
 #[tokio::test]

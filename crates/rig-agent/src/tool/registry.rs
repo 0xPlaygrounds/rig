@@ -14,7 +14,7 @@ use rig_core::serve::{ErasedHandler, Serve};
 use rig_core::{
     completion::ToolDefinition,
     effect::{
-        Answered, EffectKind, FamilyDescriptor, Key, ToolEmbeddingDescriptor, family, tool_key,
+        EffectKind, Family, FamilyDescriptor, Key, ToolEmbeddingDescriptor, family, tool_key,
     },
     embeddings::{embed::EmbedError, tool::ToolSchema},
     error::{ErrorKind, ErrorReport},
@@ -211,14 +211,9 @@ impl RegisteredTool {
         // What the tool published is this call's result metadata; a handler
         // that published nothing (or never ran) leaves an empty result map.
         context.accept_dispatch_result(published.take().unwrap_or_default());
-        match outcome {
-            Ok(Answered::ToolResult { result }) => result,
-            Ok(other) => ToolResult::failed(ToolExecutionError::other(format!(
-                "tool handler answered with a {} outcome",
-                other.family()
-            ))),
-            Err(report) => ToolResult::failed(report.into()),
-        }
+        outcome
+            .and_then(family::Tool::unwrap)
+            .unwrap_or_else(|report| ToolResult::failed(report.into()))
     }
 }
 
@@ -226,17 +221,8 @@ impl RegisteredTool {
 /// advertised on every request or only when retrieved.
 #[derive(Clone)]
 pub(crate) struct ToolRegistration {
-    tool: RegisteredTool,
-    always_exposed: bool,
-}
-
-impl ToolRegistration {
-    fn new(tool: RegisteredTool, always_exposed: bool) -> Self {
-        Self {
-            tool,
-            always_exposed,
-        }
-    }
+    pub(crate) tool: RegisteredTool,
+    pub(crate) always_exposed: bool,
 }
 
 /// Insertion-ordered named tool registrations and their advertisement policy.
@@ -269,12 +255,12 @@ impl ToolSet {
     where
         T: Tool + 'static,
     {
-        self.insert(RegisteredTool::from_tool(tool))
+        self.insert(RegisteredTool::from_tool(tool), true)
     }
 
     /// Register a runtime-defined tool; returns its name.
     pub fn add_dynamic_tool(&mut self, tool: DynamicTool) -> String {
-        self.insert(RegisteredTool::from_dynamic(tool))
+        self.insert(RegisteredTool::from_dynamic(tool), true)
     }
 
     /// Register a retrievable tool; returns its name. A context that does
@@ -283,17 +269,23 @@ impl ToolSet {
     where
         T: ToolEmbedding + 'static,
     {
-        RegisteredTool::from_retrievable(tool).map(|registered| self.insert(registered))
+        RegisteredTool::from_retrievable(tool).map(|registered| self.insert(registered, true))
     }
 
     /// Register an already-built registration; returns its name.
     pub fn add_registered_tool(&mut self, tool: RegisteredTool) -> String {
-        self.insert(tool)
+        self.insert(tool, true)
     }
 
-    pub(crate) fn insert(&mut self, tool: RegisteredTool) -> String {
+    /// Register `tool`, advertised on every request or only when retrieved;
+    /// a replaced registration that was always exposed stays so.
+    pub(crate) fn insert(&mut self, tool: RegisteredTool, always_exposed: bool) -> String {
         let name = tool.name();
-        self.insert_registration(name.clone(), ToolRegistration::new(tool, true));
+        let registration = ToolRegistration {
+            tool,
+            always_exposed,
+        };
+        self.insert_registration(name.clone(), registration);
         name
     }
 

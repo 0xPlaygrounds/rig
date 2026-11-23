@@ -1,6 +1,4 @@
-//! Plugin corpus: 05. Tool rate limits (spec `05-tool-rate-limit.md`).
-//!
-//! Limits per tool name, from `RIG_HOME/limits.toml`:
+//! Tool rate limits. Limits per tool name come from `RIG_HOME/limits.toml`:
 //!
 //! ```toml
 //! [web_search]
@@ -12,13 +10,12 @@
 //! concurrent = 1
 //! ```
 //!
-//! A Gate system sees each call of a limited tool as it is about to run.
-//! It refuses one over `per_turn` or `per_session`; it holds one over
-//! `concurrent` until a running call of the tool is answered, and one over
-//! `per_minute` until its oldest start leaves the minute. A released call
-//! is gated again, oldest first. A held call holds back nothing but the
-//! calls the kernel orders after it, and an interrupt takes its hold away
-//! with the turn.
+//! A Gate system sees each call of a limited tool as it is about to run. It refuses one
+//! over `per_turn` or `per_session`; it holds one over `concurrent` until a running call of
+//! the tool is answered, and one over `per_minute` until its oldest start leaves the
+//! minute. A released call is gated again, oldest first. A held call holds back nothing but
+//! the calls the kernel orders after it, and an interrupt takes its hold away with the
+//! turn.
 
 use std::collections::{BTreeMap, HashMap, VecDeque};
 

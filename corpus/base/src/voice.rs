@@ -1,20 +1,15 @@
-//! Plugin corpus: 49. Voice input and spoken answers (spec `49-voice.md`).
+//! Voice input and spoken answers. Holding the push-to-talk key (`ctrl+space`) in the
+//! terminal view, or `/listen` to start and again to stop, records with a [`Recorder`]; on
+//! release a [`Transcriber`] turns the audio into text off the main thread. The text goes
+//! into the terminal view's input for [`AUTO_SEND`] and is then sent as the user's message,
+//! unless the user edited the input meanwhile. When a top-level agent's turn ends with an
+//! answer, the answer is condensed (its first paragraph without code blocks, or a summary
+//! model's sentence) and spoken by a [`Speaker`], which stops when the user talks or types.
+//! `/voice on|off` and `/voice speak on|off` switch it, kept with the session.
 //!
-//! Holding the push-to-talk key (`ctrl+space`) in the terminal view, or
-//! `/listen` to start and again to stop, records with a [`Recorder`]; on
-//! release a [`Transcriber`] turns the audio into text off the main thread.
-//! The text goes into the terminal view's input for [`AUTO_SEND`] and is
-//! then sent as the user's message, unless the user edited the input
-//! meanwhile. When a top-level agent's turn ends with an answer, the answer
-//! is condensed (its first paragraph without code blocks, or a summary
-//! model's sentence) and spoken by a [`Speaker`], which stops when the user
-//! talks or types. `/voice on|off` and `/voice speak on|off` switch it,
-//! kept with the session.
-//!
-//! The backends are commands from the `[voice]` table of the settings, else
-//! found on the `PATH` (`arecord` or sox's `rec`; `whisper-cli` with
-//! `RIG_HOME/voice/ggml-base.en.bin`; `say`, `espeak-ng` or `espeak`), and
-//! start as every child process does ([`Processes`]):
+//! The backends are commands from the `[voice]` table of the settings, else found on the
+//! `PATH` (`arecord` or sox's `rec`; `whisper-cli` with `RIG_HOME/voice/ggml-base.en.bin`;
+//! `say`, `espeak-ng` or `espeak`), and start as every child process does ([`Processes`]):
 //!
 //! ```toml
 //! [voice]
@@ -199,9 +194,7 @@ pub struct VoicePlugin;
 
 impl Plugin for VoicePlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<rig_tui::TuiPlugin>() {
-            app.add_plugins(rig_tui::TuiPlugin);
-        }
+        rig_harness::load::<rig_tui::TuiPlugin>(app, "rig-tui", "");
         app.add_setting::<VoiceConfig>("voice")
             .init_resource::<RigHome>()
             .init_resource::<Processes>()
@@ -464,7 +457,10 @@ fn on_turn_ended(
     let connection = config.summary_model.as_deref().and_then(|model| {
         let connected = models.as_ref()?.connect(model);
         connected
-            .inspect_err(|why| warn!("voice summary model {model}: {why}"))
+            .inspect_err(|why| {
+                let why = Models::cannot_use(model, why);
+                warn!("voice summary model {model}: {why}");
+            })
             .ok()
     });
     let Some(connection) = connection else {

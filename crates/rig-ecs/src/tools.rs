@@ -12,30 +12,31 @@ use bevy_ecs::system::{IntoObserverSystem, SystemParam};
 use bevy_log::warn;
 use bevy_reflect::prelude::*;
 use rig_core::completion::ToolDefinition;
-use rig_core::effect::{Answered, EffectId, EffectKind};
+use rig_core::conversation::CallRef;
+use rig_core::effect::{EffectId, EffectKind};
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::{ToolCall, ToolName};
-use rig_core::redact;
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ToolAdapter;
 use rig_core::tool::feedback::{arguments_refusal, unknown_tool_feedback};
-use rig_core::tool::{Scope, Tool, ToolErrorKind, Touches, args_schema, tool_definition};
+use rig_core::tool::{Tool, ToolErrorKind, Touches, args_schema, decode_args, tool_definition};
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use std::borrow::Cow;
 use std::collections::HashMap;
+use std::num::NonZeroU32;
 use std::sync::Arc;
 
-use super::agent::{AgentId, CallOf, ToolAccess};
+use super::agent::{AgentId, CallOf, Notice, RunTools, SpawnedBy, ToolAccess};
 use super::effects::Handler;
-use super::stage::{
-    Admitted, Decision, Effect, ForAgent, Outcome, Settled, Started, SupersededBy, ToolCalls,
-};
+use super::stage::{Admitted, Decision, Effect, ForAgent, Outcome, Settled, Started, SupersededBy};
 use super::turn::fail;
 
 /// What the model is told about a tool. A call naming an argument its
-/// parameters do not declare is refused before the tool runs.
+/// parameters do not declare is refused before the tool runs. Another
+/// plugin may edit it, in `finish` or later, such as to add a property to
+/// `parameters`; that plugin then takes the property out of the call's
+/// `ToolRequest` in Prepare if the tool's own arguments would refuse it.
 #[derive(Component, Reflect, Clone, Serialize, Deserialize)]
 #[reflect(opaque, Component, Clone, Serialize, Deserialize)]
 #[require(Footprint)]
@@ -80,7 +81,8 @@ fn open<A: DeserializeOwned + Send + Sync + 'static>(
         let why = "a tool call needs an agent".to_owned();
         return Err(tool_error(ToolErrorKind::NotFound, why));
     };
-    let args = A::deserialize(&tool_call.function.arguments).map_err(|error| {
+    let arguments = serde_json::Value::Object(tool_call.function.arguments.clone());
+    let args = decode_args::<A>(&arguments).map_err(|error| {
         let why = format!(
             "The arguments do not fit: {error}. Nothing ran; fix the call and send it again."
         );
@@ -115,8 +117,9 @@ fn open<A: DeserializeOwned + Send + Sync + 'static>(
 /// runs the handler, or opens the call for an open tool.
 ///
 /// An unavailable name gets feedback listing the agent's allowed tools.
-/// Calling the same unavailable name three times in one turn fails that
-/// turn, even when successful calls occur between them.
+/// Calling the same unavailable name [`UnavailableCalls`] times in one turn
+/// (three by default) fails that turn, even when successful calls occur
+/// between them.
 ///
 /// [`CallOf`]: super::agent::CallOf
 #[derive(Component, Clone, Debug)]
@@ -124,6 +127,40 @@ fn open<A: DeserializeOwned + Send + Sync + 'static>(
 pub struct ToolRequest {
     /// The call as the model sent it.
     pub call: ToolCall,
+}
+
+/// Which call of its reply a tool call is, on each call a reply asked for.
+/// It tells apart calls that share a provider's id. A call that supersedes
+/// one keeps it. Only the kernel makes one:
+///
+/// ```compile_fail,E0423
+/// # use rig_ecs::prelude::*;
+/// fn forge(at: CallRef) -> InReply {
+///     InReply(at)
+/// }
+/// ```
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct InReply(CallRef);
+
+/// What the kernel passes a tool call's answer through when it commits it
+/// though the call never settled, as a stop or the exit does: an answer
+/// that came this pass, a gate's decision not yet applied, or what the call
+/// says it answers if stopped, in the conversation and on the call as it
+/// settles. A settled call's answer is its [`Outcome`], which plugins change
+/// in Review. `None` keeps the answer. One per app; a redaction plugin sets
+/// it.
+#[derive(Resource, Clone)]
+pub struct ResultFilter(pub Arc<dyn Fn(&Outcome) -> Option<Outcome> + Send + Sync>);
+
+impl InReply {
+    pub(crate) fn new(at: CallRef) -> Self {
+        Self(at)
+    }
+
+    /// The call it is.
+    pub fn at(&self) -> CallRef {
+        self.0
+    }
 }
 
 /// The handler that answers a tool call, on the call: its tool's, which a
@@ -142,7 +179,6 @@ pub struct CallHandler(pub Handler);
 pub struct ToolCalled<A: Send + Sync + 'static> {
     /// The tool.
     pub entity: Entity,
-    /// The call.
     pub call: Entity,
     /// The calling agent.
     pub agent: Entity,
@@ -167,18 +203,15 @@ pub struct ToolCalled<A: Send + Sync + 'static> {
 /// [`normalized`](Touches::normalized), unless a plugin [`DeclaredFootprint`] it on
 /// the call. A call waits
 /// while an earlier call of its reply that conflicts with it is not
-/// settled ([`Waiting`](super::stage::Waiting)).
-#[derive(Component, Reflect, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+/// settled ([`Waiting`](super::stage::Waiting)). On a plugin's own effect,
+/// what it may change: one that may change something does not start once
+/// the session can no longer be saved, as a tool call that may does not.
+/// Its default is [`Touches::default`]: a tool that does not say may
+/// change anything.
+#[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[reflect(opaque, Component, Clone, Debug, Default, PartialEq)]
 #[serde(transparent)]
 pub struct Footprint(pub Touches);
-
-impl Default for Footprint {
-    /// May change anything, right for any tool that does not say.
-    fn default() -> Self {
-        Self(Touches::Writes(Scope::Anything))
-    }
-}
 
 /// A [`Footprint`] that stands. On a tool registered with a
 /// [`ToolOptions::footprint`]: that footprint is each of its calls',
@@ -187,6 +220,26 @@ impl Default for Footprint {
 /// [`normalized`](Touches::normalized)) instead of asking the call's
 /// handler, so a plugin that knows what a call touches, such as a shell
 /// command that only reads, lets the reply's other calls run beside it.
+///
+/// ```
+/// use std::path::PathBuf;
+///
+/// use rig_ecs::prelude::*;
+///
+/// /// A `touch /work/build.stamp` call writes only that file, so a held
+/// /// one does not hold back a read of `/work/docs`.
+/// fn stamps(calls: Query<(Entity, &ToolRequest), (Added<Admitted>, ToolCalls)>, mut commands: Commands) {
+///     for (call, request) in &calls {
+///         let command = request.call.function.arguments.get("command").and_then(|c| c.as_str());
+///         if command == Some("touch /work/build.stamp") {
+///             let stamp = Touches::Writes(Scope::Paths(vec![PathBuf::from("/work/build.stamp")]));
+///             commands.entity(call).insert((Footprint(stamp), DeclaredFootprint));
+///         }
+///     }
+/// }
+///
+/// App::new().add_systems(AgentPass, stamps.in_set(PrepareSystems::Edit));
+/// ```
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct DeclaredFootprint;
 
@@ -267,7 +320,7 @@ impl AppToolsExt for App {
         };
         let definition = ToolDefinition::new(tool_name, description, args_schema::<A>());
         let serves = Serves::Open(open::<A>);
-        let changes = Touches::Writes(Scope::Anything);
+        let changes = Touches::default();
         if let Some(tool) = register_tool(world, definition, serves, options, changes) {
             world.entity_mut(tool).observe(observer);
         }
@@ -441,6 +494,85 @@ pub(crate) fn offered<'a>(
     offered
 }
 
+/// Keeps each agent's access within this run's tools ([`RunTools`]) and
+/// the access of every agent above it, before anything is admitted: a
+/// child never calls or is offered a tool its parent or the run may not,
+/// however its access was made or restored. An agent that so loses a
+/// registered tool gets a warning naming it, but for the run's tools as
+/// the run started, which the user gave. Looks only when an access, a
+/// parent or the run's tools changed, or the run's tools were removed.
+pub(crate) fn keep_within_parents(
+    agents: Query<(Entity, Ref<ToolAccess>, Option<Ref<SpawnedBy>>)>,
+    tools: Query<&ToolDef>,
+    run: Option<Res<RunTools>>,
+    mut had_run: Local<bool>,
+    mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
+) {
+    let changed = (agents.iter())
+        .any(|(_, access, parent)| access.is_changed() || parent.is_some_and(|it| it.is_changed()));
+    let removed = std::mem::replace(&mut *had_run, run.is_some()) && run.is_none();
+    if !changed && !removed && !run.as_ref().is_some_and(Res::is_changed) {
+        return;
+    }
+    // Every agent above is taken within this run's tools too, as its own
+    // access is only set when this pass's commands apply.
+    let above: HashMap<Entity, (ToolAccess, Option<Entity>)> = (agents.iter())
+        .map(|(agent, access, parent)| {
+            let access = access.for_run(run.as_deref());
+            (agent, (access, parent.map(|it| it.parent())))
+        })
+        .collect();
+    let run_changed = run
+        .as_ref()
+        .is_some_and(|run| run.is_changed() && !run.is_added());
+    let names: Vec<&str> = tools.iter().map(|def| def.0.name.as_str()).collect();
+    for (agent, access, parent) in &agents {
+        let in_run = access.for_run(run.as_deref());
+        let mut within = in_run.clone();
+        let mut next = parent.map(|it| it.parent());
+        // A cycle of parents ends once every agent was passed.
+        for _ in 0..above.len() {
+            let Some((upper, parent)) = next.and_then(|up| above.get(&up)) else {
+                break;
+            };
+            within = within.within(upper);
+            next = *parent;
+        }
+        // Inserted, so what follows an agent's access sees it change.
+        if within != *access {
+            let lost = |from: &ToolAccess, to: &ToolAccess| {
+                let mut lost: Vec<&str> = (names.iter().copied())
+                    .filter(|name| from.allows(name) && !to.allows(name))
+                    .collect();
+                lost.sort_unstable();
+                lost
+            };
+            let mut warn = |lost: Vec<&str>, one: &str, many: &str| {
+                if !lost.is_empty() {
+                    let why = if lost.len() == 1 { one } else { many };
+                    let lost = lost.join("`, `");
+                    notices.write(Notice::warn(agent, format!("Lost `{lost}`: {why}.")));
+                }
+            };
+            // The run's tools as it started were the user's to give.
+            if run_changed {
+                warn(
+                    lost(&access, &in_run),
+                    "this run's tools leave it out",
+                    "this run's tools leave them out",
+                );
+            }
+            warn(
+                lost(&in_run, &within),
+                "an agent above it does not have it",
+                "an agent above it does not have them",
+            );
+            commands.entity(agent).insert(within);
+        }
+    }
+}
+
 /// What starting a tool call reads: the registered tools and the agents'
 /// access to them.
 #[derive(SystemParam)]
@@ -513,6 +645,18 @@ impl ToolStarts<'_, '_> {
     }
 }
 
+/// How many calls of one unavailable tool name in a turn fail that turn:
+/// rig's `[tools] max_unavailable_calls`, three by default, so a model that
+/// keeps calling a tool it does not have stops rather than looping.
+#[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct UnavailableCalls(pub NonZeroU32);
+
+impl Default for UnavailableCalls {
+    fn default() -> Self {
+        Self(NonZeroU32::new(3).unwrap_or(NonZeroU32::MIN))
+    }
+}
+
 /// Unavailable names called during this turn, including calls between successes.
 #[derive(Component, Default)]
 pub(crate) struct MissingTools(HashMap<String, u32>);
@@ -540,6 +684,7 @@ pub(crate) fn refuse_calls(
         ),
     >,
     tools: ToolStarts,
+    most: Res<UnavailableCalls>,
     mut turns: Query<&mut MissingTools>,
     mut commands: Commands,
 ) {
@@ -561,9 +706,12 @@ pub(crate) fn refuse_calls(
                 let count = missing.0.entry(name.to_owned()).or_default();
                 *count += 1;
                 // It fails only this turn, so the agent's subagents go on.
-                if *count >= 3 {
-                    let why =
-                        format!("the model kept calling `{name}`, which is not one of its tools");
+                if *count >= most.0.get() {
+                    let why = format!(
+                        "the model kept calling `{name}`, which is not one of its tools \
+                         (`[tools] max_unavailable_calls` is {})",
+                        most.0
+                    );
                     fail(&mut commands, turn, why);
                 }
             }
@@ -572,39 +720,4 @@ pub(crate) fn refuse_calls(
                 .try_insert_if_new(Outcome(Err(report)));
         }
     }
-}
-
-/// Redacts every secret in each tool call's answer, such as a key `env`
-/// printed ([`redact::tool_result`]), as Commit opens, after every
-/// reviewer and before the answer is committed: no key a tool returns
-/// reaches the model, the conversation, the transcript or a log. Only an answer changed since the
-/// last pass is searched, and only one holding a secret is copied.
-pub(crate) fn redact_results(
-    mut calls: Query<&mut Outcome, (ToolCalls, Changed<Outcome>, Without<Settled>)>,
-) {
-    for mut outcome in &mut calls {
-        if let Some(redacted) = redacted(&outcome) {
-            *outcome = redacted;
-        }
-    }
-}
-
-/// A tool call's answer `outcome` with every secret redacted, as
-/// [`redact_results`] does, for an answer that settles before Commit, such
-/// as a stop's; `None` when it holds none.
-pub(crate) fn redacted(outcome: &Outcome) -> Option<Outcome> {
-    let redacted = match &outcome.0 {
-        Ok(Answered::ToolResult { result }) => {
-            redact::tool_result(result).map(|result| Ok(Answered::ToolResult { result }))
-        }
-        Err(report) => match redact::text(&report.message) {
-            Cow::Owned(message) => Some(Err(ErrorReport {
-                message,
-                ..report.clone()
-            })),
-            Cow::Borrowed(_) => None,
-        },
-        Ok(_) => None,
-    };
-    redacted.map(Outcome)
 }

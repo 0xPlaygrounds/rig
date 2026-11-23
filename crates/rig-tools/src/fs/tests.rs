@@ -1,8 +1,8 @@
+use crate::workspace::{Local, Root, Workspace};
 use std::path::PathBuf;
 
-use rig_core::tool::{FilesRead, Tool, ToolContext, ToolErrorKind, ToolOutput};
+use rig_core::tool::{FilesChanged, FilesRead, Tool, ToolContext, ToolErrorKind, ToolOutput};
 
-use super::resolve;
 use crate::{Read, ReadArgs, Write, WriteArgs};
 
 /// A scratch directory of its own for `name`, resolved, holding `real/`.
@@ -22,17 +22,26 @@ fn a_path_resolves_against_the_base_through_links() {
     std::os::unix::fs::symlink(dir.join("real"), dir.join("link")).ok();
     std::fs::write(dir.join("real").join("a.rs"), "").ok();
 
-    assert_eq!(resolve(Some(&dir), "real/a.rs"), dir.join("real/a.rs"));
     assert_eq!(
-        resolve(Some(&dir), "link/../real/a.rs"),
+        <dyn Workspace>::resolve(&Local, Some(&dir), "real/a.rs"),
         dir.join("real/a.rs")
     );
-    assert_eq!(resolve(Some(&dir), "link/a.rs"), dir.join("real/a.rs"));
     assert_eq!(
-        resolve(Some(&dir), "link/new/../b.rs"),
+        <dyn Workspace>::resolve(&Local, Some(&dir), "link/../real/a.rs"),
+        dir.join("real/a.rs")
+    );
+    assert_eq!(
+        <dyn Workspace>::resolve(&Local, Some(&dir), "link/a.rs"),
+        dir.join("real/a.rs")
+    );
+    assert_eq!(
+        <dyn Workspace>::resolve(&Local, Some(&dir), "link/new/../b.rs"),
         dir.join("real/b.rs")
     );
-    assert_eq!(resolve(Some(&dir), "/"), PathBuf::from("/"));
+    assert_eq!(
+        <dyn Workspace>::resolve(&Local, Some(&dir), "/"),
+        PathBuf::from("/")
+    );
     std::fs::remove_dir_all(dir).ok();
 }
 
@@ -45,10 +54,12 @@ fn a_confined_tool_stays_in_its_base() {
     std::fs::write(base.join("a.txt"), "one\n").ok();
     std::fs::write(dir.join("outside.txt"), "secret\n").ok();
     let read = Read {
-        base: Some(base.clone()),
-        confine: true,
+        root: Root {
+            base: Some(base.clone()),
+            confine: true,
+            ..Root::default()
+        },
         seen: crate::Seen::default(),
-        ..Default::default()
     };
 
     let mut context = ToolContext::new();
@@ -74,8 +85,11 @@ fn a_confined_tool_stays_in_its_base() {
         );
     }
     let write = Write {
-        base: Some(base),
-        confine: true,
+        root: Root {
+            base: Some(base),
+            confine: true,
+            ..Root::default()
+        },
         ..Default::default()
     };
     let args = WriteArgs::new("../new.txt", "x");
@@ -114,4 +128,219 @@ fn a_changes_hunks_make_the_text_after() {
     let far_change = super::file_change("f", Some(&far), Some(&far_after));
     assert_eq!(far_change.hunks.len(), 2);
     assert_eq!(far_change.changed_lines().collect::<Vec<_>>(), [2, 19]);
+}
+
+/// A note on paths that could not be read stays bounded, its first path
+/// too, however long the paths and reasons are and however many.
+#[test]
+fn the_unread_note_is_bounded() {
+    let long = "x".repeat(50_000);
+    let one = super::unread(
+        [(long.clone(), long.clone())].into_iter(),
+        ["it was not searched", "they were not searched"],
+    );
+    assert!(one.len() < 3_000 && one.contains(" […]"), "{}", one.len());
+    let many = (0..1000).map(|n| (format!("{n}{}", "y".repeat(400)), "denied".to_owned()));
+    let note = super::unread(
+        many.collect::<Vec<_>>().into_iter(),
+        ["it was not searched", "they were not searched"],
+    );
+    assert!(
+        note.len() < 5_000 && note.ends_with(" more]"),
+        "{}",
+        note.len()
+    );
+}
+
+/// A confined write refuses a dangling link in its base that leads out,
+/// however its target is spelled, and changes nothing outside; one that
+/// stays in the base creates its target and keeps the link.
+#[cfg(unix)]
+#[test]
+fn a_confined_write_never_follows_a_link_out_of_its_base() {
+    use std::os::unix::fs::symlink;
+    let dir = scratch("dangling");
+    let base = dir.join("real");
+    std::fs::create_dir(dir.join("out")).ok();
+    std::fs::write(dir.join("out/victim.txt"), "kept\n").ok();
+    symlink("../out/new.txt", base.join("relative")).ok();
+    symlink(dir.join("out/new.txt"), base.join("absolute")).ok();
+    symlink("../out/missing/../victim.txt", base.join("back")).ok();
+    symlink("relative", base.join("chain")).ok();
+    symlink(dir.join("out/missing"), base.join("folder")).ok();
+    symlink("inside/new.txt", base.join("stays")).ok();
+    let write = Write {
+        root: Root {
+            base: Some(base.clone()),
+            confine: true,
+            ..Root::default()
+        },
+        ..Default::default()
+    };
+    let call = |path: &str, context: &mut ToolContext| {
+        let args = WriteArgs::new(path, "escaped\n");
+        futures::executor::block_on(write.call(context, args))
+    };
+
+    for path in ["relative", "absolute", "back", "chain", "folder/new.txt"] {
+        let mut context = ToolContext::new();
+        assert_eq!(
+            call(path, &mut context).err().map(|error| error.kind()),
+            Some(ToolErrorKind::PermissionDenied),
+            "{path}"
+        );
+        assert!(context.result::<FilesChanged>().ok().flatten().is_none());
+    }
+    assert!(!dir.join("out/new.txt").exists());
+    assert!(!dir.join("out/missing").exists());
+    assert_eq!(
+        std::fs::read_to_string(dir.join("out/victim.txt")).ok(),
+        Some("kept\n".to_owned())
+    );
+    assert!(call("stays", &mut ToolContext::new()).is_ok());
+    assert_eq!(
+        std::fs::read_to_string(base.join("inside/new.txt")).ok(),
+        Some("escaped\n".to_owned())
+    );
+    assert!(std::fs::symlink_metadata(base.join("stays")).is_ok_and(|meta| meta.is_symlink()));
+    std::fs::remove_dir_all(dir).ok();
+}
+
+/// A dangling link resolves to the file a write creates, so the path a
+/// tool checks and reports is the one it changes.
+#[cfg(unix)]
+#[test]
+fn a_dangling_link_resolves_to_what_a_write_creates() {
+    let dir = scratch("dangling-resolve");
+    std::os::unix::fs::symlink("real/new/../made.txt", dir.join("link")).ok();
+    let resolved = <dyn Workspace>::resolve(&Local, Some(&dir), "link");
+    assert_eq!(resolved, dir.join("real/made.txt"));
+    assert!(super::write_atomic(&dir.join("link"), b"x").is_ok());
+    assert!(resolved.exists());
+    std::fs::remove_dir_all(dir).ok();
+}
+
+/// A private file's temporary copy is never readable by others, watched
+/// across many writes, and a new file gets the default mode, not a private
+/// one.
+#[cfg(unix)]
+#[test]
+fn a_private_file_is_never_staged_readable() {
+    use std::os::unix::fs::PermissionsExt;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    let mode = |path: &std::path::Path| {
+        std::fs::metadata(path).map(|meta| meta.permissions().mode() & 0o777)
+    };
+    let dir = scratch("staged-mode").join("real");
+    let private = dir.join("private");
+    assert!(std::fs::write(&private, "x").is_ok());
+    assert!(std::fs::set_permissions(&private, std::fs::Permissions::from_mode(0o600)).is_ok());
+
+    let done = AtomicBool::new(false);
+    let (open, writes) = std::thread::scope(|scope| {
+        let watcher = scope.spawn(|| {
+            while !done.load(Ordering::Relaxed) {
+                for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+                    if !entry.file_name().to_string_lossy().ends_with(".tmp") {
+                        continue;
+                    }
+                    let seen = entry
+                        .metadata()
+                        .map(|meta| meta.permissions().mode() & 0o777);
+                    if let Some(open) = seen.ok().filter(|seen| seen & 0o077 != 0) {
+                        return Some(open);
+                    }
+                }
+            }
+            None
+        });
+        let writes: Vec<_> = (0..300)
+            .take_while(|_| !watcher.is_finished())
+            .map(|_| super::write_atomic(&private, b"y").is_ok())
+            .collect();
+        done.store(true, Ordering::Relaxed);
+        (watcher.join().ok().flatten(), writes)
+    });
+    assert!(writes.iter().all(|wrote| *wrote), "a write failed");
+    assert_eq!(open, None, "staged readable by others");
+    assert_eq!(mode(&private).ok(), Some(0o600));
+
+    let default = dir.join("default");
+    let new = dir.join("new");
+    assert!(std::fs::write(&default, "x").is_ok() && super::write_atomic(&new, b"x").is_ok());
+    assert_eq!(mode(&new).ok(), mode(&default).ok());
+    std::fs::remove_dir_all(dir.parent().unwrap_or(&dir)).ok();
+}
+
+/// A new file is created only while no file has its name: one that
+/// appears after the temporary file was written, just before it is put in
+/// place, is kept and the creation fails, leaving no temporary file. A
+/// replace whose check finds the file changed writes nothing.
+#[test]
+fn a_new_file_never_replaces_one_that_appeared() {
+    let dir = scratch("create-new");
+    let path = dir.join("a.txt");
+    let raced = super::publish(&path, b"model\n", |temporary, target| {
+        std::fs::write(target, "user\n")?;
+        super::link_new(temporary, target)
+    });
+    assert_eq!(
+        raced.map_err(|error| error.kind()),
+        Err(std::io::ErrorKind::AlreadyExists)
+    );
+    assert_eq!(
+        std::fs::read_to_string(&path).ok().as_deref(),
+        Some("user\n")
+    );
+    let created = super::write_new(&dir.join("b.txt"), b"new\n");
+    assert!(created.is_ok(), "{created:?}");
+    let stale = super::write_atomic_if(&path, b"model\n", || Ok(false));
+    assert!(matches!(stale, Ok(false)), "{stale:?}");
+    assert_eq!(
+        std::fs::read_to_string(&path).ok().as_deref(),
+        Some("user\n")
+    );
+    let left: Vec<_> = std::fs::read_dir(&dir)
+        .map(|entries| entries.flatten().map(|entry| entry.file_name()).collect())
+        .unwrap_or_default();
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(left.len(), 3, "{left:?}");
+}
+
+/// Where a hard link cannot be made, as on vfat or some network mounts, a
+/// new file is created by an exclusive create instead, which still
+/// refuses a name a file has; no temporary file is left.
+#[test]
+fn a_new_file_is_created_where_links_fail() {
+    let dir = scratch("no-links");
+    let unlinkable =
+        |_: &std::path::Path, _: &std::path::Path| Err(std::io::ErrorKind::PermissionDenied.into());
+    let new = dir.join("new.txt");
+    let created = super::publish(&new, b"new\n", |temporary, target| {
+        super::place_new(temporary, target, unlinkable)
+    });
+    assert!(matches!(created, Ok(true)), "{created:?}");
+    let kept = dir.join("kept.txt");
+    std::fs::write(&kept, "user\n").ok();
+    let refused = super::publish(&kept, b"model\n", |temporary, target| {
+        super::place_new(temporary, target, unlinkable)
+    });
+    let texts = (
+        std::fs::read_to_string(&new).ok(),
+        std::fs::read_to_string(&kept).ok(),
+    );
+    let left: Vec<_> = std::fs::read_dir(&dir)
+        .map(|entries| entries.flatten().map(|entry| entry.file_name()).collect())
+        .unwrap_or_default();
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(
+        refused.map_err(|error| error.kind()),
+        Err(std::io::ErrorKind::AlreadyExists)
+    );
+    assert_eq!(
+        (texts.0.as_deref(), texts.1.as_deref()),
+        (Some("new\n"), Some("user\n"))
+    );
+    assert_eq!(left.len(), 3, "{left:?}");
 }

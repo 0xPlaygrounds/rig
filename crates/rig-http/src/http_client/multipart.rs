@@ -165,9 +165,10 @@ impl MultipartForm {
     }
 
     /// Encodes parts in insertion order, returning the boundary and body bytes.
-    /// Uses the configured boundary or generates one for this call. Names,
-    /// filenames, and boundaries are inserted verbatim; callers must ensure they
-    /// are safe for multipart headers and that the boundary does not occur in data.
+    /// Uses the configured boundary or generates one for this call. Names and
+    /// filenames escape `"`, CR and LF as `%22`, `%0D` and `%0A`, as browsers
+    /// do. The boundary is inserted verbatim; callers must ensure it is safe
+    /// for multipart headers and does not occur in data.
     pub fn encode(&self) -> (String, Bytes) {
         let boundary = self.get_boundary();
         let mut body = Vec::new();
@@ -178,12 +179,12 @@ impl MultipartForm {
             body.extend_from_slice(b"\r\n");
 
             body.extend_from_slice(b"Content-Disposition: form-data; name=\"");
-            body.extend_from_slice(part.name.as_bytes());
+            push_escaped(&mut body, &part.name);
             body.extend_from_slice(b"\"");
 
             if let Some(filename) = &part.filename {
                 body.extend_from_slice(b"; filename=\"");
-                body.extend_from_slice(filename.as_bytes());
+                push_escaped(&mut body, filename);
                 body.extend_from_slice(b"\"");
             }
             body.extend_from_slice(b"\r\n");
@@ -209,6 +210,19 @@ impl MultipartForm {
         body.extend_from_slice(b"--\r\n");
 
         (boundary.into_owned(), Bytes::from(body))
+    }
+}
+
+/// Appends a quoted header parameter's value, escaping what would end the
+/// quote or the header line.
+fn push_escaped(body: &mut Vec<u8>, value: &str) {
+    for byte in value.bytes() {
+        match byte {
+            b'"' => body.extend_from_slice(b"%22"),
+            b'\r' => body.extend_from_slice(b"%0D"),
+            b'\n' => body.extend_from_slice(b"%0A"),
+            byte => body.push(byte),
+        }
     }
 }
 

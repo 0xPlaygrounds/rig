@@ -16,6 +16,53 @@ fn test_default_ndims_lookup() {
     assert_eq!(default_ndims("unknown-model"), 768);
 }
 
+/// Records each `batchEmbedContents` call's size and answers every text.
+#[derive(Clone, Default)]
+struct BatchSizes(std::sync::Arc<std::sync::Mutex<Vec<usize>>>);
+
+impl crate::driver::Transport<Embeddings> for BatchSizes {
+    fn send(
+        &self,
+        payload: Encoded,
+        _: crate::driver::Exchange,
+    ) -> crate::driver::Opening<WireFrame> {
+        let body = crate::test_utils::json_body(&payload.request);
+        let size = body
+            .get("requests")
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len);
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(size);
+        let reply = json!({ "embeddings": vec![json!({ "values": [0.5] }); size] });
+        crate::driver::Opening::ready(crate::driver::Opened::new(futures::stream::iter([Ok(
+            WireFrame::Text(reply.to_string()),
+        )])))
+    }
+}
+
+/// `batchEmbedContents` takes at most 100 texts, so the builder splits 101.
+#[tokio::test]
+async fn the_builder_sends_at_most_100_texts_per_batch() {
+    let sizes = BatchSizes::default();
+    let model = crate::driver::Model::new(
+        GeminiConfig::new("test-key").embedding(EMBEDDING_001, Some(1)),
+        sizes.clone(),
+    );
+    let embedded = crate::embeddings::EmbeddingsBuilder::new(model)
+        .documents((0..101).map(|n| format!("text {n}")).collect::<Vec<_>>())
+        .expect("the texts embed")
+        .build()
+        .await
+        .expect("every batch answers");
+
+    assert_eq!(embedded.len(), 101);
+    let mut sizes = sizes.0.lock().expect("sizes").clone();
+    sizes.sort_unstable();
+    assert_eq!(sizes, [1, 100]);
+}
+
 /// `crates/rig-cassette/fixtures/cassettes/gemini/embeddings/derive_document_embeddings.yaml`'s
 /// request body, verbatim.
 const RECORDED_BATCH: &str = r#"{"requests":[{"content":{"parts":[{"text":"Hello, world!"}]},"model":"models/gemini-embedding-001","output_dimensionality":3072},{"content":{"parts":[{"text":"Goodbye, world!"}]},"model":"models/gemini-embedding-001","output_dimensionality":3072}]}"#;
@@ -50,8 +97,7 @@ fn the_batch_request_is_the_recorded_one() {
         request.uri().path(),
         "/v1beta/models/gemini-embedding-001:batchEmbedContents"
     );
-    // The GenerateContent family authenticates by query parameter.
-    assert_eq!(request.uri().query(), Some("key=test-key"));
+    assert_eq!(request.uri().query(), None);
     // Compared as documents, not as strings: a workspace build that enables
     // `serde_json/preserve_order` serializes the object in insertion order
     // rather than sorted, and the recording is a document either way.

@@ -6,7 +6,7 @@ use rig_core::test_utils::MockCompletionModel;
 use rig_harness::rig_tools::process::Launcher;
 use rig_harness_test_support::{
     AnswerAsks, Answers, Ended, MemoryStore, ToolOutputs, app_on, calls, connect, first_agent,
-    log_ended, log_tool_outputs, reply, run_until, scratch_home,
+    log_ended, log_tool_outputs, reply, run_until, scratch_dir, scratch_home,
 };
 use serde_json::json;
 
@@ -16,9 +16,7 @@ use super::*;
 /// `cargo` and `npm` that append their arguments to `bin/calls.log`,
 /// under the test binary's directory.
 fn project() -> PathBuf {
-    let exe = std::env::current_exe().unwrap_or_default();
-    let dir = exe.with_file_name(format!("dependency-guard-{}", std::process::id()));
-    std::fs::remove_dir_all(&dir).ok();
+    let dir = scratch_dir(&format!("dependency-guard-{}", std::process::id()));
     std::fs::create_dir_all(dir.join(".rig")).ok();
     std::fs::create_dir_all(dir.join("bin")).ok();
     let manifest =
@@ -144,7 +142,4 @@ fn new_dependencies_wait_for_the_user_unless_the_policy_decides() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(DependencyGuardPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(DependencyGuardPlugin);

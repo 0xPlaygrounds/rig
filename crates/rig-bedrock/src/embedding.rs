@@ -211,7 +211,7 @@ impl<'id> Decoder<'id, rig_core::operation::Embedding, EmbeddingFrame> for Embed
         mut out: Out<'id, rig_core::operation::Embedding>,
     ) -> Result<Flow, ProviderError> {
         if let Some(error) = self.failure.take() {
-            return Err(ProviderError::Response(error.to_string()));
+            return Err(error);
         }
         out.raw(serde_json::Value::Array(std::mem::take(&mut self.raw)));
         Ok(out.end(embeddings::EmbeddingResponse {
@@ -220,3 +220,6 @@ impl<'id> Decoder<'id, rig_core::operation::Embedding, EmbeddingFrame> for Embed
         }))
     }
 }
+
+#[cfg(test)]
+mod tests;

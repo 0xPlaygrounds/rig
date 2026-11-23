@@ -6,14 +6,13 @@
 //! # }
 //! ```
 
-use rig_core::error::ProviderError;
 use rig_core::{
     message::AssistantContent,
     wasm_compat::{WasmBoxedStream, WasmCompatSend},
 };
 
 use crate::{
-    agent::engine::{DriveItem, StreamingTurnSource, Surfaced, drive_agent},
+    agent::engine::{DriveItem, LiveTool, StreamingTurnSource, Surfaced, drive_agent},
     agent::runner::AgentRunner,
     streaming::{Item, StreamEvent},
 };
@@ -63,10 +62,55 @@ pub enum MultiTurnStreamItem {
         /// execution commit and its result.
         tool_call: rig_core::message::ToolCall,
     },
-    /// Confirmation that Rig **executed and committed** a tool call. This is not
-    /// a real-time start notification: it is surfaced together with its
-    /// `ToolResult` only after the whole batch settles successfully. Use tool
-    /// hooks for live host-side start/result observation.
+    /// A tool call **starts**: Rig dispatches it now, before its dispatch
+    /// hooks and its body run. The call goes on only once the stream's
+    /// consumer has taken this item, so a slow consumer delays the call. A
+    /// [`RunEvents`] feed takes it into its buffer, so there the call may run
+    /// before the feed's reader sees it.
+    ///
+    /// One item per dispatched call, after the turn's
+    /// [`ToolCall`](Self::ToolCall) items and before the batch's commits and
+    /// results: in call order when calls run one at a time, in start order
+    /// under `tool_concurrency`. A call a dispatch hook skips still starts.
+    /// A call answered by invalid-call recovery, or dropped because a
+    /// sibling ended the run, never starts. A start is not a commit: a
+    /// batch that fails surfaces its starts but no commits or results.
+    ToolExecutionStarted {
+        /// The call as the model emitted it, before any hook rewrite. Its
+        /// id is the one its [`ToolCall`](Self::ToolCall), execution commit
+        /// and result carry.
+        tool_call: rig_core::message::ToolCall,
+    },
+    /// One item of a tool's **accepted output**, reported as soon as the
+    /// call's outcome hooks accept it, without waiting for the rest of the
+    /// batch. The call goes on only once the stream's consumer has taken the
+    /// item, as for [`ToolExecutionStarted`](Self::ToolExecutionStarted).
+    ///
+    /// An output that is exactly one JSON array is reported one element at a
+    /// time, each as one JSON block (an empty array reports nothing); any
+    /// other output is one item holding all its blocks. Text is never
+    /// reparsed as JSON. Items come in completion order under
+    /// `tool_concurrency`, so items of different calls may interleave: group
+    /// them by `tool_result.call`. Every started call that answers reports its items,
+    /// a hook-skipped one included; a call answered by invalid-call recovery
+    /// reports none. An item is not a commit: items stay reported when a
+    /// sibling later fails the batch, a call already running when a sibling
+    /// fails still reports its items as it finishes, and the committed
+    /// [`ToolResult`](Self::ToolResult) still follows a batch that settles.
+    /// Show these for progress; record only the `ToolResult`.
+    ToolResultItem {
+        /// This item's content, with the call id, name and error flag of the
+        /// result the batch commits for the call.
+        tool_result: rig_core::message::ToolResult,
+        /// The item's position in the output, from zero.
+        index: usize,
+        /// How many items the output has.
+        count: usize,
+    },
+    /// Confirmation that Rig **executed and committed** a tool call. It is
+    /// surfaced together with its `ToolResult` only after the whole batch
+    /// settles successfully; the live start is
+    /// [`ToolExecutionStarted`](Self::ToolExecutionStarted).
     ///
     /// This item is emitted only for a tool whose body actually ran (it passed
     /// its `ToolCall` hook checks), never for a call dropped by a sibling's
@@ -85,7 +129,8 @@ pub enum MultiTurnStreamItem {
     /// batch commits and surfaces atomically at every `tool_concurrency`
     /// (including the sequential default): results are surfaced in call order
     /// only after the whole batch settles successfully; a run that terminates
-    /// mid-batch surfaces no successful tool results.
+    /// mid-batch surfaces no successful tool results. The live output is
+    /// [`ToolResultItem`](Self::ToolResultItem).
     ToolResult {
         /// The result; `tool_result.call` is the id of the call it answers.
         tool_result: rig_core::message::ToolResult,
@@ -140,14 +185,20 @@ impl From<Surfaced> for MultiTurnStreamItem {
     }
 }
 
-impl MultiTurnStreamItem {
-    /// Build a final response from structured content and aggregate usage.
-    /// Concatenates text for output; completion details and history remain empty.
-    pub fn final_response(
-        content: Vec<AssistantContent>,
-        aggregated_usage: crate::completion::Usage,
-    ) -> Self {
-        Self::FinalResponse(PromptResponse::from_content(content, aggregated_usage))
+impl From<LiveTool> for MultiTurnStreamItem {
+    fn from(live: LiveTool) -> Self {
+        match live {
+            LiveTool::Started(tool_call) => Self::ToolExecutionStarted { tool_call },
+            LiveTool::Output {
+                tool_result,
+                index,
+                count,
+            } => Self::ToolResultItem {
+                tool_result,
+                index,
+                count,
+            },
+        }
     }
 }
 
@@ -201,35 +252,22 @@ impl AgentRunner {
     /// the driver as a stream. Called on the first poll, under `ambient`, the
     /// span the stream was built in.
     fn start_stream(self, ambient: tracing::Span) -> StreamingResult {
-        let (agent_span, created_agent_span) = self.open_agent_span(ambient);
-
-        let hook_ctx = self.hook_context(true);
-        let run = self.build_run();
         let source = StreamingTurnSource::new(
             &self.config.hooks,
             self.agent_name_or_default().to_string(),
-            created_agent_span,
             self.config.record_telemetry_content,
         );
-
-        let driver = drive_agent(
-            self,
-            source,
-            run,
-            agent_span.clone(),
-            created_agent_span,
-            hook_ctx,
-        )
-        .flat_map(|item| {
+        let driver = drive_agent(self, source, ambient).flat_map(|item| {
             let (head, tools) = match item {
                 Ok(DriveItem::Surfaced(item)) => (Some(Ok(item.into())), None),
+                Ok(DriveItem::Live(live)) => (Some(Ok(live.into())), None),
                 Ok(DriveItem::Projected(items)) => (None, Some(items)),
                 Ok(DriveItem::Done(_)) => (None, None),
                 Err(err) => (Some(Err(err)), None),
             };
             futures::stream::iter(head.into_iter().chain(tools.into_iter().flatten().map(Ok)))
         });
-        Box::pin(driver.instrument(agent_span))
+        Box::pin(driver)
     }
 }
 
@@ -350,17 +388,14 @@ impl AgentRunner {
                     }
                 }
             }
-            response.ok_or_else(|| {
-                PromptError::Provider(ProviderError::Response(
-                    "agent run ended without producing a final response".to_string(),
-                ))
-            })
+            response.ok_or_else(super::runner::no_final_response)
         };
         (future, RunEvents { receiver })
     }
 }
 
-/// Why [`stream_to_stdout`] returned no response.
+/// Why [`stream_to_stdout`] returned no response, or why
+/// [`ChatBot::run`](crate::integrations::cli_chatbot::ChatBot::run) stopped.
 #[derive(Debug, thiserror::Error)]
 pub enum StreamToStdoutError {
     /// The run failed.
@@ -420,7 +455,12 @@ pub async fn stream_to_stdout(
 }
 
 #[cfg(test)]
+mod cut_off_tool_call_tests;
+#[cfg(test)]
 mod malformed_tool_args_tests;
 #[cfg(test)]
-#[allow(irrefutable_let_patterns, unreachable_patterns)]
 mod tests;
+#[cfg(test)]
+mod tool_result_item_tests;
+#[cfg(test)]
+mod tool_started_tests;

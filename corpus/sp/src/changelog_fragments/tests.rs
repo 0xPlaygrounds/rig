@@ -2,13 +2,13 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use rig_basics::coding_tools::WriteTool;
+use rig_basics::coding_tools::{ReadTool, WriteTool};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::commands::CommandPlugin;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness_test_support::{
-    Collected, Ended, app_in, calls, collect, first_agent, log_ended, reply, run_until,
-    scratch_home, scripted_models, tui_view,
+    Collected, Ended, app_in, calls, collect, first_agent, log_ended, reply, rewrites, run_until,
+    scratch_dir, scratch_home, scripted_models, tui_view,
 };
 use rig_tui::TuiTestScreen;
 use serde_json::json;
@@ -85,7 +85,7 @@ fn write(id: &str, path: &str, content: &str) -> Vec<MockStreamEvent> {
 #[test]
 fn source_turns_get_fragments_in_the_background() {
     let main = MockCompletionModel::from_stream_turns([
-        write("1", "src/parse.rs", "pub fn parse() {}\n"),
+        rewrites("1", "src/parse.rs", "pub fn parse() {}\n"),
         reply("Fixed the parser."),
         write("2", "tests/parse.rs", "#[test] fn empty() {}\n"),
         reply("Added a test."),
@@ -99,10 +99,7 @@ fn source_turns_get_fragments_in_the_background() {
         vec![MockStreamEvent::error("the drafting model is overloaded")],
         reply("added: An extra module"),
     ]);
-    let project = std::env::current_exe()
-        .unwrap_or_default()
-        .with_file_name("sp-changelog-fragments-project");
-    fs::remove_dir_all(&project).ok();
+    let project = scratch_dir("sp-changelog-fragments-project");
     assert!(fs::create_dir_all(project.join("src")).is_ok());
     assert!(fs::write(project.join("src/parse.rs"), "old\n").is_ok());
     let changes = project.join("changes");
@@ -117,7 +114,8 @@ fn source_turns_get_fragments_in_the_background() {
         .insert_resource(ProjectRoot(project.clone()))
         .insert_resource(HoldDrafts(true))
         .insert_resource(TuiTestScreen::new(100, 40))
-        .add_plugins((AgentPlugin, SessionLogPlugin, CommandPlugin, WriteTool))
+        .add_plugins((AgentPlugin, SessionLogPlugin, CommandPlugin))
+        .add_plugins((ReadTool, WriteTool))
         .add_plugins(ChangelogFragmentsPlugin)
         .add_systems(AgentPass, hold_drafts.in_set(Stage::Gate))
         .init_resource::<Ended>()
@@ -134,6 +132,7 @@ fn source_turns_get_fragments_in_the_background() {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     let say = |app: &mut App, text: &str| {
         let message = Deliver::new(agent, text, DeliveryMode::Steer);

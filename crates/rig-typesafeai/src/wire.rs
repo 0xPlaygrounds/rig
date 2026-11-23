@@ -5,6 +5,7 @@ use rig_core::driver::Model;
 use rig_core::error::EncodeError;
 use rig_core::http_client::{DynHttpClient, HttpClientExt};
 use rig_core::operation::Whole;
+use rig_core::providers::openrouter::extension::ProviderPreferences;
 use rig_core::wire::{
     Body, Call, Descriptor, Encoded, Framing, Free, Json, Mode, Operation, Secret, Wire,
 };
@@ -41,10 +42,13 @@ impl Operation for Evaluation {
 ///
 /// Credentials are redacted when this configuration is printed or serialized.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct JevConfig {
     token: Secret,
     model: String,
     endpoint: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    provider: Option<ProviderPreferences>,
 }
 
 impl JevConfig {
@@ -54,6 +58,7 @@ impl JevConfig {
             token: token.into().into(),
             model: "jev-latest".into(),
             endpoint: "https://api.typesafe.ai/v1/systemone".into(),
+            provider: None,
         }
     }
 
@@ -69,6 +74,13 @@ impl JevConfig {
         Ok(Self::new(token))
     }
 
+    /// Set the bearer credential. A stored configuration loads with an empty
+    /// one, so set it again before sending.
+    pub fn with_token(mut self, token: impl Into<Secret>) -> Self {
+        self.token = token.into();
+        self
+    }
+
     /// Select the provider model identifier.
     pub fn model(mut self, model: impl Into<String>) -> Self {
         self.model = model.into();
@@ -78,6 +90,14 @@ impl JevConfig {
     /// Set the complete endpoint URL, including `/v1/systemone`.
     pub fn with_endpoint(mut self, endpoint: impl Into<String>) -> Self {
         self.endpoint = endpoint.into();
+        self
+    }
+
+    /// Send `preferences` as the request's `provider` object, which
+    /// OpenRouter's `/systemone` routes by. Set it only with an OpenRouter
+    /// endpoint.
+    pub fn provider(mut self, preferences: ProviderPreferences) -> Self {
+        self.provider = Some(preferences);
         self
     }
 
@@ -152,11 +172,14 @@ impl Wire for JevConfig {
         #[derive(Serialize)]
         struct Payload<'a> {
             model: &'a str,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            provider: Option<&'a ProviderPreferences>,
             #[serde(flatten)]
             request: Request,
         }
         let body = Payload {
             model: &self.model,
+            provider: self.provider.as_ref(),
             request,
         };
         let mut authorization =
@@ -168,8 +191,7 @@ impl Wire for JevConfig {
             .header(http::header::AUTHORIZATION, authorization)
             .body(Body::Bytes(serde_json::to_vec(&body)?))?;
         Ok(Encoded::new(request, Framing::Whole)
-            .with_request_id_header(Some("x-typesafe-request-id"))
-            .with_route(Some("/v1/systemone")))
+            .with_request_id_header(Some("x-typesafe-request-id")))
     }
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {

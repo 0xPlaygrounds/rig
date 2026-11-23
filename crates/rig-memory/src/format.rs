@@ -15,23 +15,18 @@
 //! record says (`t`), an entry put back as it was says so itself (`made`),
 //! and a reset's state carries each entry's.
 //!
-//! Every string a line holds is redacted as the line is written
-//! ([`rig_core::redact::json_text`]), so no API key or token lands in a log.
-//!
 //! ```json
 //! {"seq":0,"n":0,"t":1791779409181,"type":"header","format":"rig-session/4","log":"cd9a…","lineage":8125…}
-//! {"seq":1,"n":1,"t":1791779409181,"type":"state","key":"rig_ecs::agent::ToolAccess","value":"All"}
+//! {"seq":1,"n":1,"t":1791779409181,"type":"state","key":"my_app::Mode","value":"Plan"}
 //! {"seq":2,"n":2,"t":1791779409182,"type":"push","entries":[{"message":{…},"id":0}]}
 //! ```
 
-use std::borrow::Cow;
 use std::fmt;
 use std::io;
 
 use rig_core::conversation::{
     Aside, AsideId, Author, Change, ChangeRecord, Conversation, Entry, Halt, Lineage, MessageId,
 };
-use rig_core::redact;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -99,6 +94,14 @@ pub enum SessionError {
         /// The log.
         log: String,
     },
+}
+
+impl SessionError {
+    /// Line `line` of the log `log` cannot be read, for `why`.
+    pub(crate) fn record(log: &str, line: usize, why: String) -> Self {
+        let log = log.to_owned();
+        Self::Record { log, line, why }
+    }
 }
 
 impl From<SessionError> for io::Error {
@@ -364,9 +367,7 @@ pub(crate) fn write_change(
     write(out, stamp, by, Out::Change(change))
 }
 
-/// Writes a line, every secret in its strings redacted
-/// ([`redact::json_text`]), so no key a conversation or a saved value holds
-/// lands in a log.
+/// Writes a line, newline included, to `out`.
 fn write(
     out: &mut Vec<u8>,
     stamp: Stamp,
@@ -380,17 +381,7 @@ fn write(
         by,
         body,
     };
-    let start = out.len();
     serde_json::to_writer(&mut *out, &line)?;
-    // No key reaches the disk: every string of the line is redacted. JSON
-    // is UTF-8, and a line without a secret is not copied.
-    let written = out
-        .get(start..)
-        .and_then(|line| std::str::from_utf8(line).ok());
-    if let Some(Cow::Owned(redacted)) = written.map(redact::json_text) {
-        out.truncate(start);
-        out.extend_from_slice(redacted.as_bytes());
-    }
     out.push(b'\n');
     Ok(())
 }

@@ -37,8 +37,8 @@ struct OutOfBinaryFamily {
     family: &'static str,
     /// Where the suite is invoked (workspace-relative).
     suite_file: &'static str,
-    /// Id of the `cargo xtask verify --check` that runs it (ci.yaml runs
-    /// every check by id).
+    /// Id of the check that runs it (ci.yaml runs each check in the job
+    /// `checks::job` names, by `cargo xtask verify --job`).
     ci_check: &'static str,
     /// The nextest predicate inside that check which selects the binary,
     /// when the check uses one.
@@ -46,7 +46,7 @@ struct OutOfBinaryFamily {
     /// `-p` package the check must compile for this suite to exist at all,
     /// when the suite lives outside the facade package.
     ci_package: Option<&'static str>,
-    /// Why it cannot live in the `core` binary.
+    /// Why it cannot live in the facade's binary.
     reason: &'static str,
 }
 
@@ -56,15 +56,15 @@ struct OutOfBinaryFamily {
 /// compiled by nobody and ran nowhere.
 const GUARD_CHECK: &str = "conformance";
 
-/// The default-member sweep, which does cover targets inside `rig`.
-const FACADE_CHECK: &str = "default-tests";
+/// The workspace runtime suite, which does cover targets inside `rig`.
+const FACADE_CHECK: &str = "tests";
 
 const OUT_OF_BINARY_FAMILIES: &[OutOfBinaryFamily] = &[
     OutOfBinaryFamily {
         family: "openai_responses_websocket",
-        suite_file: "crates/rig-core/tests/streaming_conformance_websocket.rs",
+        suite_file: "crates/rig-core/tests/integration/streaming_conformance_websocket.rs",
         ci_check: GUARD_CHECK,
-        ci_selector: Some("binary(streaming_conformance_websocket)"),
+        ci_selector: Some("test(/^streaming_conformance_websocket::/)"),
         ci_package: Some("rig-core"),
         reason: "drives a real `ResponsesWebSocketSession` over the bundled tungstenite backend \
                  against a local ws server; it is a rig-core integration target behind \
@@ -72,17 +72,17 @@ const OUT_OF_BINARY_FAMILIES: &[OutOfBinaryFamily] = &[
     },
     OutOfBinaryFamily {
         family: "candle",
-        suite_file: "crates/rig-candle/tests/streaming_conformance.rs",
+        suite_file: "crates/rig-candle/tests/integration/streaming_conformance.rs",
         ci_check: GUARD_CHECK,
-        ci_selector: Some("binary(streaming_conformance)"),
+        ci_selector: Some("test(/^streaming_conformance::/)"),
         ci_package: Some("rig-candle"),
         reason: "rig-candle is a separate package; the facade does not depend on it",
     },
     OutOfBinaryFamily {
         family: "gemini_grpc",
-        suite_file: "crates/rig-gemini-grpc/tests/streaming_conformance.rs",
+        suite_file: "crates/rig-gemini-grpc/tests/integration/streaming_conformance.rs",
         ci_check: GUARD_CHECK,
-        ci_selector: Some("binary(streaming_conformance)"),
+        ci_selector: Some("test(/^streaming_conformance::/)"),
         ci_package: Some("rig-gemini-grpc"),
         reason: "rig-gemini-grpc is a separate package; the facade does not depend on it",
     },
@@ -91,19 +91,16 @@ const OUT_OF_BINARY_FAMILIES: &[OutOfBinaryFamily] = &[
         suite_file: "crates/rig-cassette/tests/providers/bedrock/streaming_conformance.rs",
         ci_check: FACADE_CHECK,
         // The suite's existence still depends on one flag: without
-        // `rig-cassette`'s own `bedrock` feature the
-        // `#[cfg(feature = "bedrock")] mod bedrock` in
-        // `crates/rig-cassette/tests/bedrock.rs` is cfg-ed out and all 11
+        // `rig-cassette`'s own `bedrock` feature the `mod bedrock` in
+        // `crates/rig-cassette/tests/integration.rs` is cfg-ed out and all 11
         // conformance tests silently stop compiling. The default sweep runs
         // `--features bedrock`, which the cassette package also declares.
-        // (Do not gate the whole file: its cassette-safety scan is
-        // deliberately ungated.)
         ci_selector: Some("--features bedrock"),
         // `rig-cassette` is a workspace default member, so the sweep compiles
         // it without naming `-p`; the flag is what decides the suite exists.
         ci_package: None,
         reason: "lives in the `rig-cassette` package behind its `bedrock` feature, so it compiles \
-                 into that package's `bedrock` test binary rather than the facade's `core`; the \
+                 into that package's integration binary rather than the facade's; the \
                  default-member sweep enables `--features bedrock` specifically so that check \
                  keeps executing it",
     },
@@ -167,7 +164,7 @@ fn out_of_binary_families_are_genuinely_out_of_binary() {
         );
         assert!(
             !entry.reason.is_empty(),
-            "{} needs a reason it cannot live in the core binary",
+            "{} needs a reason it cannot live in the facade's binary",
             entry.family,
         );
     }
@@ -206,9 +203,10 @@ fn out_of_binary_families_name_a_live_check() {
                     entry.family, entry.ci_check
                 )
             });
+        let job = verification_checks::job(entry.ci_check);
         assert!(
             runs.iter()
-                .any(|run| run.trim() == format!("cargo xtask verify --check {}", entry.ci_check)),
+                .any(|run| run.trim() == format!("cargo xtask verify --job {job}")),
             "{} names check {:?}, which no ci.yaml step runs",
             entry.family,
             entry.ci_check,

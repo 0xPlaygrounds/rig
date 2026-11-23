@@ -1,0 +1,26 @@
+[package]
+name = "rig-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+readme = "README.md"
+description = "The `rig` command's library, which the `rig` crate's binary runs: builds the rig-harness coding agent with the plugins settings.toml turns on, and runs it."
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[lints]
+workspace = true
+
+[dependencies]
+rig-harness-protocol = { path = "../rig-harness-protocol", version = "0.47.0" }
+
+# It kills its cargo's process group when it is told to end, and passes an
+# ending signal on to its agent and waits for it.
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
+
+[target.'cfg(not(unix))'.dependencies]
+ctrlc = { workspace = true }
+
+[dev-dependencies]
+rig-harness-protocol = { path = "../rig-harness-protocol", features = ["test-utils"] }

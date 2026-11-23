@@ -10,6 +10,7 @@
 
 pub mod bank;
 pub mod cache_conformance;
+pub mod cache_cost;
 pub mod cache_longrun;
 pub mod cache_prefix;
 pub mod cassette_models;

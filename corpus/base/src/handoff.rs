@@ -1,23 +1,20 @@
-//! Plugin corpus: 40. Handoff to a fresh agent (spec `40-handoff.md`).
+//! Handoff to a fresh agent. `/handoff [--now] <next goal>` asks the agent's model, or the
+//! model the `[handoff]` settings name, for a brief of its conversation for that goal. The
+//! brief is a [`ModelRequest`] of a turn of the agent's own, made for the purpose `handoff`, so
+//! its usage counts like any call and an interrupt cancels it. A new top-level agent on the
+//! same model, reasoning setting, system prompt and tools then starts from the brief alone,
+//! shown in the terminal view: the brief waits in the input line to be edited and sent, or is
+//! sent at once with `--now` (and in a run without the view), by the old agent, titled with the
+//! goal.
 //!
-//! `/handoff [--now] <next goal>` asks the agent's model, or the model the
-//! `[handoff]` settings name, for a brief of its conversation for that
-//! goal. The brief is a [`ModelRequest`] of a turn of the agent's own, made
-//! for the purpose `handoff`, so its usage counts like any call and an
-//! interrupt cancels it. A new top-level agent on the same model, reasoning
-//! setting, system prompt and tools then starts from the brief alone, shown
-//! in the terminal view: the brief waits in the input line to be edited and
-//! sent, or is sent at once with `--now` (and in a run without the view),
-//! by the old agent, titled with the goal.
-//! The old agent stays, idle; the new one is [`HandedOffFrom`] it, which
-//! names it, and a handoff moves the agent shown ([`ShownAgent`], in any front)
-//! from the old agent to the new one, when it happens and again when the
-//! session is restored.
-
-use std::borrow::Cow;
+//! The old agent stays, idle; the new one is [`HandedOffFrom`] it, which names it, and a
+//! handoff moves the agent shown ([`ShownAgent`], in any front) from the old agent to the new
+//! one, when it happens and again when the session is restored.
 
 use rig_harness::prelude::*;
-use rig_memory::{CompactReason, Summarizer, SummaryLimits, SummaryPrompts};
+use rig_harness::rig_core::catalog::ModelSpec;
+use rig_harness::rig_core::completion::{CompletionRequest, Message, UnsupportedOption};
+use rig_memory::{fit_to_model, serialize_conversation, summarization_request, summary_text};
 use rig_tui::MainInput;
 use serde::Deserialize;
 
@@ -32,25 +29,24 @@ const SYSTEM: &str = "You write a handoff brief. A fresh coding agent that has n
     conversation will start from your brief alone and work on the next goal the user names. \
     Do not continue the conversation and do not answer questions in it. Output only the brief.";
 
-/// rig-memory's summarizer, asked for a brief for the goal it is given
-/// as its focus.
-const BRIEF_WRITER: Summarizer = Summarizer {
-    prompts: SummaryPrompts {
-        system: Cow::Borrowed(SYSTEM),
-        initial: Cow::Borrowed(ASK),
-        update: Cow::Borrowed(ASK),
-        format: Cow::Borrowed(FORMAT),
-        ..SummaryPrompts::DEFAULT
-    },
-    limits: SummaryLimits {
-        summary_tokens: BRIEF_TOKENS,
-        ..SummaryLimits::DEFAULT
-    },
-};
+/// The request to `spec` for a brief of `messages` for `goal`: the conversation as text, cut to
+/// fit the model, then what is asked, within [`BRIEF_TOKENS`].
+fn brief_request(
+    messages: &[std::sync::Arc<Message>],
+    goal: &str,
+    spec: &ModelSpec,
+) -> Result<CompletionRequest, UnsupportedOption> {
+    let conversation = serialize_conversation(messages);
+    let (conversation, most) = fit_to_model(&conversation, spec, BRIEF_TOKENS);
+    let ask = format!(
+        "<conversation>\n{conversation}\n</conversation>\n\n{ASK}\n\nThe next goal: {goal}{FORMAT}"
+    );
+    summarization_request((SYSTEM, ask), spec, None, most)
+}
 
 /// What the brief's model is asked, before the goal.
-const ASK: &str = "The conversation above is being handed off. Write the brief for the agent \
-    that takes over, for the next goal, given below as the additional focus.";
+const ASK: &str = "The conversation is being handed off. Write the brief for the agent \
+    that takes over, for the next goal, given below.";
 
 /// The brief's format, after the request.
 const FORMAT: &str = "\n\nUse exactly this format:\n\n\
@@ -148,7 +144,11 @@ fn handoff(
         notices.write(Notice::turn_running(agent));
         return;
     }
-    let summarizer = match settings.model.as_deref().map(|model| models.connect(model)) {
+    let summarizer = match settings.model.as_deref().map(|model| {
+        models
+            .connect(model)
+            .map_err(|why| Models::cannot_use(model, why))
+    }) {
         Some(Ok(connection)) => Some(connection),
         Some(Err(why)) => {
             notices.write(Notice::error(agent, why));
@@ -164,10 +164,7 @@ fn handoff(
         notices.write(Notice::info(agent, "Nothing to hand off yet."));
         return;
     }
-    let brief = CompactReason::Asked {
-        focus: goal.clone(),
-    };
-    let request = match BRIEF_WRITER.request(conversation.messages(), "", &brief, &spec) {
+    let request = match brief_request(conversation.messages(), goal.trim(), &spec) {
         Ok(request) => request,
         Err(why) => {
             notices.write(Notice::error(agent, format!("Cannot hand off: {why}.")));
@@ -189,39 +186,31 @@ fn handoff(
     ));
 }
 
-/// The settings a new agent takes over from the one handed off from.
-type Inherited<'a> = (
-    &'a AgentId,
-    Option<&'a ModelChoice>,
-    &'a ReasoningSetting,
-    &'a SystemPrompt,
-    &'a ToolAccess,
-    Option<&'a Connection>,
-);
-
 /// Takes a settled brief: ends the handoff's turn and starts the new
 /// agent with the old one's settings, with the brief in the input line,
 /// or sent the brief at once by the old agent.
 fn take_brief(
     settled: On<Add<Settled>>,
     calls: Query<(&CallOf, &ForAgent, &Briefing, &Outcome)>,
-    agents: Query<Inherited>,
+    agents: Query<&AgentId>,
     editable: Res<EditableBrief>,
     input: Option<MainInput>,
+    mut spawner: Spawner,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Ok((&CallOf(turn), &ForAgent(agent), briefing, outcome)) = calls.get(settled.entity) else {
+    let Ok((_, &ForAgent(agent), briefing, outcome)) = calls.get(settled.entity) else {
         return;
     };
-    let handed_off = TurnOutcome::Stopped(Some("handed off".to_owned()));
-    commands.entity(turn).try_insert(handed_off);
+    commands.trigger(StopTurn::plugin_alone(agent, "handoff", "handed off"));
     let brief = match (&outcome.0, outcome.completion()) {
         (Err(report), _) => Err(report.to_string()),
         (Ok(_), None) => Err("the model did not answer with a completion".to_owned()),
-        (Ok(_), Some(response)) => {
-            Summarizer::summary_text(response).map_err(|why| why.to_string())
-        }
+        (Ok(_), Some(response)) => match summary_text(response, "The brief") {
+            Ok(text) if text.trim().is_empty() => Err("the model wrote no brief".to_owned()),
+            Ok(text) => Ok(text.trim().to_owned()),
+            Err(why) => Err(why.to_string()),
+        },
     };
     let brief = match brief {
         Ok(brief) => brief,
@@ -230,23 +219,20 @@ fn take_brief(
             return;
         }
     };
-    let Ok((id, model, effort, prompt, access, connection)) = agents.get(agent) else {
+    let Ok(id) = agents.get(agent) else {
         return;
     };
     let from = HandedOffFrom {
         agent: id.clone(),
         goal: briefing.goal.clone(),
     };
-    let mut successor = commands.spawn_empty();
-    // Before the model choice, so the shared connection is kept.
-    if let Some(connection) = connection {
-        successor.insert(connection.clone());
-    }
-    successor.insert((Agent, *effort, prompt.clone(), access.clone(), from));
-    if let Some(model) = model {
-        successor.insert(model.clone());
-    }
-    let successor = successor.id();
+    let successor = match spawner.spawn(Origin::Like(agent), AgentSpec::default()) {
+        Ok(mut successor) => successor.insert(from).id(),
+        Err(why) => {
+            notices.write(Notice::error(agent, format!("Handoff failed: {why}.")));
+            return;
+        }
+    };
     match input.filter(|_| editable.0 && !briefing.now) {
         Some(mut input) => {
             input.clear();
@@ -282,18 +268,16 @@ fn name_successor(
 /// started, or, when a session is restored, the end of its handoff chain.
 fn show_successor(
     new: Query<(Entity, &HandedOffFrom), Added<HandedOffFrom>>,
-    agents: MainAgentQuery,
+    (main, ids): (MainAgentQuery, Query<&AgentId>),
     mut shown: ResMut<ShownAgent>,
 ) {
     if new.is_empty() {
         return;
     }
-    let mut at = shown.0.or_else(|| main_agent(&agents));
+    let mut at = shown.0.or_else(|| main_agent(&main));
     // At most one step per new agent.
     for _ in 0..new.iter().count() {
-        let id = at
-            .and_then(|agent| agents.get(agent).ok())
-            .map(|(_, id, _)| id);
+        let id = at.and_then(|agent| ids.get(agent).ok());
         let next = new.iter().find(|(_, from)| Some(&from.agent) == id);
         let Some((successor, _)) = next else {
             break;

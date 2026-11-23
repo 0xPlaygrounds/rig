@@ -3,7 +3,7 @@
 //! session's [`SESSION_EFFECT_LOG`] ([`Files`]), in id order. Its header
 //! describes the tools and models and names each key the records use.
 //!
-//! A resumed session appends after the highest id. Plugins read it with [`EffectLog`] and an [`EffectFilter`].
+//! A resumed session appends after the highest id. Plugins read it with [`EffectLog`].
 //! With the `tui` feature, a restored session's log is read once, off the
 //! main thread, and sent to the view as `rig_tui::PastEffects`, so its
 //! tool calls show what they started.
@@ -15,15 +15,15 @@ use bevy_log::error;
 #[cfg(feature = "tui")]
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_cassette::effect_log::jsonl::SESSION_EFFECT_LOG;
-use rig_cassette::effect_log::{EffectFilter, LogHeader, jsonl};
+use rig_cassette::effect_log::{LogHeader, jsonl};
 use rig_core::effect::{EffectRecord, HandlerDescriptor};
-use rig_ecs::WriteLogs;
 use rig_ecs::effects::Effects;
 use rig_ecs::prelude::*;
 #[cfg(feature = "tui")]
 use rig_ecs::session_log::SessionRestored;
 use rig_ecs::session_log::SessionStore;
 use rig_ecs::tools::ToolDef;
+use rig_ecs::{Persist, WriteLogs};
 #[cfg(feature = "tui")]
 use rig_harness::prelude::AppCliExt;
 
@@ -47,7 +47,7 @@ impl Plugin for EffectLogPlugin {
             .insert_resource(EffectLog { store })
             .insert_resource(EffectLogFile { header, writer })
             .add_systems(
-                Last,
+                Persist,
                 (describe_tools, write_effects).chain().in_set(WriteLogs),
             )
             .add_observer(describe_model);
@@ -114,8 +114,8 @@ fn send_past(
 
 /// The session's effect log, to read back; there when
 /// [`EffectLogPlugin`] records one. It holds what was written by the end
-/// of the last frame: the records of this frame's effects are written in
-/// its `Last`.
+/// of the last frame: the records of this frame's effects are written at
+/// its end, in [`Persist`].
 #[derive(Resource, Clone)]
 pub struct EffectLog {
     store: Arc<dyn Files>,
@@ -135,13 +135,6 @@ impl EffectLog {
     /// ended, read in time linear in the log's size.
     pub fn read_outcomes(&self) -> io::Result<Vec<EffectRecord>> {
         jsonl::read_session_outcomes(&*self.store)
-    }
-
-    /// The records `filter` matches, in the order written.
-    pub fn read_matching(&self, filter: &EffectFilter) -> io::Result<Vec<EffectRecord>> {
-        let mut records = self.read()?;
-        records.retain(|record| filter.matches(record));
-        Ok(records)
     }
 }
 

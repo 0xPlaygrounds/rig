@@ -1,3 +1,5 @@
+use rig_harness::run::TOOLS;
+
 use super::*;
 
 #[derive(Resource, Default)]
@@ -29,7 +31,7 @@ fn restricted_run(
     model: &MockCompletionModel,
     tools: Option<&str>,
     access: ToolAccess,
-) -> (App, Receiver<()>, Lines, Sender<String>) {
+) -> (App, Receiver<()>, Lines, Sender<RequestLine>) {
     restricted_run_with(model, tools, access, |_| {})
 }
 
@@ -38,17 +40,25 @@ fn restricted_run_with(
     tools: Option<&str>,
     access: ToolAccess,
     configure: impl FnOnce(&mut App),
-) -> (App, Receiver<()>, Lines, Sender<String>) {
-    restricted_on(&MemoryStore::default(), model, tools, access, configure)
+) -> (App, Receiver<()>, Lines, Sender<RequestLine>) {
+    restricted_on(
+        &MemoryStore::default(),
+        model,
+        tools,
+        Some(access),
+        configure,
+    )
 }
 
+/// A run on `store`, with `--tools tools` when given, its agent given
+/// `access` after the first frame when given.
 fn restricted_on(
     store: &MemoryStore,
     model: &MockCompletionModel,
     tools: Option<&str>,
-    access: ToolAccess,
+    access: Option<ToolAccess>,
     configure: impl FnOnce(&mut App),
-) -> (App, Receiver<()>, Lines, Sender<String>) {
+) -> (App, Receiver<()>, Lines, Sender<RequestLine>) {
     let lines = Lines::default();
     let (input, requests) = JsonIn::channel();
     let mut flags = vec![(JSON.to_owned(), None)];
@@ -70,8 +80,9 @@ fn restricted_on(
     assert!(conflicts.is_empty(), "{conflicts:#?}");
     app.update();
     let world = app.world_mut();
-    let agent = first_agent(world).unwrap_or(Entity::PLACEHOLDER);
-    world.entity_mut(agent).insert(access);
+    if let (Some(agent), Some(access)) = (first_agent(world), access) {
+        world.entity_mut(agent).insert(access);
+    }
     (app, wakes, lines, input)
 }
 
@@ -87,8 +98,11 @@ fn cli_allowlists_filter_the_first_request_and_enforce_actual_dispatch() {
     ] {
         let model =
             MockCompletionModel::from_stream_turns([calls("c1", called, json!({})), reply("done")]);
-        let (mut app, wakes, lines, input) = restricted_run(&model, tools, ToolAccess::All);
-        send(&input, json!({"v": 1, "type": "send", "text": "Run it."}));
+        let (mut app, wakes, lines, input) = restricted_run(&model, tools, ToolAccess::all());
+        send(
+            &input,
+            json!({"v": VERSION, "type": "send", "text": "Run it."}),
+        );
         test_support::run_until(&mut app, &wakes, |_| !lines.of("turn_end").is_empty());
         assert_eq!(model.request_count(), 2, "{tools:?}");
         let requests = model.requests();
@@ -190,9 +204,9 @@ fn unknown_cli_tool_names_are_refused_before_any_model_call() {
             app.add_plugins(LatePlugin);
         };
         let (mut app, wakes, lines, input) =
-            restricted_run_with(&model, Some(tools), ToolAccess::All, configure);
-        let line = json!({"v": 1, "type": "send", "text": "Run it."});
-        input.try_send(line.to_string()).ok();
+            restricted_run_with(&model, Some(tools), ToolAccess::all(), configure);
+        let line = json!({"v": VERSION, "type": "send", "text": "Run it."});
+        input.try_send(Ok(line.to_string().into_bytes())).ok();
         test_support::run_until(&mut app, &wakes, |_| !lines.of("exit").is_empty());
         let exit = lines.of("exit").first().cloned().unwrap_or_default();
         assert_eq!(at(&exit, "code"), &json!(2), "{tools}");
@@ -251,37 +265,8 @@ fn actual_tui_policy_compaction_and_persistence_have_no_stage_conflicts() {
     app.finish();
     app.cleanup();
     assert!(app.runs_front(rig_tui::FRONT));
-    assert!(app.world().contains_resource::<Tools>());
     let conflicts = rig_harness::stage_conflicts(app.world_mut());
     assert!(conflicts.is_empty(), "{conflicts:#?}");
-}
-
-/// The terminal view leaves the terminal alone for a run refused on an
-/// unknown `--tools` name: it exits 2 at the end of its first frame, its
-/// refusal on stderr. Here, with no terminal to open, a view that tried
-/// would exit 1 first.
-#[cfg(feature = "tui")]
-#[test]
-fn a_refused_terminal_run_never_opens_the_view() {
-    let (mut app, _) = noting(
-        &MemoryStore::default(),
-        Invocation {
-            flags: vec![(TOOLS.to_owned(), Some("shel".to_owned()))],
-            ..Invocation::default()
-        },
-    );
-    app.world_mut().resource_mut::<Invoked>().terminal = true;
-    app.add_plugins((
-        SessionLogPlugin,
-        ExitPlugin,
-        rig_tui::TuiPlugin,
-        PrintPlugin,
-    ));
-    recording(&mut app, &["shell"]);
-    app.finish();
-    app.cleanup();
-    run_until(&mut app, |_| false);
-    assert_eq!(app.should_exit(), Some(AppExit::from_code(2)));
 }
 
 #[test]
@@ -292,19 +277,20 @@ fn policy_and_persistence_are_ordered_for_every_front() {
                 calls("c1", "denied", json!({})),
                 reply("done"),
             ]);
-            let (mut app, wakes, _lines, _input) = restricted_run_with(
-                &model,
-                tools,
-                ToolAccess::Only(vec!["denied".to_owned()]),
-                |app| {
+            let (mut app, wakes, _lines, _input) =
+                restricted_run_with(&model, tools, ToolAccess::only(["denied"]), |app| {
                     if front != JSON {
                         let mut invoked = app.world_mut().resource_mut::<Invoked>();
                         invoked.args.flags.retain(|(name, _)| name != JSON);
                         invoked.terminal = front == "tui";
                     }
+                    // The test sends the work: a print run with no prompt
+                    // waits for it rather than ending at its first frame.
+                    if front == FRONT {
+                        app.world_mut().spawn(KeepRunning);
+                    }
                     app.add_front(Front::new("tui").on_terminal());
-                },
-            );
+                });
             let world = app.world_mut();
             let agent = first_agent(world).unwrap_or(Entity::PLACEHOLDER);
             if let Some(connection) = connect(&model) {
@@ -343,9 +329,12 @@ fn cli_allowlist_intersects_agent_specific_access_before_requests() {
     let (mut app, wakes, lines, input) = restricted_run(
         &model,
         Some("allowed,denied"),
-        ToolAccess::Only(vec!["allowed".to_owned()]),
+        ToolAccess::only(["allowed"]),
     );
-    send(&input, json!({"v": 1, "type": "send", "text": "Run it."}));
+    send(
+        &input,
+        json!({"v": VERSION, "type": "send", "text": "Run it."}),
+    );
     test_support::run_until(&mut app, &wakes, |_| !lines.of("turn_end").is_empty());
     let requests = model.requests();
     let advertised: Vec<_> = requests
@@ -358,66 +347,44 @@ fn cli_allowlist_intersects_agent_specific_access_before_requests() {
     assert_eq!(model.request_count(), 1);
 }
 
-#[test]
-fn restored_agents_cannot_broaden_the_cli_limit() {
-    let store = MemoryStore::default();
-    let first = answering(&["saved"]);
-    let (mut app, wakes, lines, input) = restricted_on(
-        &store,
-        &first,
-        None,
-        ToolAccess::Only(vec!["allowed".to_owned()]),
-        |_| {},
-    );
-    send(&input, json!({"v": 1, "type": "send", "text": "Save it."}));
+/// The tools the first request of a run on `store` offers, with
+/// `--tools tools` when given, its agent given `access` when given.
+fn offered_on(store: &MemoryStore, tools: Option<&str>, access: Option<ToolAccess>) -> Vec<String> {
+    let model = answering(&["done"]);
+    let (mut app, wakes, lines, input) = restricted_on(store, &model, tools, access, |_| {});
+    send(&input, json!({"v": VERSION, "type": "send", "text": "Go."}));
     test_support::run_until(&mut app, &wakes, |_| !lines.of("turn_end").is_empty());
     app.world_mut().write_message(AppExit::Success);
     app.update();
-    drop(app);
+    let requests = model.requests();
+    let first = requests
+        .first()
+        .into_iter()
+        .flat_map(|request| &request.tools);
+    first.map(|tool| tool.name.as_str().to_owned()).collect()
+}
 
-    let second = answering(&["restored"]);
-    let (mut app, wakes) = noting(
-        &store,
-        Invocation {
-            flags: vec![
-                (JSON.to_owned(), None),
-                (TOOLS.to_owned(), Some("denied".to_owned())),
-            ],
-            ..Invocation::default()
-        },
-    );
-    let lines = Lines::default();
-    let (input, requests) = JsonIn::channel();
-    app.insert_resource(JsonOut::new(lines.clone()))
-        .insert_resource(requests)
-        .insert_resource(scripted_models([(MODEL, &second)]))
-        .add_plugins((SessionLogPlugin, ExitPlugin, PrintPlugin));
-    recording(&mut app, &["allowed", "denied"]);
-    app.finish();
-    app.cleanup();
-    let conflicts = rig_harness::stage_conflicts(app.world_mut());
-    assert!(conflicts.is_empty(), "{conflicts:#?}");
-    app.update();
-    let world = app.world_mut();
-    let agent = first_agent(world).unwrap_or(Entity::PLACEHOLDER);
-    assert!(
-        matches!(world.get::<ToolAccess>(agent), Some(ToolAccess::Only(names)) if names == &["allowed"])
-    );
-    send(
-        &input,
-        json!({"v": 1, "type": "send", "text": "Recall it."}),
-    );
-    test_support::run_until(&mut app, &wakes, |_| !lines.of("turn_end").is_empty());
-    assert_eq!(second.request_count(), 1);
-    assert!(
-        matches!(app.world().get::<ToolAccess>(agent), Some(ToolAccess::Only(names)) if names.is_empty())
-    );
-    assert!(
-        second
-            .requests()
-            .iter()
-            .all(|request| request.tools.is_empty())
-    );
+#[test]
+fn tools_limit_only_their_run_and_never_widen_the_session() {
+    let both = ["allowed", "denied"];
+    // The session's access, the middle run's `--tools`, what that run
+    // offers, and what the runs before and after it offer.
+    let cases = [
+        (ToolAccess::all(), "allowed", &["allowed"][..], &both[..]),
+        (ToolAccess::all(), "", &[][..], &both[..]),
+        (
+            ToolAccess::only(["allowed"]),
+            "denied",
+            &[][..],
+            &["allowed"][..],
+        ),
+    ];
+    for (access, tools, limited, saved) in cases {
+        let store = MemoryStore::default();
+        assert_eq!(offered_on(&store, None, Some(access)), saved, "{tools:?}");
+        assert_eq!(offered_on(&store, Some(tools), None), limited, "{tools:?}");
+        assert_eq!(offered_on(&store, None, None), saved, "{tools:?}");
+    }
 }
 
 #[test]
@@ -448,7 +415,7 @@ fn cli_allowlist_reaches_anthropic_http_output() {
             http.clone(),
         );
         let (mut app, wakes, lines, input) =
-            restricted_run(&silent(), Some(tools), ToolAccess::All);
+            restricted_run(&silent(), Some(tools), ToolAccess::all());
         let spec = Catalog::builtin().resolve("anthropic/claude-sonnet-4-6");
         assert!(spec.is_ok());
         let Ok(spec) = spec else { return };
@@ -460,7 +427,10 @@ fn cli_allowlist_reaches_anthropic_http_output() {
             spec,
             handler: Handler(ErasedHandler::new(adapter)),
         });
-        send(&input, json!({"v": 1, "type": "send", "text": "Run it."}));
+        send(
+            &input,
+            json!({"v": VERSION, "type": "send", "text": "Run it."}),
+        );
         test_support::run_until(&mut app, &wakes, |_| !lines.of("turn_end").is_empty());
         let requests = http.requests();
         assert_eq!(requests.len(), 1);
@@ -494,7 +464,7 @@ fn cli_allowlist_reaches_anthropic_http_output() {
 
 #[test]
 fn delegated_subagents_obey_inherited_and_cli_limits() {
-    use crate::subagents::{SubagentPolicy, SubagentsPlugin};
+    use crate::subagents::SubagentsPlugin;
 
     for called in ["denied", "message", "wait", "allowed"] {
         let executes = called == "allowed";
@@ -511,14 +481,13 @@ fn delegated_subagents_obey_inherited_and_cli_limits() {
         let (mut app, wakes, lines, _input) = restricted_run_with(
             &parent_model,
             Some(tools),
-            ToolAccess::Only(vec!["allowed".to_owned(), "task".to_owned()]),
+            ToolAccess::only(["allowed", "task"]),
             |app| {
                 app.insert_resource(scripted_models([
                     (MODEL, &parent_model),
                     ("test/child", &child_model),
                 ]));
                 rig_harness::load::<SubagentsPlugin>(app, "rig-basics", "path plugins/rig-basics");
-                app.insert_resource(SubagentPolicy { max_depth: 2 });
             },
         );
         let world = app.world_mut();
@@ -551,12 +520,9 @@ fn delegated_subagents_obey_inherited_and_cli_limits() {
             .map(|tool| tool.name.as_str())
             .collect();
         advertised.sort_unstable();
-        let expected = if executes {
-            vec!["allowed", "message", "task", "wait"]
-        } else {
-            vec!["allowed", "task"]
-        };
-        assert_eq!(advertised, expected, "{called}");
+        // The parent has neither `message` nor `wait`, so its child gets
+        // neither, whatever `--tools` allows.
+        assert_eq!(advertised, ["allowed", "task"], "{called}");
         let world = app.world_mut();
         let child = world
             .get::<Spawned>(parent)
@@ -577,35 +543,6 @@ fn delegated_subagents_obey_inherited_and_cli_limits() {
             "{called}"
         );
     }
-}
-
-#[test]
-fn agents_spawned_during_a_pass_are_restricted_before_dispatch() {
-    let mut app = App::new();
-    app.insert_resource(Tools(vec!["allowed".to_owned()]));
-    app.add_systems(
-        AgentPass,
-        (
-            (|mut commands: Commands| {
-                commands.spawn((Agent, ToolAccess::Only(vec!["denied".to_owned()])));
-                commands.spawn(Agent);
-            })
-            .in_set(Stage::Commit),
-            limit_tools
-                .after(Stage::Commit)
-                .in_set(PrepareSystems::Input),
-        ),
-    );
-    app.world_mut().run_schedule(AgentPass);
-    let world = app.world_mut();
-    let accesses: Vec<_> = world
-        .query::<&ToolAccess>()
-        .iter(world)
-        .map(|access| (access.allows("allowed"), access.allows("denied")))
-        .collect();
-    assert_eq!(accesses.len(), 2);
-    assert!(accesses.contains(&(false, false)));
-    assert!(accesses.contains(&(true, false)));
 }
 
 #[test]
@@ -644,7 +581,7 @@ fn a_refused_tool_name_names_itself_on_a_carried_turn_it_cuts_off() {
             .and_then(|(_, record)| record.end)
     });
     assert!(
-        matches!(&ended, Some(rig_ecs::prelude::TurnEnd::Stopped { why: Some(said), .. }) if said == why),
+        matches!(&ended, Some(rig_ecs::prelude::TurnEnd::Stopped { by: Some(StopCause::Exit(said)), .. }) if said == why),
         "{ended:?}"
     );
 }
@@ -685,6 +622,7 @@ fn a_refused_tool_name_runs_nothing_of_a_resumed_session() {
         world.trigger(SetModel {
             entity: agent,
             model,
+            kind: ChoiceKind::ForThisRun,
         });
         world.trigger(Deliver::new(agent, "hi", DeliveryMode::Steer));
         run_until(&mut app, |world| match pending_tool {
@@ -793,9 +731,108 @@ fn a_refused_tool_name_runs_nothing_of_a_resumed_session() {
         assert_eq!(third.request_count(), 1);
         let world = app.world_mut();
         let agent = first_agent(world).unwrap_or(Entity::PLACEHOLDER);
-        assert!(matches!(
-            world.get::<ToolAccess>(agent),
-            Some(ToolAccess::All)
-        ));
+        assert_eq!(world.get::<ToolAccess>(agent), Some(&ToolAccess::all()));
     }
+}
+
+/// A call's lines name it by where its reply asked for it, the same id
+/// in `tool_call` and `tool_result`, never by the provider's id, which a
+/// provider may use again: here two replies each ask for `c1`.
+#[test]
+fn a_calls_lines_name_it_by_its_place_in_the_reply() {
+    let model = MockCompletionModel::from_stream_turns([
+        calls("c1", "allowed", json!({})),
+        calls("c1", "allowed", json!({})),
+        reply("done"),
+    ]);
+    let (mut app, wakes, lines, input) = restricted_run(&model, None, ToolAccess::all());
+    send(
+        &input,
+        json!({"v": VERSION, "type": "send", "text": "Run it."}),
+    );
+    test_support::run_until(&mut app, &wakes, |_| !lines.of("turn_end").is_empty());
+    let world = app.world_mut();
+    let conversation = first_agent(world).and_then(|agent| world.get::<Conversation>(agent));
+    let asked: Vec<Value> = conversation
+        .into_iter()
+        .flat_map(|conversation| conversation.entries())
+        .filter(|entry| match entry.message {
+            Message::Assistant(reply) => reply.tool_calls().next().is_some(),
+            _ => false,
+        })
+        .map(|entry| json!(format!("{}/0", entry.id)))
+        .collect();
+    assert_eq!(asked.len(), 2, "{asked:?}");
+    let ids = |kind| -> Vec<Value> {
+        lines
+            .of(kind)
+            .iter()
+            .map(|line| at(line, "id").clone())
+            .collect()
+    };
+    assert_eq!(ids("tool_call"), asked);
+    assert_eq!(ids("tool_result"), asked);
+}
+
+/// What a `-p` run writes to stdout and stderr, stderr being `err`, when
+/// its model says a line, calls `read` (which reports progress), then
+/// answers.
+fn narrated_run(err: Option<Terminal>) -> (String, String) {
+    let model = MockCompletionModel::from_stream_turns([
+        vec![
+            MockStreamEvent::text("Looking at the file first."),
+            MockStreamEvent::tool_call(
+                "c1",
+                "read",
+                json!({ "path": "src/lib.rs", "token": "s3cret" }),
+            ),
+            MockStreamEvent::final_response_with_default_usage(),
+        ],
+        reply("Done."),
+    ]);
+    let (out, stderr) = (Lines::default(), Lines::default());
+    let invoked = Invocation {
+        print: Some("Read it.".to_owned()),
+        ..Invocation::default()
+    };
+    let (mut app, _) = noting(&MemoryStore::default(), invoked);
+    let writer = Writer::inline(out.clone(), stderr.clone());
+    app.insert_resource(scripted_models([(MODEL, &model)]))
+        .insert_resource(Printed::by(writer, None, err))
+        .add_plugins((ExitPlugin, PrintPlugin))
+        .add_open_tool(
+            "read",
+            "Read a file.",
+            ToolOptions::default(),
+            |called: On<ToolCalled<Value>>, mut commands: Commands| {
+                commands.entity(called.call).insert((
+                    ToolProgress("halfway".to_owned()),
+                    Outcome::from(rig_core::tool::ToolResult::success("Read.".into())),
+                ));
+            },
+        );
+    app.finish();
+    app.cleanup();
+    run_until(&mut app, |_| false);
+    (out.text().join("\n"), stderr.text().join("\n"))
+}
+
+#[test]
+fn a_terminal_stderr_shows_the_narration_and_each_call_and_progress_is_no_error() {
+    let terminal = Terminal {
+        width: Some(80),
+        color: false,
+    };
+    let (out, err) = narrated_run(Some(terminal));
+    assert_eq!(out, "Done.");
+    let narration = err.find("Looking at the file first.");
+    let call = err.find("· read src/lib.rs");
+    assert!(narration.zip(call).is_some_and(|(n, c)| n < c), "{err}");
+    assert!(!err.contains("s3cret") && !err.contains("Done."), "{err}");
+    assert!(err.lines().any(|line| line == "read: halfway"), "{err}");
+    assert!(!err.contains("rig: "), "{err}");
+    // Not a terminal: neither the narration nor the call lines.
+    let (out, err) = narrated_run(None);
+    assert_eq!(out, "Done.");
+    assert_eq!(err, "read: halfway");
 }

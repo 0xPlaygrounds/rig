@@ -1,14 +1,12 @@
-//! Safer shell commands by rewriting (corpus spec `03-shell-rewrite.md`).
-//! Before a `shell` call runs, its command goes through the ordered rules
-//! of `RIG_HOME/shell-rewrite.toml`, each seeing the previous result. The
-//! rewritten command is what runs, what every gate judges and what the
-//! effect log records; the model's result starts with
-//! "(ran as: `<rewritten>`)", and the conversation keeps the model's own
-//! call.
+//! Safer shell commands by rewriting. Before a `shell` call runs, its command goes through the
+//! ordered rules of `RIG_HOME/shell-rewrite.toml`, each seeing the previous result. The
+//! rewritten command is what runs, what every gate judges and what the effect log records; the
+//! model's result starts with "(ran as: `<rewritten>`)", and the conversation keeps the model's
+//! own call.
 //!
-//! The rewrite is a Prepare system editing the call's `ToolRequest`, so
-//! every Gate system (a guard) sees the rewritten command; a Review system
-//! puts the "(ran as: …)" line on its result.
+//! The rewrite is a Prepare system editing the call's `ToolRequest`, so every Gate system (a
+//! guard) sees the rewritten command; a Review system puts the "(ran as: …)" line on its
+//! result.
 //!
 //! ```toml
 //! [[rule]]               # rm <files> -> trash <files>, when trash is on PATH

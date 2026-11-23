@@ -136,6 +136,7 @@ fn a_screenshot_is_placed_under_its_call_taken_off_when_scrolled_away_and_drawn_
     app.world_mut().trigger(SetModel {
         entity: agent,
         model: "test/model".to_owned(),
+        kind: ChoiceKind::ForThisRun,
     });
     app.world_mut().trigger(Deliver::new(
         agent,

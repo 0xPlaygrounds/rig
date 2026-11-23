@@ -73,9 +73,9 @@ fn name_the_subagent(
         }
         let args = &mut request.call.function.arguments;
         let title = args.get("agent").and_then(|agent| agent.as_str());
-        let child = children.iter().find(|&(_, task, &SpawnedBy(parent))| {
-            parent == agent && title == Some(task.0.as_str())
-        });
+        let child = children
+            .iter()
+            .find(|&(_, task, by)| by.parent() == agent && title == Some(task.0.as_str()));
         if let Some((id, ..)) = child {
             args.insert("agent".to_owned(), json!(id.short()));
         }
@@ -123,8 +123,7 @@ impl Session {
             .add_systems(AgentPass, name_the_subagent.in_set(PrepareSystems::Input))
             .add_observer(log_tool_outputs);
         if fresh {
-            app.world_mut()
-                .spawn((Agent, ModelChoice(PARENT.to_owned())));
+            spawn_root(app.world_mut(), ModelChoice(PARENT.to_owned()));
         }
         app.finish();
         app.update();
@@ -429,7 +428,4 @@ fn a_question_asked_outside_a_turn_reaches_the_parent_too() {
     assert_eq!(open(session.app.world()), 1);
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(AskParentPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(AskParentPlugin);

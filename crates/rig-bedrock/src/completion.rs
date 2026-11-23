@@ -262,6 +262,18 @@ impl Converse {
     }
 }
 
+impl Converse {
+    /// Whether the spec `model` resolves to is a Claude row of rig's shipped
+    /// catalog, by that spec's own id. A stated family or bound facts cannot
+    /// make it one.
+    pub(crate) fn listed_claude(&self, model: &str) -> bool {
+        self.spec(model).is_some_and(|spec| {
+            Family::of(&spec.id) == Family::Claude
+                && spec_in(&ModelFacts::default(), &spec.id).is_some()
+        })
+    }
+}
+
 /// [`Converse::spec`] in `facts`.
 fn spec_in<'f>(facts: &'f ModelFacts, model: &str) -> Option<&'f ModelSpec> {
     let id = model.rsplit('/').next().unwrap_or(model);
@@ -424,8 +436,9 @@ impl ReplayTarget for Converse {
         ]
     }
 
-    /// A hosted tool's use is a typed `toolUse`; its result is the
-    /// `toolResult` in the same turn. Converse rejects one without the other.
+    /// A hosted tool's use is a `toolUse` typed other than `tool_use`; its
+    /// result is the `toolResult` in the same turn. Converse rejects one
+    /// without the other.
     fn hosted_pair(&self, item: &Value) -> Option<(Pairing, String)> {
         let (side, body) = match item.get("toolUse") {
             Some(body) => (Pairing::Use, body),

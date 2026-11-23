@@ -1,24 +1,18 @@
-//! CT-12: session finder.
+//! Session finder. `/find [--tools] [--all-projects] <text>` searches every saved session
+//! of this project (of every project with `--all-projects`), the running one included and
+//! marked: the user's messages, the replies and the tool calls' arguments, and with
+//! `--tools` the tool results too. The search is a task that lists the sessions
+//! ([`Home::saved_sessions`], [`SessionEntry`]) and sends each session's matches as it
+//! reads it ([`Running::stream`]); a new `/find` drops the search before it, which cancels
+//! it. The results are a [`Picker`] that fills in place as they come, newest session first:
+//! up to three snippets per session, the matched text in «», each beside the session's
+//! label, age and model, with the highlighted hit's conversation previewed at it
+//! ([`PickPreview`]). A session that does not read is skipped and counted above the list.
 //!
-//! `/find [--tools] [--all-projects] <text>` searches every saved session
-//! of this project (of every project with `--all-projects`), the running
-//! one included and marked: the user's messages, the replies and the tool
-//! calls' arguments, and with `--tools` the tool results too. The search
-//! is a task that lists the sessions ([`Home::saved_sessions`],
-//! [`SessionEntry`]) and sends each session's matches as it reads it
-//! ([`Running::stream`]); a new `/find` drops the search before it, which
-//! cancels it. The results are a [`Picker`] that fills in place as they
-//! come, newest session first: up to three snippets per session, the
-//! matched text in «», each beside the session's label, age and model,
-//! with the highlighted hit's conversation previewed at it
-//! ([`PickPreview`]). A session that does not read is skipped and counted
-//! above the list.
-//!
-//! Picking a snippet shows its conversation at that message, read only,
-//! with two actions: **Resume** switches to that session (`rig_basics::sessions`'
-//! [`SwitchSession`]) and scrolls its transcript to the message once it is
-//! restored, and **Copy** puts the message's text on the clipboard
-//! ([`CopyToClipboard`]).
+//! Picking a snippet shows its conversation at that message, read only, with two actions:
+//! **Resume** switches to that session (`rig_basics::sessions`' [`SwitchSession`]) and
+//! scrolls its transcript to the message once it is restored, and **Copy** puts the
+//! message's text on the clipboard ([`CopyToClipboard`]).
 
 use std::cmp::Reverse;
 use std::sync::Arc;

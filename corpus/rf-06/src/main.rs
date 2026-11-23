@@ -1,7 +1,7 @@
 //! `gem`: chat, draw and index on Gemini over gRPC.
 //!
 //! ```text
-//! gem chat [--model M] [--thinking off|<budget>|low|high]
+//! gem chat [--model M] [--thinking default|off|<tokens>|<level>]
 //! gem draw <prompt> [--model M]
 //! gem index <dir> [--model M] [--dims N]   (then chats over the notes)
 //! ```
@@ -11,7 +11,8 @@
 use std::io::{BufRead, Write};
 use std::path::Path;
 
-use corpus_rf_06::{ChatEvent, ChatSettings, Gem, GemError, Notes, Thinking, stem_for};
+use corpus_rf_06::{ChatEvent, ChatSettings, Gem, GemError, Notes, stem_for, thinking};
+use rig_core::completion::Reasoning;
 use rig_core::providers::gemini::GeminiConfig;
 
 /// A command-line failure.
@@ -70,15 +71,16 @@ async fn main() -> Result<(), Failure> {
 
 /// An interactive chat until end of input.
 async fn chat(gem: &Gem, args: &[String], notes: Option<Notes>) -> Result<(), Failure> {
+    let model = flag(args, "--model")
+        .filter(|_| args.first().map(String::as_str) == Some("chat"))
+        .unwrap_or("gemini-2.5-flash");
     let thinking = match flag(args, "--thinking") {
-        Some(text) => Thinking::parse(text).ok_or("--thinking takes off, a budget or a level")?,
-        None => Thinking::Budget(1024),
+        // As text: `main` prints its error with `Debug`, which shows a struct.
+        Some(text) => thinking(model, text).map_err(|error| format!("--thinking: {error}"))?,
+        None => Some(Reasoning::Budget { tokens: 1024 }),
     };
     let settings = ChatSettings {
-        model: flag(args, "--model")
-            .filter(|_| args.first().map(String::as_str) == Some("chat"))
-            .unwrap_or("gemini-2.5-flash")
-            .to_owned(),
+        model: model.to_owned(),
         thinking,
         conversation: "chat".to_owned(),
     };

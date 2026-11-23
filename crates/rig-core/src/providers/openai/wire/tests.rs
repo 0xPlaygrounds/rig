@@ -102,13 +102,17 @@ fn a_gateway_configuration_round_trips_without_its_credential() {
     assert_eq!(restored.provider.dialect, chatgpt);
 }
 
-/// The endpoint template a wire's encoded request declares.
+/// The completion endpoint a wire's encoded request is sent to.
 fn route_of(wire: &OpenAiWire) -> Option<&'static str> {
     use crate::wire::Wire as _;
     let request = crate::completion::CompletionRequest::new("hi");
-    wire.encode(request, crate::wire::Mode::Unary)
-        .expect("the request encodes")
-        .route
+    let encoded = wire
+        .encode(request, crate::wire::Mode::Unary)
+        .expect("the request encodes");
+    let path = encoded.request.uri().path();
+    ["/responses", "/chat/completions"]
+        .into_iter()
+        .find(|endpoint| path.ends_with(endpoint))
 }
 
 /// The default completion wire is the dialect's flagship route, and it is
@@ -304,7 +308,7 @@ fn azure_accepts_either_credential_under_its_own_header() {
     assert_eq!(keyed["api-key"], "account-key");
     assert!(!keyed.contains_key("authorization"));
 
-    let token = headers(&OpenAIConfig::with_alternate_key(&AZURE, "entra-token"));
+    let token = headers(&OpenAIConfig::with_key(&AZURE, "entra-token").with_auth(alternative.auth));
     assert_eq!(token["authorization"], "Bearer entra-token");
     assert!(
         !token.contains_key("api-key"),
@@ -313,28 +317,28 @@ fn azure_accepts_either_credential_under_its_own_header() {
 }
 
 /// Hugging Face's router picks a sub-provider, and the choice is observable:
-/// Fireworks addresses models by a qualified id, and only the default
-/// sub-provider serves the endpoints that put the model in the URL.
+/// the model names it by suffix, and only the default sub-provider serves
+/// the endpoints that put the model in the URL.
 #[test]
 fn the_huggingface_sub_route_decides_the_model_and_the_routes() {
     assert_eq!(
         SubRoute::Fireworks.model_identifier("llama-3.3-70b"),
-        "accounts/fireworks/models/llama-3.3-70b"
+        "llama-3.3-70b:fireworks"
     );
     // Idempotent: the rewrite runs on the resolved request model, so an
-    // already-qualified per-request override must not be prefixed twice.
+    // already-selecting per-request override must not be suffixed twice.
     assert_eq!(
-        SubRoute::Fireworks.model_identifier("accounts/fireworks/models/llama-3.3-70b"),
-        "accounts/fireworks/models/llama-3.3-70b"
+        SubRoute::Fireworks.model_identifier("llama-3.3-70b:fireworks"),
+        "llama-3.3-70b:fireworks"
     );
     assert_eq!(
         SubRoute::Together.model_identifier("llama-3.3-70b"),
-        "llama-3.3-70b"
+        "llama-3.3-70b:together"
     );
 
     // The slugs the router routes by.
-    assert_eq!(SubRoute::HFInference.slug(), "hf-inference/models");
-    assert_eq!(SubRoute::Fireworks.slug(), "fireworks-ai");
+    assert_eq!(SubRoute::HFInference.slug(), "hf-inference");
+    assert_eq!(SubRoute::Fireworks.slug(), "fireworks");
     assert_eq!(SubRoute::from("my-route").slug(), "my-route");
 
     // `None` behaves as the router's own default, which is the only
@@ -348,7 +352,7 @@ fn the_huggingface_sub_route_decides_the_model_and_the_routes() {
                 "openai/whisper-large-v3"
             )
             .expect("hf-inference serves transcription"),
-        "https://router.huggingface.co/openai/whisper-large-v3"
+        "https://router.huggingface.co/hf-inference/models/openai/whisper-large-v3"
     );
 
     let routed = default.clone().with_sub_route(SubRoute::Together);
@@ -502,4 +506,211 @@ fn llamacpp_serves_its_operational_routes_unversioned() {
             );
         }
     }
+}
+
+/// A built request is what a host logs when it debugs a call, so its `Debug`
+/// must hide the key each credential header still sends, on every wire that
+/// builds its own key header. Copilot is checked on both envelope routes.
+#[test]
+fn a_debug_printed_request_hides_the_key_it_sends() {
+    use crate::completion::CompletionRequest;
+    use crate::providers::anthropic::wire::{AnthropicConfig, OLLAMA as ANTHROPIC_OLLAMA};
+    use crate::providers::{cohere, copilot, gemini, ollama, voyageai};
+    use crate::wire::{Mode, Wire};
+
+    const KEY: &str = "sk-NOTAREALKEY-0123456789";
+    let bearer = format!("Bearer {KEY}");
+    let probe = || CompletionRequest::new("probe").max_tokens(16);
+    let texts = || vec!["probe".to_owned()];
+    let openai = |config: OpenAIConfig| config.completion("gpt-5").encode(probe(), Mode::Unary);
+    let anthropic = |config: AnthropicConfig| {
+        config
+            .completion("claude-haiku-4-5")
+            .encode(probe(), Mode::Unary)
+    };
+    let gemini = gemini::GeminiConfig::new(KEY);
+    let built = [
+        (
+            openai(OpenAIConfig::new(KEY)).map(|e| e.request),
+            "authorization",
+            bearer.as_str(),
+        ),
+        (
+            openai(OpenAIConfig::with_key(&AZURE, KEY)).map(|e| e.request),
+            "api-key",
+            KEY,
+        ),
+        (
+            openai(OpenAIConfig::with_key(&LLAMACPP, KEY)).map(|e| e.request),
+            "authorization",
+            bearer.as_str(),
+        ),
+        (
+            anthropic(AnthropicConfig::new(KEY)).map(|e| e.request),
+            "x-api-key",
+            KEY,
+        ),
+        (
+            anthropic(AnthropicConfig::with_key(&ANTHROPIC_OLLAMA, KEY)).map(|e| e.request),
+            "authorization",
+            bearer.as_str(),
+        ),
+        (
+            gemini
+                .completion("gemini-3.8-flash")
+                .encode(probe(), Mode::Unary)
+                .map(|e| e.request),
+            "x-goog-api-key",
+            KEY,
+        ),
+        (
+            gemini
+                .interactions("gemini-3.8-flash")
+                .encode(probe(), Mode::Unary)
+                .map(|e| e.request),
+            "x-goog-api-key",
+            KEY,
+        ),
+        (
+            OpenAIConfig::with_key(&copilot::DIALECT, KEY)
+                .completion(copilot::GPT_4O)
+                .encode(probe(), Mode::Unary)
+                .map(|e| e.request),
+            "authorization",
+            bearer.as_str(),
+        ),
+        (
+            OpenAIConfig::with_key(&copilot::DIALECT, KEY)
+                .embedding(copilot::TEXT_EMBEDDING_3_SMALL, None)
+                .encode(texts(), Mode::Unary)
+                .map(|e| e.request),
+            "authorization",
+            bearer.as_str(),
+        ),
+        (
+            cohere::CohereConfig::new(KEY)
+                .embedding(cohere::EMBED_V4, None)
+                .encode(texts(), Mode::Unary)
+                .map(|e| e.request),
+            "authorization",
+            bearer.as_str(),
+        ),
+        (
+            ollama::OllamaConfig::new()
+                .with_api_key(KEY)
+                .native_completion("qwen3:4b")
+                .encode(probe(), Mode::Unary)
+                .map(|e| e.request),
+            "authorization",
+            bearer.as_str(),
+        ),
+        (
+            voyageai::VoyageAiConfig::new(KEY)
+                .embedding("voyage-3.5", None)
+                .encode(texts(), Mode::Unary)
+                .map(|e| e.request),
+            "authorization",
+            bearer.as_str(),
+        ),
+    ];
+    for (request, header, value) in built {
+        let request = request.unwrap_or_else(|error| panic!("{error}"));
+        assert_eq!(
+            request.headers().get(header).map(|v| v.as_bytes()),
+            Some(value.as_bytes()),
+            "{} lost the key in {header}",
+            request.uri()
+        );
+        assert!(
+            !format!("{request:?}").contains(KEY),
+            "the debug-printed request to {} leaked the key in {header}",
+            request.uri()
+        );
+    }
+}
+
+/// An explicit Hugging Face sub-provider reaches the router as the
+/// `model:provider` suffix on the model the request finally sends, after a
+/// raw `model` override. No selection leaves the model to the router's own
+/// routing, and a model already selecting another provider is refused.
+#[test]
+fn the_huggingface_sub_route_selects_the_provider_by_model_suffix() {
+    use crate::completion::CompletionRequest;
+    use crate::test_utils::json_body;
+    use crate::wire::{Mode, Wire};
+    use serde_json::json;
+
+    const MODEL: &str = "meta-llama/Llama-3.3-70B-Instruct";
+    let router = OpenAIConfig::with_key(&HUGGINGFACE, "hf");
+    let sent = |config: &OpenAIConfig, request: CompletionRequest| {
+        config
+            .chat(MODEL)
+            .encode(request, Mode::Unary)
+            .map(|encoded| {
+                (
+                    encoded.request.uri().to_string(),
+                    json_body(&encoded.request),
+                )
+            })
+    };
+    let probe = || CompletionRequest::new("probe");
+    let model_sent = |config: &OpenAIConfig, request: CompletionRequest| {
+        sent(config, request)
+            .expect("the request encodes")
+            .1
+            .get("model")
+            .cloned()
+    };
+
+    for (route, suffix) in [
+        (SubRoute::Together, "together"),
+        (SubRoute::Nebius, "nebius"),
+        (SubRoute::Fireworks, "fireworks"),
+        (SubRoute::HFInference, "hf-inference"),
+    ] {
+        let routed = router.clone().with_sub_route(route);
+        let (uri, body) = sent(&routed, probe()).expect("the request encodes");
+        assert_eq!(uri, "https://router.huggingface.co/v1/chat/completions");
+        assert_eq!(body.get("model"), Some(&json!(format!("{MODEL}:{suffix}"))));
+    }
+
+    assert_eq!(model_sent(&router, probe()), Some(json!(MODEL)));
+
+    let together = router.clone().with_sub_route(SubRoute::Together);
+    let mut overridden = probe();
+    overridden.model = Some("org/request-model".to_owned());
+    overridden.additional_params = Some(json!({ "model": "org/raw-model" }));
+    assert_eq!(
+        model_sent(&together, overridden),
+        Some(json!("org/raw-model:together"))
+    );
+
+    let mut already = probe();
+    already.model = Some(format!("{MODEL}:together"));
+    assert_eq!(
+        model_sent(&together, already),
+        Some(json!(format!("{MODEL}:together")))
+    );
+
+    let fireworks = router.clone().with_sub_route(SubRoute::Fireworks);
+    let mut already = probe();
+    already.model = Some(format!("{MODEL}:fireworks"));
+    assert_eq!(
+        model_sent(&fireworks, already),
+        Some(json!(format!("{MODEL}:fireworks")))
+    );
+
+    let mut conflicting = probe();
+    conflicting.model = Some(format!("{MODEL}:novita"));
+    assert!(
+        sent(&together, conflicting).is_err(),
+        "a model selecting another provider is refused, not sent with two suffixes"
+    );
+
+    let mut raw_conflict = probe();
+    raw_conflict.additional_params = Some(json!({ "model": format!("{MODEL}:fastest") }));
+    assert!(
+        sent(&together, raw_conflict).is_err(),
+        "a raw override selecting a policy is refused too"
+    );
 }

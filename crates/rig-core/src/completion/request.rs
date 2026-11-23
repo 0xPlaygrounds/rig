@@ -450,10 +450,27 @@ impl CompletionResponse {
     /// The tool calls the provider ended the reply in the middle of (their
     /// arguments as far as they came), in the order they opened, such as a
     /// call cut by [`FinishReason::Length`]. Empty when every call in
-    /// [`Self::choice`] was finished.
+    /// [`Self::choice`] was finished. The calls to answer as cut off are
+    /// [`cut_off_calls`](Self::cut_off_calls).
     pub fn unfinished_calls(&self) -> impl Iterator<Item = &ToolCall> {
         self.tool_calls()
             .filter(|call| self.unfinished_calls.contains(&call.id))
+    }
+
+    /// The calls a host answers as cut off and never runs: the
+    /// [`unfinished_calls`](Self::unfinished_calls) of a reply whose finish
+    /// reason [truncated its output](FinishReason::truncated_output), the
+    /// output limit or a content filter. Empty for any other finish reason
+    /// or none, even with unfinished calls, such as a reply the caller
+    /// stopped reading, whose calls are its own to settle. Today only a
+    /// streamed reply marks calls unfinished, so a reply that came whole
+    /// has none.
+    pub fn cut_off_calls(&self) -> impl Iterator<Item = &ToolCall> {
+        let truncated = self
+            .finish_reason
+            .as_ref()
+            .is_some_and(FinishReason::truncated_output);
+        self.unfinished_calls().filter(move |_| truncated)
     }
 
     /// The same response, `calls` (ids of calls in [`Self::choice`]) being
@@ -518,13 +535,7 @@ impl CompletionResponse {
 
     /// The text parts of [`Self::choice`], concatenated in order.
     pub fn text(&self) -> String {
-        self.choice
-            .iter()
-            .filter_map(|part| match part {
-                AssistantContent::Text(text) => Some(text.text.as_str()),
-                _ => None,
-            })
-            .collect()
+        AssistantContent::concat_text(&self.choice)
     }
 
     /// The reasoning text of [`Self::choice`], concatenated in order.
@@ -585,18 +596,14 @@ impl CompletionResponse {
 
     /// The tool calls in [`Self::choice`], in order.
     pub fn tool_calls(&self) -> impl Iterator<Item = &ToolCall> {
-        self.choice.iter().filter_map(|part| match part {
-            AssistantContent::ToolCall(call) => Some(call),
-            _ => None,
-        })
+        self.choice
+            .iter()
+            .filter_map(AssistantContent::as_tool_call)
     }
 
     /// Sets or clears the finish reason, reconciling a present reason with the choice.
     pub fn with_optional_finish_reason(mut self, finish_reason: Option<FinishReason>) -> Self {
-        let has_tool_call = self
-            .choice
-            .iter()
-            .any(|content| matches!(content, AssistantContent::ToolCall(_)));
+        let has_tool_call = self.tool_calls().next().is_some();
         self.finish_reason =
             finish_reason.map(|reason| reason.reconcile_with_output(has_tool_call));
         self
@@ -711,6 +718,9 @@ pub struct Usage {
     /// search, code execution), so it can be lower than the bill.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cost: Option<Cost>,
+    /// Whether this sum misses a figure, as [`Self::tokens_complete`] reads it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) incomplete_tokens: bool,
 }
 
 impl Usage {
@@ -725,12 +735,26 @@ impl Usage {
             tool_use_prompt_tokens: None,
             reasoning_tokens: None,
             cost: None,
+            incomplete_tokens: false,
         }
     }
 
     /// Whether the provider reported any counter or a cost.
     pub fn is_reported(&self) -> bool {
-        *self != Self::default()
+        Self {
+            incomplete_tokens: false,
+            ..*self
+        } != Self::default()
+    }
+
+    /// Whether this sum has a figure from every call for each of input,
+    /// output and total. `false` means a summed counter can be lower than
+    /// what the calls used. A counter no call reported stays `None`, which
+    /// does not make the sum incomplete, and the detail counters such as
+    /// [`Self::reasoning_tokens`](field@Self::reasoning_tokens) are not
+    /// considered.
+    pub fn tokens_complete(&self) -> bool {
+        !self.incomplete_tokens
     }
 
     /// The tokens the call read and wrote, what a conversation's next
@@ -814,19 +838,36 @@ impl Usage {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Cost {
     /// Uncached input tokens.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::json_utils::floats"
+    )]
     pub input: Option<f64>,
     /// Output tokens, reasoning included.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::json_utils::floats"
+    )]
     pub output: Option<f64>,
     /// Input tokens read from a cache.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::json_utils::floats"
+    )]
     pub cache_read: Option<f64>,
     /// Input tokens written to a cache.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::json_utils::floats"
+    )]
     pub cache_write: Option<f64>,
     /// The whole charge, or a lower bound of it when the cost is not
     /// complete.
+    #[serde(deserialize_with = "crate::json_utils::floats")]
     pub total: f64,
     /// Whether a part with tokens had no price, so `total` leaves it out.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -862,25 +903,14 @@ impl Cost {
 
     /// A cost split into its parts, each known; `total` is their sum.
     pub fn from_parts(input: f64, output: f64, cache_read: f64, cache_write: f64) -> Self {
-        Self {
-            input: Some(input),
-            output: Some(output),
-            cache_read: Some(cache_read),
-            cache_write: Some(cache_write),
-            total: input + output + cache_read + cache_write,
-            incomplete: false,
-        }
+        Self::priced(input, output, Some(cache_read), Some(cache_write))
     }
 
     /// A cost known only as its total; every part is `None`.
     pub fn from_total(total: f64) -> Self {
         Self {
-            input: None,
-            output: None,
-            cache_read: None,
-            cache_write: None,
             total,
-            incomplete: false,
+            ..Self::default()
         }
     }
 
@@ -938,12 +968,22 @@ impl Add for Cost {
 }
 
 /// Sum two counters where an unreported side does not turn a reported one
-/// into "unreported".
+/// into "unreported". A running account stops at `u64::MAX` rather than
+/// wrap.
 fn add_counter(lhs: Option<u64>, rhs: Option<u64>) -> Option<u64> {
     match (lhs, rhs) {
         (None, None) => None,
-        (lhs, rhs) => Some(lhs.unwrap_or(0) + rhs.unwrap_or(0)),
+        (lhs, rhs) => Some(lhs.unwrap_or(0).saturating_add(rhs.unwrap_or(0))),
     }
+}
+
+/// The sum of the token `counts` one reply reported, or an error when it
+/// overflows: no reply counts that many tokens, so its usage is malformed.
+pub(crate) fn token_sum(counts: impl IntoIterator<Item = u64>) -> Result<u64, ProviderError> {
+    counts
+        .into_iter()
+        .try_fold(0_u64, u64::checked_add)
+        .ok_or_else(|| ProviderError::Response("the reply's token counts overflow".to_owned()))
 }
 
 impl Add for Usage {
@@ -958,10 +998,32 @@ impl Add for Usage {
 /// Token counters add where an unreported side adds nothing. Cost sums only
 /// when both sides have one: a turn whose cost is unknown makes the sum
 /// unknown, rather than too low. A side that reports nothing at all
-/// ([`Usage::is_reported`] is `false`) is the identity, so a fold from
+/// ([`Usage::is_reported`] is `false`) adds nothing, so a fold from
 /// [`Usage::default`] keeps its first turn's cost.
+///
+/// The sum is no longer [complete](Usage::tokens_complete) when either side
+/// is not, when only one side has input, output or total, or when the right
+/// side reports nothing, which counts as a call that reported nothing. An
+/// empty left side counts as the start of a fold, so fold calls from
+/// [`Usage::default`]: `empty_call + call` leaves no mark.
 impl AddAssign for Usage {
     fn add_assign(&mut self, other: Self) {
+        let gap = |lhs: Option<u64>, rhs: Option<u64>| lhs.is_some() != rhs.is_some();
+        let incomplete_tokens = self.incomplete_tokens
+            || other.incomplete_tokens
+            || !other.is_reported()
+            || (self.is_reported()
+                && (gap(self.input_tokens, other.input_tokens)
+                    || gap(self.output_tokens, other.output_tokens)
+                    || gap(self.total_tokens, other.total_tokens)));
+        self.add_figures(other);
+        self.incomplete_tokens = incomplete_tokens;
+    }
+}
+
+impl Usage {
+    /// Sums the counters and cost of `other` into this one.
+    fn add_figures(&mut self, other: Self) {
         if !other.is_reported() {
             return;
         }
@@ -1001,7 +1063,8 @@ impl AddAssign for Usage {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct UsageTotals {
     /// The token counters summed, with no cost: a call that did not
-    /// report a counter adds nothing to it.
+    /// report a counter adds nothing to it, and
+    /// [`Usage::tokens_complete`] is then `false`.
     pub tokens: Usage,
     /// The known costs summed, in USD.
     pub cost: f64,
@@ -1030,7 +1093,9 @@ impl UsageTotals {
 
     /// Adds what `other` summed.
     pub fn add(&mut self, other: &UsageTotals) {
-        self.tokens += other.tokens;
+        if other.calls > 0 {
+            self.tokens += other.tokens;
+        }
         self.cost += other.cost;
         self.unpriced += other.unpriced;
         self.calls += other.calls;
@@ -1141,14 +1206,18 @@ impl std::fmt::Display for ContextUse {
 /// A token count in at most four characters plus a unit: `999`, `1.2k`,
 /// `45k`, `1.2M`.
 pub fn tokens_label(count: u64) -> String {
-    // Shown rounded, so the float conversion's precision does not matter.
-    let scaled = |unit: f64| count as f64 / unit;
+    // The unit follows the rounded value, so 9,999 reads `10k`, not `10.0k`.
+    let rounded = |unit: u64| count.saturating_add(unit / 2) / unit;
+    let tenths = |unit: u64| {
+        let tenths = rounded(unit / 10);
+        format!("{}.{}", tenths / 10, tenths % 10)
+    };
     match count {
         0..1_000 => count.to_string(),
-        1_000..10_000 => format!("{:.1}k", scaled(1e3)),
-        10_000..1_000_000 => format!("{:.0}k", scaled(1e3)),
-        1_000_000..10_000_000 => format!("{:.1}M", scaled(1e6)),
-        _ => format!("{:.0}M", scaled(1e6)),
+        _ if rounded(100) < 100 => format!("{}k", tenths(1_000)),
+        _ if rounded(1_000) < 1_000 => format!("{}k", rounded(1_000)),
+        _ if rounded(100_000) < 100 => format!("{}M", tenths(1_000_000)),
+        _ => format!("{}M", rounded(1_000_000)),
     }
 }
 
@@ -1171,7 +1240,7 @@ pub struct ProviderCapabilities {
     /// Whether the model answers a forced tool choice (`Required` or
     /// `Specific`) with an error. Rig then does not force the output tool
     /// of its own structured-output flow (the extractor). Defaults to `false`.
-    #[serde(default, skip_serializing_if = "crate::json_utils::is_false")]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub rejects_forced_tool_choice: bool,
 }
 
@@ -1220,6 +1289,7 @@ pub struct CompletionRequest {
     /// so copying a request copies pointers.
     pub tools: Vec<Arc<ToolDefinition>>,
     /// The temperature to be sent to the completion model provider
+    #[serde(default, deserialize_with = "crate::json_utils::floats")]
     pub temperature: Option<f64>,
     /// The max tokens to be sent to the completion model provider
     pub max_tokens: Option<u64>,
@@ -1323,9 +1393,9 @@ impl CompletionRequest {
     /// `String` and is not checked. A tool result holding one empty text
     /// block is not empty.
     ///
-    /// [`Model::call`](crate::driver::Model::call),
-    /// [`Model::stream`](crate::driver::Model::stream) and their `_observed`
-    /// twins run it before encoding, so it covers
+    /// [`Model::call`](crate::driver::Model::call)
+    /// and [`Model::stream`](crate::driver::Model::stream) run it before
+    /// encoding, so it covers
     /// [`DynModel`](crate::DynModel), every model a handler serves and the
     /// agent runtimes built on them. The OpenAI Responses websocket session
     /// sends without the driver and runs it on each send. Code that encodes
@@ -1380,15 +1450,12 @@ impl CompletionRequest {
     /// Most providers do not accept documents directly as input, so it needs to convert into a
     /// `Message` so that it can be incorporated into `chat_history`.
     pub fn normalized_documents(&self) -> Option<Message> {
-        Self::normalized_documents_from(&self.documents)
-    }
-
-    fn normalized_documents_from(documents: &[Document]) -> Option<Message> {
-        if documents.is_empty() {
+        if self.documents.is_empty() {
             return None;
         }
 
-        let content = documents
+        let content = self
+            .documents
             .iter()
             .map(|doc| UserContent::document_text(doc.to_string(), Some(DocumentMediaType::TXT)))
             .collect();

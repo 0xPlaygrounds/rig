@@ -1,17 +1,13 @@
-//! SP-01: 01. Environment policy for agent commands (splits fresh held-out
-//! spec `01-shell-env-policy.md`).
+//! Environment policy for agent commands. [`ShellEnvPolicyPlugin`] builds the environment of
+//! every process the agents start from a policy: `~/.config/rig/env-policy.toml` with the
+//! project's `.rig/env-policy.toml` merged over it ([`EnvPolicy`]). Every process gets the
+//! variables `allow` names (always with [`DEFAULT_ALLOW`]) that no `deny` glob matches, and the
+//! `set` pairs; every other variable of this process is absent.
 //!
-//! [`ShellEnvPolicyPlugin`] builds the environment of every process the
-//! agents start from a policy: `~/.config/rig/env-policy.toml` with the
-//! project's `.rig/env-policy.toml` merged over it ([`EnvPolicy`]). Every
-//! process gets the variables `allow` names (always with [`DEFAULT_ALLOW`])
-//! that no `deny` glob matches, and the `set` pairs; every other variable
-//! of this process is absent. The policy is read again as each tool call
-//! comes in and set on the app's [`Processes`]; an agent with an
-//! `[agent.<name>]` section gets a `shell` of its own with its extras. A
-//! `shell` command that names a denied variable is refused before it
-//! starts, a malformed file keeps the last good policy with one warning,
-//! and `/env` lists what the focused agent's commands see.
+//! The policy is read again as each tool call comes in and set on the app's [`Processes`]; an
+//! agent with an `[agent.<name>]` section gets a `shell` of its own with its extras. A `shell`
+//! command that names a denied variable is refused before it starts, a malformed file keeps the
+//! last good policy with one warning, and `/env` lists what the focused agent's commands see.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsString;
@@ -20,7 +16,6 @@ use std::path::{Path, PathBuf};
 
 use bevy_ecs::system::SystemParam;
 use glob::Pattern;
-use rig_basics::coding_tools::ShellOutput;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::serve::ErasedHandler;
 use rig_harness::rig_core::serve::adapters::ToolAdapter;
@@ -410,7 +405,13 @@ struct ShellParts<'w, 's> {
 /// section says.
 fn prepare(
     mut calls: Query<
-        (Entity, &ToolRequest, Option<&ForAgent>, &mut CallHandler),
+        (
+            Entity,
+            &ToolRequest,
+            Option<&ForAgent>,
+            Option<&CallPlace>,
+            &mut CallHandler,
+        ),
         (Added<Admitted>, ToolCalls),
     >,
     agents: Query<(Option<&AgentTitle>, Option<&Name>)>,
@@ -422,7 +423,7 @@ fn prepare(
         return;
     }
     files.refresh(false);
-    for (call, request, agent, mut handler) in &mut calls {
+    for (call, request, agent, place, mut handler) in &mut calls {
         let Some(&ForAgent(agent)) = agent else {
             continue;
         };
@@ -450,6 +451,8 @@ fn prepare(
             workspace: parts.workspace.0.clone(),
             launcher,
             live: Some(live),
+            // A redaction plugin's, which the harness's own shell had.
+            filter: place.and_then(|place| place.filter.clone()),
             spill: parts.scratch.as_ref().and_then(|scratch| scratch.spill()),
             cut: parts
                 .output

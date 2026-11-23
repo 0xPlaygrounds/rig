@@ -31,19 +31,20 @@ use bevy_ecs::prelude::*;
 use rig_ecs::agent::CallOf;
 use rig_ecs::stage::{Effect, EffectRequest, ForAgent, Settled, SupersededBy};
 use rig_ecs::tools::ToolRequest;
-use rig_ecs::turn::{ModelRequest, SideCall, TurnCall};
+use rig_ecs::turn::{ModelRequest, Rebuilt, SideCall, TurnCall};
 
 use crate::load::ProvidedBy;
 
 /// Sends `effect` again: spawns a successor that supersedes it, with its
 /// request, unless it settled or was superseded already. A [`TurnCall`]
-/// or [`SideCall`] is built anew by the kernel. A plugin's own
+/// or [`SideCall`] is built anew by the kernel, for the connection its
+/// request named ([`Rebuilt`]). A plugin's own
 /// [`ModelRequest`], [`EffectRequest`] or [`ToolRequest`] is copied as it
 /// is now, with its Prepare edits (a model call's connection is routed and
 /// adapted again in Prepare, as `Adapted` is not copied), and its
 /// [`Effect`] parent and purpose, `CallOf`, `ForAgent`, `ChildOf`,
-/// `ProvidedBy` and `Name`. The owner's markers follow by
-/// [`follow_successor`](rig_ecs::stage::follow_successor):
+/// `ProvidedBy` and `Name`; the kernel gives it the call's `InReply`. The
+/// owner's markers follow by [`follow_successor`](rig_ecs::stage::follow_successor):
 /// `commands.queue(resend(call))`.
 pub fn resend(effect: Entity) -> impl Command {
     move |world: &mut World| {
@@ -82,6 +83,9 @@ pub fn resend(effect: Entity) -> impl Command {
         successor.add_related::<SupersededBy>(&[effect]);
         if turn_call {
             successor.insert(TurnCall);
+        }
+        if turn_call || build_from.is_some() {
+            successor.insert(Rebuilt);
         }
         let (model, request, tool) = copied;
         insert(&mut successor, build_from);

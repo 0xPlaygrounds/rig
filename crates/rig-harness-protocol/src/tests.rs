@@ -1,7 +1,21 @@
+#![allow(
+    clippy::disallowed_methods,
+    reason = "test fixtures write and read files of their own"
+)]
+
 use super::{
-    AgentDescription, DescribedCommand, DescribedFlag, DescribedSecret, Home, Invocation,
-    secret_variable,
+    AgentDescription, DescribedCommand, DescribedFlag, DescribedSecret, Home, Invocation, Stamp,
+    is_secret_variable, secret_variable, warnings,
 };
+
+/// Blank text is no warning, and any other text that is not an array of
+/// strings is one warning, as it is.
+#[test]
+fn warnings_read_plain_text_whole() {
+    assert!(warnings("").is_empty() && warnings(" \n").is_empty());
+    assert_eq!(warnings("not an array"), ["not an array"]);
+    assert_eq!(warnings("[1, \"a\"]"), ["[1, \"a\"]"]);
+}
 
 #[test]
 fn plugin_options_pass_through_and_read_back() {
@@ -160,11 +174,38 @@ fn the_command_line_is_read_against_the_report() {
         ))
     );
     let refused = |args: &[&str]| words(args).err().unwrap_or_default();
-    assert!(refused(&["--yes", "build"]).contains("put it first"));
+    // A launcher's word says the exact line that runs it: options before
+    // it dropped, and only the words it takes.
+    for (args, line) in [
+        (&["--yes", "build"][..], "rig build"),
+        (&["-m", "ollama/qwen3", "update"], "rig update"),
+        (&["update", "now"], "rig update"),
+        (&["-r", "fix", "--yes", "help-agents"], "rig help-agents"),
+        (
+            &["--remote=h:/p", "help", "stats", "more"],
+            "rig help stats",
+        ),
+        (
+            &["--yes", "plugin", "new", "my plugin", "--path", "it's"],
+            r"rig plugin new 'my plugin' --path 'it'\''s'",
+        ),
+        (
+            &["--yes", "plugin", "", "$HOME", "`x`", "a\\b", "a\nb"],
+            "rig plugin '' '$HOME' '`x`' 'a\\b' 'a\nb'",
+        ),
+    ] {
+        let why = refused(args);
+        let command = line.split(' ').nth(1).unwrap_or_default();
+        assert_eq!(
+            why,
+            format!("`{command}` is the launcher's own command; run it as `{line}`"),
+            "{args:?}"
+        );
+    }
     let unknown = refused(&["statz"]);
     assert!(
         unknown.contains(
-            "unknown command `statz`; commands: build, plugin, help, help-agents, stats, import"
+            "unknown command `statz`; commands: build, update, plugin, help, help-agents, stats, import"
         ),
         "{unknown}"
     );
@@ -235,6 +276,31 @@ fn a_session_is_saved_once_marked_and_not_for_a_log_file_alone_nor_while_deletin
         "{marked:?} {deleting:?}"
     );
     assert!(!before && after && hidden);
+}
+
+/// A session holds logs once a log in `logs` is not empty, and counts as
+/// holding them when `logs` cannot be read, so no deleter removes it then.
+#[test]
+fn a_session_holds_logs_once_one_is_not_empty_or_when_they_cannot_be_read() {
+    let root = std::env::temp_dir().join(format!("rig-holds-logs-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    let dir = super::SessionDir::at(&root);
+    let logs = root.join("logs");
+    let none = dir.holds_logs();
+    std::fs::create_dir_all(&logs).ok();
+    std::fs::write(logs.join("a1.jsonl"), "").ok();
+    let empty = dir.holds_logs();
+    std::fs::write(logs.join("a1.jsonl"), "{}\n").ok();
+    let written = dir.holds_logs();
+    std::fs::remove_dir_all(&logs).ok();
+    std::fs::write(&logs, "").ok();
+    let unreadable = dir.holds_logs();
+    std::fs::remove_dir_all(&root).ok();
+    assert_eq!(
+        (none, empty, written, unreadable),
+        (false, false, true, true),
+        "(no logs, an empty log, a written log, logs unreadable)"
+    );
 }
 
 #[test]
@@ -325,7 +391,7 @@ fn a_saved_session_is_found_by_its_id_or_its_own_name() {
     std::fs::remove_dir_all(&root).ok();
 
     assert!(written.iter().all(Result::is_ok) && marked.is_ok());
-    assert_eq!(name.as_deref(), Some("parser"));
+    assert_eq!(name.ok().flatten().as_deref(), Some("parser"));
     assert_eq!((by_id, by_name), (Ok(parser.clone()), Ok(parser.clone())));
     assert_eq!(only_saved, Ok(tests.clone()));
     assert!(not_saved.is_err() && nobody.is_err());
@@ -335,8 +401,44 @@ fn a_saved_session_is_found_by_its_id_or_its_own_name() {
             .is_err_and(|why| why.contains(tests.as_str()) && why.contains(unsaved.as_str())),
         "{shared:?}"
     );
-    assert!(unnamed.0.is_ok() && unnamed.1.is_ok() && unnamed.2.is_none());
+    assert!(unnamed.0.is_ok() && unnamed.1.is_ok() && unnamed.2.is_ok_and(|name| name.is_none()));
     assert_eq!(left, Ok(unsaved.clone()));
+}
+
+/// A saved session whose name cannot be read may have the wanted name, so
+/// finding by name is refused naming its file and saying that resuming by
+/// id still works; finding by id is not affected.
+#[test]
+fn a_name_that_cannot_be_read_refuses_finding_by_name_but_not_by_id() {
+    let root = std::env::temp_dir().join(format!("rig-find-unreadable-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    let home = Home::at(&root);
+    let made: Vec<_> = (0..2).filter_map(|_| home.new_session().ok()).collect();
+    let [(wanted, first), (_, second)] = made.as_slice() else {
+        std::fs::remove_dir_all(&root).ok();
+        assert_eq!(made.len(), 2, "{made:?}");
+        return;
+    };
+    let unreadable = second.path().join("name");
+    let written = [
+        first.mark_saved(),
+        second.mark_saved(),
+        first.set_name(Some("mysess")),
+        std::fs::create_dir_all(&unreadable),
+    ];
+    let by_name = home.find("mysess");
+    let by_id = home.find(wanted.as_str());
+    std::fs::remove_dir_all(&root).ok();
+
+    assert!(written.iter().all(Result::is_ok), "{written:?}");
+    let read = format!("read {}: ", unreadable.display());
+    assert!(
+        by_name
+            .as_ref()
+            .is_err_and(|why| why.starts_with(&read) && why.ends_with("resume it by its id")),
+        "{by_name:?}"
+    );
+    assert_eq!(by_id, Ok(wanted.clone()));
 }
 
 /// `-r` goes wherever an option goes, so `rig -m a/b -r fix-login -p hi`
@@ -406,4 +508,315 @@ fn a_group_whose_leader_left_is_killed_for_the_process_it_left() {
     }
     assert!(!alive());
     std::fs::remove_dir_all(root).ok();
+}
+
+/// The groups an agent left are asked to stop before they are killed, so
+/// one that ends on its own when asked, such as an agent that ends what it
+/// started, gets to; one that ignores the request is killed after the
+/// grace.
+#[cfg(unix)]
+#[test]
+fn groups_left_are_asked_to_stop_before_they_are_killed() {
+    use std::os::unix::process::CommandExt;
+
+    let root = std::env::temp_dir().join(format!("rig-protocol-term-{}", std::process::id()));
+    std::fs::create_dir_all(&root).ok();
+    let run = super::RunDir::at(&root);
+    let asked = root.join("asked");
+    let ready = [root.join("heeds"), root.join("ignores")];
+    let [heeding, ignoring] = ready.each_ref().map(|ready| ready.display());
+    // Each says it is ready once its trap is set.
+    let heeds = format!(
+        "trap 'touch \"{}\"; exit' TERM; touch '{heeding}'; while :; do sleep 0.05; done",
+        asked.display()
+    );
+    let ignores = format!("trap '' TERM; touch '{ignoring}'; exec sleep 60");
+    let mut leaders = Vec::new();
+    for script in [heeds, ignores] {
+        let leader = std::process::Command::new("sh")
+            .args(["-c", &script])
+            .env(super::env::PROCESS_LEDGER, run.groups())
+            .process_group(0)
+            .spawn();
+        assert!(leader.is_ok());
+        leaders.extend(leader.ok());
+    }
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !ready.iter().all(|ready| ready.exists()) && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let ids: String = leaders
+        .iter()
+        .map(|leader| format!("{}\n", leader.id()))
+        .collect();
+    std::fs::write(run.groups(), ids).ok();
+    let started = std::time::Instant::now();
+    assert!(run.kill_left_groups().is_ok());
+    let took = started.elapsed();
+    let ended: Vec<bool> = leaders
+        .iter_mut()
+        .map(|leader| leader.wait().is_ok())
+        .collect();
+    assert_eq!(ended, [true, true]);
+    assert!(asked.exists(), "the group was killed without being asked");
+    assert!(took >= super::RunDir::STOP_GRACE, "{took:?}");
+    std::fs::remove_dir_all(root).ok();
+}
+
+/// A group whose marked processes end when asked is still killed while
+/// another of its processes, without the mark, ignores the request.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_group_is_killed_while_it_holds_processes_once_asked() {
+    use std::os::unix::process::CommandExt;
+
+    let root = std::env::temp_dir().join(format!("rig-protocol-unmarked-{}", std::process::id()));
+    std::fs::create_dir_all(&root).ok();
+    let run = super::RunDir::at(&root);
+    let pid = root.join("stubborn");
+    // The marked leader starts an unmarked member that ignores SIGTERM,
+    // then waits, ending on SIGTERM itself.
+    let script = format!(
+        "env -i sh -c \"trap '' TERM; echo \\$\\$ > '{}'; exec sleep 60\" & wait",
+        pid.display()
+    );
+    let leader = std::process::Command::new("sh")
+        .args(["-c", &script])
+        .env(super::env::PROCESS_LEDGER, run.groups())
+        .process_group(0)
+        .spawn();
+    let Ok(mut leader) = leader else {
+        return assert!(leader.is_ok());
+    };
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !pid.exists() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    let stubborn = std::fs::read_to_string(&pid).unwrap_or_default();
+    std::fs::write(run.groups(), format!("{}\n", leader.id())).ok();
+    assert!(run.kill_left_groups().is_ok());
+    leader.wait().ok();
+    let gone = || {
+        std::fs::read_to_string(format!("/proc/{}/stat", stubborn.trim())).map_or(true, |stat| {
+            stat.rsplit(')')
+                .next()
+                .unwrap_or_default()
+                .trim_start()
+                .starts_with('Z')
+        })
+    };
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !gone() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    std::fs::remove_dir_all(&root).ok();
+    assert!(
+        !stubborn.trim().is_empty() && gone(),
+        "the unmarked member outlived the cleanup"
+    );
+}
+
+/// A new session's directory and `sessions/`, which hold every
+/// conversation, are the user's alone whatever the umask, and an existing
+/// wider `sessions/` is tightened.
+#[cfg(unix)]
+#[test]
+fn a_new_session_directory_is_private_to_the_user() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = std::env::temp_dir().join(format!("rig-private-session-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    let home = Home::at(&root);
+    std::fs::create_dir_all(home.sessions()).ok();
+    let wide = std::fs::Permissions::from_mode(0o755);
+    std::fs::set_permissions(home.sessions(), wide).ok();
+    let mode = |path: &std::path::Path| {
+        std::fs::metadata(path)
+            .map(|meta| meta.permissions().mode() & 0o777)
+            .ok()
+    };
+    let made = home.new_session();
+    let modes = made
+        .as_ref()
+        .map(|(_, dir)| (mode(&home.sessions()), mode(dir.path())));
+    std::fs::remove_dir_all(&root).ok();
+    let private = |mode: Option<u32>| mode.is_some_and(|mode| mode & 0o077 == 0);
+    assert!(
+        modes
+            .as_ref()
+            .is_ok_and(|(sessions, session)| private(*sessions) && private(*session)),
+        "sessions/ and the session directory modes: {modes:?}"
+    );
+}
+
+/// The four directories that hold what the user said are tightened in a
+/// home of ordinary modes, whether old, missing or linked elsewhere. The
+/// home keeps its mode, even through a link to it, and so does a file where
+/// a directory belongs.
+#[cfg(unix)]
+#[test]
+fn keep_private_tightens_the_four_directories_and_not_the_home() {
+    use std::os::unix::fs::{PermissionsExt, symlink};
+    let root = std::env::temp_dir().join(format!("rig-keep-private-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    let wide = std::fs::Permissions::from_mode(0o755);
+    let home = Home::at(root.join("home"));
+    let elsewhere = root.join("elsewhere");
+    for dir in [home.sessions(), home.projects(), elsewhere.clone()] {
+        std::fs::create_dir_all(&dir).ok();
+        std::fs::set_permissions(&dir, wide.clone()).ok();
+    }
+    symlink(&elsewhere, home.runs()).ok();
+    std::fs::set_permissions(home.root(), wide.clone()).ok();
+    let odd = Home::at(root.join("odd"));
+    std::fs::create_dir_all(odd.root()).ok();
+    std::fs::set_permissions(odd.root(), wide).ok();
+    symlink(".", odd.projects()).ok();
+    std::fs::write(odd.data(), "not a directory").ok();
+    std::fs::set_permissions(odd.data(), std::fs::Permissions::from_mode(0o644)).ok();
+    let mode = |path: &std::path::Path| {
+        std::fs::metadata(path)
+            .map(|meta| meta.permissions().mode() & 0o777)
+            .ok()
+    };
+    home.keep_private();
+    odd.keep_private();
+    let dirs = [home.sessions(), home.projects(), home.data(), home.runs()];
+    let modes = dirs.each_ref().map(|dir| mode(dir));
+    let kept = [mode(home.root()), mode(odd.root()), mode(&odd.data())];
+    std::fs::remove_dir_all(&root).ok();
+    assert!(
+        modes
+            .iter()
+            .all(|mode| mode.is_some_and(|mode| mode & 0o077 == 0)),
+        "{modes:?}"
+    );
+    assert_eq!(kept, [Some(0o755), Some(0o755), Some(0o644)]);
+}
+
+/// A file renamed over the launcher's path replaces it; the same file read
+/// again, as at a plain reload, and a file gone do not. A path that cannot
+/// be looked at, here under a file, has no stamp: it is an error.
+#[test]
+fn a_stamp_tells_a_replaced_file_from_the_same_one_or_none() {
+    let dir = std::env::temp_dir().join(format!("rig-stamp-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).ok();
+    let launcher = dir.join("rig");
+    let stamps = (|| -> std::io::Result<_> {
+        std::fs::write(&launcher, "old")?;
+        let started = Stamp::of(&launcher)?;
+        let again = Stamp::of(&launcher)?;
+        let under_a_file = Stamp::of(&launcher.join("rig")).is_err();
+        std::fs::write(dir.join(".rig"), "new")?;
+        std::fs::rename(dir.join(".rig"), &launcher)?;
+        let replaced = Stamp::of(&launcher)?;
+        std::fs::remove_file(&launcher)?;
+        let gone = Stamp::of(&launcher)?;
+        Ok((started, again, under_a_file, replaced, gone))
+    })();
+    std::fs::remove_dir_all(&dir).ok();
+    let stamps = stamps.map_err(|failure| failure.to_string());
+    assert!(stamps.is_ok(), "{stamps:?}");
+    let Ok((started, again, under_a_file, replaced, gone)) = stamps else {
+        return;
+    };
+    assert!(under_a_file);
+    assert!(!started.replaced(&again));
+    assert!(started.replaced(&replaced));
+    assert!(!started.replaced(&gone));
+    assert!(!gone.replaced(&replaced));
+    // As the launcher passes it on to its agent.
+    assert_eq!(Stamp::parse(&started.text()), started);
+    assert_eq!(Stamp::parse(&gone.text()), gone);
+    assert_eq!(Stamp::parse("12:x"), gone);
+}
+
+/// A list holding bytes that are not text still names its groups, to the
+/// agent that takes them over and to the launcher that kills them.
+#[cfg(unix)]
+#[test]
+fn a_list_with_bytes_that_are_not_text_still_names_its_groups() {
+    use std::os::unix::process::CommandExt;
+
+    let root = std::env::temp_dir().join(format!("rig-protocol-bytes-{}", std::process::id()));
+    std::fs::create_dir_all(&root).ok();
+    let run = super::RunDir::at(&root);
+    let job = std::process::Command::new("sleep")
+        .arg("30")
+        .env(super::env::PROCESS_LEDGER, run.groups())
+        .process_group(0)
+        .spawn();
+    assert!(job.is_ok());
+    let Ok(mut job) = job else { return };
+    let mut listed = b"\xff\n".to_vec();
+    listed.extend_from_slice(format!("{}\n", job.id()).as_bytes());
+    std::fs::write(run.groups(), listed).ok();
+    let live = run.live_groups().ok();
+    let killed = run.kill_left_groups().is_ok();
+    // Reaped only once killed, so `try_wait` sees it ended.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let mut ended = job.try_wait().ok().flatten().is_some();
+    while !ended && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        ended = job.try_wait().ok().flatten().is_some();
+    }
+    job.kill().ok();
+    job.wait().ok();
+    std::fs::remove_dir_all(root).ok();
+    let id = i32::try_from(job.id()).ok();
+    assert_eq!(live, id.map(|id| vec![id]));
+    assert!(killed && ended, "killed: {killed}, ended: {ended}");
+}
+
+/// A variable whose name starts with the secret prefix is a secret even
+/// when the rest of its name is not UTF-8, so no child inherits it.
+#[cfg(unix)]
+#[test]
+fn a_secret_name_that_is_not_utf8_is_still_a_secret() {
+    use std::ffi::OsStr;
+    use std::os::unix::ffi::OsStrExt;
+
+    assert!(is_secret_variable(OsStr::from_bytes(b"RIG_SECRET_\xff")));
+    assert!(is_secret_variable(OsStr::new("RIG_SECRET_CRYPT")));
+    assert!(!is_secret_variable(OsStr::from_bytes(b"RIG_\xffSECRET_")));
+}
+
+/// A usage or value name that is `-`, or `\-`, is read back as it was,
+/// not as the empty field's mark.
+#[test]
+fn a_dash_usage_survives_the_report() {
+    let command = |usage: &str| DescribedCommand {
+        name: "cat".to_owned(),
+        usage: usage.to_owned(),
+        terminal: false,
+        sessionless: false,
+        help: "reads stdin".to_owned(),
+    };
+    let flag = |value: Option<&str>| DescribedFlag {
+        name: "input".to_owned(),
+        value: value.map(str::to_owned),
+        help: "where".to_owned(),
+    };
+    let described = AgentDescription {
+        commands: ["-", "\\-", ""].map(command).into(),
+        flags: [Some("-"), Some("\\\\-"), None].map(flag).into(),
+        ..AgentDescription::default()
+    };
+    assert_eq!(AgentDescription::parse(&described.write()), described);
+}
+
+/// A word that is not UTF-8 is refused, and it is the error.
+#[cfg(unix)]
+#[test]
+fn a_word_that_is_not_utf8_is_refused_by_name() {
+    use std::ffi::{OsStr, OsString};
+    use std::os::unix::ffi::OsStringExt;
+    let words = [
+        OsString::from("-p"),
+        OsString::from_vec(b"caf\xe9".to_vec()),
+    ];
+    assert_eq!(
+        super::text_words(&words),
+        Err(words.get(1).map_or(OsStr::new(""), OsString::as_os_str))
+    );
 }

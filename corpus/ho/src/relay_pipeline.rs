@@ -41,6 +41,7 @@ use std::path::Path;
 use regex::Regex;
 use rig_basics::subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
 use rig_harness::prelude::*;
+use rig_harness::rig_ecs::session_log::Never;
 use serde::Deserialize;
 
 /// The file of pipelines, in `RIG_HOME` and in a project's `.rig`.
@@ -134,7 +135,7 @@ fn check(stages: &[StageDef]) -> Result<(), String> {
 /// On the user's agent while a pipeline of it runs; saved with the
 /// session, so a restart resumes it at its current stage.
 #[derive(Component, Reflect, Clone, Debug, Default)]
-#[reflect(Component, Saved, Default, Clone, Debug)]
+#[reflect(Component, Saved(Never), Default, Clone, Debug)]
 pub struct PipelineRun {
     /// The pipeline's name.
     pub name: String,
@@ -319,9 +320,7 @@ pub struct RelayPipelinePlugin;
 
 impl Plugin for RelayPipelinePlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<SubagentsPlugin>() {
-            app.add_plugins(SubagentsPlugin);
-        }
+        rig_harness::load::<SubagentsPlugin>(app, "rig-basics", "");
         app.init_resource::<RigHome>()
             .init_resource::<ProjectRoot>()
             .add_command(
@@ -360,11 +359,8 @@ fn pipe(
             match (run.agent, run.request) {
                 // A stage's agent at work stops its turn, and so retires.
                 (Some(agent), _) if working.contains(agent) => {
-                    let reason = Some("the pipeline stopped".to_owned());
-                    commands.trigger(StopTurn {
-                        entity: agent,
-                        reason,
-                    });
+                    let why = "the pipeline stopped";
+                    commands.trigger(StopTurn::plugin(agent, "relay-pipeline", why));
                 }
                 (Some(agent), _) => commands.trigger(Retire { entity: agent }),
                 (None, Some(request)) => commands.entity(request).try_despawn(),
@@ -488,10 +484,10 @@ fn step(
             .final_answer()
             .ok_or_else(|| "it gave no answer".to_owned()),
         TurnOutcome::Failed(why) => Err(format!("failed: {why}")),
-        TurnOutcome::Stopped(why) => Err(format!(
-            "stopped {}",
-            why.as_deref().unwrap_or("by the user")
-        )),
+        TurnOutcome::Stopped(stop) => Err(match stop.cause() {
+            StopCause::User => "stopped by the user".to_owned(),
+            cause => format!("stopped {cause}"),
+        }),
     };
     let next = run.record(answer);
     go_on(&mut commands, host, &mut run, next);

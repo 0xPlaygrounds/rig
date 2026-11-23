@@ -262,6 +262,19 @@ pub enum Sampling {
     Never,
 }
 
+/// When OpenAI Chat Completions takes a model's tools.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChatTools {
+    /// Always.
+    Any,
+    /// Only while its reasoning is off.
+    ReasoningOff,
+    /// Never: tool calls need the Responses API.
+    Never,
+}
+
 /// Wire facts the encoders read that no portable field holds. Each defaults
 /// to `false` or `None`, which is what a model the field does not concern
 /// has. An override file sets each one by its field name under a row's
@@ -288,9 +301,9 @@ pub struct Compat {
     /// OpenAI: the prompt cache takes `prompt_cache_options`, not
     /// `prompt_cache_retention`.
     pub prompt_cache_options: bool,
-    /// OpenAI: Chat Completions takes the model's tools only while its
-    /// reasoning is off.
-    pub chat_tools_need_reasoning_off: bool,
+    /// OpenAI: when Chat Completions takes the model's tools. `None` is
+    /// [`ChatTools::Any`].
+    pub chat_tools: Option<ChatTools>,
     /// The model continues a request that ends in an assistant message (a
     /// prefill) from where that message stops, instead of refusing it, as
     /// Anthropic's models before Claude 4.6 do while their reasoning is
@@ -411,6 +424,14 @@ impl ModelSpec {
             (Some(input), Some(window)) => Some(input.min(window)),
             (input, window) => input.or(window),
         }
+    }
+
+    /// The most tokens a reply from this model may write: its output limit
+    /// held to its window, as a reply never outgrows the window; `None` when
+    /// the output limit is not known.
+    pub fn output_limit(&self) -> Option<u32> {
+        let window = self.context_window.unwrap_or(u32::MAX);
+        self.max_output_tokens.map(|output| output.min(window))
     }
 
     /// This spec writing at most `tokens` in one reply.
@@ -661,12 +682,21 @@ impl ReasoningChoice {
 
 /// A reasoning setting a model does not take, and the ones it does.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
-#[error("the reasoning settings are {}, not `{name}`", choices.join(", "))]
+#[error("the reasoning settings are {}{}, not `{name}`", choices.join(", "), tokens(budget))]
 pub struct UnknownReasoning {
-    /// The name asked for.
+    /// The text asked for.
     pub name: String,
     /// The names of the model's [`ReasoningSupport::choices`].
     pub choices: Vec<&'static str>,
+    /// The reasoning-token budgets the model takes, if it takes one.
+    pub budget: Option<RangeInclusive<u32>>,
+}
+
+/// `budget` as the last of the settings an [`UnknownReasoning`] lists.
+fn tokens(budget: &Option<RangeInclusive<u32>>) -> String {
+    budget.as_ref().map_or_else(String::new, |range| {
+        format!(", or {} to {} tokens", range.start(), range.end())
+    })
 }
 
 /// Token budgets for the named levels on a model that takes a budget
@@ -736,10 +766,61 @@ impl ReasoningSupport {
             .iter()
             .find(|choice| choice.name == name)
             .copied()
-            .ok_or_else(|| UnknownReasoning {
-                name: name.to_owned(),
-                choices: choices.iter().map(|choice| choice.name).collect(),
-            })
+            .ok_or_else(|| self.unknown(name, &choices))
+    }
+
+    /// The setting `text` names for this model, `None` for the provider
+    /// default: a name of [`Self::choices`], so `high` is a budget on a model
+    /// that takes a budget and no levels; or else `off`, a level's word or
+    /// `<n> tokens` that the model takes ([`Self::refusal`]). Surrounding
+    /// spaces are ignored. [`Self::name_of`] prints what this reads back.
+    ///
+    /// # Errors
+    ///
+    /// [`UnknownReasoning`] with the settings there are, when the model
+    /// takes no setting named `text`.
+    pub fn parse(&self, text: &str) -> Result<Option<Reasoning>, UnknownReasoning> {
+        let text = text.trim();
+        let choices = self.choices();
+        if let Some(choice) = choices.iter().find(|choice| choice.name == text) {
+            return Ok(choice.reasoning);
+        }
+        match read(text) {
+            Some(Some(reasoning)) if self.refusal(&reasoning).is_none() => Ok(Some(reasoning)),
+            _ => Err(self.unknown(text, &choices)),
+        }
+    }
+
+    /// The text [`Self::parse`] reads back as `setting` on this model: the
+    /// name of the first of [`Self::choices`] that is `setting`, or else
+    /// `off`, the level's word or `<n> tokens`.
+    pub fn name_of(&self, setting: Option<Reasoning>) -> String {
+        let choices = self.choices();
+        match choices.iter().find(|choice| choice.reasoning == setting) {
+            Some(choice) => choice.name.to_owned(),
+            None => match setting {
+                None => "default".to_owned(),
+                Some(Reasoning::Off) => "off".to_owned(),
+                Some(Reasoning::Effort(level)) => level.as_str().to_owned(),
+                Some(Reasoning::Budget { tokens }) => format!("{tokens} tokens"),
+            },
+        }
+    }
+
+    /// Whether `text` could name a setting on some model: `default`, `off`,
+    /// a level's word or `<n> tokens`. For checking a setting written before
+    /// its model is known; [`Self::parse`] reads it once it is.
+    pub fn reads(text: &str) -> bool {
+        read(text.trim()).is_some()
+    }
+
+    /// `text` refused, with the settings there are.
+    fn unknown(&self, text: &str, choices: &[ReasoningChoice]) -> UnknownReasoning {
+        UnknownReasoning {
+            name: text.to_owned(),
+            choices: choices.iter().map(|choice| choice.name).collect(),
+            budget: self.budget().cloned(),
+        }
     }
 
     /// Whether the model reasons at all.
@@ -829,6 +910,22 @@ impl ReasoningSupport {
             },
         }
     }
+}
+
+/// The setting `text` spells whatever the model: `Some(None)` for
+/// `default`, else `off`, a level's word or `<n> tokens`.
+fn read(text: &str) -> Option<Option<Reasoning>> {
+    let reasoning = match text {
+        "default" => return Some(None),
+        "off" => Reasoning::Off,
+        _ => match text.strip_suffix(" tokens") {
+            Some(tokens) => Reasoning::Budget {
+                tokens: tokens.trim().parse().ok()?,
+            },
+            None => Reasoning::Effort(Effort::named(text)?),
+        },
+    };
+    Some(Some(reasoning))
 }
 
 impl CacheSupport {

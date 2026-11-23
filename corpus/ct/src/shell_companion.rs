@@ -1,25 +1,21 @@
-//! CT-18: Shell companion (conversation-over-time fresh held-out spec).
+//! Shell companion. `rig shell-init zsh|bash|fish` prints a snippet for the shell's rc
+//! file. It records each command's text, exit code and directory, and for commands run
+//! through its `rig-run` wrapper the output's tail, in a directory of the shell's own. `??
+//! <question>` (or `??` alone, "Why did this fail?", or a key binding) runs `rig shell-ask
+//! --state DIR …`, which hands the question and the last command to the session that serves
+//! the project over `RIG_HOME/shell/<project>.sock`, prints the reply as it streams, tool
+//! calls as one-line progress, and "waiting for approval in rig" while a question holds the
+//! turn. `?? --cmd …` puts the reply's suggested command in the shell's edit buffer and
+//! never runs it.
 //!
-//! `rig shell-init zsh|bash|fish` prints a snippet for the shell's rc file.
-//! It records each command's text, exit code and directory, and for
-//! commands run through its `rig-run` wrapper the output's tail, in a
-//! directory of the shell's own. `?? <question>` (or `??` alone, "Why did
-//! this fail?", or a key binding) runs `rig shell-ask --state DIR …`, which
-//! hands the question and the last command to the session that serves the
-//! project over `RIG_HOME/shell/<project>.sock`, prints the reply as it
-//! streams, tool calls as one-line progress, and "waiting for approval in
-//! rig" while a question holds the turn. `?? --cmd …` puts the reply's
-//! suggested command in the shell's edit buffer and never runs it.
-//!
-//! A running session (any run that is not one of this plugin's commands)
-//! serves its project's socket. Each request becomes a user message titled
-//! `shell`, with the command in a fenced block, its tail capped and
-//! redacted (rig-core's key shapes and the `[shell-companion] redact`
-//! strings), and any redaction plugin's Prepare system sees it as it sees
-//! every message. Requests wait in a queue of their own and go one at a
-//! time, each once the agent is idle, so each has a turn and reply of its
-//! own. With no session serving the project, `rig shell-ask` runs a
-//! headless one-shot session of its own and says so.
+//! A running session (any run that is not one of this plugin's commands) serves its
+//! project's socket. Each request becomes a user message titled `shell`, with the command
+//! in a fenced block, its tail capped and redacted (rig-core's key shapes and the
+//! `[shell-companion] redact` strings), and any redaction plugin's Prepare system sees it
+//! as it sees every message. Requests wait in a queue of their own and go one at a time,
+//! each once the agent is idle, so each has a turn and reply of its own. With no session
+//! serving the project, `rig shell-ask` runs a headless one-shot session of its own and
+//! says so.
 
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
@@ -89,7 +85,7 @@ impl Plugin for ShellCompanionPlugin {
                     }
                     None => {
                         eprintln!("rig shell-init: name a shell: zsh, bash or fish");
-                        commands.trigger(Exit(ExitReason::Failed(2)));
+                        commands.trigger(Exit(ExitReason::Failed(FailCode::or_failure(2))));
                     }
                 }
             });
@@ -449,10 +445,7 @@ fn tail(output: &str, settings: &ShellSettings) -> String {
         .get(lines.len().saturating_sub(settings.tail_lines)..)
         .unwrap_or_default()
         .join("\n");
-    let mut start = kept.len().saturating_sub(settings.tail_bytes);
-    while !kept.is_char_boundary(start) {
-        start += 1;
-    }
+    let start = kept.ceil_char_boundary(kept.len().saturating_sub(settings.tail_bytes));
     kept.get(start..).unwrap_or_default().to_owned()
 }
 
@@ -583,8 +576,11 @@ fn settled(
                 Event::Done { answer, command }
             }
             Ok(TurnOutcome::Failed(why)) => Event::Failed { why: why.clone() },
-            Ok(TurnOutcome::Stopped(why)) => Event::Failed {
-                why: why.clone().unwrap_or_else(|| "stopped in rig".to_owned()),
+            Ok(TurnOutcome::Stopped(stop)) => Event::Failed {
+                why: match stop.cause() {
+                    StopCause::User => "stopped in rig".to_owned(),
+                    cause => cause.to_string(),
+                },
             },
             Err(_) => return,
         }
