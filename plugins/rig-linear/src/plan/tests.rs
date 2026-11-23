@@ -158,3 +158,15 @@ fn a_run_waiting_on_a_person_leaves_the_plan_as_it_is() {
     assert!(!plan.end(End::NeedsInput));
     assert_eq!(plan, before);
 }
+
+/// Linear takes the plan as a bare array and refuses a `{ steps }` wrapper.
+#[test]
+fn the_plan_is_sent_as_a_bare_array() {
+    let plan = Plan::new(vec![PlanStep {
+        content: "Triage".to_owned(),
+        ..PlanStep::default()
+    }]);
+    let json = plan.json();
+    assert!(json.is_array(), "{json}");
+    assert!(json.get("steps").is_none());
+}
