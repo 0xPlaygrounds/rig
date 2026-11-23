@@ -15,8 +15,8 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::mpsc;
 
 use crate::harness::{
-    Event, HANDSHAKE_TIMEOUT, Harness, Launch, Part, Prompt, Running, Stderr, env_path, link, note,
-    spawn,
+    Event, HANDSHAKE_TIMEOUT, Harness, Launch, Part, Prompt, Running, Stderr, clear_nested_tmpdir,
+    env_path, link, note, spawn,
 };
 use crate::rpc::{Transport, method_not_found};
 
@@ -92,6 +92,7 @@ impl Harness for Muse {
             .env("XDG_DATA_HOME", &xdg_data)
             .env("XDG_STATE_HOME", &xdg_state)
             .env("MUSE_NO_AUTO_UPDATE", "1");
+        clear_nested_tmpdir(&mut command, dir);
         for name in REMOVED_ENV {
             command.env_remove(name);
         }

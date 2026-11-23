@@ -403,11 +403,7 @@ mod plugin {
         command.args(args);
         if scratch_root.is_dir() {
             command.current_dir(scratch_root);
-            if let Some(tmpdir) = std::env::var_os("TMPDIR")
-                && Path::new(&tmpdir).starts_with(scratch_root)
-            {
-                command.env_remove("TMPDIR");
-            }
+            crate::harness::clear_nested_tmpdir(&mut command, scratch_root);
         }
         for (key, value) in crate::harness::PROBE_ENV {
             command.env(key, value);

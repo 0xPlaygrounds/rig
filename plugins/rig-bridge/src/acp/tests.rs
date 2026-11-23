@@ -13,12 +13,14 @@ use crate::harness::{ContextSnapshot, Event, Part, Prompt};
 /// An agent with no system prompt channel, one sign-in and a model request.
 struct Plain {
     dynamic_effort: bool,
+    cumulative_usage: bool,
 }
 
 impl Plain {
     const fn basic() -> Self {
         Self {
             dynamic_effort: false,
+            cumulative_usage: false,
         }
     }
 }
@@ -61,6 +63,10 @@ impl Agent for Plain {
 
     fn effort_value(&self, effort: Effort) -> Option<&'static str> {
         self.dynamic_effort.then(|| effort.as_str())
+    }
+
+    fn cumulative_usage(&self) -> bool {
+        self.cumulative_usage
     }
 }
 
@@ -420,6 +426,7 @@ async fn acp_updates_reasoning_effort_mid_session_and_restores_default() {
     let (_, received) = run_acp(
         Arc::new(Plain {
             dynamic_effort: true,
+            cumulative_usage: false,
         }),
         "",
         vec![
@@ -456,4 +463,81 @@ async fn acp_updates_reasoning_effort_mid_session_and_restores_default() {
         .collect();
     // Turn 1: default (no-op), Turn 2: low, Turn 3: low (deduped), Turn 4: default -> restored to medium.
     assert_eq!(updates, vec!["low", "medium"]);
+}
+
+#[tokio::test]
+async fn cumulative_usage_agent_emits_per_turn_deltas_and_handles_resets() {
+    let prompt = |text: &str| Prompt {
+        parts: vec![Part::Text(text.to_owned())],
+        effort: None,
+    };
+    let mut turn = 0usize;
+    let (events, _) = run_acp(
+        Arc::new(Plain {
+            dynamic_effort: false,
+            cumulative_usage: true,
+        }),
+        "",
+        vec![prompt("one"), prompt("two"), prompt("three")],
+        move |msg| {
+            let id = msg.get("id").cloned().unwrap_or(Value::Null);
+            match msg.get("method").and_then(Value::as_str) {
+                Some("initialize" | "session/set_model") => vec![json!({ "id": id, "result": {} })],
+                Some("session/new") => vec![json!({ "id": id, "result": { "sessionId": "s1" } })],
+                Some("session/prompt") => {
+                    turn += 1;
+                    let usage = match turn {
+                        // Turn 1: cumulative = 22139 in / 76 out / 17982 cached / 4145 cache_write
+                        1 => json!({
+                            "inputTokens": 22139,
+                            "outputTokens": 76,
+                            "cachedReadTokens": 17982,
+                            "cachedWriteTokens": 4145,
+                        }),
+                        // Turn 2: cumulative grew by 5660 in / 17 out / 5588 cached / 69 cache_write
+                        2 => json!({
+                            "inputTokens": 27799,
+                            "outputTokens": 93,
+                            "cachedReadTokens": 23570,
+                            "cachedWriteTokens": 4214,
+                        }),
+                        // Turn 3: counter reset lower than Turn 2 -> pass through unchanged
+                        _ => json!({
+                            "inputTokens": 6000,
+                            "outputTokens": 20,
+                            "cachedReadTokens": 5000,
+                            "cachedWriteTokens": 100,
+                        }),
+                    };
+                    vec![
+                        json!({ "id": id, "result": { "stopReason": "end_turn", "usage": usage } }),
+                    ]
+                }
+                _ => vec![],
+            }
+        },
+    )
+    .await;
+
+    let usages: Vec<_> = events
+        .into_iter()
+        .filter_map(|ev| match ev {
+            Event::Usage(usage) => Some((
+                usage.input_tokens,
+                usage.output_tokens,
+                usage.cached_input_tokens,
+                usage.cache_creation_input_tokens,
+                usage.total_tokens,
+            )),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        usages,
+        vec![
+            (Some(22139), Some(76), Some(17982), Some(4145), Some(22215)),
+            (Some(5660), Some(17), Some(5588), Some(69), Some(5677)),
+            (Some(6000), Some(20), Some(5000), Some(100), Some(6020)),
+        ]
+    );
 }

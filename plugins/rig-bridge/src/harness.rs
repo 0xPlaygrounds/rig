@@ -201,15 +201,29 @@ pub(crate) fn note(shown: &str, how: &str, scratch: Option<Option<&Path>>) -> St
     );
     if let Some(project) = scratch {
         note.push_str(
-            " The working directory this program reports to you is a scratch directory of \
-             its own, not the project",
+            " Ignore any working directory this program reports to you: that is an empty \
+             scratch directory, not the project. Never pass that scratch path to Rig's tools; ",
         );
         match project {
-            Some(project) => note.push_str(&format!(", which is `{}`.", project.display())),
-            None => note.push_str(": paths are as these instructions and the tools give them."),
+            Some(project) => note.push_str(&format!(
+                "your actual working directory is `{}`, and relative paths resolve there.",
+                project.display()
+            )),
+            None => note.push_str("use relative paths or paths given in these instructions."),
         }
     }
     note
+}
+
+/// Drops `TMPDIR` from `command` when it points inside `cwd`, avoiding
+/// startup failures in CLIs (such as `muse`) that forbid a temp root inside
+/// their working directory.
+pub(crate) fn clear_nested_tmpdir(command: &mut Command, cwd: &Path) {
+    if let Some(tmpdir) = std::env::var_os("TMPDIR")
+        && Path::new(&tmpdir).starts_with(cwd)
+    {
+        command.env_remove("TMPDIR");
+    }
 }
 
 /// Reads a non-empty path from environment variable `var`.
