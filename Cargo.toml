@@ -56,7 +56,7 @@ include = [
     "/img/pixel-logo/blade-zoom-dark-still.webp",
     "/img/pixel-logo/blade-zoom-light-still.webp",
     "/img/built-by-playgrounds.svg",
-    "/img/ryzome-bg.png",
+    "/img/ryzome-badge.svg",
 ]
 
 # docs.rs builds with a current nightly, on which `surrealdb`'s `diskann`
