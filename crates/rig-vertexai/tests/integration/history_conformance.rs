@@ -18,18 +18,9 @@ struct VertexHistory;
 
 const MODEL: &str = "gemini-3-flash-preview";
 
-/// A reply holding `parts`, ending on `finish`.
-fn reply_document(parts: Value, finish: &str) -> Value {
-    json!({
-        "candidates": [{
-            "content": { "role": "model", "parts": parts },
-            "finishReason": finish,
-            "index": 0,
-        }],
-        "usageMetadata": { "promptTokenCount": 7, "candidatesTokenCount": 5, "totalTokenCount": 12 },
-        "modelVersion": MODEL,
-        "responseId": "resp_1",
-    })
+/// A reply holding `parts`, ending on `finish` when it is set.
+fn chunk(parts: Value, finish: Option<&str>) -> Value {
+    replies::gemini_document(parts, finish, MODEL)
 }
 
 /// `document` as the transport hands it over: read into the SDK's reply,
@@ -40,29 +31,60 @@ fn frame(document: Value) -> GenerateContentChunk {
     rest_chunk(&response).expect("the reply transcodes")
 }
 
-fn parts(shape: Shape) -> Value {
+/// The parts of `shape`, whole, and split into the chunks a stream sends.
+fn parts(shape: Shape) -> (Value, Vec<Value>) {
     match shape {
-        Shape::Rich => json!([
-            { "text": "plan the lookup", "thought": true, "thoughtSignature": "c2lnLXRob3VnaHQ=" },
-            { "text": "looking it up" },
-            { "inlineData": { "mimeType": "image/png", "data": "aW1hZ2U=" } },
-            { "executableCode": { "language": "PYTHON", "code": "print(1)" } },
-            {
-                "functionCall": { "name": "lookup", "args": { "q": "rig" }, "id": "call_1" },
-                "thoughtSignature": "c2lnLWNhbGw="
-            },
-        ]),
-        Shape::Interleaved => json!([
-            { "text": "first", "thought": true },
-            { "text": "between" },
-            { "text": "second", "thought": true, "thoughtSignature": "c2lnLXNlY29uZA==" },
-            { "functionCall": { "name": "lookup", "args": { "q": "rig" }, "id": "call_1" } },
-        ]),
+        Shape::Rich => (
+            json!([
+                { "text": "plan the lookup", "thought": true, "thoughtSignature": "c2lnLXRob3VnaHQ=" },
+                { "text": "looking it up" },
+                { "inlineData": { "mimeType": "image/png", "data": "aW1hZ2U=" } },
+                { "executableCode": { "language": "PYTHON", "code": "print(1)" } },
+                {
+                    "functionCall": { "name": "lookup", "args": { "q": "rig" }, "id": "call_1" },
+                    "thoughtSignature": "c2lnLWNhbGw="
+                },
+            ]),
+            vec![
+                json!([{ "text": "plan the ", "thought": true }]),
+                json!([{ "text": "lookup", "thought": true, "thoughtSignature": "c2lnLXRob3VnaHQ=" }]),
+                json!([{ "text": "looking " }]),
+                json!([{ "text": "it up" }]),
+                json!([
+                    { "inlineData": { "mimeType": "image/png", "data": "aW1hZ2U=" } },
+                    { "executableCode": { "language": "PYTHON", "code": "print(1)" } },
+                ]),
+                json!([{
+                    "functionCall": { "name": "lookup", "args": { "q": "rig" }, "id": "call_1" },
+                    "thoughtSignature": "c2lnLWNhbGw="
+                }]),
+            ],
+        ),
+        Shape::Interleaved => (
+            json!([
+                { "text": "first", "thought": true },
+                { "text": "between" },
+                { "text": "second", "thought": true, "thoughtSignature": "c2lnLXNlY29uZA==" },
+                { "functionCall": { "name": "lookup", "args": { "q": "rig" }, "id": "call_1" } },
+            ]),
+            vec![
+                json!([{ "text": "first", "thought": true }]),
+                json!([{ "text": "between" }]),
+                json!([{ "text": "second", "thought": true, "thoughtSignature": "c2lnLXNlY29uZA==" }]),
+                json!([{ "functionCall": { "name": "lookup", "args": { "q": "rig" }, "id": "call_1" } }]),
+            ],
+        ),
         // The SDK keeps the fields it does not model, so both survive.
-        Shape::Unknown => json!([
-            { "text": "noted", "x_rig_field": true },
-            { "x_rig_invented": { "id": "x_1" } },
-        ]),
+        Shape::Unknown => (
+            json!([
+                { "text": "noted", "x_rig_field": true },
+                { "x_rig_invented": { "id": "x_1" } },
+            ]),
+            vec![
+                json!([{ "text": "noted", "x_rig_field": true }]),
+                json!([{ "x_rig_invented": { "id": "x_1" } }]),
+            ],
+        ),
     }
 }
 
@@ -85,20 +107,15 @@ impl HistoryFixture for VertexHistory {
     }
 
     fn reply_frames(&self, spec: &replies::Spec) -> Option<replies::Frames<GenerateContentChunk>> {
-        // Vertex re-emits its unary reply when streamed: one frame, no cut.
-        let (whole, _) = replies::gemini_build(MODEL, spec, false);
+        let (whole, streamed) = replies::gemini_build(MODEL, spec, true);
         Some(replies::Frames {
-            whole: whole.clone().into_iter().map(frame).collect(),
-            streamed: whole.into_iter().map(frame).collect(),
+            whole: whole.into_iter().map(frame).collect(),
+            streamed: streamed.into_iter().map(frame).collect(),
         })
     }
 
     fn model(&self) -> &'static str {
         MODEL
-    }
-
-    fn no_cuts(&self) -> Option<&'static str> {
-        Some("Vertex re-emits its unary reply when streamed: one frame, no cut")
     }
 
     fn other_model(&self) -> &'static str {
@@ -114,10 +131,19 @@ impl HistoryFixture for VertexHistory {
         Ok(serde_json::to_value(wire.encode(request, mode)?)?)
     }
 
-    /// Vertex AI has no streaming RPC here: a streamed call re-emits the
-    /// unary reply, so both modes read the same whole reply.
-    fn reply(&self, shape: Shape, _mode: Mode) -> Option<Vec<GenerateContentChunk>> {
-        Some(vec![frame(reply_document(parts(shape), "STOP"))])
+    fn reply(&self, shape: Shape, mode: Mode) -> Option<Vec<GenerateContentChunk>> {
+        let (whole, streamed) = parts(shape);
+        Some(match mode {
+            Mode::Unary => vec![frame(chunk(whole, Some("STOP")))],
+            Mode::Streaming => {
+                let last = streamed.len().saturating_sub(1);
+                streamed
+                    .into_iter()
+                    .enumerate()
+                    .map(|(at, parts)| frame(chunk(parts, (at == last).then_some("STOP"))))
+                    .collect()
+            }
+        })
     }
 
     /// `args` is a `google.protobuf.Struct`: only an object, or no
@@ -128,9 +154,9 @@ impl HistoryFixture for VertexHistory {
             args @ Value::Object(_) => json!({ "name": "lookup", "args": args }),
             _ => return None,
         };
-        Some(vec![frame(reply_document(
+        Some(vec![frame(chunk(
             json!([{ "functionCall": call }]),
-            "STOP",
+            Some("STOP"),
         ))])
     }
 
@@ -138,12 +164,7 @@ impl HistoryFixture for VertexHistory {
     /// `FINISH_REASON_UNSPECIFIED` is the proto default, which the SDK
     /// leaves out, so on this wire it reads as no finish at all.
     fn finishes(&self) -> Vec<(&'static str, Vec<GenerateContentChunk>, Ending)> {
-        let reply = |finish: &str| {
-            vec![frame(reply_document(
-                json!([{ "text": "partial" }]),
-                finish,
-            ))]
-        };
+        let reply = |finish: &str| vec![frame(chunk(json!([{ "text": "partial" }]), Some(finish)))];
         let success = ["STOP", "MAX_TOKENS"];
         let failure = [
             "SAFETY",
@@ -175,7 +196,7 @@ impl HistoryFixture for VertexHistory {
 
     fn ablation(&self) -> Option<Ablation<GenerateContentChunk>> {
         Some(Ablation {
-            document: reply_document(parts(Shape::Rich), "STOP"),
+            document: chunk(parts(Shape::Rich).0, Some("STOP")),
             required: &[
                 "/candidates",
                 "/candidates/0/content",
@@ -183,7 +204,7 @@ impl HistoryFixture for VertexHistory {
                 "/candidates/0/finishReason",
             ],
             frames: |mut document| {
-                fitted(&mut document, &reply_document(parts(Shape::Rich), "STOP"));
+                fitted(&mut document, &chunk(parts(Shape::Rich).0, Some("STOP")));
                 vec![frame(document)]
             },
         })
@@ -195,27 +216,30 @@ impl HistoryFixture for VertexHistory {
         let response = rig_core::test_utils::history::decode(
             &self.wire(MODEL),
             Mode::Unary,
-            [frame(reply_document(json!([part]), "STOP"))],
+            [frame(chunk(json!([part]), Some("STOP")))],
         )
         .ok()?;
         response.choice.into_iter().next()
     }
 
-    /// The one reply lists both calls, in either mode.
-    fn calls_reply(&self, shape: CallShape, _mode: Mode) -> Option<Vec<GenerateContentChunk>> {
-        (shape == CallShape::WholeList).then(|| {
-            vec![frame(reply_document(
-                json!([
-                    { "functionCall": { "name": "weather", "args": { "city": "Paris" }, "id": "a1" } },
-                    { "functionCall": { "name": "weather", "args": { "city": "Rome" }, "id": "b2" } },
-                ]),
-                "STOP",
-            ))]
-        })
+    /// Gemini sends whole calls: one reply listing both, or one chunk each.
+    fn calls_reply(&self, shape: CallShape, mode: Mode) -> Option<Vec<GenerateContentChunk>> {
+        let first = json!({ "functionCall": { "name": "weather", "args": { "city": "Paris" }, "id": "a1" } });
+        let second = json!({ "functionCall": { "name": "weather", "args": { "city": "Rome" }, "id": "b2" } });
+        match (shape, mode) {
+            (CallShape::WholeList, _) => {
+                Some(vec![frame(chunk(json!([first, second]), Some("STOP")))])
+            }
+            (CallShape::Indexless, Mode::Streaming) => Some(vec![
+                frame(chunk(json!([first]), None)),
+                frame(chunk(json!([second]), Some("STOP"))),
+            ]),
+            _ => None,
+        }
     }
 
     fn empty_reply(&self, _mode: Mode) -> Option<Vec<GenerateContentChunk>> {
-        Some(vec![frame(reply_document(json!([]), "STOP"))])
+        Some(vec![frame(chunk(json!([]), Some("STOP")))])
     }
 
     fn finish_reason_pointer(&self) -> Option<&'static str> {

@@ -258,3 +258,443 @@ fn vertex_names_its_api_and_takes_image_urls_in_function_responses() {
     assert!(vertex.encodes(GEMINI_2_5_FLASH, in_user));
     assert!(rest.encodes(GEMINI_2_5_FLASH, in_user));
 }
+
+const TEST_PROJECT: &str = "test-project";
+const TEST_LOCATION: &str = "us-central1";
+const TEST_MODEL_VERSION: &str = "gemini-2.5-flash-001";
+
+#[derive(Debug, Default)]
+struct MockPredictionState {
+    unary_calls: Vec<vertexai::model::GenerateContentRequest>,
+    stream_calls: Vec<vertexai::model::GenerateContentRequest>,
+    unary_reply: Option<google_cloud_gax::Result<vertexai::model::GenerateContentResponse>>,
+    stream_reply: Option<
+        google_cloud_gax::Result<
+            google_cloud_gax::streaming::ResponseStream<vertexai::model::GenerateContentResponse>,
+        >,
+    >,
+}
+
+/// Offline `PredictionService` stub recording unary vs streaming RPCs.
+#[derive(Debug, Default)]
+struct MockPredictionService {
+    state: std::sync::Mutex<MockPredictionState>,
+}
+
+impl MockPredictionService {
+    fn with_unary(
+        reply: google_cloud_gax::Result<vertexai::model::GenerateContentResponse>,
+    ) -> std::sync::Arc<Self> {
+        std::sync::Arc::new(Self {
+            state: std::sync::Mutex::new(MockPredictionState {
+                unary_reply: Some(reply),
+                ..MockPredictionState::default()
+            }),
+        })
+    }
+
+    fn with_stream(
+        reply: google_cloud_gax::Result<
+            google_cloud_gax::streaming::ResponseStream<vertexai::model::GenerateContentResponse>,
+        >,
+    ) -> std::sync::Arc<Self> {
+        std::sync::Arc::new(Self {
+            state: std::sync::Mutex::new(MockPredictionState {
+                stream_reply: Some(reply),
+                ..MockPredictionState::default()
+            }),
+        })
+    }
+
+    fn unary_calls(&self) -> Vec<vertexai::model::GenerateContentRequest> {
+        self.state.lock().expect("stub lock").unary_calls.clone()
+    }
+
+    fn stream_calls(&self) -> Vec<vertexai::model::GenerateContentRequest> {
+        self.state.lock().expect("stub lock").stream_calls.clone()
+    }
+}
+
+impl vertexai::stub::PredictionService for MockPredictionService {
+    async fn generate_content(
+        &self,
+        req: vertexai::model::GenerateContentRequest,
+        _options: google_cloud_gax::options::RequestOptions,
+    ) -> vertexai::Result<
+        google_cloud_gax::response::Response<vertexai::model::GenerateContentResponse>,
+    > {
+        let reply = {
+            let mut state = self.state.lock().expect("stub lock");
+            state.unary_calls.push(req);
+            state
+                .unary_reply
+                .take()
+                .expect("unexpected generate_content call")
+        };
+        reply.map(google_cloud_gax::response::Response::from)
+    }
+
+    async fn stream_generate_content(
+        &self,
+        req: vertexai::model::GenerateContentRequest,
+        _options: google_cloud_gax::options::RequestOptions,
+    ) -> vertexai::Result<
+        google_cloud_gax::streaming::ResponseStream<vertexai::model::GenerateContentResponse>,
+    > {
+        let mut state = self.state.lock().expect("stub lock");
+        state.stream_calls.push(req);
+        state
+            .stream_reply
+            .take()
+            .expect("unexpected stream_generate_content call")
+    }
+}
+
+fn expected_model_path() -> String {
+    format!(
+        "projects/{TEST_PROJECT}/locations/{TEST_LOCATION}/publishers/google/models/{GEMINI_2_5_FLASH}"
+    )
+}
+
+fn stub_model(
+    stub: std::sync::Arc<MockPredictionService>,
+) -> rig_core::Model<GenerateContent, VertexAi> {
+    let service = vertexai::client::PredictionService::from_stub::<MockPredictionService>(stub);
+    VertexAi::builder()
+        .with_project(TEST_PROJECT)
+        .with_location(TEST_LOCATION)
+        .with_prediction_service(service)
+        .build()
+        .expect("stubbed client builds")
+        .completion(GEMINI_2_5_FLASH)
+}
+
+fn sdk_chunk(json: serde_json::Value) -> vertexai::model::GenerateContentResponse {
+    serde_json::from_value(json).expect("valid GenerateContentResponse JSON")
+}
+
+fn text_chunk(text: &str) -> vertexai::model::GenerateContentResponse {
+    sdk_chunk(serde_json::json!({
+        "candidates": [{
+            "content": {"role": "model", "parts": [{"text": text}]},
+            "index": 0
+        }]
+    }))
+}
+
+#[tokio::test]
+async fn unary_mode_calls_generate_content_not_stream_generate_content() {
+    use rig_core::completion::FinishReason;
+    use rig_core::message::AssistantContent;
+
+    let stub = MockPredictionService::with_unary(Ok(sdk_chunk(serde_json::json!({
+        "responseId": "unary-resp-1",
+        "modelVersion": TEST_MODEL_VERSION,
+        "candidates": [{
+            "content": {"role": "model", "parts": [{"text": "hello unary"}]},
+            "finishReason": "STOP",
+            "index": 0
+        }],
+        "usageMetadata": {
+            "promptTokenCount": 4,
+            "candidatesTokenCount": 2,
+            "totalTokenCount": 6
+        }
+    }))));
+    let model = stub_model(stub.clone());
+
+    let response = model
+        .call(CompletionRequest::new("hi"))
+        .await
+        .expect("unary completion succeeds");
+
+    let unary_calls = stub.unary_calls();
+    let [call] = unary_calls.as_slice() else {
+        panic!("expected one unary call, got {unary_calls:?}");
+    };
+    assert!(stub.stream_calls().is_empty());
+    assert_eq!(call.model, expected_model_path());
+    assert!(
+        matches!(response.choice.as_slice(), [AssistantContent::Text(t)] if t.text == "hello unary")
+    );
+    assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
+    assert_eq!(response.usage.input_tokens, Some(4));
+    assert_eq!(response.usage.output_tokens, Some(2));
+    assert_eq!(response.usage.total_tokens, Some(6));
+    assert_eq!(response.raw["responseId"], "unary-resp-1");
+    assert_eq!(response.raw["candidates"][0]["finishReason"], "STOP");
+    let recovered: vertexai::model::GenerateContentResponse =
+        serde_json::from_value(response.raw).expect("raw recovers as SDK type");
+    assert_eq!(recovered.response_id, "unary-resp-1");
+}
+
+#[tokio::test]
+async fn streaming_mode_emits_incremental_chunks_and_reassembles_response() {
+    use futures::StreamExt as _;
+    use rig_core::completion::FinishReason;
+    use rig_core::message::AssistantContent;
+    use rig_core::streaming::{Item, PartKind, StreamEvent};
+
+    let (tx, rx) = tokio::sync::mpsc::channel(8);
+    let stub = MockPredictionService::with_stream(Ok(
+        google_cloud_gax::streaming::ResponseStream::from(rx),
+    ));
+    let model = stub_model(stub.clone());
+
+    let mut stream = model
+        .stream(CompletionRequest::new("check weather in Lisbon"))
+        .expect("stream opens");
+
+    // Send chunk 1 alone to prove incremental delivery before chunk 2 arrives.
+    tx.send(Ok(sdk_chunk(serde_json::json!({
+        "responseId": "stream-resp-1",
+        "modelVersion": TEST_MODEL_VERSION,
+        "candidates": [{
+            "content": {
+                "role": "model",
+                "parts": [{"text": "thinking...", "thought": true, "thoughtSignature": "c2lnLXRob3VnaHQ="}]
+            },
+            "index": 0
+        }]
+    }))))
+    .await
+    .expect("send chunk 1");
+
+    let first_start = stream.next().await.expect("start event").expect("no error");
+    assert!(matches!(
+        first_start,
+        Item::Event(StreamEvent::Start {
+            kind: PartKind::Reasoning,
+            ..
+        })
+    ));
+    let first_delta = stream
+        .next()
+        .await
+        .expect("reasoning delta")
+        .expect("no error");
+    assert!(matches!(
+        first_delta,
+        Item::Event(StreamEvent::Reasoning { ref text, .. }) if text == "thinking..."
+    ));
+
+    tx.send(Ok(text_chunk("Hel"))).await.expect("send chunk 2");
+    loop {
+        if matches!(
+            stream.next().await.expect("event").expect("no error"),
+            Item::Event(StreamEvent::Text { ref text, .. }) if text == "Hel"
+        ) {
+            break;
+        }
+    }
+
+    tx.send(Ok(text_chunk("lo"))).await.expect("send chunk 3");
+    assert!(matches!(
+        stream.next().await.expect("text delta").expect("no error"),
+        Item::Event(StreamEvent::Text { ref text, .. }) if text == "lo"
+    ));
+
+    tx.send(Ok(sdk_chunk(serde_json::json!({
+        "candidates": [{
+            "content": {
+                "role": "model",
+                "parts": [{
+                    "functionCall": {
+                        "id": "call_1",
+                        "name": "lookup_weather",
+                        "args": {"city": "Lisbon"}
+                    },
+                    "thoughtSignature": "c2lnLWNhbGw="
+                }]
+            },
+            "finishReason": "STOP",
+            "index": 0
+        }],
+        "usageMetadata": {
+            "promptTokenCount": 12,
+            "candidatesTokenCount": 8,
+            "thoughtsTokenCount": 3,
+            "totalTokenCount": 23
+        }
+    }))))
+    .await
+    .expect("send chunk 4");
+    drop(tx);
+
+    let response = stream.finish().await.expect("stream finishes cleanly");
+
+    assert!(stub.unary_calls().is_empty());
+    let stream_calls = stub.stream_calls();
+    let [stream_call] = stream_calls.as_slice() else {
+        panic!("expected one stream call, got {stream_calls:?}");
+    };
+    assert_eq!(stream_call.model, expected_model_path());
+    assert_eq!(response.finish_reason(), Some(FinishReason::ToolCalls));
+    assert_eq!(response.usage.input_tokens, Some(12));
+    assert_eq!(response.usage.output_tokens, Some(11));
+    assert_eq!(response.usage.reasoning_tokens, Some(3));
+    assert_eq!(response.usage.total_tokens, Some(23));
+
+    let [
+        AssistantContent::Reasoning(reasoning),
+        AssistantContent::Text(text),
+        tool @ AssistantContent::ToolCall(call),
+    ] = response.choice.as_slice()
+    else {
+        panic!(
+            "expected reasoning, text, and tool call, got {:?}",
+            response.choice
+        );
+    };
+    assert_eq!(reasoning.text, "thinking...");
+    assert_eq!(text.text, "Hello");
+    assert_eq!(call.function.name, "lookup_weather");
+    assert_eq!(
+        call.function.arguments_value(),
+        serde_json::json!({"city": "Lisbon"})
+    );
+    assert_eq!(
+        tool.native_item()
+            .and_then(|item| item.get("thoughtSignature"))
+            .and_then(serde_json::Value::as_str),
+        Some("c2lnLWNhbGw=")
+    );
+
+    assert_eq!(response.raw["responseId"], "stream-resp-1");
+    assert_eq!(response.raw["candidates"][0]["finishReason"], "STOP");
+    assert_eq!(
+        response.raw["candidates"][0]["content"]["parts"][1]["text"],
+        "Hello"
+    );
+    assert_eq!(
+        response.raw["candidates"][0]["content"]["parts"][2]["thoughtSignature"],
+        "c2lnLWNhbGw="
+    );
+    let recovered: vertexai::model::GenerateContentResponse =
+        serde_json::from_value(response.raw).expect("reassembled raw recovers as SDK type");
+    assert_eq!(recovered.response_id, "stream-resp-1");
+}
+
+#[tokio::test]
+async fn streaming_initial_rpc_error_maps_through_rpc_error() {
+    let sdk_err = Error::service(
+        Status::default()
+            .set_code(Code::ResourceExhausted)
+            .set_message("quota exceeded"),
+    );
+    let expected_body = sdk_err.to_string();
+    let stub = MockPredictionService::with_stream(Err(sdk_err));
+    let model = stub_model(stub.clone());
+
+    let error = model
+        .stream(CompletionRequest::new("hello"))
+        .expect("stream builds")
+        .finish()
+        .await
+        .expect_err("initial RPC error surfaces");
+
+    assert!(stub.unary_calls().is_empty());
+    assert_eq!(stub.stream_calls().len(), 1);
+    assert!(error.is_retryable());
+    assert_eq!(error.provider_response_body(), Some(expected_body.as_str()));
+    let report = error.report();
+    assert_eq!(report.kind, ErrorKind::ProviderResponse);
+    assert_eq!(report.code.as_deref(), Some("RESOURCE_EXHAUSTED"));
+    assert!(report.retryable);
+}
+
+#[tokio::test]
+async fn streaming_mid_stream_rpc_error_yields_prior_chunks_then_stops() {
+    use futures::StreamExt as _;
+    use rig_core::streaming::{Item, StreamEvent};
+
+    let (tx, rx) = tokio::sync::mpsc::channel(8);
+    let sdk_err = Error::service(
+        Status::default()
+            .set_code(Code::Unavailable)
+            .set_message("backend reset"),
+    );
+    let expected_body = sdk_err.to_string();
+
+    tx.send(Ok(text_chunk("partial")))
+        .await
+        .expect("send partial chunk");
+    tx.send(Err(sdk_err)).await.expect("send mid-stream error");
+    tx.send(Ok(text_chunk("must not arrive")))
+        .await
+        .expect("send trailing chunk");
+    drop(tx);
+
+    let stub = MockPredictionService::with_stream(Ok(
+        google_cloud_gax::streaming::ResponseStream::from(rx),
+    ));
+    let model = stub_model(stub);
+    let mut stream = model
+        .stream(CompletionRequest::new("hello"))
+        .expect("stream opens");
+
+    let mut texts = Vec::new();
+    let mut terminal_error = None;
+    while let Some(item) = stream.next().await {
+        match item {
+            Ok(Item::Event(StreamEvent::Text { text, .. })) => texts.push(text),
+            Ok(_) => {}
+            Err(error) => {
+                terminal_error = Some(error);
+                break;
+            }
+        }
+    }
+
+    assert_eq!(texts, vec!["partial"]);
+    let error = terminal_error.expect("mid-stream error emitted");
+    assert!(error.is_retryable());
+    assert_eq!(error.provider_response_body(), Some(expected_body.as_str()));
+    let report = error.report();
+    assert_eq!(report.kind, ErrorKind::ProviderResponse);
+    assert_eq!(report.code.as_deref(), Some("UNAVAILABLE"));
+    assert!(report.retryable);
+    assert!(
+        stream.next().await.is_none(),
+        "stream terminates after the mid-stream error"
+    );
+}
+
+#[tokio::test]
+async fn streaming_empty_response_stream_ends_as_truncated() {
+    use futures::StreamExt as _;
+
+    let (tx, rx) = tokio::sync::mpsc::channel(1);
+    drop(tx);
+
+    let stub = MockPredictionService::with_stream(Ok(
+        google_cloud_gax::streaming::ResponseStream::from(rx),
+    ));
+    let model = stub_model(stub.clone());
+    let mut stream = model
+        .stream(CompletionRequest::new("hello"))
+        .expect("stream opens");
+
+    let first = stream
+        .next()
+        .await
+        .expect("empty stream surfaces Truncated error");
+    assert!(
+        matches!(first, Err(ProviderError::Truncated)),
+        "expected Err(Truncated), got {first:?}"
+    );
+    assert!(
+        stream.next().await.is_none(),
+        "nothing follows the Truncated error"
+    );
+    let error = stream
+        .finish()
+        .await
+        .expect_err("an empty stream without a terminal chunk is truncated");
+    assert!(
+        matches!(error, ProviderError::Truncated),
+        "expected Truncated, got {error:?}"
+    );
+    assert!(stub.unary_calls().is_empty());
+    assert_eq!(stub.stream_calls().len(), 1);
+}

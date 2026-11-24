@@ -1,6 +1,6 @@
-//! The Vertex AI `GenerateContent` completion wire and model identifiers.
-//! A streamed call re-emits the unary reply: this integration has no
-//! streaming RPC.
+//! The Vertex AI `GenerateContent` completion wire and model identifiers:
+//! `GenerateContent` for a unary call, `StreamGenerateContent` for a
+//! streamed one.
 //!
 //! ```no_run
 //! use rig_core::Model;
@@ -185,12 +185,13 @@ impl rest::GenerateContentWire for GenerateContent {
     }
 }
 
-/// Both modes send the unary RPC; a streamed call re-emits its reply.
+/// Sends `GenerateContent` for unary calls and `StreamGenerateContent` for
+/// streamed calls through the Vertex AI `PredictionService`.
 impl Transport<GenerateContent> for VertexAi {
     fn send(
         &self,
         mut request: vertexai::model::GenerateContentRequest,
-        _exchange: Exchange,
+        exchange: Exchange,
     ) -> Opening<GenerateContentChunk> {
         request.model = format!(
             "projects/{}/locations/{}/publishers/google/models/{}",
@@ -198,31 +199,61 @@ impl Transport<GenerateContent> for VertexAi {
             self.location(),
             request.model
         );
+        let mode = exchange.mode;
         let client = self.clone();
         Opening::new(async move {
             let service = match client.inner().await {
                 Ok(service) => service,
                 Err(error) => return Err(ProviderError::request(error)),
             };
-            match service
-                .generate_content()
-                .with_request(request)
-                .send()
-                .await
-            {
-                Ok(response) => {
-                    tracing::debug!(
-                        target: "rig_core::vertexai",
-                        "Vertex AI completion response: {response:?}"
-                    );
-                    // The reply's REST JSON is the response's `raw`, in both
-                    // modes, and the one frame. One that does not transcode
-                    // fails the call.
-                    let chunk = rest_chunk(&response)?;
-                    let document = serde_json::Value::Object(chunk.0.clone());
-                    Ok(Opened::new(futures::stream::iter([Ok(chunk)])).with_document(document))
-                }
-                Err(error) => Ok(Opened::failed(rpc_error(&error))),
+            match mode {
+                Mode::Unary => match service
+                    .generate_content()
+                    .with_request(request)
+                    .send()
+                    .await
+                {
+                    Ok(response) => {
+                        tracing::debug!(
+                            target: "rig_core::vertexai",
+                            "Vertex AI completion response: {response:?}"
+                        );
+                        // The reply's REST JSON is the response's `raw` and its
+                        // one frame. One that does not transcode fails the call.
+                        let chunk = rest_chunk(&response)?;
+                        let document = serde_json::Value::Object(chunk.0.clone());
+                        Ok(Opened::new(futures::stream::iter([Ok(chunk)])).with_document(document))
+                    }
+                    Err(error) => Ok(Opened::failed(rpc_error(&error))),
+                },
+                Mode::Streaming => match service
+                    .stream_generate_content()
+                    .with_request(request)
+                    .send()
+                    .await
+                {
+                    // Transcode each chunk as it arrives; the wire's
+                    // reassembler builds `raw`, and the first error ends the stream.
+                    Ok(stream) => Ok(Opened::new(futures::stream::unfold(
+                        Some(stream),
+                        |chunks| async move {
+                            let mut chunks = chunks?;
+                            let chunk = match chunks.next().await? {
+                                Ok(response) => {
+                                    tracing::debug!(
+                                        target: "rig_core::vertexai",
+                                        "Vertex AI streaming response chunk: {response:?}"
+                                    );
+                                    rest_chunk(&response)
+                                }
+                                Err(error) => Err(rpc_error(&error)),
+                            };
+                            let rest = chunk.is_ok().then_some(chunks);
+                            Some((chunk, rest))
+                        },
+                    ))),
+                    Err(error) => Ok(Opened::failed(rpc_error(&error))),
+                },
             }
         })
     }
