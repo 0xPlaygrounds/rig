@@ -1,0 +1,27 @@
+[package]
+name = "rig-watch"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+readme = "README.md"
+description = "An optional rig-harness plugin: the agent says which files it waits on, and is woken when one changes or after some minutes of nothing."
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[lints]
+workspace = true
+
+[dependencies]
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
+# The local time at the top of a wake.
+chrono = { workspace = true, features = ["clock"] }
+# The plugin API of the agent it is loaded into.
+rig-harness = { path = "../../crates/rig-harness", version = "0.47.0" }
+schemars = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support", default-features = false }
+serde_json = { workspace = true }

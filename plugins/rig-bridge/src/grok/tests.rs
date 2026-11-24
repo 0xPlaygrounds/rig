@@ -4,7 +4,8 @@ use rig_harness::rig_core::completion::Effort;
 use serde_json::json;
 
 use super::{Grok, models, profile};
-use crate::acp::{Agent, Opening};
+use crate::acp::{Agent, Opening, Steering};
+use crate::harness::Part;
 
 #[test]
 fn the_listed_models_are_read_with_the_default_first() {
@@ -124,4 +125,36 @@ fn choose_skips_set_model_when_session_already_runs_requested_model() {
     assert!(Grok.choose("s1", &same, &opening).is_empty());
     assert_eq!(Grok.choose("s1", &other, &opening).len(), 1);
     assert_eq!(Grok.choose("s1", &unknown, &opening).len(), 1);
+}
+
+#[test]
+fn a_message_for_the_running_prompt_is_an_interjection_of_text_alone() {
+    let text = |text: &str| Part::Text(text.to_owned());
+    let image = Part::Image {
+        media_type: "image/png".to_owned(),
+        data: "AAAA".to_owned(),
+    };
+
+    let steer = match Grok.steer(&json!({}), "s1", &[text("and b"), text("too")]) {
+        Some(Steering::Request(method, params)) => Some((method, params)),
+        _ => None,
+    };
+    assert_eq!(
+        steer,
+        Some((
+            "_x.ai/interject",
+            json!({ "sessionId": "s1", "text": "and b\n\ntoo" })
+        )),
+    );
+    // An interjection carries no image: the message is the next prompt.
+    assert!(
+        Grok.steer(&json!({}), "s1", &[text("look"), image])
+            .is_none()
+    );
+
+    // Grok 1.0.92 answers one level down.
+    assert!(Grok.steered(&json!({ "result": { "status": "queued" } })));
+    assert!(Grok.steered(&json!({ "status": "queued" })));
+    assert!(!Grok.steered(&json!({ "result": { "status": "rejected" } })));
+    assert!(!Grok.steered(&json!({})));
 }

@@ -30,6 +30,7 @@ rig-harness-test-support = { path = "../rig-harness-test-support" }
 rig-inspect = { path = "../../plugins/rig-inspect" }
 rig-fold = { path = "../../plugins/rig-fold" }
 rig-bridge = { path = "../../plugins/rig-bridge" }
+rig-watch = { path = "../../plugins/rig-watch" }
 rig-mcp-client = { path = "../../plugins/rig-mcp-client" }
 rig-acp = { path = "../../plugins/rig-acp" }
 rig-linear = { path = "../../plugins/rig-linear" }

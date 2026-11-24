@@ -9,14 +9,14 @@ use rig_harness::rig_core::completion::{
 };
 use rig_harness::rig_core::effect::{Answered, EffectId, EffectKind};
 use rig_harness::rig_core::message::{
-    AssistantMessage, ToolCall, ToolFunction, ToolName, ToolResultContent,
+    AssistantMessage, ToolCall, ToolFunction, ToolName, ToolResultContent, UserContent,
 };
 use rig_harness::rig_core::serve::{Dispatch, Reply, Serve};
 use serde_json::{Value, json};
 use tokio::sync::{Notify, mpsc};
 
 use super::{Bridge, Model, apply_context, budgeted_opening};
-use crate::harness::{Event, Harness, Launch, Part, Prompt, Running, Vendor};
+use crate::harness::{Event, Harness, Launch, Part, Prompt, Running, Steer, Vendor};
 use crate::mcp::tests::{post, request};
 
 /// What the scripted harness saw: each start's system prompt and prompts.
@@ -26,6 +26,8 @@ struct Seen {
     /// The tool names of each listing a harness made once told the tools
     /// changed.
     listed: Vec<Vec<String>>,
+    /// The messages a harness took for its running turn.
+    steered: Vec<String>,
 }
 
 /// A harness whose model does what its prompt says. A prompt containing
@@ -45,6 +47,9 @@ struct Scripted {
     listed_done: Arc<Notify>,
     /// What the harness says of taking tools while it runs.
     fixed_tools: bool,
+    /// Whether the harness takes a message for its running turn, when it
+    /// has a way to be given one.
+    steers: Option<bool>,
 }
 
 /// Holds a notification stream open on the server at `url` and lists the
@@ -195,9 +200,14 @@ impl Harness for Scripted {
                         .into_iter()
                         .map(|result| {
                             let (_, response) = result.unwrap_or_default();
-                            let text = response.pointer("/result/content/0/text");
+                            let content = response.pointer("/result/content");
                             let error = response.pointer("/result/isError") == Some(&json!(true));
-                            let text = text.and_then(Value::as_str).unwrap_or("nothing");
+                            let text: String = content
+                                .and_then(Value::as_array)
+                                .into_iter()
+                                .flatten()
+                                .filter_map(|block| block.get("text")?.as_str())
+                                .collect();
                             format!("{}{text}", if error { "error: " } else { "" })
                         })
                         .collect();
@@ -210,8 +220,27 @@ impl Harness for Scripted {
                 let _ = events.send(Event::Done(Ok(FinishReason::Stop)));
             }
         });
+        let steers = self.steers.map(|takes| {
+            let (steers, mut steered) = mpsc::unbounded_channel::<Steer>();
+            let seen = self.seen.clone();
+            tokio::spawn(async move {
+                while let Some(steer) = steered.recv().await {
+                    let taken = match (takes, steer.parts.as_slice()) {
+                        (true, [Part::Text(text)]) => {
+                            let mut seen = seen.lock().unwrap_or_else(PoisonError::into_inner);
+                            seen.steered.push(text.clone());
+                            Ok(())
+                        }
+                        _ => Err("not now".to_owned()),
+                    };
+                    let _ = steer.taken.send(taken);
+                }
+            });
+            steers
+        });
         Ok(Running {
             prompts,
+            steers,
             events: reported,
             _alive: Box::new(Ended(self.ended.clone())),
         })
@@ -449,10 +478,11 @@ async fn a_history_the_harness_did_not_answer_starts_a_new_one_with_it_written_o
         "{:?}",
         said(answered.as_ref())
     );
+    // A tool's output is under a heading of its own, not the user's.
     for expected in [
         "<conversation>\n## User\ncall read a.txt\n",
         "## Assistant\nReading.\n[called `read` with {\"path\":\"a.txt\"}]\n",
-        "[result of `read`]\nalpha\n",
+        "## Tool result of `read`\nalpha\n",
         "## Assistant\nIt says alpha.\n\n</conversation>\n\nand now?",
     ] {
         assert!(
@@ -491,6 +521,70 @@ async fn another_system_prompt_or_tool_set_is_another_harness() {
             "Be brief.\n\nTools are `x__read`.",
         ],
     );
+}
+
+/// The user message that answers each tool call of `response` with `result`
+/// and says `said` beside the results, as Rig sends what the user typed
+/// while the tools ran.
+fn results_and(response: Option<&Arc<CompletionResponse>>, result: &str, said: &str) -> Message {
+    let Message::User { content } = results(response, |_| result.to_owned()) else {
+        return Message::user(said);
+    };
+    Message::User {
+        content: content
+            .into_iter()
+            .chain([UserContent::text(said)])
+            .collect(),
+    }
+}
+
+/// What a model on `harness` said once its user had said `and b.txt too`
+/// while its tool ran, the prompts the harness got and the messages it took
+/// for its running turn. Either way the harness goes on.
+async fn steered(harness: Scripted) -> (String, Vec<String>, Vec<String>) {
+    let (model, seen, ended) = on(harness, 4);
+    let mut history = vec![Message::user("call read a.txt")];
+    let called = answer(&model, asks("Be brief.", &history)).await;
+    history.push(turn(called.as_ref()));
+    history.push(results_and(called.as_ref(), "alpha", "and b.txt too"));
+    let finished = answer(&model, asks("Be brief.", &history)).await;
+
+    assert_eq!(ended.load(Ordering::SeqCst), 0);
+    let prompted = prompts(&seen).into_iter().flatten().collect();
+    let taken = std::mem::take(&mut seen.lock().unwrap_or_else(PoisonError::into_inner).steered);
+    (said(finished.as_ref()).0, prompted, taken)
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn what_the_user_says_while_a_tool_runs_is_a_message_for_the_running_turn() {
+    let takes = Scripted {
+        steers: Some(true),
+        ..Scripted::default()
+    };
+
+    let (said, prompted, taken) = steered(takes).await;
+
+    // The tool's result is the tool's alone.
+    assert_eq!(said, "read said: alpha");
+    assert_eq!(taken, ["and b.txt too"]);
+    assert_eq!(prompted, ["call read a.txt"]);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_harness_that_takes_no_message_is_prompted_with_it_when_its_turn_ends() {
+    let refuses = Scripted {
+        steers: Some(false),
+        ..Scripted::default()
+    };
+    for harness in [Scripted::default(), refuses] {
+        let (said, prompted, taken) = steered(harness).await;
+
+        // One reply holds both turns: the tool's result, the tool's alone,
+        // and then the answer to the message.
+        assert_eq!(said, "read said: alpha\n\necho: and b.txt too");
+        assert_eq!(taken, Vec::<String>::new());
+        assert_eq!(prompted, ["call read a.txt", "and b.txt too"]);
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -826,6 +920,7 @@ where
         ));
         Ok(Running {
             prompts,
+            steers: None,
             events: reported,
             _alive: Box::new(()),
         })

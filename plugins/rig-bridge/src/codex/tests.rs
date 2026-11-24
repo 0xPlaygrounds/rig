@@ -4,10 +4,10 @@ use rig_harness::rig_core::catalog::ReasoningSupport;
 use rig_harness::rig_core::completion::{Effort, FinishReason};
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, DuplexStream};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 
 use super::{Codex, Listed, Opening, Wire, converse, image_extension, notify};
-use crate::harness::{ContextSnapshot, Event, Part, Prompt};
+use crate::harness::{ContextSnapshot, Event, Part, Prompt, Steer};
 
 #[test]
 fn the_catalog_lists_the_shown_models_and_gives_none_of_them_tools() {
@@ -69,7 +69,8 @@ type Received = Arc<Mutex<Vec<Value>>>;
 /// A scripted app server on the other end of `stream`. It answers a turn
 /// with a reasoning summary, an approval request for one of Rig's tools
 /// and for something else, a counted model call and a sentence; a turn
-/// whose text is `fail` fails.
+/// whose text is `fail` fails, and one whose text is `wait` goes on until
+/// it is steered.
 async fn server(stream: DuplexStream, received: Received, signed_in: bool) {
     let (reader, mut writer) = tokio::io::split(stream);
     let mut lines = BufReader::new(reader).lines();
@@ -110,9 +111,11 @@ async fn server(stream: DuplexStream, received: Received, signed_in: bool) {
                 ));
             }
             Some("turn/start") => {
-                let failing = message.pointer("/params/input/0/text") == Some(&json!("fail"));
+                let text = message.pointer("/params/input/0/text");
+                let failing = text == Some(&json!("fail"));
                 out.push(json!({ "id": id, "result": { "turn": { "id": "u1", "status": "inProgress" } } }));
-                if failing {
+                if text == Some(&json!("wait")) {
+                } else if failing {
                     out.push(notify(
                         "turn/completed",
                         json!({ "turn": { "status": "failed",
@@ -150,6 +153,13 @@ async fn server(stream: DuplexStream, received: Received, signed_in: bool) {
                     ));
                 }
             }
+            Some("turn/steer") => {
+                out.push(json!({ "id": id, "result": { "turnId": "u1" } }));
+                out.push(notify(
+                    "turn/completed",
+                    json!({ "turn": { "status": "completed", "error": null } }),
+                ));
+            }
             _ => {}
         }
         for message in out {
@@ -186,7 +196,7 @@ async fn conversation(prompts: &[&str], signed_in: bool) -> (Vec<Event>, Vec<Val
         system: "Be brief.".to_owned(),
         model: "gpt-a".to_owned(),
     };
-    let ended = converse(&mut wire, opening, prompted).await;
+    let ended = converse(&mut wire, opening, prompted, mpsc::unbounded_channel().1).await;
     drop(wire);
     let _ = scripted.await;
     let mut events = Vec::new();
@@ -345,4 +355,54 @@ fn token_usage_update_emits_runtime_model_context_window() {
         }))
     );
     assert!(matches!(rx.try_recv().ok(), Some(Event::Usage(_))));
+}
+
+#[tokio::test]
+async fn a_steer_goes_into_the_running_turn_by_its_id() {
+    let (ours, theirs) = tokio::io::duplex(1 << 16);
+    let received = Received::default();
+    let scripted = tokio::spawn(server(theirs, received.clone(), true));
+    let (reader, writer) = tokio::io::split(ours);
+    let (events, mut reported) = mpsc::unbounded_channel();
+    let mut wire = Wire::new(reader, writer, events);
+    let (prompts, prompted) = mpsc::unbounded_channel();
+    let _ = prompts.send(Prompt {
+        parts: vec![Part::Text("wait".to_owned())],
+        effort: None,
+    });
+    drop(prompts);
+    let (steers, steered) = mpsc::unbounded_channel();
+    let (taken, held) = oneshot::channel();
+    let opening = Opening {
+        dir: "/session".into(),
+        system: String::new(),
+        model: "gpt-a".to_owned(),
+    };
+    let sent = |method: &str| {
+        let received = received.lock().unwrap_or_else(PoisonError::into_inner);
+        let named = |message: &&Value| message.get("method") == Some(&json!(method));
+        received.iter().find(named).cloned()
+    };
+    // The user speaks once the turn runs.
+    let steer = async {
+        while sent("turn/start").is_none() {
+            tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+        }
+        let parts = vec![Part::Text("and b".to_owned())];
+        let _ = steers.send(Steer { parts, taken });
+        drop(steers);
+    };
+
+    let (ended, ()) = tokio::join!(converse(&mut wire, opening, prompted, steered), steer);
+    drop(wire);
+    let _ = scripted.await;
+
+    assert_eq!(ended, Ok(()));
+    assert_eq!(held.await, Ok(Ok(())));
+    assert_eq!(
+        sent("turn/steer").and_then(|steer| steer.get("params").cloned()),
+        Some(json!({ "threadId": "t1", "expectedTurnId": "u1",
+            "input": [{ "type": "text", "text": "and b" }] })),
+    );
+    assert_eq!(reported.try_recv(), Ok(Event::Done(Ok(FinishReason::Stop))));
 }

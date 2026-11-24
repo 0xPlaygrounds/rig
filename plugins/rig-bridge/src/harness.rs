@@ -11,7 +11,7 @@ use std::time::Duration;
 use rig_harness::rig_core::completion::{Effort, FinishReason, ToolDefinition, Usage};
 use rig_harness::rig_tools::process::Process;
 use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::sync::{mpsc, watch};
+use tokio::sync::{mpsc, oneshot, watch};
 
 use crate::mcp::Entry;
 
@@ -88,6 +88,16 @@ pub(crate) struct Prompt {
     pub effort: Option<Effort>,
 }
 
+/// A user message for the turn a harness is answering, sent while a tool
+/// call of that turn is open.
+#[derive(Debug)]
+pub(crate) struct Steer {
+    pub parts: Vec<Part>,
+    /// Told once the program holds the message for its running turn, or
+    /// why it does not.
+    pub taken: oneshot::Sender<Result<(), String>>,
+}
+
 /// Parses a lower-case reasoning effort wire word into [`Effort`].
 pub(crate) fn parse_effort(word: &str) -> Option<Effort> {
     match word {
@@ -158,6 +168,9 @@ pub(crate) struct Launch<'a> {
 pub(crate) struct Running {
     /// Takes each prompt. The harness answers them in order.
     pub prompts: mpsc::UnboundedSender<Prompt>,
+    /// Takes a user message for the turn in progress, which the program
+    /// gives its model as one. `None` when the program has no way to.
+    pub steers: Option<mpsc::UnboundedSender<Steer>>,
     /// What the harness reports. It closes when the program is gone.
     pub events: mpsc::UnboundedReceiver<Event>,
     /// What keeps the program alive: dropping it kills the program.

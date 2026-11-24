@@ -49,6 +49,7 @@ pub(crate) const HARNESS_PACKAGES: &[&str] = &[
     "rig-fold",
     "rig-bridge",
     "rig-traffic",
+    "rig-watch",
     "rig-mcp-client",
     "rig-acp",
     "rig-linear",

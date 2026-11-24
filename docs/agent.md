@@ -926,6 +926,11 @@ with the separately enabled effect log.
 The optional [`rig-inspect`](../plugins/rig-inspect) plugin adds the `inspect`
 tool, with which the agent reads its own Bevy world, read-only.
 
+The optional [`rig-watch`](../plugins/rig-watch) plugin adds the `watch` tool
+and `/watch`: the agent says which files it waits on and is woken when one
+changes, and every few minutes while none does, until it says it is done:
+`rig plugin enable rig_watch::WatchPlugin`.
+
 The optional [`rig-mcp-client`](../plugins/rig-mcp-client) plugin offers the
 tools of MCP servers, stdio or streamable HTTP, named in `$RIG_HOME/mcp.json`
 and in the project's `.rig/mcp.json`, which start with no question: `rig
