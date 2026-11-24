@@ -160,6 +160,7 @@ impl HistoryFixture for MessagesHistory {
             prompt_caching: false,
             static_prefix_cache_ttl: None,
             strict_tools: false,
+            thinking_display: None,
             tool_input_streaming: self.dialect.quirks.tool_input_streaming,
             facts: Default::default(),
         }

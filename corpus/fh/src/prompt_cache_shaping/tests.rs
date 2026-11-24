@@ -41,6 +41,7 @@ fn on_the_wire(request: &CompletionRequest) -> Value {
         prompt_caching: false,
         static_prefix_cache_ttl: None,
         strict_tools: false,
+        thinking_display: None,
         tool_input_streaming: Default::default(),
         facts: Default::default(),
     };
