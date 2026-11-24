@@ -3882,13 +3882,6 @@
       }
     }
   },
-  "perplexity": {
-    "models": {
-      "sonar_pro": {
-        "from": "perplexity/sonar-pro"
-      }
-    }
-  },
   "together": {
     "models": {
       "BAAI/bge-base-en-v1.5": {
