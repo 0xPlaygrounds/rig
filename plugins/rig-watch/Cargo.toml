@@ -17,7 +17,7 @@ bevy_reflect = { workspace = true }
 # The local time at the top of a wake.
 chrono = { workspace = true, features = ["clock"] }
 # The plugin API of the agent it is loaded into.
-rig-harness = { path = "../../crates/rig-harness", version = "0.47.0" }
+rig-harness = { path = "../../crates/rig-harness", version = "0.47.1" }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 
