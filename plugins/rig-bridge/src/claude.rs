@@ -135,9 +135,9 @@ impl Harness for Claude {
             let mut stdin = pipes.stdin;
             let mut reader = Reader::default();
             let mut lines = BufReader::new(pipes.stdout).lines();
-            // The number of the prompt last written, and whether the
-            // program is answering it.
-            let (mut turn, mut answering) = (0u64, false);
+            // The number of the prompt last written, whether the program is
+            // answering it, and the number of the last prompt stopped.
+            let (mut turn, mut answering, mut stopped_to) = (0u64, false, 0u64);
             loop {
                 // A prompt is taken before a stop, which may be the one for it.
                 tokio::select! {
@@ -147,7 +147,13 @@ impl Harness for Claude {
                             return;
                         };
                         turn += 1;
+                        // Stopped before it came: it is not started on.
+                        if turn <= stopped_to {
+                            let _ = events.send(Event::Stopped);
+                            continue;
+                        }
                         answering = true;
+                        reader.interrupt = None;
                         reader.stopping = false;
                         let id = uuid::Uuid::new_v4().to_string();
                         let mut line = user_message(&prompt.parts, &id, false).to_string();
@@ -173,12 +179,22 @@ impl Harness for Claude {
                         }
                     }
                     Some(stop) = stopped.recv() => {
+                        stopped_to = stopped_to.max(stop);
                         // A stop for a turn that is over stops nothing.
                         if stop != turn || !answering {
                             continue;
                         }
-                        reader.stopping = true;
+                        // Whether the program drops a line it holds or
+                        // answers it later is not known: the session ends
+                        // with the message unread, and the conversation
+                        // goes on written out, the message in it.
+                        if !reader.held.is_empty() {
+                            let unread = "it was stopped with a message of the user's unread";
+                            let _ = events.send(Event::Done(Err(unread.to_owned())));
+                            continue;
+                        }
                         let id = uuid::Uuid::new_v4().to_string();
+                        reader.interrupt = Some(id.clone());
                         let mut line = json!({
                             "type": "control_request",
                             "request_id": id,
@@ -260,8 +276,12 @@ struct Reader {
     ended: Option<Result<FinishReason, String>>,
     /// The id the program last said it saves the session under.
     session: Option<String>,
-    /// Whether the turn was asked to stop: its result, an error like any
-    /// other, then says it did.
+    /// The id of the request to stop the turn, until the program answers
+    /// it.
+    interrupt: Option<String>,
+    /// Whether the program said it is stopping the turn: its result, an
+    /// error like any other, then says it did. A result that was on its way
+    /// before is the turn's own.
     stopping: bool,
 }
 
@@ -281,6 +301,10 @@ enum Line {
     CommandLifecycle {
         command_uuid: String,
         state: String,
+    },
+    ControlResponse {
+        #[serde(default)]
+        response: Value,
     },
     Result {
         #[serde(default)]
@@ -465,6 +489,14 @@ impl Reader {
                 events
             }
             Line::Assistant { .. } | Line::Other => Vec::new(),
+            Line::ControlResponse { response } => {
+                let answers = response.get("request_id").and_then(Value::as_str);
+                if answers.is_some() && answers == self.interrupt.as_deref() {
+                    self.interrupt = None;
+                    self.stopping = true;
+                }
+                Vec::new()
+            }
             Line::System { session_id } => {
                 if session_id.is_none() || session_id == self.session {
                     return Vec::new();
@@ -517,7 +549,8 @@ impl Reader {
                         let _ = taken.send(Err("the turn ended first".to_owned()));
                     }
                 }
-                if std::mem::take(&mut self.stopping) && is_error {
+                self.interrupt = None;
+                if is_error && std::mem::take(&mut self.stopping) {
                     return vec![Event::Stopped];
                 }
                 let done = if is_error {

@@ -273,9 +273,9 @@ impl Bridge {
                 Replied::Whole(said) => asked(after, false, |reply| {
                     Said::of(&reply.content).digest() == *said
                 }),
-                Replied::Cut(said) => asked(after, true, |reply| {
-                    said.starts_with(&Said::of(&reply.content).text)
-                }),
+                Replied::Cut(said) => {
+                    asked(after, true, |reply| Said::of(&reply.content).starts(said))
+                }
             }
         };
         let (dir, record) = saved::find(&self.kept_root, |record, stands| {
@@ -585,9 +585,13 @@ impl Model {
             Ok(opened) => opened,
             Err(why) => return Some(Err(why)),
         };
+        // Nothing is said of this reply yet, also if it is stopped at once.
+        session.said = Said::default();
         let mut emitted = false;
         let finish = loop {
+            // A reply that is dropped is stopped, whatever of it is ready.
             let streamed = tokio::select! {
+                biased;
                 () = out.closed() => None,
                 streamed = session.answer(out, &self.bridge, &mut emitted) => Some(streamed),
             };
@@ -872,12 +876,12 @@ pub(crate) fn reap_stale_dirs(root: &Path) {
 }
 
 #[cfg(target_os = "linux")]
-fn process_alive(pid: u32) -> bool {
+pub(crate) fn process_alive(pid: u32) -> bool {
     Path::new(&format!("/proc/{pid}")).exists()
 }
 
 #[cfg(target_os = "macos")]
-fn process_alive(pid: u32) -> bool {
+pub(crate) fn process_alive(pid: u32) -> bool {
     std::process::Command::new("/bin/kill")
         .env_clear()
         .args(["-0", &pid.to_string()])
@@ -889,7 +893,7 @@ fn process_alive(pid: u32) -> bool {
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-fn process_alive(_pid: u32) -> bool {
+pub(crate) fn process_alive(_pid: u32) -> bool {
     true
 }
 
@@ -940,6 +944,13 @@ impl Said {
             }
         }
         said
+    }
+
+    /// Whether this is what Rig kept of a reply the user stopped after
+    /// `text` was said: the start of that text, and no tool call, which Rig
+    /// keeps none of.
+    fn starts(&self, text: &str) -> bool {
+        self.calls.is_empty() && text.starts_with(&self.text)
     }
 
     /// The digest of it, for the record of a saved session.
@@ -1010,7 +1021,7 @@ impl Session {
         let replied = |reply: &AssistantMessage| {
             let reply = Said::of(&reply.content);
             match self.cut {
-                true => self.said.text.starts_with(&reply.text),
+                true => reply.starts(&self.said.text),
                 false => reply == self.said,
             }
         };
@@ -1365,32 +1376,10 @@ fn asked(
     asks.then(|| parts(contents))
 }
 
-/// A message as text for the digest of a history: as it is written out, and
-/// each image's bytes, which that leaves out.
+/// A message as text for the digest of a history: all of it, each part in
+/// its place, as Rig saves it.
 fn digested(message: &Message) -> String {
-    let pieces = render_message_pieces(message);
-    let mut text: String = pieces.into_iter().map(|(piece, _)| piece).collect();
-    let mut shown = |image: &Image| {
-        let image = serde_json::to_string(image).unwrap_or_default();
-        text.push_str(&format!("[image {}]\n", saved::digest(&image)));
-    };
-    let Message::User { content } = message else {
-        return text;
-    };
-    for content in content {
-        match content {
-            UserContent::Image(image) => shown(image),
-            UserContent::ToolResult(result) => {
-                for content in &result.content {
-                    if let ToolResultContent::Image(image) = content {
-                        shown(image);
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    text
+    serde_json::to_string(message).unwrap_or_else(|_| format!("{message:?}"))
 }
 
 /// Ensures `usage.total_tokens` (read by Rig's `LastUsage::context()` and

@@ -107,8 +107,12 @@ everything it had, the part of the reply it was stopped in included:
 | Grok Build, Antigravity, GitHub Copilot CLI | `session/cancel` |
 
 A program that does not end the turn within ten seconds, or whose turn fails
-instead, is ended. Esc while a tool runs stops the tool: its result says it
-was stopped, and the turn goes on.
+instead, is ended. So is Claude Code when it is stopped while it holds a
+message of yours it has not read (one sent while a tool ran): whether it
+would drop the message or answer it later is not known, so the conversation
+goes on in a new process, written out, with the message in it. Esc while a
+tool runs stops the tool: its result says it was stopped, and the turn goes
+on.
 
 ### A new process
 

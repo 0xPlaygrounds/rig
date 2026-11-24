@@ -500,3 +500,47 @@ async fn a_saved_thread_is_resumed_and_a_stop_interrupts_the_turn_it_names() {
         [&Event::Done(Ok(FinishReason::Stop)), &Event::Stopped]
     );
 }
+
+#[tokio::test]
+async fn a_prompt_that_was_stopped_before_it_came_is_not_started_on() {
+    let (ours, theirs) = tokio::io::duplex(1 << 16);
+    let received = Received::default();
+    let scripted = tokio::spawn(server(theirs, received.clone(), true));
+    let (reader, writer) = tokio::io::split(ours);
+    let (events, mut reported) = mpsc::unbounded_channel();
+    let mut wire = Wire::new(reader, writer, events);
+    let (prompts, prompted) = mpsc::unbounded_channel();
+    let (stops, stopped) = mpsc::unbounded_channel();
+    let opening = Opening {
+        dir: "/session".into(),
+        system: String::new(),
+        model: "gpt-a".to_owned(),
+        resume: None,
+    };
+    // The stop for the first prompt is seen before the prompt is.
+    let _ = stops.send(1);
+    let late = async {
+        tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+        let _ = prompts.send(Prompt {
+            parts: vec![Part::Text("wait".to_owned())],
+            effort: None,
+        });
+        drop(prompts);
+    };
+
+    let steers = mpsc::unbounded_channel().1;
+    let conversed = converse(&mut wire, opening, prompted, steers, stopped);
+    let (ended, ()) = tokio::join!(conversed, late);
+    drop(wire);
+    let _ = scripted.await;
+
+    assert_eq!(ended, Ok(()));
+    let started = {
+        let received = received.lock().unwrap_or_else(PoisonError::into_inner);
+        let named = |message: &&Value| message.get("method") == Some(&json!("turn/start"));
+        received.iter().filter(named).count()
+    };
+    assert_eq!(started, 0);
+    assert_eq!(reported.try_recv(), Ok(Event::Saved("t1".to_owned())));
+    assert_eq!(reported.try_recv(), Ok(Event::Stopped));
+}

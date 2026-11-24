@@ -14,6 +14,8 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use crate::session::process_alive;
+
 #[cfg(test)]
 mod tests;
 
@@ -177,17 +179,28 @@ fn read(dir: &Path) -> Option<Record> {
     serde_json::from_slice(&std::fs::read(dir.join(RECORD)).ok()?).ok()
 }
 
-/// Removes the directories under `root` that were never kept and that no
-/// session works in: one whose session ended with its process, not by
-/// itself.
+/// Removes the directories under `root` that were never kept and whose
+/// process is gone: one whose session ended with its process, not by
+/// itself. The directory of a process that lives may be one it is making.
 pub(crate) fn reap(root: &Path) {
     let Ok(entries) = std::fs::read_dir(root) else {
         return;
     };
     for entry in entries.flatten() {
         let path = entry.path();
-        let ours = entry.file_name().to_string_lossy().starts_with(PREFIX);
-        if ours && !path.join(RECORD).exists() && locked(&path).is_some() {
+        let name = entry.file_name();
+        let made_by = name
+            .to_str()
+            .and_then(|name| name.strip_prefix(PREFIX)?.split_once('-')?.0.parse().ok());
+        let gone = |pid: u32| pid != std::process::id() && !process_alive(pid);
+        if !made_by.is_some_and(gone) {
+            continue;
+        }
+        // Held while the record is looked for and the directory removed: a
+        // session that kept it meanwhile wrote the record first.
+        if let Some(_lock) = locked(&path)
+            && !path.join(RECORD).exists()
+        {
             let _ = std::fs::remove_dir_all(&path);
         }
     }

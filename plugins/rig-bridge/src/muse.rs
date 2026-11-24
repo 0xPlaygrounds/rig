@@ -445,11 +445,12 @@ where
 
     let _ = wire.events.send(Event::Saved(session_id.clone()));
 
-    // The number of the prompt being answered.
-    let mut turn = 0u64;
+    // The number of the prompt being answered, and of the last one stopped.
+    let (mut turn, mut stopped) = (0u64, 0u64);
     loop {
-        // A prompt is taken before a stop, which may be the one for it; a
-        // stop with no turn running is for one that is over.
+        // A prompt is taken before a stop, which may be the one for it. A
+        // stop with no turn running is for one that is over, or for a
+        // prompt that is only now on its way: that one is not started on.
         let prompt = loop {
             tokio::select! {
                 biased;
@@ -457,7 +458,7 @@ where
                 Some(steer) = steers.recv() => {
                     let _ = steer.taken.send(Err("no turn is running".to_owned()));
                 }
-                Some(_) = stops.recv() => {}
+                Some(stop) = stops.recv() => stopped = stopped.max(stop),
                 msg = wire.next_message() => wire.handle(msg?).await?,
             }
         };
@@ -465,6 +466,10 @@ where
             return Ok(());
         };
         turn += 1;
+        if turn <= stopped {
+            let _ = wire.events.send(Event::Stopped);
+            continue;
+        }
         let mut params = json!({
             "commandId": uuidv7(),
             "sessionId": session_id,

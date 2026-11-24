@@ -746,6 +746,17 @@ fn the_digest_of_a_message_tells_images_apart() {
 
     assert_eq!(with("AAAA"), with("AAAA"));
     assert_ne!(with("AAAA"), with("AAAB"));
+    // And where an image is among the words.
+    let image = || UserContent::Image(Image::default());
+    let word = || UserContent::text("[an image]");
+    assert_ne!(
+        digested(&Message::User {
+            content: vec![image(), word()]
+        }),
+        digested(&Message::User {
+            content: vec![word(), image()]
+        }),
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]

@@ -658,12 +658,13 @@ where
             .await
             .map_err(|_| "it did not finish starting in time".to_owned())??;
 
-    // The number of the prompt being answered.
-    let mut turn = 0u64;
+    // The number of the prompt being answered, and of the last one stopped.
+    let (mut turn, mut stopped) = (0u64, 0u64);
     loop {
         // Between prompts the agent may still send requests and updates. A
-        // prompt is taken before a stop, which may be the one for it; a
-        // stop with no prompt being answered is for one that is over.
+        // prompt is taken before a stop, which may be the one for it. A
+        // stop with no prompt being answered is for one that is over, or
+        // for one that is only now on its way: that one is not started on.
         let prompt = loop {
             tokio::select! {
                 biased;
@@ -671,7 +672,7 @@ where
                 Some(steer) = steers.recv() => {
                     let _ = steer.taken.send(Err("no prompt is being answered".to_owned()));
                 }
-                Some(_) = stops.recv() => {}
+                Some(stop) = stops.recv() => stopped = stopped.max(stop),
                 message = peer.read() => {
                     let message = message.map_err(|why| why.to_string())?;
                     peer.incoming(&message).await.map_err(|why| why.to_string())?;
@@ -682,6 +683,10 @@ where
             return Ok(());
         };
         turn += 1;
+        if turn <= stopped {
+            let _ = peer.events.send(Event::Stopped);
+            continue;
+        }
         if prompt.effort != current_effort
             && let EffortConfig::Supported(default_effort) = effort_config
             && let Some(value) = prompt

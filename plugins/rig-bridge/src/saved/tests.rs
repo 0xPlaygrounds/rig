@@ -50,7 +50,7 @@ fn a_saved_session_is_one_session_s_at_a_time_and_not_found_while_it_answers() {
     assert!(find(&root, |_, _| true).is_some());
 
     // What a process that is gone left unkept is removed; nothing kept is.
-    let left = root.join("rig-bridge-1-left");
+    let left = root.join("rig-bridge-4294967294-left");
     assert!(std::fs::create_dir(&left).is_ok());
     reap(&root);
     assert!(!left.exists());
