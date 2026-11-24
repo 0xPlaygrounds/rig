@@ -219,7 +219,7 @@ struct Reader {
     /// The lines the program holds and its model has not started on.
     held: HashSet<String>,
     /// How the turn ended while the program held a line: the reply's end,
-    /// unless the program starts on that line or drops it.
+    /// unless the program starts on that line.
     ended: Option<Result<FinishReason, String>>,
 }
 
@@ -425,25 +425,20 @@ impl Reader {
             } => {
                 self.reports = true;
                 let (held, started) = (state == "queued", state == "started");
-                let was_held = match held {
-                    true => !self.held.insert(command_uuid.clone()),
-                    false => self.held.remove(&command_uuid),
-                };
-                let unread = format!("Claude Code {state} a message of the user's unread");
+                if held {
+                    self.held.insert(command_uuid.clone());
+                } else {
+                    self.held.remove(&command_uuid);
+                }
                 if let Some(taken) = self.offered.remove(&command_uuid) {
                     let _ = taken.send(match held || started {
                         true => Ok(()),
-                        false => Err(unread.clone()),
+                        false => Err(format!("Claude Code {state} the message unread")),
                     });
-                }
-                // A line the program said it held and then dropped is lost:
-                // the turn fails, so the message is the user's to send again.
-                if was_held && !(held || started || state == "completed") {
-                    self.ended = None;
-                    return vec![Event::Done(Err(unread))];
                 }
                 // The program answers a line its turn did not get to as a
                 // turn of its own, at once: the reply goes on into that one.
+                // A line it drops instead leaves the reply ended.
                 match self.ended.take() {
                     Some(_) if started => Vec::new(),
                     Some(done) if self.held.is_empty() => vec![Event::Done(done)],

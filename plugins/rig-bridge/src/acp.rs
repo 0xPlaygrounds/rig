@@ -397,13 +397,7 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Peer<R, W> {
                 steering.take_if(|(steer, ..)| answers == Some(*steer))
             {
                 let _ = taken.send(match answered(&message) {
-                    // A prompt answered before the one it steers: its work
-                    // is done, and the first one's answer ends the turn.
-                    Ok(result) if prompt => {
-                        self.count(&result);
-                        Ok(())
-                    }
-                    Ok(result) if self.agent.steered(&result) => Ok(()),
+                    Ok(result) if prompt || self.agent.steered(&result) => Ok(()),
                     Ok(_) => Err(format!("{} did not take the message", self.agent.name())),
                     Err(refused) => Err(refused.to_string()),
                 });

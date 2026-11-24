@@ -125,9 +125,6 @@ and rig's reply goes on into the answer. The model then reads it once it has
 stopped calling tools, not at its next step. If a program takes the message
 after the ten seconds are up, the model reads it twice.
 
-If Claude Code drops a message it said it held, the turn fails and rig hands
-the message back to you.
-
 When rig's tools change mid-conversation, a running program is told so over
 MCP and lists them again, and the conversation goes on in the same process.
 Claude Code does this. A program that keeps no connection open to be told on

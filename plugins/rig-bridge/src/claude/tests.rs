@@ -224,14 +224,12 @@ fn a_line_for_the_running_turn_is_taken_once_the_program_holds_it() {
     assert_eq!(held.try_recv(), Ok(Ok(())));
     assert_eq!(
         unread.try_recv(),
-        Ok(Err(
-            "Claude Code discarded a message of the user's unread".to_owned()
-        ))
+        Ok(Err("Claude Code discarded the message unread".to_owned()))
     );
 }
 
 #[test]
-fn a_result_with_a_line_still_held_is_not_the_reply_s_end() {
+fn a_result_with_a_line_still_held_ends_the_reply_only_if_the_line_is_dropped() {
     // The turn ended before the model read the line: the program answers
     // it as a turn of its own, and that turn's result ends the reply.
     let mut reader = Reader::default();
@@ -249,16 +247,13 @@ fn a_result_with_a_line_still_held_is_not_the_reply_s_end() {
         vec![Event::Done(Ok(FinishReason::Stop))]
     );
 
-    // The program dropped the line it held instead: the message is lost,
-    // so the turn fails and the message is the user's to send again.
+    // The program dropped the line instead: the first result stands.
     let mut reader = Reader::default();
     read(&mut reader, lifecycle("steer", "queued"));
     assert_eq!(read(&mut reader, result()), Vec::new());
     assert_eq!(
         read(&mut reader, lifecycle("steer", "cancelled")),
-        vec![Event::Done(Err(
-            "Claude Code cancelled a message of the user's unread".to_owned()
-        ))]
+        vec![Event::Done(Ok(FinishReason::Stop))]
     );
 
     // A line the model read in the turn leaves the result as it was.
