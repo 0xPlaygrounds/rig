@@ -1,10 +1,10 @@
 <p align="center">
 <picture>
-  <source media="(prefers-color-scheme: dark) and (prefers-reduced-motion: reduce)" srcset="img/header-dark-still.webp">
-  <source media="(prefers-color-scheme: light) and (prefers-reduced-motion: reduce)" srcset="img/header-light-still.webp">
-  <source media="(prefers-color-scheme: dark)" srcset="img/header-dark.webp">
-  <source media="(prefers-color-scheme: light)" srcset="img/header-light.webp">
-  <img src="img/header-dark.webp" width="288" height="120" alt="Rig logo">
+  <source media="(prefers-color-scheme: dark) and (prefers-reduced-motion: reduce)" srcset="img/pixel-logo/blade-zoom-dark-still.webp">
+  <source media="(prefers-color-scheme: light) and (prefers-reduced-motion: reduce)" srcset="img/pixel-logo/blade-zoom-light-still.webp">
+  <source media="(prefers-color-scheme: dark)" srcset="img/pixel-logo/blade-zoom-dark.webp">
+  <source media="(prefers-color-scheme: light)" srcset="img/pixel-logo/blade-zoom-light.webp">
+  <img src="img/pixel-logo/blade-zoom-dark.webp" width="288" height="120" alt="Rig logo">
 </picture>
 </p>
 

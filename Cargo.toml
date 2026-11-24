@@ -51,10 +51,10 @@ include = [
     "/MIGRATING.md",
     # Referenced by README.md, which registries render from the tarball. Every
     # other img/ file (generators, the gear accent, old logos) stays out.
-    "/img/header-dark.webp",
-    "/img/header-light.webp",
-    "/img/header-dark-still.webp",
-    "/img/header-light-still.webp",
+    "/img/pixel-logo/blade-zoom-dark.webp",
+    "/img/pixel-logo/blade-zoom-light.webp",
+    "/img/pixel-logo/blade-zoom-dark-still.webp",
+    "/img/pixel-logo/blade-zoom-light-still.webp",
     "/img/built-by-playgrounds.svg",
     "/img/ryzome-bg.png",
 ]

@@ -4,17 +4,17 @@
 # ///
 """gen_gear.py: Generate the rotating-gear pixel-art accent logo.
 
-Kept as a secondary/accent asset; the README hero is the blade stack from gen.py.
+Kept as a secondary/accent asset; the README hero is the blade stack from gen_blade_zoom.py.
 
 Usage:
-    uv run img/gen_gear.py
-    # or: python3 img/gen_gear.py
+    uv run img/pixel-logo/gen_gear.py
+    # or: python3 img/pixel-logo/gen_gear.py
 
 Generates:
-    img/gear-dark.webp        (lossless animated WebP for dark backgrounds)
-    img/gear-light.webp       (lossless animated WebP for light backgrounds)
-    img/gear-dark-still.webp  (first frame static fallback)
-    img/gear-light-still.webp (first frame static fallback)
+    img/pixel-logo/gear-dark.webp        (lossless animated WebP for dark backgrounds)
+    img/pixel-logo/gear-light.webp       (lossless animated WebP for light backgrounds)
+    img/pixel-logo/gear-dark-still.webp  (first frame static fallback)
+    img/pixel-logo/gear-light-still.webp (first frame static fallback)
 
 Features:
 - An 8-tooth gear rotating seamlessly (16 frames across one tooth phase = infinite loop).

@@ -2,17 +2,17 @@
 # requires-python = ">=3.10"
 # dependencies = ["pillow>=10"]
 # ///
-"""gen.py: Generate the animated pixel-art hero header for Rig's README.
+"""gen_blade_zoom.py: Generate the animated pixel-art Rig logo used as the README hero.
 
 Usage:
-    uv run img/gen.py
-    # or: python3 img/gen.py
+    uv run img/pixel-logo/gen_blade_zoom.py
+    # or: python3 img/pixel-logo/gen_blade_zoom.py
 
 Generates:
-    img/header-dark.webp        (lossless animated WebP for dark backgrounds)
-    img/header-light.webp       (lossless animated WebP for light backgrounds)
-    img/header-dark-still.webp  (static mark, for prefers-reduced-motion)
-    img/header-light-still.webp (static mark, for prefers-reduced-motion)
+    img/pixel-logo/blade-zoom-dark.webp        (lossless animated WebP for dark backgrounds)
+    img/pixel-logo/blade-zoom-light.webp       (lossless animated WebP for light backgrounds)
+    img/pixel-logo/blade-zoom-dark-still.webp  (static mark, for prefers-reduced-motion)
+    img/pixel-logo/blade-zoom-light-still.webp (static mark, for prefers-reduced-motion)
 
 The Rig blade stack as a continuous zoom:
 - Six blades (three mirrored pairs) drift outward. A new pair opens as a slit
@@ -178,7 +178,7 @@ def main():
     for theme_name in THEMES:
         frames = render(theme_name)
         duration = round(SLOT_SECONDS * 1000 / len(frames))
-        out_anim = os.path.join(HERE, f"header-{theme_name}.webp")
+        out_anim = os.path.join(HERE, f"blade-zoom-{theme_name}.webp")
         frames[0].save(
             out_anim,
             save_all=True,
@@ -188,7 +188,7 @@ def main():
             lossless=True,
             background=(0, 0, 0, 0),
         )
-        out_still = os.path.join(HERE, f"header-{theme_name}-still.webp")
+        out_still = os.path.join(HERE, f"blade-zoom-{theme_name}-still.webp")
         frames[0].save(out_still, lossless=True, background=(0, 0, 0, 0))
 
         w, h = frames[0].size
