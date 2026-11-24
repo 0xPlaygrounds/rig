@@ -13,7 +13,7 @@
 //! # }
 //! ```
 
-pub const SONAR_PRO: &str = "sonar_pro";
+pub const SONAR_PRO: &str = "sonar-pro";
 pub const SONAR: &str = "sonar";
 
 pub mod extension;
