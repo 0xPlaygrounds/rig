@@ -452,6 +452,7 @@ impl TryFrom<McpTool> for DynamicTool {
             .to_string();
         let parameters = tool.definition.schema_as_json_value();
         let annotations = annotations(&tool.definition);
+        let hints = rig_core::tool::Touches::from_hints(&annotations);
         let liveness_peer = tool.peer.clone();
         let tool = Arc::new(tool);
         Ok(DynamicTool::new_with_context(
@@ -503,6 +504,13 @@ impl TryFrom<McpTool> for DynamicTool {
             },
         )
         .with_annotations(annotations)
+        // The server's hints are the annotations' origin, so the footprint a
+        // host reads must follow [`Touches::from_hints`]: a read-only server
+        // tool is `Independent` (never run again after a restart), not a
+        // local `Reads` declaration. Without the hint a dynamic tool falls
+        // back to [`Touches::from_annotations`], which would read the
+        // server's word as the tool's own.
+        .with_footprint(hints)
         .with_liveness(move || !liveness_peer.is_transport_closed()))
     }
 }
