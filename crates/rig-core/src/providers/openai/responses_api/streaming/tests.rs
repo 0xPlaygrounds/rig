@@ -38,6 +38,53 @@ fn classify_keepalive_is_known() {
     ));
 }
 
+#[test]
+fn classify_response_metadata_is_known() {
+    let frame = json!({"type": "response.metadata", "sequence_number": 7}).to_string();
+    assert!(matches!(
+        classify_responses_payload(&frame),
+        WireEvent::Known(super::ResponsesEvent::Frame { kind, .. }) if kind == "response.metadata"
+    ));
+}
+
+#[test]
+fn response_metadata_frames_are_skipped_without_unknown_items() {
+    let message = json!({
+        "type": "message",
+        "id": "msg_1",
+        "role": "assistant",
+        "status": "completed",
+        "content": [{"type": "output_text", "text": "ok"}],
+    });
+    let mut completed = sample_response("completed");
+    completed["output"] = json!([message]);
+    let body = body_of(&[
+        json!({"type": "response.created", "sequence_number": 0, "response": sample_response("in_progress")}),
+        json!({"type": "response.metadata", "sequence_number": 1, "metadata": {"trace": "x"}}),
+        json!({"type": "response.output_item.done", "sequence_number": 2, "output_index": 0, "item": message}),
+        json!({"type": "response.completed", "sequence_number": 3, "response": completed}),
+    ]);
+
+    let decoded = decoded_body(&body);
+    assert!(
+        decoded
+            .items
+            .iter()
+            .all(|item| !matches!(item, Ok(Item::Unknown(_)) | Err(_))),
+        "response.metadata should not emit unknown or error items: {:?}",
+        decoded.items
+    );
+    let response = match decoded.outcome {
+        Ok(response) => response,
+        Err(err) => panic!("stream with response.metadata should decode cleanly: {err}"),
+    };
+    assert_eq!(response.choice.len(), 1);
+    assert!(matches!(
+        response.choice.first(),
+        Some(AssistantContent::Text(text)) if text.text() == "ok"
+    ));
+}
+
 fn sample_response(status: &str) -> serde_json::Value {
     json!({
         "id": "resp_123",

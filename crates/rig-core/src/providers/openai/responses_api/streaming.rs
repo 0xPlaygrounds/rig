@@ -28,15 +28,16 @@ use crate::providers::openai::wire::chat::reported;
 use crate::wire::{Decoder, Flow, Out, WireCitation, WireEvent, WireFrame};
 
 /// Whether `kind` is a Responses event type this decoder reads. A frame of
-/// any other type passes through as unknown. `keepalive` is ChatGPT's idle
-/// heartbeat, read and skipped.
+/// any other type passes through as unknown. `keepalive` and
+/// `response.metadata` are ChatGPT backend control frames, read and skipped.
 fn is_known_responses_event_type(kind: &str) -> bool {
     matches!(kind, "error" | "keepalive")
         || is_lifecycle_event(kind)
         || matches!(
             kind.strip_prefix("response."),
             Some(
-                "output_item.added"
+                "metadata"
+                    | "output_item.added"
                     | "output_item.done"
                     | "content_part.added"
                     | "content_part.done"
@@ -988,7 +989,7 @@ impl<'id> Decoder<'id, Completion> for ResponsesDecoder {
                 "response.failed" => {
                     Err(ProviderError::from_provider_body(raw.unwrap_or_default()))
                 }
-                "keepalive" => Ok(Flow::More),
+                "keepalive" | "response.metadata" => Ok(Flow::More),
                 kind if is_lifecycle_event(kind) => Ok(Flow::More),
                 kind => {
                     self.item_event(kind, frame, &mut out)?;
