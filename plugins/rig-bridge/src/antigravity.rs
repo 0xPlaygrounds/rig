@@ -9,8 +9,8 @@ use std::process::Command;
 
 use serde_json::{Value, json};
 
-use crate::acp::{Agent, Opening, SERVER};
-use crate::harness::link;
+use crate::acp::{Agent, Opening, SERVER, Steering};
+use crate::harness::{Part, link};
 
 #[cfg(test)]
 mod tests;
@@ -171,6 +171,18 @@ impl Agent for Antigravity {
 
     fn input_leaves_out_cache(&self) -> bool {
         true
+    }
+
+    /// From 1.5.0 the program takes the next prompt while it answers one,
+    /// as a message for that one. Earlier ones answer it afterwards.
+    fn steer(&self, started: &Value, _: &str, _: &[Part]) -> Option<Steering> {
+        let version = started.pointer("/agentInfo/version")?.as_str()?;
+        let mut numbers = version.split('.').map(|number| {
+            let digits = number.bytes().take_while(u8::is_ascii_digit).count();
+            number.get(..digits)?.parse::<u32>().ok()
+        });
+        let (major, minor) = (numbers.next()??, numbers.next()??);
+        ((major, minor) >= (1, 5)).then_some(Steering::Prompt)
     }
 }
 

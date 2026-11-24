@@ -3,7 +3,9 @@
 //! model says until the model calls a tool or its turn ends. A tool call is
 //! handed to Rig as an ordinary tool call and its MCP request stays open; the
 //! request that carries the results answers it, and the same harness turn
-//! goes on.
+//! goes on. What the user said meanwhile is given to the harness as a
+//! message of the user's, never as tool output: for its running turn if it
+//! takes one, and else as its next prompt, answered in the same reply.
 //!
 //! Rig owns the conversation. A request continues a session only when its
 //! history is the one the session answered plus what came since; any other
@@ -32,7 +34,9 @@ use serde_json::{Value, json};
 use tokio::sync::{OnceCell, mpsc, oneshot};
 
 use crate::commands::BridgeSignal;
-use crate::harness::{ContextSnapshot, Event, Harness, Launch, Part, Prompt, Running, Vendor};
+use crate::harness::{
+    ContextSnapshot, Event, Harness, Launch, Part, Prompt, Running, Steer, Vendor,
+};
 use crate::mcp::{Call, Entry, Outcome, Server};
 
 #[cfg(test)]
@@ -49,6 +53,10 @@ const COUNT_SETTLE: Duration = Duration::from_secs(2);
 
 /// How long a harness told that the tools changed has to list them again.
 const RELIST: Duration = Duration::from_secs(5);
+
+/// How long a harness has to say it took a message for its running turn
+/// before the message waits to be its next prompt instead.
+const STEER: Duration = Duration::from_secs(10);
 
 /// Maximum bytes of prior conversation history serialized into a cold
 /// session's opening replay. Kept well below harness tail-truncation limits
@@ -457,7 +465,7 @@ impl Model {
                 if is_prompt {
                     session.setup.effort = setup.effort;
                 }
-                (session.retool(&setup.tools).await && session.send(next).is_ok())
+                (session.retool(&setup.tools).await && session.send(next).await.is_ok())
                     .then_some((session, is_prompt))
             }
             None => None,
@@ -566,6 +574,7 @@ impl Model {
             seen: Vec::new(),
             said: Said::default(),
             open: Vec::new(),
+            queued: Vec::new(),
             calls,
             running,
             entry,
@@ -580,7 +589,7 @@ impl Model {
                 self.vendor, self.model
             ));
         }
-        session.send(Next::Prompt(prompt))?;
+        session.send(Next::Prompt(prompt)).await?;
         Ok(session)
     }
 }
@@ -708,8 +717,12 @@ fn is_non_recoverable(why: &str) -> bool {
 enum Next {
     /// The next prompt.
     Prompt(Vec<Part>),
-    /// The results of its open calls, in the calls' order.
-    Results(Vec<Outcome>),
+    /// The results of its open calls, in the calls' order, and what the
+    /// user said beside them.
+    Results {
+        outcomes: Vec<Outcome>,
+        said: Vec<Part>,
+    },
 }
 
 /// The text and tool calls of a reply.
@@ -767,6 +780,9 @@ struct Session {
     said: Said,
     /// The tool calls Rig is running, in the order the reply made them.
     open: Vec<oneshot::Sender<Outcome>>,
+    /// What the user said beside tool results that the harness did not take
+    /// for its running turn: its next prompt, once that turn ends.
+    queued: Vec<Part>,
     calls: mpsc::UnboundedReceiver<Call>,
     running: Running,
     entry: Entry,
@@ -830,12 +846,23 @@ impl Session {
                 other => said.push(other),
             }
         }
-        let mut outcomes = outcomes.into_iter().collect::<Option<Vec<_>>>()?;
-        // What Rig says beside the results reaches the model with the last.
-        if let Some(last) = outcomes.last_mut() {
-            last.content.extend(parts(said).iter().map(block));
-        }
-        Some(Next::Results(outcomes))
+        let outcomes = outcomes.into_iter().collect::<Option<Vec<_>>>()?;
+        Some(Next::Results {
+            outcomes,
+            said: parts(said),
+        })
+    }
+
+    /// Offers the harness `said` as a message for its running turn: what
+    /// tells whether it took it, if it takes such messages at all.
+    fn steer(&self, said: &[Part]) -> Option<oneshot::Receiver<Result<(), String>>> {
+        let (taken, held) = oneshot::channel();
+        let steer = Steer {
+            parts: said.to_vec(),
+            taken,
+        };
+        self.running.steers.as_ref()?.send(steer).ok()?;
+        Some(held)
     }
 
     /// Offers `tools` in place of the session's, if they differ: whether
@@ -860,7 +887,12 @@ impl Session {
         true
     }
 
-    fn send(&mut self, next: Next) -> Result<(), String> {
+    /// Sends the session what is next. What the user said beside tool
+    /// results goes first, as a message for the running turn, so the model
+    /// reads it with the results. A harness that takes no such message, or
+    /// does not say in time that it took this one, gets it as its next
+    /// prompt when the turn ends.
+    async fn send(&mut self, next: Next) -> Result<(), String> {
         match next {
             Next::Prompt(parts) => self
                 .running
@@ -870,7 +902,16 @@ impl Session {
                     effort: self.setup.effort,
                 })
                 .map_err(|_| "the harness is gone".to_owned()),
-            Next::Results(outcomes) => {
+            Next::Results { outcomes, said } => {
+                if !said.is_empty() {
+                    let taken = match self.steer(&said) {
+                        Some(held) => tokio::time::timeout(STEER, held).await,
+                        None => Ok(Ok(Err(String::new()))),
+                    };
+                    if !matches!(taken, Ok(Ok(Ok(())))) {
+                        self.queued.extend(said);
+                    }
+                }
                 let mut given_up = false;
                 for (answer, outcome) in self.open.drain(..).zip(outcomes) {
                     given_up |= answer.send(outcome).is_err();
@@ -884,8 +925,9 @@ impl Session {
     }
 
     /// Streams the harness into `out` until its turn ends or it calls
-    /// tools, which stay open. Sets `emitted` once any output or tool call is
-    /// forwarded to `out`.
+    /// tools, which stay open. A turn that ends with a message of the
+    /// user's waiting goes on into the turn that answers it. Sets `emitted`
+    /// once any output or tool call is forwarded to `out`.
     async fn answer(
         &mut self,
         out: &mpsc::UnboundedSender<Wrote>,
@@ -902,10 +944,16 @@ impl Session {
         // Whether an inference began whose counters have not arrived: a
         // harness may call a tool before it finishes reading the message.
         let mut counting = false;
+        // Whether the next text starts the answer to a waiting message,
+        // after text of the turn before it.
+        let mut apart = false;
         loop {
             tokio::select! {
                 event = self.running.events.recv() => match event {
-                    Some(Event::Text(text)) => {
+                    Some(Event::Text(mut text)) => {
+                        if std::mem::take(&mut apart) {
+                            text.insert_str(0, "\n\n");
+                        }
                         *emitted = true;
                         self.said.text.push_str(&text);
                         let _ = out.send(Wrote::Text(text));
@@ -939,6 +987,12 @@ impl Session {
                     // must not run them for a harness that no longer waits.
                     Some(Event::Done(Ok(_))) if !self.open.is_empty() => {
                         return Err("the harness ended its turn before its tools answered".to_owned());
+                    }
+                    Some(Event::Done(Ok(_))) if !self.queued.is_empty() => {
+                        let parts = std::mem::take(&mut self.queued);
+                        self.send(Next::Prompt(parts)).await?;
+                        self.prompts = self.prompts.saturating_add(1);
+                        apart = !self.said.text.is_empty();
                     }
                     Some(Event::Done(Ok(reason))) => {
                         return Ok(finish(
@@ -1070,12 +1124,18 @@ fn parts<'a>(contents: impl IntoIterator<Item = &'a UserContent>) -> Vec<Part> {
 
 /// A tool result as transcript text.
 fn told(result: &ToolResult) -> String {
-    let mut text = format!("[result of `{}`", result.name.as_str());
-    text.push_str(if result.is_error {
-        ", an error]\n"
-    } else {
-        "]\n"
-    });
+    format!("[{}]\n{}", result_title(result), returned(result))
+}
+
+/// What a tool result is a result of, and whether it is an error.
+fn result_title(result: &ToolResult) -> String {
+    let error = if result.is_error { ", an error" } else { "" };
+    format!("result of `{}`{error}", result.name.as_str())
+}
+
+/// What a tool returned, as text.
+fn returned(result: &ToolResult) -> String {
+    let mut text = String::new();
     for content in &result.content {
         match content {
             ToolResultContent::Text(said) => text.push_str(&said.text),
@@ -1113,16 +1173,24 @@ fn elide_tool_output(text: &str) -> String {
     )
 }
 
+/// A replayed message as pieces of `(text, can_elide_as_tool_result)`. A
+/// tool's output has a heading of its own: it is not the user's.
 fn render_message_pieces(message: &Message) -> Vec<(String, bool)> {
     match message {
         Message::User { content } => {
-            let mut out = vec![("## User\n".to_owned(), false)];
+            let mut out = Vec::new();
+            let mut users = false;
             for item in content {
                 match item {
                     UserContent::ToolResult(result) => {
-                        out.push((format!("{}\n", told(result)), true));
+                        users = false;
+                        out.push((format!("## Tool {}\n", result_title(result)), false));
+                        out.push((format!("{}\n", returned(result)), true));
                     }
                     other => {
+                        if !std::mem::replace(&mut users, true) {
+                            out.push(("## User\n".to_owned(), false));
+                        }
                         for part in parts([other]) {
                             let line = match part {
                                 Part::Text(said) => format!("{said}\n"),

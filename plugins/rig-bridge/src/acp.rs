@@ -13,11 +13,11 @@ use std::sync::Arc;
 use rig_harness::rig_core::completion::{Effort, FinishReason, Usage};
 use serde_json::{Value, json};
 use tokio::io::{AsyncRead, AsyncWrite};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 
 use crate::harness::{
     ContextSnapshot, Event, HANDSHAKE_TIMEOUT, Harness, Launch, Part, Prompt, Running, Stderr,
-    parse_effort, spawn,
+    Steer, parse_effort, spawn,
 };
 use crate::rpc::{Transport, method_not_found, positive_u32};
 
@@ -138,6 +138,31 @@ pub(crate) trait Agent: Send + Sync + 'static {
         let _ = (method, params);
         None
     }
+
+    /// How the agent that answered `initialize` with `started` takes
+    /// `parts` as a user message for the prompt it is answering. The
+    /// protocol has no way: `None` unless the agent has one of its own.
+    fn steer(&self, started: &Value, session: &str, parts: &[Part]) -> Option<Steering> {
+        let _ = (started, session, parts);
+        None
+    }
+
+    /// Whether `result`, the answer to a [`Steering::Request`], says the
+    /// agent holds the message for its running prompt.
+    fn steered(&self, result: &Value) -> bool {
+        let _ = result;
+        true
+    }
+}
+
+/// How an agent takes a user message for the prompt it is answering.
+pub(crate) enum Steering {
+    /// By a request of its own beside the prompt, as method and parameters.
+    Request(&'static str, Value),
+    /// As the session's next prompt, sent while this one is answered: the
+    /// agent ends this one at once and goes on with its work, tool calls
+    /// in flight included, under the next.
+    Prompt,
 }
 
 /// An [`Agent`] as a harness.
@@ -182,19 +207,21 @@ impl<A: Agent> Harness for Acp<A> {
         self.0.prepare(&mut command, &opening)?;
         let (process, pipes) = spawn(command)?;
         let (prompts, prompted) = mpsc::unbounded_channel();
+        let (steers, steered) = mpsc::unbounded_channel();
         let (events, reported) = mpsc::unbounded_channel();
         let stderr = Stderr::follow(pipes.stderr);
         let agent = self.0.clone();
         tokio::spawn(async move {
             let name = agent.name();
             let mut peer = Peer::new(pipes.stdout, pipes.stdin, events.clone(), agent);
-            if let Err(why) = converse(&mut peer, opening, prompted).await {
+            if let Err(why) = converse(&mut peer, opening, prompted, steered).await {
                 let why = stderr.explain(&format!("{name}: {why}")).await;
                 let _ = events.send(Event::Done(Err(why)));
             }
         });
         Ok(Running {
             prompts,
+            steers: Some(steers),
             events: reported,
             _alive: Box::new(process),
         })
@@ -250,6 +277,11 @@ pub(crate) struct Peer<R, W> {
     /// `toolCallId` -> `title` seen in `tool_call` updates, for agents that
     /// strip the MCP server prefix in `session/request_permission`.
     call_titles: HashMap<String, String>,
+    /// What the agent answered `initialize` with.
+    started: Value,
+    /// The counters of the last prompt result, for an agent whose results
+    /// count the whole session.
+    totals: Usage,
 }
 
 impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Peer<R, W> {
@@ -266,6 +298,8 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Peer<R, W> {
             prompt: None,
             counted: false,
             call_titles: HashMap::new(),
+            started: Value::Null,
+            totals: Usage::new(),
         }
     }
 
@@ -300,20 +334,104 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Peer<R, W> {
                 self.incoming(&message).await?;
                 continue;
             }
-            return match message.get("error") {
-                Some(error) => Err(Failed::Refused {
-                    code: error
-                        .get("code")
-                        .and_then(Value::as_i64)
-                        .unwrap_or_default(),
-                    message: error
-                        .get("message")
-                        .and_then(Value::as_str)
-                        .unwrap_or("the request failed")
-                        .to_owned(),
-                }),
-                None => Ok(message.get("result").cloned().unwrap_or(Value::Null)),
+            return answered(&message);
+        }
+    }
+
+    /// Sends `asked` as the session's next prompt and waits for its answer,
+    /// as [`request`](Self::request) does. A steer that comes meanwhile is
+    /// given to the agent its own way, and told whether the agent took it.
+    async fn prompted(
+        &mut self,
+        session: &str,
+        asked: Value,
+        steers: &mut mpsc::UnboundedReceiver<Steer>,
+    ) -> Result<Value, Failed> {
+        let closed = |()| Failed::Closed;
+        let send = self.transport.send_request("session/prompt", asked, true);
+        let mut id = send.await.map_err(closed)?;
+        // The steer the agent has not answered: its request's id, who waits
+        // to hear of it, and whether it is a prompt.
+        let mut steering: Option<(u64, oneshot::Sender<Result<(), String>>, bool)> = None;
+        loop {
+            let message = tokio::select! {
+                message = self.read() => message?,
+                Some(steer) = steers.recv(), if steering.is_none() => {
+                    let (method, params, prompt) =
+                        match self.agent.steer(&self.started, session, &steer.parts) {
+                            Some(Steering::Request(method, params)) => (method, params, false),
+                            Some(Steering::Prompt) => {
+                                let prompt = blocks(&steer.parts);
+                                let asked = json!({ "sessionId": session, "prompt": prompt });
+                                ("session/prompt", asked, true)
+                            }
+                            None => {
+                                let name = self.agent.name();
+                                let _ = steer.taken.send(Err(format!("{name} takes none")));
+                                continue;
+                            }
+                        };
+                    let send = self.transport.send_request(method, params, true);
+                    steering = Some((send.await.map_err(closed)?, steer.taken, prompt));
+                    continue;
+                }
             };
+            let answers = message
+                .get("method")
+                .is_none()
+                .then(|| message.get("id").and_then(Value::as_u64))
+                .flatten();
+            if answers == Some(id) {
+                match (steering.take(), answered(&message)) {
+                    // The agent ended this prompt to go on under the next.
+                    (Some((next, taken, true)), Ok(result)) => {
+                        self.count(&result);
+                        let _ = taken.send(Ok(()));
+                        id = next;
+                        continue;
+                    }
+                    (_, result) => return result,
+                }
+            }
+            if let Some((_, taken, prompt)) =
+                steering.take_if(|(steer, ..)| answers == Some(*steer))
+            {
+                let _ = taken.send(match answered(&message) {
+                    Ok(result) if prompt || self.agent.steered(&result) => Ok(()),
+                    Ok(_) => Err(format!("{} did not take the message", self.agent.name())),
+                    Err(refused) => Err(refused.to_string()),
+                });
+                continue;
+            }
+            let ended = self.prompt.as_deref().and_then(|prompt| {
+                let method = message.get("method")?.as_str()?;
+                let params = message.get("params").unwrap_or(&Value::Null);
+                self.agent.ended(method, params, prompt)
+            });
+            if let Some(result) = ended {
+                return Ok(result);
+            }
+            self.incoming(&message).await?;
+        }
+    }
+
+    /// Reports the counters of a prompt's `result`, the prompt's totals,
+    /// unless the agent counted each inference of it.
+    fn count(&mut self, result: &Value) {
+        let was_counted = std::mem::take(&mut self.counted);
+        let cache_apart = self.agent.input_leaves_out_cache();
+        let Some(reported) = usage(result, cache_apart).filter(|_| !was_counted) else {
+            return;
+        };
+        let counted = if self.agent.cumulative_usage() {
+            let since = usage_delta(&self.totals, reported);
+            self.totals = reported;
+            since
+        } else {
+            reported
+        };
+        if counted.is_reported() {
+            let _ = self.events.send(Event::Usage(counted));
         }
     }
 
@@ -404,6 +522,35 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Peer<R, W> {
     }
 }
 
+/// A prompt's parts as content blocks.
+fn blocks(parts: &[Part]) -> Vec<Value> {
+    let block = |part: &Part| match part {
+        Part::Text(text) => json!({ "type": "text", "text": text }),
+        Part::Image { media_type, data } => {
+            json!({ "type": "image", "mimeType": media_type, "data": data })
+        }
+    };
+    parts.iter().map(block).collect()
+}
+
+/// What a response says: its result, or how the agent refused.
+fn answered(message: &Value) -> Result<Value, Failed> {
+    match message.get("error") {
+        Some(error) => Err(Failed::Refused {
+            code: error
+                .get("code")
+                .and_then(Value::as_i64)
+                .unwrap_or_default(),
+            message: error
+                .get("message")
+                .and_then(Value::as_str)
+                .unwrap_or("the request failed")
+                .to_owned(),
+        }),
+        None => Ok(message.get("result").cloned().unwrap_or(Value::Null)),
+    }
+}
+
 /// The outcome of a permission request: the first option that allows the
 /// call once for one of Rig's tools, and a refusal for anything else.
 fn decide(ours: bool, options: Option<&Value>) -> Value {
@@ -450,11 +597,13 @@ enum EffortConfig {
     Supported(Option<Effort>),
 }
 
-/// Opens the session, then answers each prompt until the prompts end.
+/// Opens the session, then answers each prompt until the prompts end. A
+/// steer goes into the prompt being answered.
 pub(crate) async fn converse<R, W>(
     peer: &mut Peer<R, W>,
     opening: Opening,
     mut prompts: mpsc::UnboundedReceiver<Prompt>,
+    mut steers: mpsc::UnboundedReceiver<Steer>,
 ) -> Result<(), String>
 where
     R: AsyncRead + Unpin,
@@ -462,7 +611,6 @@ where
 {
     let agent = peer.agent.clone();
     let mut current_effort = opening.effort;
-    let mut prev_usage = Usage::new();
     let (session, mut system, effort_config) =
         tokio::time::timeout(HANDSHAKE_TIMEOUT, handshake(peer, &opening))
             .await
@@ -473,6 +621,9 @@ where
         let prompt = loop {
             tokio::select! {
                 prompt = prompts.recv() => break prompt,
+                Some(steer) = steers.recv() => {
+                    let _ = steer.taken.send(Err("no prompt is being answered".to_owned()));
+                }
                 message = peer.read() => {
                     let message = message.map_err(|why| why.to_string())?;
                     peer.incoming(&message).await.map_err(|why| why.to_string())?;
@@ -506,12 +657,7 @@ where
                 "text": format!("<instructions>\n{system}\n</instructions>\n"),
             }));
         }
-        blocks.extend(prompt.parts.iter().map(|part| match part {
-            Part::Text(text) => json!({ "type": "text", "text": text }),
-            Part::Image { media_type, data } => {
-                json!({ "type": "image", "mimeType": media_type, "data": data })
-            }
-        }));
+        blocks.extend(self::blocks(&prompt.parts));
         let named = uuid::Uuid::new_v4().to_string();
         let mut asked = json!({ "sessionId": session, "prompt": blocks });
         if let (Some(meta), Some(asked)) = (agent.prompt_meta(&named), asked.as_object_mut()) {
@@ -519,25 +665,11 @@ where
         }
         peer.prompt = Some(named);
         peer.call_titles.clear();
-        let answered = peer.request("session/prompt", asked).await;
+        let answered = peer.prompted(&session, asked, &mut steers).await;
         peer.prompt = None;
-        let was_counted = std::mem::take(&mut peer.counted);
         let done = match answered {
             Ok(result) => {
-                // The turn's totals, unless each inference was counted.
-                let cache_apart = agent.input_leaves_out_cache();
-                if let Some(reported) = usage(&result, cache_apart).filter(|_| !was_counted) {
-                    let turn_usage = if agent.cumulative_usage() {
-                        let delta = usage_delta(&prev_usage, reported);
-                        prev_usage = reported;
-                        delta
-                    } else {
-                        reported
-                    };
-                    if turn_usage.is_reported() {
-                        let _ = peer.events.send(Event::Usage(turn_usage));
-                    }
-                }
+                peer.count(&result);
                 match result.get("stopReason").and_then(Value::as_str) {
                     Some("max_tokens") => Ok(FinishReason::Length),
                     Some("refusal") => Err("the model refused to answer".to_owned()),
@@ -546,7 +678,10 @@ where
                 }
             }
             Err(Failed::Closed) => return Err(Failed::Closed.to_string()),
-            Err(refused) => Err(refused.to_string()),
+            Err(refused) => {
+                peer.counted = false;
+                Err(refused.to_string())
+            }
         };
         let _ = peer.events.send(Event::Done(done));
     }
@@ -582,6 +717,7 @@ where
         .request("initialize", hello)
         .await
         .map_err(failed("it did not start"))?;
+    peer.started.clone_from(&initialized);
     let meta = agent.session_meta(&initialized, &opening.system);
     let system = meta.is_none().then(|| opening.system.clone());
     let servers = if agent.serves_in_session() {

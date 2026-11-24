@@ -14174,6 +14174,7 @@ dependencies = [
  "rig-mcp-client",
  "rig-traffic",
  "rig-tui",
+ "rig-watch",
  "serde_json",
 ]
 
@@ -14827,6 +14828,21 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "rig-watch"
+version = "0.47.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "chrono",
+ "rig-core",
+ "rig-harness",
+ "rig-harness-test-support",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

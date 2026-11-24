@@ -17,7 +17,7 @@ use tokio::sync::mpsc;
 
 use crate::harness::{
     ContextSnapshot, Event, HANDSHAKE_TIMEOUT, Harness, Launch, Part, Prompt, Running, Stderr,
-    effort_wire, env_path, link, note, parse_effort, spawn,
+    Steer, effort_wire, env_path, link, note, parse_effort, spawn,
 };
 use crate::rpc::{Transport, method_not_found, positive_u32};
 
@@ -245,6 +245,7 @@ impl Harness for Codex {
             .env_remove("OPENAI_BASE_URL");
         let (process, pipes) = spawn(command)?;
         let (prompts, prompted) = mpsc::unbounded_channel();
+        let (steers, steered) = mpsc::unbounded_channel();
         let (events, reported) = mpsc::unbounded_channel();
         let stderr = Stderr::follow(pipes.stderr);
         let opening = Opening {
@@ -254,13 +255,14 @@ impl Harness for Codex {
         };
         tokio::spawn(async move {
             let mut wire = Wire::new(pipes.stdout, pipes.stdin, events.clone());
-            if let Err(why) = converse(&mut wire, opening, prompted).await {
+            if let Err(why) = converse(&mut wire, opening, prompted, steered).await {
                 let why = stderr.explain(&format!("codex: {why}")).await;
                 let _ = events.send(Event::Done(Err(why)));
             }
         });
         Ok(Running {
             prompts,
+            steers: Some(steers),
             events: reported,
             _alive: Box::new(process),
         })
@@ -474,11 +476,13 @@ fn input(prompt: &[Part], dir: &Path, images: &mut usize) -> Result<Vec<Value>, 
     Ok(items)
 }
 
-/// Opens the thread, then answers each prompt until the prompts end.
+/// Opens the thread, then answers each prompt until the prompts end. A
+/// steer goes into the turn being answered.
 pub(crate) async fn converse<R, W>(
     wire: &mut Wire<R, W>,
     opening: Opening,
     mut prompts: mpsc::UnboundedReceiver<Prompt>,
+    mut steers: mpsc::UnboundedReceiver<Steer>,
 ) -> Result<(), String>
 where
     R: AsyncRead + Unpin,
@@ -536,6 +540,9 @@ where
         let prompt = loop {
             tokio::select! {
                 prompt = prompts.recv() => break prompt,
+                Some(steer) = steers.recv() => {
+                    let _ = steer.taken.send(Err("no turn is running".to_owned()));
+                }
                 msg = wire.next_message() => wire.handle(msg?).await?,
             }
         };
@@ -552,12 +559,30 @@ where
         }
         wire.ended = None;
         let done = match wire.request("turn/start", turn).await {
-            Ok(_) => loop {
+            Ok(started) => loop {
                 if let Some(ended) = wire.ended.take() {
                     break ended;
                 }
-                let msg = wire.next_message().await?;
-                wire.handle(msg).await?;
+                tokio::select! {
+                    msg = wire.next_message() => wire.handle(msg?).await?,
+                    Some(steer) = steers.recv() => {
+                        let id = started.pointer("/turn/id").and_then(Value::as_str);
+                        let input = input(&steer.parts, &opening.dir, &mut images);
+                        let taken = match (id, input) {
+                            (Some(id), Ok(input)) => {
+                                let steered = json!({
+                                    "threadId": thread,
+                                    "expectedTurnId": id,
+                                    "input": input,
+                                });
+                                wire.request("turn/steer", steered).await.map(drop)
+                            }
+                            (None, _) => Err("the turn has no id".to_owned()),
+                            (_, Err(why)) => Err(why),
+                        };
+                        let _ = steer.taken.send(taken);
+                    }
+                }
             },
             Err(why) => Err(why),
         };

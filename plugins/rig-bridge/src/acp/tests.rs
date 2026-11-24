@@ -5,15 +5,18 @@ use std::sync::{Arc, Mutex, PoisonError};
 use rig_harness::rig_core::completion::{Effort, FinishReason};
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 
-use super::{Agent, Opening, Peer, converse};
-use crate::harness::{ContextSnapshot, Event, Part, Prompt};
+use super::{Agent, Opening, Peer, Steering, converse};
+use crate::harness::{ContextSnapshot, Event, Part, Prompt, Steer};
 
 /// An agent with no system prompt channel, one sign-in and a model request.
 struct Plain {
     dynamic_effort: bool,
     cumulative_usage: bool,
+    /// How it takes a message for the prompt it is answering: by a request
+    /// of its own, or (`true`) as the next prompt.
+    steers: Option<bool>,
 }
 
 impl Plain {
@@ -21,6 +24,7 @@ impl Plain {
         Self {
             dynamic_effort: false,
             cumulative_usage: false,
+            steers: None,
         }
     }
 }
@@ -68,6 +72,17 @@ impl Agent for Plain {
     fn cumulative_usage(&self) -> bool {
         self.cumulative_usage
     }
+
+    fn steer(&self, _: &Value, session: &str, _: &[Part]) -> Option<Steering> {
+        Some(match self.steers? {
+            true => Steering::Prompt,
+            false => Steering::Request("x/steer", json!({ "sessionId": session })),
+        })
+    }
+
+    fn steered(&self, result: &Value) -> bool {
+        result.get("status") == Some(&json!("queued"))
+    }
 }
 
 /// What the scripted agent was sent, in order.
@@ -78,6 +93,24 @@ async fn run_acp(
     agent: Arc<dyn Agent>,
     system: &str,
     prompts: Vec<Prompt>,
+    responder: impl FnMut(&Value) -> Vec<Value> + Send + 'static,
+) -> (Vec<Event>, Vec<Value>) {
+    run_acp_steered(
+        agent,
+        system,
+        prompts,
+        mpsc::unbounded_channel().1,
+        responder,
+    )
+    .await
+}
+
+/// As [`run_acp`], with `steers` for the prompts being answered.
+async fn run_acp_steered(
+    agent: Arc<dyn Agent>,
+    system: &str,
+    prompts: Vec<Prompt>,
+    steers: mpsc::UnboundedReceiver<Steer>,
     mut responder: impl FnMut(&Value) -> Vec<Value> + Send + 'static,
 ) -> (Vec<Event>, Vec<Value>) {
     let (client, server) = tokio::io::duplex(1 << 16);
@@ -125,6 +158,7 @@ async fn run_acp(
             tools: vec!["read".to_owned()],
         },
         prompts_rx,
+        steers,
     )
     .await;
     drop(peer);
@@ -427,6 +461,7 @@ async fn acp_updates_reasoning_effort_mid_session_and_restores_default() {
         Arc::new(Plain {
             dynamic_effort: true,
             cumulative_usage: false,
+            steers: None,
         }),
         "",
         vec![
@@ -476,6 +511,7 @@ async fn cumulative_usage_agent_emits_per_turn_deltas_and_handles_resets() {
         Arc::new(Plain {
             dynamic_effort: false,
             cumulative_usage: true,
+            steers: None,
         }),
         "",
         vec![prompt("one"), prompt("two"), prompt("three")],
@@ -540,4 +576,89 @@ async fn cumulative_usage_agent_emits_per_turn_deltas_and_handles_resets() {
             (Some(6000), Some(20), Some(5000), Some(100), Some(6020)),
         ]
     );
+}
+
+/// One prompt to an agent that takes a message for it (`takes_over`: as the
+/// next prompt), steered once the agent has the prompt: the events, what
+/// the agent was sent, and what the steer's sender was told.
+async fn steered(takes_over: bool) -> (Vec<Event>, Vec<Value>, Option<Result<(), String>>) {
+    let (steers, steered) = mpsc::unbounded_channel();
+    let (taken, mut held) = oneshot::channel();
+    let mut steer = Some(Steer {
+        parts: vec![Part::Text("and b".to_owned())],
+        taken,
+    });
+    let mut first = Value::Null;
+    let ends = |id: &Value, input: u64| {
+        json!({ "id": id, "result": { "stopReason": "end_turn",
+            "usage": { "inputTokens": input, "outputTokens": 1 } } })
+    };
+    let agent = Plain {
+        steers: Some(takes_over),
+        ..Plain::basic()
+    };
+    let prompt = Prompt {
+        parts: vec![Part::Text("one".to_owned())],
+        effort: None,
+    };
+    let (events, received) =
+        run_acp_steered(Arc::new(agent), "", vec![prompt], steered, move |message| {
+            let id = message.get("id").cloned().unwrap_or(Value::Null);
+            match message.get("method").and_then(Value::as_str) {
+                Some("session/new") => vec![json!({ "id": id, "result": { "sessionId": "s1" } })],
+                // The first prompt waits, as one with a tool call open does.
+                Some("session/prompt") if first.is_null() => {
+                    first = id;
+                    if let Some(steer) = steer.take() {
+                        let _ = steers.send(steer);
+                    }
+                    Vec::new()
+                }
+                // The agent ends the first prompt and goes on under this one.
+                Some("session/prompt") => vec![ends(&first, 10), ends(&id, 20)],
+                Some("x/steer") => vec![
+                    json!({ "id": id, "result": { "status": "queued" } }),
+                    ends(&first, 10),
+                ],
+                _ => vec![json!({ "id": id, "result": {} })],
+            }
+        })
+        .await;
+    (events, received, held.try_recv().ok())
+}
+
+#[tokio::test]
+async fn a_steer_is_the_agent_s_own_request_beside_the_prompt() {
+    let (events, received, taken) = steered(false).await;
+
+    assert_eq!(taken, Some(Ok(())));
+    assert_eq!(sent(&received, "x/steer").len(), 1);
+    assert_eq!(sent(&received, "session/prompt").len(), 1);
+    assert_eq!(events.last(), Some(&Event::Done(Ok(FinishReason::Stop))));
+}
+
+#[tokio::test]
+async fn a_steer_sent_as_the_next_prompt_carries_the_turn_on_under_it() {
+    let (events, received, taken) = steered(true).await;
+
+    assert_eq!(taken, Some(Ok(())));
+    let prompts = sent(&received, "session/prompt");
+    assert_eq!(
+        prompts
+            .last()
+            .and_then(|sent| sent.pointer("/params/prompt")),
+        Some(&json!([{ "type": "text", "text": "and b" }])),
+    );
+    // The first prompt's end is not the turn's: both are counted, one ends.
+    let counted: Vec<Option<u64>> = events
+        .iter()
+        .filter_map(|event| match event {
+            Event::Usage(usage) => Some(usage.input_tokens),
+            _ => None,
+        })
+        .collect();
+    let ends = |event: &&Event| matches!(event, Event::Done(_));
+    assert_eq!(counted, [Some(10), Some(20)]);
+    assert_eq!(events.iter().filter(ends).count(), 1);
+    assert_eq!(events.last(), Some(&Event::Done(Ok(FinishReason::Stop))));
 }

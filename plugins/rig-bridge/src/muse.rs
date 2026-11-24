@@ -15,8 +15,8 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::mpsc;
 
 use crate::harness::{
-    Event, HANDSHAKE_TIMEOUT, Harness, Launch, Part, Prompt, Running, Stderr, clear_nested_tmpdir,
-    env_path, link, note, spawn,
+    Event, HANDSHAKE_TIMEOUT, Harness, Launch, Part, Prompt, Running, Stderr, Steer,
+    clear_nested_tmpdir, env_path, link, note, spawn,
 };
 use crate::rpc::{Transport, method_not_found};
 
@@ -98,6 +98,7 @@ impl Harness for Muse {
         }
         let (process, pipes) = spawn(command)?;
         let (prompts, prompted) = mpsc::unbounded_channel();
+        let (steers, steered) = mpsc::unbounded_channel();
         let (events, reported) = mpsc::unbounded_channel();
         let stderr = Stderr::follow(pipes.stderr);
         let opening = Opening {
@@ -108,13 +109,14 @@ impl Harness for Muse {
         };
         tokio::spawn(async move {
             let mut wire = Wire::new(pipes.stdout, pipes.stdin, events.clone());
-            if let Err(why) = converse(&mut wire, opening, prompted).await {
+            if let Err(why) = converse(&mut wire, opening, prompted, steered).await {
                 let why = stderr.explain(&format!("muse: {why}")).await;
                 let _ = events.send(Event::Done(Err(why)));
             }
         });
         Ok(Running {
             prompts,
+            steers: Some(steers),
             events: reported,
             _alive: Box::new(process),
         })
@@ -333,11 +335,28 @@ pub(crate) fn token_usage(params: &Value) -> Option<Usage> {
     Some(usage)
 }
 
-/// Runs one Muse MSP session from `initialize` through every prompt.
+/// A prompt's parts as a turn's input.
+fn input(parts: &[Part]) -> Vec<Value> {
+    parts
+        .iter()
+        .map(|part| match part {
+            Part::Text(text) => json!({ "type": "text", "text": text }),
+            Part::Image { media_type, data } => json!({
+                "type": "image",
+                "mediaType": media_type,
+                "base64Data": data,
+            }),
+        })
+        .collect()
+}
+
+/// Runs one Muse MSP session from `initialize` through every prompt. A
+/// steer goes into the turn being answered.
 pub(crate) async fn converse<R, W>(
     wire: &mut Wire<R, W>,
     opening: Opening,
     mut prompts: mpsc::UnboundedReceiver<Prompt>,
+    mut steers: mpsc::UnboundedReceiver<Steer>,
 ) -> Result<(), String>
 where
     R: AsyncRead + Unpin,
@@ -411,42 +430,50 @@ where
         let prompt = loop {
             tokio::select! {
                 prompt = prompts.recv() => break prompt,
+                Some(steer) = steers.recv() => {
+                    let _ = steer.taken.send(Err("no turn is running".to_owned()));
+                }
                 msg = wire.next_message() => wire.handle(msg?).await?,
             }
         };
         let Some(prompt) = prompt else {
             return Ok(());
         };
-        let input: Vec<Value> = prompt
-            .parts
-            .iter()
-            .map(|part| match part {
-                Part::Text(text) => json!({ "type": "text", "text": text }),
-                Part::Image { media_type, data } => json!({
-                    "type": "image",
-                    "mediaType": media_type,
-                    "base64Data": data,
-                }),
-            })
-            .collect();
         let mut params = json!({
             "commandId": uuidv7(),
             "sessionId": session_id,
-            "input": input,
+            "input": input(&prompt.parts),
         });
         if let (Some(effort), Some(obj)) = (prompt.effort, params.as_object_mut()) {
             obj.insert("reasoningEffort".to_owned(), effort.as_str().into());
         }
         wire.ended = None;
-        wire.request("turn/start", params)
+        let started = wire
+            .request("turn/start", params)
             .await
             .map_err(|why| format!("the turn did not start: {why}"))?;
         let done = loop {
             if let Some(done) = wire.ended.take() {
                 break done;
             }
-            let msg = wire.next_message().await?;
-            wire.handle(msg).await?;
+            tokio::select! {
+                msg = wire.next_message() => wire.handle(msg?).await?,
+                Some(steer) = steers.recv() => {
+                    let taken = match started.get("turnId").and_then(Value::as_str) {
+                        Some(turn) => {
+                            let steered = json!({
+                                "commandId": uuidv7(),
+                                "sessionId": session_id,
+                                "expectedTurnId": turn,
+                                "input": input(&steer.parts),
+                            });
+                            wire.request("turn/steer", steered).await.map(drop)
+                        }
+                        None => Err("the turn has no id".to_owned()),
+                    };
+                    let _ = steer.taken.send(taken);
+                }
+            }
         };
         if wire.events.send(Event::Done(done)).is_err() {
             return Ok(());
