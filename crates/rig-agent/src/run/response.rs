@@ -320,13 +320,19 @@ impl From<ProviderError> for PromptError {
 macro_rules! forward_provider_response_helpers {
     ($err:ident, $variant:ident, $inner:literal $(, report = $report:ident)?) => {
         impl $err {
-            #[doc = concat!("Returns the provider response body exposed by a wrapped ", $inner, ".")]
-            pub fn provider_response_body(&self) -> Option<&str> {
+            /// The provider's preserved failure response, including relayed reports, if any.
+            pub fn provider_response(&self) -> Option<&rig_core::ProviderResponseError> {
                 match self {
-                    Self::$variant(error) => error.provider_response_body(),
-                    $(Self::$report(report) => report.provider_response_body(),)?
+                    Self::$variant(error) => error.provider_response(),
+                    $(Self::$report(report) => report.provider_response.as_ref(),)?
                     _ => None,
                 }
+            }
+
+            #[doc = concat!("Returns the provider response body exposed by a wrapped ", $inner, ".")]
+            pub fn provider_response_body(&self) -> Option<&str> {
+                self.provider_response()
+                    .map(|response| response.body.as_str())
             }
 
             #[doc = concat!("Parses the provider response body of a wrapped ", $inner, " as JSON when present.")]
@@ -360,11 +366,8 @@ macro_rules! forward_provider_response_helpers {
 
             #[doc = concat!("Returns the response headers exposed by a wrapped ", $inner, " or report.")]
             pub fn provider_response_headers(&self) -> Option<&http::HeaderMap> {
-                match self {
-                    Self::$variant(error) => error.provider_response_headers(),
-                    $(Self::$report(report) => report.provider_response_headers(),)?
-                    _ => None,
-                }
+                self.provider_response()
+                    .and_then(|response| response.headers.as_ref())
             }
         }
     };
