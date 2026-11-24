@@ -6,10 +6,13 @@
 //! saved session, with everything it had, instead of on the conversation
 //! written out as text.
 //!
-//! A kept directory is never removed by the bridge.
+//! Kept directories are pruned on startup once unused for three days or
+//! past a cap of 100 sessions (oldest first), and on demand via
+//! `/bridge prune`.
 
 use std::fs::File;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -27,6 +30,12 @@ const LOCK: &str = "rig.lock";
 
 /// Prefix of a session's directory, before the process that made it.
 const PREFIX: &str = "rig-bridge-";
+
+/// How long an unused saved session is kept before startup pruning removes it.
+const MAX_AGE: Duration = Duration::from_secs(3 * 24 * 60 * 60);
+
+/// How many saved sessions are kept at most on startup; older ones go first.
+const MAX_KEPT: usize = 100;
 
 /// A session's directory: the program's working directory, with the files
 /// it is pointed at and what it saves of the conversation. One session
@@ -179,31 +188,117 @@ fn read(dir: &Path) -> Option<Record> {
     serde_json::from_slice(&std::fs::read(dir.join(RECORD)).ok()?).ok()
 }
 
-/// Removes the directories under `root` that were never kept and whose
-/// process is gone: one whose session ended with its process, not by
-/// itself. The directory of a process that lives may be one it is making.
+/// Removes leftover directories from dead processes, unresumable records,
+/// and saved sessions past the age or count limit.
 pub(crate) fn reap(root: &Path) {
+    let _ = prune_with(root, SystemTime::now(), Some(MAX_AGE), MAX_KEPT);
+}
+
+/// Removes every idle saved session and dead-process leftover under `root`,
+/// returning how many directories were removed.
+pub(crate) fn prune(root: &Path) -> usize {
+    prune_with(root, SystemTime::now(), None, 0)
+}
+
+fn prune_with(root: &Path, now: SystemTime, max_age: Option<Duration>, max_kept: usize) -> usize {
     let Ok(entries) = std::fs::read_dir(root) else {
-        return;
+        return 0;
     };
+    let mut removed = 0;
+    let mut kept = Vec::new();
+
     for entry in entries.flatten() {
         let path = entry.path();
         let name = entry.file_name();
-        let made_by = name
-            .to_str()
-            .and_then(|name| name.strip_prefix(PREFIX)?.split_once('-')?.0.parse().ok());
-        let gone = |pid: u32| pid != std::process::id() && !process_alive(pid);
-        if !made_by.is_some_and(gone) {
+        let Some(made_by) = name.to_str().and_then(|name| {
+            name.strip_prefix(PREFIX)?
+                .split_once('-')?
+                .0
+                .parse::<u32>()
+                .ok()
+        }) else {
+            continue;
+        };
+
+        let record_path = path.join(RECORD);
+        if !record_path.exists() {
+            // A directory without a record whose creator lives may be one
+            // it is still making.
+            if made_by != std::process::id()
+                && !process_alive(made_by)
+                && let Some(_lock) = locked(&path)
+                && !record_path.exists()
+                && std::fs::remove_dir_all(&path).is_ok()
+            {
+                removed += 1;
+            }
             continue;
         }
-        // Held while the record is looked for and the directory removed: a
-        // session that kept it meanwhile wrote the record first.
-        if let Some(_lock) = locked(&path)
-            && !path.join(RECORD).exists()
-        {
-            let _ = std::fs::remove_dir_all(&path);
+
+        let unresumable = |dir: &Path| read(dir).is_none_or(|record| record.stands.is_none());
+        if unresumable(&path) {
+            // A session that ended mid-turn, or whose record cannot be read,
+            // can never be resumed.
+            if let Some(_lock) = locked(&path)
+                && record_path.exists()
+                && unresumable(&path)
+                && std::fs::remove_dir_all(&path).is_ok()
+            {
+                removed += 1;
+            }
+            continue;
+        }
+
+        let modified = std::fs::metadata(&record_path)
+            .and_then(|meta| meta.modified())
+            .ok();
+        let expired = max_age.is_some_and(|limit| {
+            modified
+                .and_then(|time| now.duration_since(time).ok())
+                .is_some_and(|age| age > limit)
+        });
+        if expired || max_kept == 0 {
+            if let Some(_lock) = locked(&path) {
+                let still_removable = if max_kept == 0 {
+                    record_path.exists()
+                } else {
+                    std::fs::metadata(&record_path)
+                        .and_then(|meta| meta.modified())
+                        .ok()
+                        == modified
+                };
+                if still_removable && std::fs::remove_dir_all(&path).is_ok() {
+                    removed += 1;
+                }
+            }
+            continue;
+        }
+
+        kept.push((modified.unwrap_or(SystemTime::UNIX_EPOCH), path));
+    }
+
+    if let Some(excess) = kept.len().checked_sub(max_kept).filter(|&n| n > 0) {
+        // Newest first; everything past `max_kept` is removed.
+        kept.sort_by_key(|entry| std::cmp::Reverse(entry.0));
+        let start = kept.len() - excess;
+        if let Some(to_remove) = kept.get(start..) {
+            for (recorded_time, path) in to_remove {
+                let record_path = path.join(RECORD);
+                if let Some(_lock) = locked(path)
+                    && std::fs::metadata(&record_path)
+                        .and_then(|meta| meta.modified())
+                        .ok()
+                        .unwrap_or(SystemTime::UNIX_EPOCH)
+                        == *recorded_time
+                    && std::fs::remove_dir_all(path).is_ok()
+                {
+                    removed += 1;
+                }
+            }
         }
     }
+
+    removed
 }
 
 /// The digest of `text`.

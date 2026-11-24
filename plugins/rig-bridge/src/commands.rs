@@ -1,4 +1,4 @@
-//! `/bridge` commands (`status`, `usage`, `reset`) and background signals.
+//! `/bridge` commands (`status`, `usage`, `reset`, `prune`) and background signals.
 //!
 //! `/bridge status` and `/bridge reset` read shared [`Bridge`] state directly.
 //! `/bridge usage` probes each installed harness's official quota interface in
@@ -176,7 +176,7 @@ pub(crate) fn drain_signals(
     }
 }
 
-/// Dispatches `/bridge [status | usage | reset]`.
+/// Dispatches `/bridge [status | usage | reset | prune]`.
 pub(crate) fn command(
     In(args): In<CommandArgs>,
     handle: Option<Res<BridgeHandle>>,
@@ -220,10 +220,35 @@ pub(crate) fn command(
             };
             Notice::info(args.agent, text)
         }
+        "prune" => {
+            // Removing saved session directories may touch many files; run off
+            // the UI thread while keeping headless `-p` alive.
+            let holder = commands.spawn(KeepRunning).id();
+            let handle = handle.clone();
+            let wake = wake.as_deref().cloned();
+            let agent = args.agent;
+            std::thread::spawn(move || {
+                let text = match handle.bridge.prune() {
+                    0 => "No idle saved bridge sessions to prune.".to_owned(),
+                    1 => "Pruned 1 saved bridge session.".to_owned(),
+                    n => format!("Pruned {n} saved bridge sessions."),
+                };
+                let _ = handle.signals.send(BridgeSignal::Notice {
+                    agent: Some(agent),
+                    warn: false,
+                    text,
+                    release: Some(holder),
+                });
+                if let Some(wake) = wake {
+                    wake.wake();
+                }
+            });
+            return;
+        }
         other => Notice::warn(
             args.agent,
             format!(
-                "Unknown `/bridge` subcommand `{other}`. Try `/bridge status`, `/bridge usage`, or `/bridge reset`."
+                "Unknown `/bridge` subcommand `{other}`. Try `/bridge status`, `/bridge usage`, `/bridge reset`, or `/bridge prune`."
             ),
         ),
     };
@@ -240,7 +265,7 @@ pub(crate) fn register(
         .insert_resource(SignalInbox::new(rx))
         .add_command(
             "bridge",
-            "Bridge status, subscription usage, or reset: /bridge [status|usage|reset]",
+            "Bridge status, subscription usage, reset, or prune: /bridge [status|usage|reset|prune]",
             command,
         );
     if app.world().contains_resource::<Messages<Notice>>() {

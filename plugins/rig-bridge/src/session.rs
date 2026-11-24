@@ -299,6 +299,12 @@ impl Bridge {
         count
     }
 
+    /// Removes idle saved sessions from disk, leaving any held by a live
+    /// session intact.
+    pub(crate) fn prune(&self) -> usize {
+        saved::prune(&self.kept_root)
+    }
+
     /// Current warm sessions and per-vendor counters.
     pub(crate) fn snapshot(&self) -> BridgeSnapshot {
         let warm = {

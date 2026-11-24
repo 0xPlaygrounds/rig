@@ -156,20 +156,23 @@ Code is the exception: it writes its session file in its own home, as
 `~/.claude/projects/<the directory's path, with - for />/<session id>.jsonl`,
 so apart from the sessions of your own projects.
 
-**Nothing here is ever removed by rig.** A directory is kept from the first
-turn its program completes, for every conversation, each `rig -p` run and each
-subagent included, and it holds your conversation in plain text. One measured
-after a three-message conversation was about 15 MB for Grok Build, 11 MB for
-Muse, 4 MB each for Codex and Antigravity, 1 MB for Copilot CLI and a few KB
-for Claude Code; most of it is files the program unpacks into a new home. Where
-the program's sign-in is a file, the directory holds a link to yours, not a
-copy.
+A directory is kept from the first turn its program completes, for every
+conversation, each `rig -p` run and each subagent included, and it holds your
+conversation in plain text. One measured after a three-message conversation was
+about 15 MB for Grok Build, 11 MB for Muse, 4 MB each for Codex and
+Antigravity, 1 MB for Copilot CLI and a few KB for Claude Code; most of it is
+files the program unpacks into a new home. Where the program's sign-in is a
+file, the directory holds a link to yours, not a copy.
 
-To free the space, delete directories under `RIG_HOME/bridge/` (for Claude
+On startup, rig prunes idle directories under `RIG_HOME/bridge/` that cannot be
+resumed (a process ended mid-turn), have gone unused for three days, or fall
+past the 100 most recent sessions (oldest first). Live sessions hold `rig.lock`
+and are never removed. Run `/bridge prune` to remove all idle saved sessions
+immediately, or delete directories under `RIG_HOME/bridge/` by hand (for Claude
 Code also the folders in `~/.claude/projects/` whose names contain
-`rig-bridge-`). `/bridge status` prints the path. Deleting one costs only
-this: its conversation, if it goes on in a new process, goes on from text. Do
-not delete the directory of a conversation whose process is running.
+`rig-bridge-`; `/bridge status` prints the path). Deleting one costs only this:
+its conversation, if it goes on in a new process, goes on from text. Do not
+delete the directory of a conversation whose process is running.
 
 ## A message sent while the model works
 
@@ -226,6 +229,8 @@ sessions = 8           # how many idle processes are kept; the oldest ends first
 - `/bridge reset`: stops all warm idle harness processes without restarting
   rig. What they saved stays: a conversation whose turn had ended goes on
   from it, and one stopped in a tool call from the conversation written out.
+- `/bridge prune`: removes all idle saved session directories under
+  `RIG_HOME/bridge/` immediately, leaving any session currently in use intact.
 
 ## Limits
 
