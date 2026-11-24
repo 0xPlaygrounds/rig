@@ -111,6 +111,7 @@ fn profile_carries_rigs_system_prompt_in_its_body() {
 fn choose_skips_set_model_when_session_already_runs_requested_model() {
     let opening = Opening {
         dir: PathBuf::from("/tmp/unused"),
+        resume: None,
         system: "sys".to_owned(),
         model: "grok-4.7".to_owned(),
         effort: Some(Effort::Medium),

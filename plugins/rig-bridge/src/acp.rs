@@ -64,6 +64,12 @@ pub(crate) trait Agent: Send + Sync + 'static {
         true
     }
 
+    /// Whether a session the agent saved offers its model the tools a new
+    /// process is given, as [`Harness::retools_saved`] says.
+    fn retools_saved(&self) -> bool {
+        true
+    }
+
     /// Wire value for ACP `session/set_config_option` (`reasoning_effort`)
     /// when this agent supports live in-session effort updates.
     fn effort_value(&self, _effort: Effort) -> Option<&'static str> {
@@ -177,6 +183,10 @@ impl<A: Agent> Harness for Acp<A> {
         self.0.relists()
     }
 
+    fn retools_saved(&self) -> bool {
+        self.0.retools_saved()
+    }
+
     fn changes_effort(&self) -> bool {
         self.0.effort_value(Effort::High).is_some()
     }
@@ -185,6 +195,7 @@ impl<A: Agent> Harness for Acp<A> {
         let Launch {
             mut command,
             dir,
+            resume,
             system,
             model,
             effort,
@@ -193,6 +204,7 @@ impl<A: Agent> Harness for Acp<A> {
         } = launch;
         let opening = Opening {
             dir: dir.to_path_buf(),
+            resume: resume.map(str::to_owned),
             system: system.to_owned(),
             model: model.to_owned(),
             effort,
@@ -208,13 +220,15 @@ impl<A: Agent> Harness for Acp<A> {
         let (process, pipes) = spawn(command)?;
         let (prompts, prompted) = mpsc::unbounded_channel();
         let (steers, steered) = mpsc::unbounded_channel();
+        let (stops, stopped) = mpsc::unbounded_channel();
         let (events, reported) = mpsc::unbounded_channel();
         let stderr = Stderr::follow(pipes.stderr);
         let agent = self.0.clone();
         tokio::spawn(async move {
             let name = agent.name();
             let mut peer = Peer::new(pipes.stdout, pipes.stdin, events.clone(), agent);
-            if let Err(why) = converse(&mut peer, opening, prompted, steered).await {
+            let conversed = converse(&mut peer, opening, prompted, steered, stopped);
+            if let Err(why) = conversed.await {
                 let why = stderr.explain(&format!("{name}: {why}")).await;
                 let _ = events.send(Event::Done(Err(why)));
             }
@@ -222,6 +236,7 @@ impl<A: Agent> Harness for Acp<A> {
         Ok(Running {
             prompts,
             steers: Some(steers),
+            stops,
             events: reported,
             _alive: Box::new(process),
         })
@@ -232,6 +247,8 @@ impl<A: Agent> Harness for Acp<A> {
 pub(crate) struct Opening {
     /// The session's private directory, the agent's working directory.
     pub dir: PathBuf,
+    /// The session a process before this one saved, to go on from.
+    pub resume: Option<String>,
     /// The system prompt.
     pub system: String,
     /// The model's id.
@@ -279,6 +296,9 @@ pub(crate) struct Peer<R, W> {
     call_titles: HashMap<String, String>,
     /// What the agent answered `initialize` with.
     started: Value,
+    /// Whether the agent is loading a saved session: it then reports the
+    /// conversation over again, which is not an answer to anything.
+    loading: bool,
     /// The counters of the last prompt result, for an agent whose results
     /// count the whole session.
     totals: Usage,
@@ -299,6 +319,7 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Peer<R, W> {
             counted: false,
             call_titles: HashMap::new(),
             started: Value::Null,
+            loading: false,
             totals: Usage::new(),
         }
     }
@@ -340,12 +361,16 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Peer<R, W> {
 
     /// Sends `asked` as the session's next prompt and waits for its answer,
     /// as [`request`](Self::request) does. A steer that comes meanwhile is
-    /// given to the agent its own way, and told whether the agent took it.
+    /// given to the agent its own way, and told whether the agent took it;
+    /// a stop for this prompt, the `turn`th, cancels it, as one that came
+    /// before the prompt did (`stopped`) does at once, and the agent then
+    /// answers it as cancelled.
     async fn prompted(
         &mut self,
         session: &str,
         asked: Value,
         steers: &mut mpsc::UnboundedReceiver<Steer>,
+        (turn, stopped, stops): (u64, bool, &mut mpsc::UnboundedReceiver<u64>),
     ) -> Result<Value, Failed> {
         let closed = |()| Failed::Closed;
         let send = self.transport.send_request("session/prompt", asked, true);
@@ -353,9 +378,22 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Peer<R, W> {
         // The steer the agent has not answered: its request's id, who waits
         // to hear of it, and whether it is a prompt.
         let mut steering: Option<(u64, oneshot::Sender<Result<(), String>>, bool)> = None;
+        let mut cancelled = stopped;
         loop {
+            if std::mem::take(&mut cancelled) {
+                let cancel = json!({
+                    "jsonrpc": "2.0",
+                    "method": "session/cancel",
+                    "params": { "sessionId": session },
+                });
+                self.transport.write(&cancel).await.map_err(closed)?;
+            }
             let message = tokio::select! {
                 message = self.read() => message?,
+                Some(stop) = stops.recv() => {
+                    cancelled = stop == turn;
+                    continue;
+                }
                 Some(steer) = steers.recv(), if steering.is_none() => {
                     let (method, params, prompt) =
                         match self.agent.steer(&self.started, session, &steer.parts) {
@@ -444,7 +482,11 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Peer<R, W> {
         let params = message.get("params").unwrap_or(&Value::Null);
         let Some(id) = message.get("id").filter(|id| !id.is_null()) else {
             if method == "session/update" {
-                self.update(params.get("update").unwrap_or(&Value::Null));
+                if !self.loading {
+                    self.update(params.get("update").unwrap_or(&Value::Null));
+                }
+            } else if self.loading {
+                // What a loaded session counts again was counted before.
             } else if let Some(usage) = self.agent.counted(method, params) {
                 self.counted = true;
                 let _ = self.events.send(Event::Usage(usage));
@@ -597,13 +639,15 @@ enum EffortConfig {
     Supported(Option<Effort>),
 }
 
-/// Opens the session, then answers each prompt until the prompts end. A
-/// steer goes into the prompt being answered.
+/// Opens the session, a new one or the saved one, then answers each prompt
+/// until the prompts end. A steer goes into the prompt being answered, and
+/// a stop cancels it.
 pub(crate) async fn converse<R, W>(
     peer: &mut Peer<R, W>,
     opening: Opening,
     mut prompts: mpsc::UnboundedReceiver<Prompt>,
     mut steers: mpsc::UnboundedReceiver<Steer>,
+    mut stops: mpsc::UnboundedReceiver<u64>,
 ) -> Result<(), String>
 where
     R: AsyncRead + Unpin,
@@ -616,14 +660,22 @@ where
             .await
             .map_err(|_| "it did not finish starting in time".to_owned())??;
 
+    // The number of the prompt being answered, and of the last one stopped.
+    let (mut turn, mut stopped) = (0u64, 0u64);
     loop {
-        // Between prompts the agent may still send requests and updates.
+        // Between prompts the agent may still send requests and updates. A
+        // prompt is taken before a stop, which may be the one for it. A
+        // stop with no prompt being answered is for one that is over, or
+        // for one that is only now on its way: that one is cancelled once
+        // it is sent, so that the agent has it.
         let prompt = loop {
             tokio::select! {
+                biased;
                 prompt = prompts.recv() => break prompt,
                 Some(steer) = steers.recv() => {
                     let _ = steer.taken.send(Err("no prompt is being answered".to_owned()));
                 }
+                Some(stop) = stops.recv() => stopped = stopped.max(stop),
                 message = peer.read() => {
                     let message = message.map_err(|why| why.to_string())?;
                     peer.incoming(&message).await.map_err(|why| why.to_string())?;
@@ -633,6 +685,7 @@ where
         let Some(prompt) = prompt else {
             return Ok(());
         };
+        turn += 1;
         if prompt.effort != current_effort
             && let EffortConfig::Supported(default_effort) = effort_config
             && let Some(value) = prompt
@@ -665,25 +718,32 @@ where
         }
         peer.prompt = Some(named);
         peer.call_titles.clear();
-        let answered = peer.prompted(&session, asked, &mut steers).await;
+        let answered = peer
+            .prompted(
+                &session,
+                asked,
+                &mut steers,
+                (turn, turn <= stopped, &mut stops),
+            )
+            .await;
         peer.prompt = None;
         let done = match answered {
             Ok(result) => {
                 peer.count(&result);
                 match result.get("stopReason").and_then(Value::as_str) {
-                    Some("max_tokens") => Ok(FinishReason::Length),
-                    Some("refusal") => Err("the model refused to answer".to_owned()),
-                    Some("cancelled") => Err("the turn was cancelled".to_owned()),
-                    _ => Ok(FinishReason::Stop),
+                    Some("max_tokens") => Event::Done(Ok(FinishReason::Length)),
+                    Some("refusal") => Event::Done(Err("the model refused to answer".to_owned())),
+                    Some("cancelled") => Event::Stopped,
+                    _ => Event::Done(Ok(FinishReason::Stop)),
                 }
             }
             Err(Failed::Closed) => return Err(Failed::Closed.to_string()),
             Err(refused) => {
                 peer.counted = false;
-                Err(refused.to_string())
+                Event::Done(Err(refused.to_string()))
             }
         };
-        let _ = peer.events.send(Event::Done(done));
+        let _ = peer.events.send(done);
     }
 }
 
@@ -719,7 +779,8 @@ where
         .map_err(failed("it did not start"))?;
     peer.started.clone_from(&initialized);
     let meta = agent.session_meta(&initialized, &opening.system);
-    let system = meta.is_none().then(|| opening.system.clone());
+    // A saved session has the system prompt its first prompt opened with.
+    let system = (meta.is_none() && opening.resume.is_none()).then(|| opening.system.clone());
     let servers = if agent.serves_in_session() {
         json!([{
             "type": "http",
@@ -734,7 +795,26 @@ where
     if let (Some(meta), Some(new)) = (meta, new.as_object_mut()) {
         new.insert("_meta".to_owned(), meta);
     }
-    let opened = match peer.request("session/new", new.clone()).await {
+    // A saved session is resumed where the agent can, and else loaded: the
+    // agent then reports the whole conversation again before it answers.
+    let open = match (&opening.resume, new.as_object_mut()) {
+        (Some(saved), Some(new)) => {
+            new.insert("sessionId".to_owned(), saved.as_str().into());
+            let resumes = initialized.pointer("/agentCapabilities/sessionCapabilities/resume");
+            let resumes =
+                resumes.is_some_and(|able| able.is_object() || able.as_bool() == Some(true));
+            if resumes {
+                "session/resume"
+            } else if initialized.pointer("/agentCapabilities/loadSession") == Some(&true.into()) {
+                "session/load"
+            } else {
+                return Err("it cannot go on from a saved session".to_owned());
+            }
+        }
+        _ => "session/new",
+    };
+    peer.loading = open == "session/load";
+    let opened = match peer.request(open, new.clone()).await {
         Err(Failed::Refused {
             code: AUTH_REQUIRED,
             ..
@@ -744,16 +824,20 @@ where
             peer.request("authenticate", json!({ "methodId": method }))
                 .await
                 .map_err(|_| not_signed_in())?;
-            peer.request("session/new", new).await
+            peer.request(open, new).await
         }
         opened => opened,
     }
     .map_err(failed("it opened no session"))?;
+    peer.loading = false;
+    // An agent names a new session; a saved one keeps its name.
     let session = opened
         .get("sessionId")
         .and_then(Value::as_str)
+        .or(opening.resume.as_deref())
         .ok_or("it opened a session without an id")?
         .to_owned();
+    let _ = peer.events.send(Event::Saved(session.clone()));
     agent.opened(opening)?;
     if let Some(window) = model_context_window(&opened, &opening.model) {
         let _ = peer.events.send(Event::Context(ContextSnapshot {

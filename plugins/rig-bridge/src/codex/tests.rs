@@ -95,7 +95,7 @@ async fn server(stream: DuplexStream, received: Received, signed_in: bool) {
                 };
                 out.push(json!({ "id": id, "result": { "account": account } }));
             }
-            Some("thread/start") => {
+            Some("thread/start" | "thread/resume") => {
                 out.push(notify(
                     "mcpServer/startupStatus/updated",
                     json!({ "name": "rig", "status": "starting" }),
@@ -153,6 +153,13 @@ async fn server(stream: DuplexStream, received: Received, signed_in: bool) {
                     ));
                 }
             }
+            Some("turn/interrupt") => {
+                out.push(json!({ "id": id, "result": {} }));
+                out.push(notify(
+                    "turn/completed",
+                    json!({ "turn": { "status": "interrupted", "error": null } }),
+                ));
+            }
             Some("turn/steer") => {
                 out.push(json!({ "id": id, "result": { "turnId": "u1" } }));
                 out.push(notify(
@@ -195,8 +202,10 @@ async fn conversation(prompts: &[&str], signed_in: bool) -> (Vec<Event>, Vec<Val
         dir: "/session".into(),
         system: "Be brief.".to_owned(),
         model: "gpt-a".to_owned(),
+        resume: None,
     };
-    let ended = converse(&mut wire, opening, prompted, mpsc::unbounded_channel().1).await;
+    let (steers, stops) = (mpsc::unbounded_channel().1, mpsc::unbounded_channel().1);
+    let ended = converse(&mut wire, opening, prompted, steers, stops).await;
     drop(wire);
     let _ = scripted.await;
     let mut events = Vec::new();
@@ -234,6 +243,7 @@ async fn a_turn_is_answered_with_what_the_model_says_and_each_call_s_count() {
     assert_eq!(
         said,
         [
+            &Event::Saved("t1".to_owned()),
             &Event::Reasoning("Plan".to_owned()),
             &Event::Reasoning("\n\n".to_owned()),
             &Event::Text("Hello".to_owned()),
@@ -274,7 +284,7 @@ async fn the_thread_opens_with_rig_s_prompt_and_nothing_to_approve() {
         sent("thread/start"),
         Some(json!({
             "model": "gpt-a", "cwd": "/session", "approvalPolicy": "never", "sandbox": "read-only",
-            "ephemeral": true, "baseInstructions": "Be brief.",
+            "baseInstructions": "Be brief.",
         })),
     );
     assert_eq!(
@@ -377,6 +387,7 @@ async fn a_steer_goes_into_the_running_turn_by_its_id() {
         dir: "/session".into(),
         system: String::new(),
         model: "gpt-a".to_owned(),
+        resume: None,
     };
     let sent = |method: &str| {
         let received = received.lock().unwrap_or_else(PoisonError::into_inner);
@@ -393,7 +404,9 @@ async fn a_steer_goes_into_the_running_turn_by_its_id() {
         drop(steers);
     };
 
-    let (ended, ()) = tokio::join!(converse(&mut wire, opening, prompted, steered), steer);
+    let stops = mpsc::unbounded_channel().1;
+    let conversed = converse(&mut wire, opening, prompted, steered, stops);
+    let (ended, ()) = tokio::join!(conversed, steer);
     drop(wire);
     let _ = scripted.await;
 
@@ -404,5 +417,131 @@ async fn a_steer_goes_into_the_running_turn_by_its_id() {
         Some(json!({ "threadId": "t1", "expectedTurnId": "u1",
             "input": [{ "type": "text", "text": "and b" }] })),
     );
+    assert_eq!(reported.try_recv(), Ok(Event::Saved("t1".to_owned())));
     assert_eq!(reported.try_recv(), Ok(Event::Done(Ok(FinishReason::Stop))));
+}
+
+#[tokio::test]
+async fn a_saved_thread_is_resumed_and_a_stop_interrupts_the_turn_it_names() {
+    let (ours, theirs) = tokio::io::duplex(1 << 16);
+    let received = Received::default();
+    let scripted = tokio::spawn(server(theirs, received.clone(), true));
+    let (reader, writer) = tokio::io::split(ours);
+    let (events, mut reported) = mpsc::unbounded_channel();
+    let mut wire = Wire::new(reader, writer, events);
+    let (prompts, prompted) = mpsc::unbounded_channel();
+    for text in ["one", "wait"] {
+        let _ = prompts.send(Prompt {
+            parts: vec![Part::Text(text.to_owned())],
+            effort: None,
+        });
+    }
+    drop(prompts);
+    let (stops, stopped) = mpsc::unbounded_channel();
+    let opening = Opening {
+        dir: "/session".into(),
+        system: "Be brief.".to_owned(),
+        model: "gpt-a".to_owned(),
+        resume: Some("t9".to_owned()),
+    };
+    let asked = |method: &str| {
+        let received = received.lock().unwrap_or_else(PoisonError::into_inner);
+        let named = |message: &&Value| message.get("method") == Some(&json!(method));
+        received.iter().filter(named).count()
+    };
+    let sent = |method: &str| {
+        let received = received.lock().unwrap_or_else(PoisonError::into_inner);
+        let named = |message: &&Value| message.get("method") == Some(&json!(method));
+        let sent = received.iter().find(named);
+        sent.and_then(|sent| sent.get("params").cloned())
+    };
+    // The user stops the second turn once it runs.
+    let stop = async {
+        while asked("turn/start") < 2 {
+            tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+        }
+        // A stop for the first turn, which is over, interrupts nothing.
+        let _ = stops.send(1);
+        tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+        assert_eq!(asked("turn/interrupt"), 0);
+        let _ = stops.send(2);
+        drop(stops);
+    };
+
+    let steers = mpsc::unbounded_channel().1;
+    let conversed = converse(&mut wire, opening, prompted, steers, stopped);
+    let (ended, ()) = tokio::join!(conversed, stop);
+    drop(wire);
+    let _ = scripted.await;
+
+    assert_eq!(ended, Ok(()));
+    assert_eq!(sent("thread/start"), None);
+    assert_eq!(
+        sent("thread/resume"),
+        Some(json!({
+            "model": "gpt-a", "cwd": "/session", "approvalPolicy": "never", "sandbox": "read-only",
+            "baseInstructions": "Be brief.", "threadId": "t9", "excludeTurns": true,
+        })),
+    );
+    assert_eq!(
+        sent("turn/interrupt"),
+        Some(json!({ "threadId": "t1", "turnId": "u1" })),
+    );
+    assert_eq!(asked("turn/interrupt"), 1);
+    let mut events = Vec::new();
+    while let Ok(event) = reported.try_recv() {
+        events.push(event);
+    }
+    assert_eq!(events.first(), Some(&Event::Saved("t1".to_owned())));
+    let ends = |event: &&Event| matches!(event, Event::Done(_) | Event::Stopped);
+    let ended: Vec<&Event> = events.iter().filter(ends).collect();
+    assert_eq!(
+        ended,
+        [&Event::Done(Ok(FinishReason::Stop)), &Event::Stopped]
+    );
+}
+
+#[tokio::test]
+async fn a_prompt_that_was_stopped_before_it_came_is_stopped_once_the_program_has_it() {
+    let (ours, theirs) = tokio::io::duplex(1 << 16);
+    let received = Received::default();
+    let scripted = tokio::spawn(server(theirs, received.clone(), true));
+    let (reader, writer) = tokio::io::split(ours);
+    let (events, mut reported) = mpsc::unbounded_channel();
+    let mut wire = Wire::new(reader, writer, events);
+    let (prompts, prompted) = mpsc::unbounded_channel();
+    let (stops, stopped) = mpsc::unbounded_channel();
+    let opening = Opening {
+        dir: "/session".into(),
+        system: String::new(),
+        model: "gpt-a".to_owned(),
+        resume: None,
+    };
+    // The stop for the first prompt is seen before the prompt is.
+    let _ = stops.send(1);
+    let late = async {
+        tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+        let _ = prompts.send(Prompt {
+            parts: vec![Part::Text("wait".to_owned())],
+            effort: None,
+        });
+        drop(prompts);
+    };
+
+    let steers = mpsc::unbounded_channel().1;
+    let conversed = converse(&mut wire, opening, prompted, steers, stopped);
+    let (ended, ()) = tokio::join!(conversed, late);
+    drop(wire);
+    let _ = scripted.await;
+
+    assert_eq!(ended, Ok(()));
+    let asked = |method: &str| {
+        let received = received.lock().unwrap_or_else(PoisonError::into_inner);
+        let named = |message: &&Value| message.get("method") == Some(&json!(method));
+        received.iter().filter(named).count()
+    };
+    // The program has the prompt, as the session's record will say.
+    assert_eq!((asked("turn/start"), asked("turn/interrupt")), (1, 1));
+    assert_eq!(reported.try_recv(), Ok(Event::Saved("t1".to_owned())));
+    assert_eq!(reported.try_recv(), Ok(Event::Stopped));
 }

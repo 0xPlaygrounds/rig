@@ -265,3 +265,45 @@ fn a_result_with_a_line_still_held_ends_the_reply_only_if_the_line_is_dropped() 
         vec![Event::Done(Ok(FinishReason::Stop))]
     );
 }
+
+#[test]
+fn the_id_the_program_saves_the_session_under_is_reported_once() {
+    let mut reader = Reader::default();
+    let init = json!({ "type": "system", "subtype": "init", "session_id": "s1" });
+
+    assert_eq!(
+        read(&mut reader, init.clone()),
+        vec![Event::Saved("s1".to_owned())]
+    );
+    // Each turn says it again.
+    assert_eq!(read(&mut reader, init), Vec::new());
+}
+
+#[test]
+fn a_result_after_a_stop_says_the_turn_was_stopped_and_no_line_stays_held() {
+    let mut reader = Reader::default();
+    let failed = json!({ "type": "result", "subtype": "error_during_execution", "is_error": true });
+    let stopping = json!({ "type": "control_response",
+        "response": { "subtype": "success", "request_id": "i1" } });
+    let (taken, mut offered) = oneshot::channel();
+    reader.offered.insert("late".to_owned(), taken);
+    read(&mut reader, lifecycle("steer", "queued"));
+    reader.interrupt = Some("i1".to_owned());
+
+    // Once the program says it is stopping, the turn's end is the stop's.
+    assert_eq!(read(&mut reader, stopping), Vec::new());
+    assert_eq!(read(&mut reader, failed.clone()), vec![Event::Stopped]);
+    // A message the program had not said it holds is not waited on.
+    assert!(matches!(offered.try_recv(), Ok(Err(_))));
+    // The next turn's end is not held back for the line the stop left.
+    assert_eq!(
+        read(&mut reader, result()),
+        vec![Event::Done(Ok(FinishReason::Stop))]
+    );
+    // A turn whose failure was on its way before the program said so failed.
+    reader.interrupt = Some("i2".to_owned());
+    assert!(matches!(
+        read(&mut reader, failed).as_slice(),
+        [Event::Done(Err(_))]
+    ));
+}
