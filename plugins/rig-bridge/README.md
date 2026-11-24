@@ -106,16 +106,18 @@ everything it had, the part of the reply it was stopped in included:
 | Meta AI Muse | `turn/interrupt` |
 | Grok Build, Antigravity, GitHub Copilot CLI | `session/cancel` |
 
-A program that does not end the turn within ten seconds is ended. Esc while a
-tool runs stops the tool: its result says it was stopped, and the turn goes on.
+A program that does not end the turn within ten seconds, or whose turn fails
+instead, is ended. Esc while a tool runs stops the tool: its result says it
+was stopped, and the turn goes on.
 
 ### A new process
 
 A new process is needed when none that is running can go on: rig was started
 again (`-r`), the process was ended as one idle process too many (`sessions`
-below) or is gone, or it cannot take a changed set of tools. It is started on
-the session the program itself saved, the program's own way, so the model has
-the conversation as it had it, and is sent only what you said since:
+below) or is gone, or it cannot take a changed set of tools. Where it can be,
+it is started on the session the program itself saved, the program's own way,
+so the model has the conversation as it had it, and is sent only what you
+said since:
 
 | Program | Started on its saved session with |
 | --- | --- |
@@ -126,12 +128,15 @@ the conversation as it had it, and is sent only what you said since:
 | GitHub Copilot CLI | `session/load` |
 
 This is done only where rig's history is what the program had when it last
-ended a turn or was stopped, under the same model and system prompt. In every
+ended a turn or was stopped, under the same model and system prompt. A saved
+session is found by that history, whichever conversation left it. In every
 other case the new process is given the conversation so far written out as
 text, in at most 160 KB: old tool output is cut first, then the oldest turns
 are left out. Those cases are `/compact`, a history that was edited, another
-model or system prompt, a process that was killed in the middle of a turn, and
-a saved session the program does not open. In that text a tool's output is
+model or system prompt, a process that ended in the middle of a turn (a tool
+call open, or a message of yours not yet given to it), a saved session the
+program does not open, and on Antigravity another set of tools: its saved
+session keeps the tools it was made with. In that text a tool's output is
 under a heading of its own, apart from what you said.
 
 ### What is kept on disk
@@ -140,8 +145,10 @@ Each conversation has a directory `RIG_HOME/bridge/rig-bridge-<pid>-<id>/`:
 the program's working directory and private home, where the program saves the
 conversation in its own format. Beside it the bridge writes `rig.json`: the
 program, the model, the program's name for the saved session, and digests of
-the history it stands at (none of the conversation's text). Claude Code is the
-exception: it writes its session file in its own home, as
+the history it stands at; of the conversation's text it holds only the part
+of a reply that was said before you stopped it. One session works in a
+directory at a time, and holds `rig.lock` there locked while it does. Claude
+Code is the exception: it writes its session file in its own home, as
 `~/.claude/projects/<the directory's path, with - for />/<session id>.jsonl`,
 so apart from the sessions of your own projects.
 
@@ -187,7 +194,8 @@ When rig's tools change mid-conversation, a running program is told so over
 MCP and lists them again, and the conversation goes on in the same process.
 Claude Code does this. A program that keeps no connection open to be told on
 (Grok), or that fixes its tools as it starts (Antigravity), gets a new
-process instead, started on its saved session.
+process instead: Grok's on its saved session, Antigravity's on the
+conversation written out, as its saved session keeps the tools it had.
 
 `[bridge]` in `RIG_HOME/settings.toml`:
 
@@ -212,7 +220,8 @@ sessions = 8           # how many idle processes are kept; the oldest ends first
   with CLI fallback, Antigravity `fetchAvailableModels` quota, and Copilot
   via `gh api /copilot_internal/user`) alongside Rig's session token totals.
 - `/bridge reset`: stops all warm idle harness processes without restarting
-  rig. What they saved stays, and each conversation goes on from it.
+  rig. What they saved stays: a conversation whose turn had ended goes on
+  from it, and one stopped in a tool call from the conversation written out.
 
 ## Limits
 

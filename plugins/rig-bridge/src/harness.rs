@@ -144,6 +144,9 @@ pub(crate) enum Event {
     Saved(String),
     /// The prompt is answered with its finish reason, or failed.
     Done(Result<FinishReason, String>),
+    /// The turn was stopped: the program has the prompt and what it had
+    /// answered of it, and takes the next.
+    Stopped,
 }
 
 /// What a session is started with.
@@ -180,10 +183,12 @@ pub(crate) struct Running {
     /// Takes a user message for the turn in progress, which the program
     /// gives its model as one. `None` when the program has no way to.
     pub steers: Option<mpsc::UnboundedSender<Steer>>,
-    /// Asks the program to end the turn in progress, its own way. It keeps
-    /// what it has of the turn and reports the end as any other, with
-    /// [`Event::Done`]; with no turn in progress nothing happens.
-    pub stops: mpsc::UnboundedSender<()>,
+    /// Asks the program to end a turn, its own way: that of the prompt with
+    /// this number, counting from 1 in the order the prompts were sent,
+    /// and sent before the stop is. The program keeps what it has of the
+    /// turn, which ends with [`Event::Stopped`]. A turn that is over is
+    /// left alone, and so is every other turn.
+    pub stops: mpsc::UnboundedSender<u64>,
     /// What the harness reports. It closes when the program is gone.
     pub events: mpsc::UnboundedReceiver<Event>,
     /// What keeps the program alive: dropping it kills the program.

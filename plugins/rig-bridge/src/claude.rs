@@ -128,19 +128,27 @@ impl Harness for Claude {
         let (process, pipes) = spawn(command)?;
         let (prompts, mut prompted) = mpsc::unbounded_channel::<Prompt>();
         let (steers, mut steered) = mpsc::unbounded_channel::<Steer>();
-        let (stops, mut stopped) = mpsc::unbounded_channel::<()>();
+        let (stops, mut stopped) = mpsc::unbounded_channel::<u64>();
         let (events, reported) = mpsc::unbounded_channel();
         let stderr = Stderr::follow(pipes.stderr);
         tokio::spawn(async move {
             let mut stdin = pipes.stdin;
             let mut reader = Reader::default();
             let mut lines = BufReader::new(pipes.stdout).lines();
+            // The number of the prompt last written, and whether the
+            // program is answering it.
+            let (mut turn, mut answering) = (0u64, false);
             loop {
+                // A prompt is taken before a stop, which may be the one for it.
                 tokio::select! {
+                    biased;
                     prompt = prompted.recv() => {
                         let Some(prompt) = prompt else {
                             return;
                         };
+                        turn += 1;
+                        answering = true;
+                        reader.stopping = false;
                         let id = uuid::Uuid::new_v4().to_string();
                         let mut line = user_message(&prompt.parts, &id, false).to_string();
                         line.push('\n');
@@ -164,7 +172,12 @@ impl Harness for Claude {
                             break;
                         }
                     }
-                    Some(()) = stopped.recv() => {
+                    Some(stop) = stopped.recv() => {
+                        // A stop for a turn that is over stops nothing.
+                        if stop != turn || !answering {
+                            continue;
+                        }
+                        reader.stopping = true;
                         let id = uuid::Uuid::new_v4().to_string();
                         let mut line = json!({
                             "type": "control_request",
@@ -180,6 +193,7 @@ impl Harness for Claude {
                     line = lines.next_line() => match line {
                         Ok(Some(line)) => {
                             for event in reader.read(&line) {
+                                answering &= !matches!(event, Event::Done(_) | Event::Stopped);
                                 if events.send(event).is_err() {
                                     return;
                                 }
@@ -246,6 +260,9 @@ struct Reader {
     ended: Option<Result<FinishReason, String>>,
     /// The id the program last said it saves the session under.
     session: Option<String>,
+    /// Whether the turn was asked to stop: its result, an error like any
+    /// other, then says it did.
+    stopping: bool,
 }
 
 #[derive(Deserialize)]
@@ -491,6 +508,18 @@ impl Reader {
                 errors,
             } => {
                 self.streamed.clear();
+                if is_error {
+                    // The program goes on with nothing of a turn that failed
+                    // or was stopped: a line it held then is not waited for.
+                    self.held.clear();
+                    self.ended = None;
+                    for (_, taken) in self.offered.drain() {
+                        let _ = taken.send(Err("the turn ended first".to_owned()));
+                    }
+                }
+                if std::mem::take(&mut self.stopping) && is_error {
+                    return vec![Event::Stopped];
+                }
                 let done = if is_error {
                     let why = result.unwrap_or_else(|| errors.join("; "));
                     Err(if why.is_empty() {

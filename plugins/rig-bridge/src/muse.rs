@@ -1,6 +1,6 @@
 //! Meta AI Muse (`muse`) as a model, over `muse serve` (MSP JSON-RPC).
 //! The program runs with private XDG directories (sharing only `auth.json`),
-//! `--no-session-log`, `--preset empty`, and workspace tools disabled, so it
+//! `--preset empty`, and workspace tools disabled, so it
 //! has none of its own tools, instructions, memory or skills. Rig's system
 //! prompt is passed via `session/start` `config.developerPrompt` and Rig's
 //! MCP server via `config.mcpServers`.
@@ -164,7 +164,7 @@ pub(crate) struct Wire<R, W> {
     /// `itemId` -> item `kind` (`agentMessage`, `reasoning`, ...).
     items: HashMap<String, String>,
     /// How the active turn ended, once `turn/completed` arrives.
-    ended: Option<Result<FinishReason, String>>,
+    ended: Option<Event>,
 }
 
 impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Wire<R, W> {
@@ -221,7 +221,7 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Wire<R, W> {
 fn notify(
     events: &mpsc::UnboundedSender<Event>,
     items: &mut HashMap<String, String>,
-    ended: &mut Option<Result<FinishReason, String>>,
+    ended: &mut Option<Event>,
     method: &str,
     params: &Value,
 ) {
@@ -274,15 +274,17 @@ fn notify(
         "turn/completed" => {
             items.clear();
             *ended = Some(match params.get("terminal").and_then(Value::as_str) {
-                Some("completed") => Ok(FinishReason::Stop),
-                Some("maxTokens" | "max_tokens" | "length") => Ok(FinishReason::Length),
-                Some("cancelled") => Err("the turn was cancelled".to_owned()),
-                _ => Err(params
+                Some("completed") => Event::Done(Ok(FinishReason::Stop)),
+                Some("maxTokens" | "max_tokens" | "length") => {
+                    Event::Done(Ok(FinishReason::Length))
+                }
+                Some("cancelled") => Event::Stopped,
+                _ => Event::Done(Err(params
                     .pointer("/error/message")
                     .or_else(|| params.get("reason"))
                     .and_then(Value::as_str)
                     .unwrap_or("the turn failed")
-                    .to_owned()),
+                    .to_owned())),
             });
         }
         _ => {}
@@ -364,7 +366,7 @@ pub(crate) async fn converse<R, W>(
     opening: Opening,
     mut prompts: mpsc::UnboundedReceiver<Prompt>,
     mut steers: mpsc::UnboundedReceiver<Steer>,
-    mut stops: mpsc::UnboundedReceiver<()>,
+    mut stops: mpsc::UnboundedReceiver<u64>,
 ) -> Result<(), String>
 where
     R: AsyncRead + Unpin,
@@ -443,20 +445,26 @@ where
 
     let _ = wire.events.send(Event::Saved(session_id.clone()));
 
+    // The number of the prompt being answered.
+    let mut turn = 0u64;
     loop {
+        // A prompt is taken before a stop, which may be the one for it; a
+        // stop with no turn running is for one that is over.
         let prompt = loop {
             tokio::select! {
+                biased;
                 prompt = prompts.recv() => break prompt,
                 Some(steer) = steers.recv() => {
                     let _ = steer.taken.send(Err("no turn is running".to_owned()));
                 }
-                Some(()) = stops.recv() => {}
+                Some(_) = stops.recv() => {}
                 msg = wire.next_message() => wire.handle(msg?).await?,
             }
         };
         let Some(prompt) = prompt else {
             return Ok(());
         };
+        turn += 1;
         let mut params = json!({
             "commandId": uuidv7(),
             "sessionId": session_id,
@@ -491,17 +499,21 @@ where
                     };
                     let _ = steer.taken.send(taken);
                 }
-                Some(()) = stops.recv() => {
-                    // The turn then completes as interrupted.
-                    let mut turn = json!({ "commandId": uuidv7(), "sessionId": session_id });
-                    if let (Some(id), Some(turn)) = (started.get("turnId"), turn.as_object_mut()) {
-                        turn.insert("turnId".to_owned(), id.clone());
+                Some(stop) = stops.recv() => {
+                    if stop != turn {
+                        continue;
                     }
-                    let _ = wire.request("turn/interrupt", turn).await;
+                    // The turn then completes as cancelled.
+                    let mut asked = json!({ "commandId": uuidv7(), "sessionId": session_id });
+                    if let (Some(id), Some(asked)) = (started.get("turnId"), asked.as_object_mut())
+                    {
+                        asked.insert("turnId".to_owned(), id.clone());
+                    }
+                    let _ = wire.request("turn/interrupt", asked).await;
                 }
             }
         };
-        if wire.events.send(Event::Done(done)).is_err() {
+        if wire.events.send(done).is_err() {
             return Ok(());
         }
     }

@@ -125,7 +125,7 @@ async fn run_acp_on(
     resume: Option<&str>,
     prompts: Vec<Prompt>,
     steers: mpsc::UnboundedReceiver<Steer>,
-    stops: mpsc::UnboundedReceiver<()>,
+    stops: mpsc::UnboundedReceiver<u64>,
     mut responder: impl FnMut(&Value) -> Vec<Value> + Send + 'static,
 ) -> (Vec<Event>, Vec<Value>) {
     let (client, server) = tokio::io::duplex(1 << 16);
@@ -699,6 +699,10 @@ async fn a_saved_session_is_resumed_or_loaded_and_what_it_reports_again_is_no_an
             "session/resume",
         ),
         (json!({ "loadSession": true }), "session/load"),
+        (
+            json!({ "loadSession": true, "sessionCapabilities": { "resume": false } }),
+            "session/load",
+        ),
     ];
     for (able, opens) in able {
         let prompt = Prompt {
@@ -776,10 +780,12 @@ async fn a_stop_cancels_the_prompt_being_answered() {
             let id = message.get("id").cloned().unwrap_or(Value::Null);
             match message.get("method").and_then(Value::as_str) {
                 Some("session/new") => vec![json!({ "id": id, "result": { "sessionId": "s1" } })],
-                // The prompt waits, and the user stops it.
+                // The prompt waits, and the user stops it: after a stop
+                // for a prompt before it, which is no stop of this one.
                 Some("session/prompt") => {
                     asked = id;
-                    let _ = stops.send(());
+                    let _ = stops.send(0);
+                    let _ = stops.send(1);
                     Vec::new()
                 }
                 Some("session/cancel") => {
@@ -792,12 +798,10 @@ async fn a_stop_cancels_the_prompt_being_answered() {
     .await;
 
     let cancelled = sent(&received, "session/cancel");
+    assert_eq!(cancelled.len(), 1);
     assert_eq!(
         cancelled.first().and_then(|sent| sent.get("params")),
         Some(&json!({ "sessionId": "s1" })),
     );
-    assert_eq!(
-        events.last(),
-        Some(&Event::Done(Err("the turn was cancelled".to_owned()))),
-    );
+    assert_eq!(events.last(), Some(&Event::Stopped));
 }

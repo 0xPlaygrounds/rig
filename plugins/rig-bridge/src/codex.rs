@@ -296,7 +296,7 @@ pub(crate) struct Wire<R, W> {
     /// Whether the program reached Rig's MCP server, once it said.
     server: Option<Result<(), String>>,
     /// How the turn being answered ended, once it did.
-    ended: Option<Result<FinishReason, String>>,
+    ended: Option<Event>,
 }
 
 impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Wire<R, W> {
@@ -363,7 +363,7 @@ fn decide(method: &str, params: &Value) -> Value {
 fn notify(
     events: &mpsc::UnboundedSender<Event>,
     server: &mut Option<Result<(), String>>,
-    ended: &mut Option<Result<FinishReason, String>>,
+    ended: &mut Option<Event>,
     method: &str,
     params: &Value,
 ) {
@@ -408,13 +408,13 @@ fn notify(
         "turn/completed" => {
             let turn = params.get("turn").unwrap_or(&Value::Null);
             *ended = Some(match turn.get("status").and_then(Value::as_str) {
-                Some("completed") => Ok(FinishReason::Stop),
-                Some("interrupted") => Err("the turn was interrupted".to_owned()),
-                _ => Err(turn
+                Some("completed") => Event::Done(Ok(FinishReason::Stop)),
+                Some("interrupted") => Event::Stopped,
+                _ => Event::Done(Err(turn
                     .pointer("/error/message")
                     .and_then(Value::as_str)
                     .unwrap_or("the turn failed")
-                    .to_owned()),
+                    .to_owned())),
             });
             None
         }
@@ -474,7 +474,10 @@ fn input(prompt: &[Part], dir: &Path, images: &mut usize) -> Result<Vec<Value>, 
                 let bytes = bytes.map_err(|why| format!("an image is not base 64: {why}"))?;
                 let kind = image_extension(media_type);
                 *images += 1;
-                let path = dir.join(format!("image-{images}.{kind}"));
+                // A process that went on from a saved thread counts from 1
+                // again: its files are told apart from the ones before.
+                let id = uuid::Uuid::new_v4().simple();
+                let path = dir.join(format!("image-{images}-{id}.{kind}"));
                 std::fs::write(&path, bytes)
                     .map_err(|why| format!("could not write an image: {why}"))?;
                 json!({ "type": "localImage", "path": path.to_string_lossy() })
@@ -492,7 +495,7 @@ pub(crate) async fn converse<R, W>(
     opening: Opening,
     mut prompts: mpsc::UnboundedReceiver<Prompt>,
     mut steers: mpsc::UnboundedReceiver<Steer>,
-    mut stops: mpsc::UnboundedReceiver<()>,
+    mut stops: mpsc::UnboundedReceiver<u64>,
 ) -> Result<(), String>
 where
     R: AsyncRead + Unpin,
@@ -551,21 +554,27 @@ where
     let _ = wire.events.send(Event::Saved(thread.clone()));
 
     let mut images = 0;
+    // The number of the prompt being answered.
+    let mut number = 0u64;
     loop {
-        // Between prompts the program still sends notifications.
+        // Between prompts the program still sends notifications. A prompt
+        // is taken before a stop, which may be the one for it; a stop with
+        // no turn running is for one that is over.
         let prompt = loop {
             tokio::select! {
+                biased;
                 prompt = prompts.recv() => break prompt,
                 Some(steer) = steers.recv() => {
                     let _ = steer.taken.send(Err("no turn is running".to_owned()));
                 }
-                Some(()) = stops.recv() => {}
+                Some(_) = stops.recv() => {}
                 msg = wire.next_message() => wire.handle(msg?).await?,
             }
         };
         let Some(prompt) = prompt else {
             return Ok(());
         };
+        number += 1;
         let mut turn = json!({
             "threadId": thread,
             "input": input(&prompt.parts, &opening.dir, &mut images)?,
@@ -599,17 +608,17 @@ where
                         };
                         let _ = steer.taken.send(taken);
                     }
-                    Some(()) = stops.recv() => {
+                    Some(stop) = stops.recv() => {
                         // The turn then completes as interrupted.
-                        if let Some(id) = started.pointer("/turn/id") {
-                            let turn = json!({ "threadId": thread, "turnId": id });
-                            let _ = wire.request("turn/interrupt", turn).await;
+                        if let (true, Some(id)) = (stop == number, started.pointer("/turn/id")) {
+                            let interrupted = json!({ "threadId": thread, "turnId": id });
+                            let _ = wire.request("turn/interrupt", interrupted).await;
                         }
                     }
                 }
             },
-            Err(why) => Err(why),
+            Err(why) => Event::Done(Err(why)),
         };
-        let _ = wire.events.send(Event::Done(done));
+        let _ = wire.events.send(done);
     }
 }

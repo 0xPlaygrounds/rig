@@ -44,7 +44,7 @@ use crate::harness::{
     ContextSnapshot, Event, Harness, Launch, Part, Prompt, Running, Steer, Vendor,
 };
 use crate::mcp::{Call, Entry, Outcome, Server};
-use crate::saved::{self, Held, Record, SessionDir, Stand};
+use crate::saved::{self, Record, Reply as Replied, SessionDir, Stand};
 
 #[cfg(test)]
 mod tests;
@@ -136,10 +136,8 @@ pub(crate) struct Bridge {
     /// Where each session's directory is, and stays once its conversation
     /// can go on from it.
     kept_root: PathBuf,
-    /// The directories this process's sessions work in.
-    held: Held,
     /// The requests being answered, each under a number: what a session
-    /// for it is set up with, and its history.
+    /// for it is set up with, its history, and where its reply is written.
     flights: Mutex<(u64, Vec<Flown>)>,
     /// Told when one of them is answered or given up.
     landed: Notify,
@@ -149,7 +147,7 @@ pub(crate) struct Bridge {
     signals: Option<mpsc::UnboundedSender<BridgeSignal>>,
 }
 
-type Flown = (u64, Setup, Vec<Arc<Message>>);
+type Flown = (u64, Setup, Vec<Arc<Message>>, mpsc::UnboundedSender<Wrote>);
 
 /// A request being answered, until it is dropped.
 struct Flight<'a>(&'a Bridge, u64);
@@ -179,7 +177,6 @@ impl Bridge {
             limit,
             scratch_root,
             kept_root,
-            held: Held::default(),
             flights: Mutex::default(),
             landed: Notify::new(),
             stats: Mutex::default(),
@@ -212,13 +209,19 @@ impl Bridge {
         self.flights.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Marks a request for `history` under `setup` as being answered, once
-    /// the requests it goes on from are answered or given up. One of those
-    /// can only be a reply that was dropped: its turn is being stopped, and
-    /// its session is the one to go on in once it waits.
-    async fn fly(&self, setup: &Setup, history: &[Arc<Message>]) -> Flight<'_> {
-        let earlier = |(_, set_up, flown): &Flown| {
-            set_up.fits(setup, true)
+    /// Marks a request for `history` under `setup`, answered into `out`, as
+    /// being answered, once the requests it goes on from whose replies were
+    /// dropped are given up: the turn of one is being stopped, and its
+    /// session is the one to go on in once it waits.
+    async fn fly(
+        &self,
+        setup: &Setup,
+        history: &[Arc<Message>],
+        out: &mpsc::UnboundedSender<Wrote>,
+    ) -> Flight<'_> {
+        let earlier = |(_, set_up, flown, written): &Flown| {
+            written.is_closed()
+                && set_up.fits(setup, true)
                 && flown.len() < history.len()
                 && flown
                     .iter()
@@ -240,7 +243,9 @@ impl Bridge {
         let mut flights = self.flights();
         flights.0 = flights.0.wrapping_add(1);
         let number = flights.0;
-        flights.1.push((number, setup.clone(), history.to_vec()));
+        flights
+            .1
+            .push((number, setup.clone(), history.to_vec(), out.clone()));
         Flight(self, number)
     }
 
@@ -259,15 +264,21 @@ impl Bridge {
         let tools = setup.tools_digest();
         let keys = std::cell::OnceCell::new();
         let asked = |stands: &Stand| {
-            let keys = keys.get_or_init(|| saved::prefixes(history.iter().map(|m| written(m))));
+            let keys = keys.get_or_init(|| saved::prefixes(history.iter().map(|m| digested(m))));
             if keys.get(stands.seen) != Some(&stands.key) {
                 return None;
             }
-            let replied =
-                |reply: &AssistantMessage| Some(Said::of(&reply.content).digest()) == stands.said;
-            asked(history.get(stands.seen..)?, stands.said.is_none(), replied)
+            let after = history.get(stands.seen..)?;
+            match &stands.said {
+                Replied::Whole(said) => asked(after, false, |reply| {
+                    Said::of(&reply.content).digest() == *said
+                }),
+                Replied::Cut(said) => asked(after, true, |reply| {
+                    said.starts_with(&Said::of(&reply.content).text)
+                }),
+            }
         };
-        let (dir, record) = saved::find(&self.kept_root, &self.held, |record, stands| {
+        let (dir, record) = saved::find(&self.kept_root, |record, stands| {
             (record.vendor.as_str(), &record.model, &record.system)
                 == (vendor.as_str(), &setup.model, &system)
                 && (retools || record.tools == tools)
@@ -567,12 +578,10 @@ impl Model {
             system,
             tools: request.tools.iter().cloned().collect(),
         };
-        let _flight = self.bridge.fly(&setup, &history).await;
-        let opened = tokio::select! {
-            () = out.closed() => return None,
-            opened = self.open(&setup, &history) => opened,
-        };
-        let (mut session, mut warm) = match opened {
+        let _flight = self.bridge.fly(&setup, &history, out).await;
+        // A reply dropped meanwhile is seen below, with a session to stop:
+        // one dropped here would be ended in the middle of its turn.
+        let (mut session, mut warm) = match self.open(&setup, &history).await {
             Ok(opened) => opened,
             Err(why) => return Some(Err(why)),
         };
@@ -609,11 +618,7 @@ impl Model {
                     );
                     drop(session);
                     warm = false;
-                    let started = tokio::select! {
-                        () = out.closed() => return None,
-                        started = self.start(setup.clone(), &history) => started,
-                    };
-                    session = match started {
+                    session = match self.start(setup.clone(), &history).await {
                         Ok(session) => session,
                         Err(why) => return Some(Err(why)),
                     };
@@ -704,7 +709,7 @@ impl Model {
 
     /// A new session, sent `history` as its first prompt.
     async fn start(&self, setup: Setup, history: &[Arc<Message>]) -> Result<Session, String> {
-        let dir = SessionDir::create(&self.bridge.kept_root, &self.bridge.held)
+        let dir = SessionDir::create(&self.bridge.kept_root)
             .map_err(|why| format!("could not make a directory: {why}"))?;
         let (prompt, trimmed) = budgeted_opening(history, REPLAY_BUDGET);
         if let Some(summary) = trimmed {
@@ -757,6 +762,7 @@ impl Model {
             changes_effort: self.harness.changes_effort(),
             turns: 0,
             prompts: 1,
+            sent: 0,
             consecutive_zero_cache: 0,
             last_zero_cache_prompt: 0,
             warned_cache_drop: false,
@@ -866,12 +872,12 @@ pub(crate) fn reap_stale_dirs(root: &Path) {
 }
 
 #[cfg(target_os = "linux")]
-pub(crate) fn process_alive(pid: u32) -> bool {
+fn process_alive(pid: u32) -> bool {
     Path::new(&format!("/proc/{pid}")).exists()
 }
 
 #[cfg(target_os = "macos")]
-pub(crate) fn process_alive(pid: u32) -> bool {
+fn process_alive(pid: u32) -> bool {
     std::process::Command::new("/bin/kill")
         .env_clear()
         .args(["-0", &pid.to_string()])
@@ -883,7 +889,7 @@ pub(crate) fn process_alive(pid: u32) -> bool {
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-pub(crate) fn process_alive(_pid: u32) -> bool {
+fn process_alive(_pid: u32) -> bool {
     true
 }
 
@@ -892,9 +898,12 @@ pub(crate) fn process_alive(_pid: u32) -> bool {
 fn is_non_recoverable(why: &str) -> bool {
     matches!(
         why,
-        "the model refused to answer" | "the turn was cancelled" | "the tool server closed"
+        "the model refused to answer" | STOPPED_TURN | "the tool server closed"
     )
 }
+
+/// Why a reply failed whose turn the harness says was stopped, not by Rig.
+const STOPPED_TURN: &str = "the turn was stopped";
 
 /// What a waiting session is sent to go on.
 #[derive(Debug, PartialEq)]
@@ -951,6 +960,9 @@ struct Session {
     turns: u32,
     /// How many user prompts (`Next::Prompt`) have been sent to this process.
     prompts: u32,
+    /// How many prompts the harness was sent, the session's own among
+    /// them: the number of the one it answers, by which its turn is stopped.
+    sent: u64,
     /// Consecutive warm user prompts reporting 0 cached tokens.
     consecutive_zero_cache: u8,
     /// Prompt number most recently counted toward `consecutive_zero_cache`.
@@ -994,7 +1006,14 @@ impl Session {
             .zip(&self.seen)
             .all(|(now, then)| Arc::ptr_eq(now, then) || now == then);
         // Two conversations can share a history: the reply tells them apart.
-        let replied = |reply: &AssistantMessage| Said::of(&reply.content) == self.said;
+        // Of a reply the user stopped, Rig has the start of what was said.
+        let replied = |reply: &AssistantMessage| {
+            let reply = Said::of(&reply.content);
+            match self.cut {
+                true => self.said.text.starts_with(&reply.text),
+                false => reply == self.said,
+            }
+        };
         if !same {
             return None;
         }
@@ -1085,31 +1104,34 @@ impl Session {
     /// Writes where the conversation stands beside what the harness saved
     /// of it, so a later process can go on from there: at the history this
     /// session saw and its reply, or nowhere (`stands` false) while the
-    /// harness answers. Nothing is written before the harness named what it
-    /// saves.
-    fn record(&mut self, stands: bool) {
+    /// harness answers, and while it has not been given all the user said.
+    /// Whether it is written, where there is something to write: nothing is
+    /// before the harness named what it saves.
+    fn record(&mut self, stands: bool) -> bool {
         let Some(session) = self.saved.clone() else {
-            return;
+            return true;
         };
-        let stands = stands.then(|| Stand {
+        let stands = (stands && self.queued.is_empty()).then(|| Stand {
             seen: self.seen.len(),
-            key: saved::prefixes(self.seen.iter().map(|message| written(message)))
+            key: saved::prefixes(self.seen.iter().map(|message| digested(message)))
                 .pop()
                 .unwrap_or_default(),
-            said: (!self.cut).then(|| self.said.digest()),
+            said: match self.cut {
+                true => Replied::Cut(self.said.text.clone()),
+                false => Replied::Whole(self.said.digest()),
+            },
         });
         if stands.is_none() && !self.dir.is_kept() {
-            return;
+            return true;
         }
         self.dir.keep(&Record {
-            pid: std::process::id(),
             vendor: self.vendor.as_str().to_owned(),
             model: self.setup.model.clone(),
             system: saved::digest(&self.setup.system),
             tools: self.setup.tools_digest(),
             session,
             stands,
-        });
+        })
     }
 
     /// Records that the conversation stands where this session last saw
@@ -1119,21 +1141,23 @@ impl Session {
     }
 
     /// Has the harness end the turn it answers, the reply to which was
-    /// dropped: whether it did, in time. The calls it has open are given
-    /// up, and so is one it makes meanwhile.
+    /// dropped: whether the harness can go on from there. It can when the
+    /// turn was stopped in time, or was over before it could be; not when
+    /// the turn failed, or the harness is gone. The calls it has open are
+    /// given up, and so is one it makes meanwhile.
     async fn stop(&mut self) -> bool {
         self.open.clear();
-        if self.running.stops.send(()).is_err() {
+        if self.running.stops.send(self.sent).is_err() {
             return false;
         }
         let ended = async {
             loop {
                 tokio::select! {
                     event = self.running.events.recv() => match event {
-                        Some(Event::Done(_)) => return true,
+                        Some(Event::Stopped | Event::Done(Ok(_))) => return true,
+                        Some(Event::Done(Err(_))) | None => return false,
                         Some(Event::Saved(name)) => self.saved = Some(name),
                         Some(_) => {}
-                        None => return false,
                     },
                     Some(_) = self.calls.recv() => {}
                 }
@@ -1141,7 +1165,7 @@ impl Session {
         };
         let ended = tokio::time::timeout(STOP, ended).await.unwrap_or(false);
         while self.calls.try_recv().is_ok() {}
-        ended
+        ended && !self.running.prompts.is_closed()
     }
 
     /// Sends the session what is next. What the user said beside tool
@@ -1150,13 +1174,21 @@ impl Session {
     /// does not say in time that it took this one, gets it as its next
     /// prompt when the turn ends.
     async fn send(&mut self, next: Next) -> Result<(), String> {
-        // What the harness saved is ahead of Rig's history from here on.
-        self.record(false);
+        // What the harness saved is ahead of Rig's history from here on: a
+        // record that still said otherwise would have the user's next
+        // message sent to it twice.
+        if !self.record(false) {
+            return Err("where the session stands could not be recorded".to_owned());
+        }
         match next {
             Next::Prompt(parts) => {
                 // What the user said that the harness has not read is first.
                 let mut asked = std::mem::take(&mut self.queued);
                 asked.extend(parts);
+                self.sent += 1;
+                // A call that comes before the prompt is of a turn that is
+                // over: nothing waits for its answer.
+                while self.calls.try_recv().is_ok() {}
                 self.running
                     .prompts
                     .send(Prompt {
@@ -1264,6 +1296,7 @@ impl Session {
                         ));
                     }
                     Some(Event::Done(Err(why))) => return Err(why),
+                    Some(Event::Stopped) => return Err(STOPPED_TURN.to_owned()),
                     None => return Err("the harness exited before it answered".to_owned()),
                 },
                 call = self.calls.recv() => {
@@ -1298,10 +1331,10 @@ impl Session {
 
 /// What the user said after a reply, as the next prompt: `after` is the
 /// reply, which `replied` knows, and then the user's messages, with no tool
-/// result among them. Where the user `cut` the reply off, what Rig kept of
-/// it, if anything, is passed over unread, and Rig's note that it was
-/// stopped comes next: a history without the note is of a conversation
-/// whose reply was whole, which a harness that has part of it cannot go on.
+/// result among them. Where the user `cut` the reply off, Rig may have kept
+/// none of it, and its note that the reply was stopped comes next: a
+/// history without the note is of a conversation whose reply was whole,
+/// which a harness that has part of it cannot go on.
 fn asked(
     after: &[Arc<Message>],
     cut: bool,
@@ -1309,7 +1342,7 @@ fn asked(
 ) -> Option<Vec<Part>> {
     let (first, since) = after.split_first()?;
     let since = match &**first {
-        Message::Assistant(reply) if cut || replied(reply) => since,
+        Message::Assistant(reply) if replied(reply) => since,
         Message::User { .. } if cut => after,
         _ => return None,
     };
@@ -1332,10 +1365,32 @@ fn asked(
     asks.then(|| parts(contents))
 }
 
-/// A message as text, for the digest of a history.
-fn written(message: &Message) -> String {
+/// A message as text for the digest of a history: as it is written out, and
+/// each image's bytes, which that leaves out.
+fn digested(message: &Message) -> String {
     let pieces = render_message_pieces(message);
-    pieces.into_iter().map(|(piece, _)| piece).collect()
+    let mut text: String = pieces.into_iter().map(|(piece, _)| piece).collect();
+    let mut shown = |image: &Image| {
+        let image = serde_json::to_string(image).unwrap_or_default();
+        text.push_str(&format!("[image {}]\n", saved::digest(&image)));
+    };
+    let Message::User { content } = message else {
+        return text;
+    };
+    for content in content {
+        match content {
+            UserContent::Image(image) => shown(image),
+            UserContent::ToolResult(result) => {
+                for content in &result.content {
+                    if let ToolResultContent::Image(image) = content {
+                        shown(image);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    text
 }
 
 /// Ensures `usage.total_tokens` (read by Rig's `LastUsage::context()` and

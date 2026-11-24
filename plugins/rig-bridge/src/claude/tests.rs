@@ -278,3 +278,23 @@ fn the_id_the_program_saves_the_session_under_is_reported_once() {
     // Each turn says it again.
     assert_eq!(read(&mut reader, init), Vec::new());
 }
+
+#[test]
+fn a_result_after_a_stop_says_the_turn_was_stopped_and_no_line_stays_held() {
+    let mut reader = Reader::default();
+    let failed = json!({ "type": "result", "subtype": "error_during_execution", "is_error": true });
+    read(&mut reader, lifecycle("steer", "queued"));
+    reader.stopping = true;
+
+    assert_eq!(read(&mut reader, failed.clone()), vec![Event::Stopped]);
+    // The next turn's end is not held back for the line the stop left.
+    assert_eq!(
+        read(&mut reader, result()),
+        vec![Event::Done(Ok(FinishReason::Stop))]
+    );
+    // A turn that fails with no stop asked for failed.
+    assert!(matches!(
+        read(&mut reader, failed).as_slice(),
+        [Event::Done(Err(_))]
+    ));
+}

@@ -8,14 +8,11 @@
 //!
 //! A kept directory is never removed by the bridge.
 
-use std::collections::HashSet;
+use std::fs::File;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, PoisonError};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-
-use crate::session::process_alive;
 
 #[cfg(test)]
 mod tests;
@@ -23,24 +20,27 @@ mod tests;
 /// The record's file in a session's directory.
 const RECORD: &str = "rig.json";
 
+/// The file a session holds locked in its directory while it lives.
+const LOCK: &str = "rig.lock";
+
 /// Prefix of a session's directory, before the process that made it.
 const PREFIX: &str = "rig-bridge-";
 
-/// The directories the sessions of this process work in.
-pub(crate) type Held = Arc<Mutex<HashSet<PathBuf>>>;
-
 /// A session's directory: the program's working directory, with the files
-/// it is pointed at and what it saves of the conversation. It is removed
-/// with the session unless it was [kept](Self::keep).
+/// it is pointed at and what it saves of the conversation. One session
+/// works in it at a time, of whichever Rig process: it holds a lock on a
+/// file there for as long as it lives, which the system lets go of when
+/// the process ends, however it ends. The directory is removed with the
+/// session unless it was [kept](Self::keep).
 pub(crate) struct SessionDir {
     path: PathBuf,
-    held: Held,
     kept: bool,
+    _lock: File,
 }
 
 impl SessionDir {
     /// A new, empty directory under `root`.
-    pub(crate) fn create(root: &Path, held: &Held) -> std::io::Result<Self> {
+    pub(crate) fn create(root: &Path) -> std::io::Result<Self> {
         let mut builder = std::fs::DirBuilder::new();
         builder.recursive(true);
         #[cfg(unix)]
@@ -50,11 +50,11 @@ impl SessionDir {
         let path = root.join(format!("{PREFIX}{}-{id}", std::process::id()));
         builder.recursive(false);
         builder.create(&path)?;
-        lock(held).insert(path.clone());
+        let lock = locked(&path).ok_or_else(|| std::io::Error::other("it is in use"))?;
         Ok(Self {
             path,
-            held: held.clone(),
             kept: false,
+            _lock: lock,
         })
     }
 
@@ -85,22 +85,24 @@ impl SessionDir {
 
 impl Drop for SessionDir {
     fn drop(&mut self) {
-        lock(&self.held).remove(&self.path);
         if !self.kept {
             let _ = std::fs::remove_dir_all(&self.path);
         }
     }
 }
 
-fn lock(held: &Held) -> std::sync::MutexGuard<'_, HashSet<PathBuf>> {
-    held.lock().unwrap_or_else(PoisonError::into_inner)
+/// The lock on `dir`, unless a session holds it.
+fn locked(dir: &Path) -> Option<File> {
+    let mut options = File::options();
+    let lock = options.create(true).truncate(false).write(true);
+    let lock = lock.open(dir.join(LOCK)).ok()?;
+    lock.try_lock().ok()?;
+    Some(lock)
 }
 
 /// What a kept directory holds, and where its conversation stands.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct Record {
-    /// The Rig process whose session last worked here.
-    pub pid: u32,
     pub vendor: String,
     pub model: String,
     /// The digest of the system prompt.
@@ -122,40 +124,48 @@ pub(crate) struct Stand {
     pub seen: usize,
     /// The digest of those messages, the last of [`prefixes`] of them.
     pub key: String,
-    /// The digest of what the program answered them with. `None` where the
-    /// user stopped the answer: what Rig has of it, if anything, is then
-    /// not what the program has.
-    pub said: Option<String>,
+    /// What the program answered them with.
+    pub said: Reply,
+}
+
+/// What a program said in answer to the history it stands at.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum Reply {
+    /// A whole reply, by its digest.
+    Whole(String),
+    /// The text of a reply until the user stopped it. Rig may have less of
+    /// it, never other text.
+    Cut(String),
 }
 
 /// The kept directory under `root` whose record `goes_on` accepts, as the
-/// directory of a session of this process. One a live session works in,
-/// here or in another Rig process, is passed over.
+/// directory of a session of this process. One a session works in, of this
+/// Rig process or another, is passed over.
 pub(crate) fn find(
     root: &Path,
-    held: &Held,
     goes_on: impl Fn(&Record, &Stand) -> bool,
 ) -> Option<(SessionDir, Record)> {
-    let me = std::process::id();
+    let stands = |path: &Path| {
+        let record = read(path)?;
+        let stands = record.stands.as_ref()?;
+        goes_on(&record, stands).then_some(record)
+    };
     for entry in std::fs::read_dir(root).ok()?.flatten() {
         let path = entry.path();
-        let Some(record) = read(&path) else {
-            continue;
-        };
-        let Some(stands) = &record.stands else {
-            continue;
-        };
-        // Whether a process is alive costs more to ask than what it left.
-        if !goes_on(&record, stands) || (record.pid != me && process_alive(record.pid)) {
+        if stands(&path).is_none() {
             continue;
         }
-        let mut held_now = lock(held);
-        if held_now.insert(path.clone()) {
-            drop(held_now);
+        let Some(lock) = locked(&path) else {
+            continue;
+        };
+        // What was read before the lock was taken may be of a session that
+        // has since gone on: only what is read under it holds.
+        if let Some(record) = stands(&path) {
             let dir = SessionDir {
                 path,
-                held: held.clone(),
                 kept: true,
+                _lock: lock,
             };
             return Some((dir, record));
         }
@@ -167,20 +177,17 @@ fn read(dir: &Path) -> Option<Record> {
     serde_json::from_slice(&std::fs::read(dir.join(RECORD)).ok()?).ok()
 }
 
-/// Removes the directories under `root` that were never kept and whose
-/// process is gone: a session that ended with its process, not by itself.
+/// Removes the directories under `root` that were never kept and that no
+/// session works in: one whose session ended with its process, not by
+/// itself.
 pub(crate) fn reap(root: &Path) {
     let Ok(entries) = std::fs::read_dir(root) else {
         return;
     };
     for entry in entries.flatten() {
         let path = entry.path();
-        let name = entry.file_name();
-        let pid = name
-            .to_str()
-            .and_then(|name| name.strip_prefix(PREFIX)?.split_once('-')?.0.parse().ok());
-        let gone = pid.is_some_and(|pid: u32| pid != std::process::id() && !process_alive(pid));
-        if gone && !path.join(RECORD).exists() {
+        let ours = entry.file_name().to_string_lossy().starts_with(PREFIX);
+        if ours && !path.join(RECORD).exists() && locked(&path).is_some() {
             let _ = std::fs::remove_dir_all(&path);
         }
     }

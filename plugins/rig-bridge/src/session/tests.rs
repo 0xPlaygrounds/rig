@@ -11,11 +11,12 @@ use rig_harness::rig_core::effect::{Answered, EffectId, EffectKind};
 use rig_harness::rig_core::message::{
     AssistantMessage, ToolCall, ToolFunction, ToolName, ToolResultContent, UserContent,
 };
+use rig_harness::rig_core::message::{DocumentSourceKind, Image};
 use rig_harness::rig_core::serve::{Dispatch, Reply, Serve};
 use serde_json::{Value, json};
 use tokio::sync::{Notify, mpsc};
 
-use super::{Bridge, Model, STOPPED, apply_context, budgeted_opening};
+use super::{Bridge, Model, STOPPED, apply_context, budgeted_opening, digested};
 use crate::harness::{Event, Harness, Launch, Part, Prompt, Running, Steer, Vendor};
 use crate::mcp::tests::{post, request};
 
@@ -35,7 +36,8 @@ struct Seen {
 /// A harness whose model does what its prompt says. A prompt containing
 /// `call read <path>` calls Rig's `read` tool once for each such phrase, at
 /// once, and then says what came back; one containing `wait` says so and
-/// goes on until it is stopped; any other prompt is echoed.
+/// goes on until it is stopped, and one containing `crash` fails then; any
+/// other prompt is echoed.
 #[derive(Default)]
 struct Scripted {
     seen: Arc<Mutex<Seen>>,
@@ -55,6 +57,8 @@ struct Scripted {
     steers: Option<bool>,
     /// Whether the harness saves its session, under a name it says.
     saves: bool,
+    /// Whether a harness started on a saved session finds none.
+    forgets: bool,
 }
 
 /// Holds a notification stream open on the server at `url` and lists the
@@ -137,7 +141,8 @@ impl Harness for Scripted {
 
     fn start(&self, launch: Launch<'_>) -> Result<Running, String> {
         let (prompts, mut prompted) = mpsc::unbounded_channel::<Prompt>();
-        let (stops, mut stopped) = mpsc::unbounded_channel::<()>();
+        let (stops, mut stopped) = mpsc::unbounded_channel::<u64>();
+        let forgot = self.forgets && launch.resume.is_some();
         let (events, reported) = mpsc::unbounded_channel();
         let seen = self.seen.clone();
         let index = {
@@ -167,7 +172,7 @@ impl Harness for Scripted {
                 // A stop with no turn to stop does nothing.
                 let prompt = tokio::select! {
                     prompt = prompted.recv() => prompt,
-                    Some(()) = stopped.recv() => continue,
+                    Some(_) = stopped.recv() => continue,
                 };
                 let Some(prompt) = prompt else {
                     return;
@@ -195,12 +200,19 @@ impl Harness for Scripted {
                     .skip(1)
                     .filter_map(|rest| rest.split_whitespace().next())
                     .collect();
+                if forgot {
+                    let _ = events.send(Event::Done(Err("no such session".to_owned())));
+                    return;
+                }
                 let _ = events.send(Event::Began);
                 let _ = events.send(Event::Reasoning("thinking".to_owned()));
-                if asked.contains("wait") {
+                if asked.contains("wait") || asked.contains("crash") {
                     let _ = events.send(Event::Text("Waiting.".to_owned()));
                     let _ = stopped.recv().await;
-                    let _ = events.send(Event::Done(Err("the turn was cancelled".to_owned())));
+                    let _ = events.send(match asked.contains("crash") {
+                        true => Event::Done(Err("it crashed".to_owned())),
+                        false => Event::Stopped,
+                    });
                     continue;
                 }
                 if paths.is_empty() {
@@ -679,21 +691,61 @@ async fn a_dropped_reply_stops_the_turn_and_the_harness_goes_on_with_what_is_sai
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_stopped_harness_does_not_go_on_a_conversation_whose_reply_was_whole() {
+async fn a_stopped_harness_goes_on_only_the_conversation_it_was_stopped_in() {
     let (model, seen, _) = model(4);
 
     stopped_at(&model, asks("", &[Message::user("wait a")]), "Waiting.").await;
-    // The same request, answered in full elsewhere: not what this harness has.
+    // The same request answered in full elsewhere, and one stopped after
+    // other words: neither is what this harness has.
     let whole = [
         Message::user("wait a"),
         Message::assistant("Waiting. Done."),
         Message::user("one"),
     ];
+    let other = [
+        Message::user("wait a"),
+        Message::assistant("Wondering"),
+        Message::user(STOPPED),
+        Message::user("one"),
+    ];
     let _ = answer(&model, asks("", &whole)).await;
+    let _ = answer(&model, asks("", &other)).await;
 
     let opened = prompts(&seen);
-    assert_eq!(opened.len(), 2, "{opened:?}");
-    assert!(opened.concat().concat().contains("Waiting. Done."));
+    assert_eq!(opened.len(), 3, "{opened:?}");
+    let written = opened.concat().concat();
+    assert!(written.contains("Waiting. Done.") && written.contains("Wondering"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_turn_that_fails_instead_of_stopping_ends_its_harness() {
+    let (model, _, ended) = model(4);
+
+    stopped_at(&model, asks("", &[Message::user("crash")]), "Waiting.").await;
+    for _ in 0..300 {
+        if ended.load(Ordering::SeqCst) == 1 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+
+    // Nothing says the harness has the prompt: nothing goes on from it.
+    assert_eq!(ended.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn the_digest_of_a_message_tells_images_apart() {
+    let with = |bytes: &str| {
+        let image = Image {
+            data: DocumentSourceKind::Base64(bytes.to_owned()),
+            ..Image::default()
+        };
+        let content = vec![UserContent::text("look"), UserContent::Image(image)];
+        digested(&Message::User { content })
+    };
+
+    assert_eq!(with("AAAA"), with("AAAA"));
+    assert_ne!(with("AAAA"), with("AAAB"));
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -765,6 +817,53 @@ async fn a_new_bridge_goes_on_from_the_session_a_harness_saved() {
     let (model, seen, _) = at(&root, saving(), 4);
     let _ = answer(&model, asks("", &other)).await;
     assert_eq!(resumed(&seen), Vec::<String>::new());
+    drop(model);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_new_bridge_goes_on_from_a_turn_that_was_stopped_and_writes_out_what_it_cannot() {
+    let root =
+        std::env::temp_dir().join(format!("rig-bridge-test-{}", uuid::Uuid::new_v4().simple()));
+    let saving = |forgets| Scripted {
+        saves: true,
+        forgets,
+        ..Scripted::default()
+    };
+    let mut history = vec![Message::user("wait a")];
+    {
+        let (model, ..) = at(&root, saving(false), 4);
+        stopped_at(&model, asks("", &history), "Waiting.").await;
+        // The stopped session is waiting once its turn has ended.
+        for _ in 0..300 {
+            if model.bridge.snapshot().warm.len() == 1 {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    }
+    history.extend([
+        Message::assistant("Wai"),
+        Message::user(STOPPED),
+        Message::user("one"),
+    ]);
+
+    let (model, seen, _) = at(&root, saving(false), 4);
+    let first = answer(&model, asks("", &history)).await;
+    assert_eq!(said(first.as_ref()).0, format!("echo: {STOPPED}\none"));
+    assert_eq!(prompts(&seen), vec![vec![format!("{STOPPED}\none")]]);
+    history.extend([turn(first.as_ref()), Message::user("two")]);
+    drop(model);
+
+    // A harness that no longer has what it saved: the conversation is
+    // written out for a new one, and answered all the same.
+    let (model, seen, _) = at(&root, saving(true), 4);
+    let second = answer(&model, asks("", &history)).await;
+    assert_eq!(said(second.as_ref()).0, "echo: \n\ntwo");
+    let opened = prompts(&seen);
+    assert_eq!(opened.len(), 2, "{opened:?}");
+    assert_eq!(opened.first(), Some(&vec!["two".to_owned()]));
+    assert!(opened.concat().concat().contains("<conversation>"));
     drop(model);
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -1373,7 +1472,8 @@ async fn warm_prompt_retries_at_most_once_and_skips_non_recoverable_errors() {
     for (error, expected_starts) in [
         ("corrupted thinking signature", 2),
         ("the model refused to answer", 1),
-        ("the turn was cancelled", 1),
+        // A turn the harness says was stopped, though Rig stopped none.
+        ("the turn was stopped", 1),
     ] {
         let (_, model, starts) = fn_model(
             Vendor::Antigravity,
@@ -1386,7 +1486,10 @@ async fn warm_prompt_retries_at_most_once_and_skips_non_recoverable_errors() {
                         let _ = events.send(Event::Text("ok-0".to_owned()));
                         let _ = events.send(Event::Done(Ok(FinishReason::Stop)));
                     } else {
-                        let _ = events.send(Event::Done(Err(error.to_owned())));
+                        let _ = events.send(match error {
+                            "the turn was stopped" => Event::Stopped,
+                            error => Event::Done(Err(error.to_owned())),
+                        });
                         return;
                     }
                 }

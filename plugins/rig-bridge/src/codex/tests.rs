@@ -422,7 +422,7 @@ async fn a_steer_goes_into_the_running_turn_by_its_id() {
 }
 
 #[tokio::test]
-async fn a_saved_thread_is_resumed_and_a_stop_interrupts_its_turn() {
+async fn a_saved_thread_is_resumed_and_a_stop_interrupts_the_turn_it_names() {
     let (ours, theirs) = tokio::io::duplex(1 << 16);
     let received = Received::default();
     let scripted = tokio::spawn(server(theirs, received.clone(), true));
@@ -430,10 +430,12 @@ async fn a_saved_thread_is_resumed_and_a_stop_interrupts_its_turn() {
     let (events, mut reported) = mpsc::unbounded_channel();
     let mut wire = Wire::new(reader, writer, events);
     let (prompts, prompted) = mpsc::unbounded_channel();
-    let _ = prompts.send(Prompt {
-        parts: vec![Part::Text("wait".to_owned())],
-        effort: None,
-    });
+    for text in ["one", "wait"] {
+        let _ = prompts.send(Prompt {
+            parts: vec![Part::Text(text.to_owned())],
+            effort: None,
+        });
+    }
     drop(prompts);
     let (stops, stopped) = mpsc::unbounded_channel();
     let opening = Opening {
@@ -442,18 +444,27 @@ async fn a_saved_thread_is_resumed_and_a_stop_interrupts_its_turn() {
         model: "gpt-a".to_owned(),
         resume: Some("t9".to_owned()),
     };
+    let asked = |method: &str| {
+        let received = received.lock().unwrap_or_else(PoisonError::into_inner);
+        let named = |message: &&Value| message.get("method") == Some(&json!(method));
+        received.iter().filter(named).count()
+    };
     let sent = |method: &str| {
         let received = received.lock().unwrap_or_else(PoisonError::into_inner);
         let named = |message: &&Value| message.get("method") == Some(&json!(method));
         let sent = received.iter().find(named);
         sent.and_then(|sent| sent.get("params").cloned())
     };
-    // The user stops the turn once it runs.
+    // The user stops the second turn once it runs.
     let stop = async {
-        while sent("turn/start").is_none() {
+        while asked("turn/start") < 2 {
             tokio::time::sleep(std::time::Duration::from_millis(2)).await;
         }
-        let _ = stops.send(());
+        // A stop for the first turn, which is over, interrupts nothing.
+        let _ = stops.send(1);
+        tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+        assert_eq!(asked("turn/interrupt"), 0);
+        let _ = stops.send(2);
         drop(stops);
     };
 
@@ -476,9 +487,16 @@ async fn a_saved_thread_is_resumed_and_a_stop_interrupts_its_turn() {
         sent("turn/interrupt"),
         Some(json!({ "threadId": "t1", "turnId": "u1" })),
     );
-    assert_eq!(reported.try_recv(), Ok(Event::Saved("t1".to_owned())));
+    assert_eq!(asked("turn/interrupt"), 1);
+    let mut events = Vec::new();
+    while let Ok(event) = reported.try_recv() {
+        events.push(event);
+    }
+    assert_eq!(events.first(), Some(&Event::Saved("t1".to_owned())));
+    let ends = |event: &&Event| matches!(event, Event::Done(_) | Event::Stopped);
+    let ended: Vec<&Event> = events.iter().filter(ends).collect();
     assert_eq!(
-        reported.try_recv(),
-        Ok(Event::Done(Err("the turn was interrupted".to_owned())))
+        ended,
+        [&Event::Done(Ok(FinishReason::Stop)), &Event::Stopped]
     );
 }

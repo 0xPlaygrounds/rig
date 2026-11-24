@@ -1,10 +1,9 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use super::{Held, Record, SessionDir, Stand, find, prefixes, reap};
+use super::{Record, Reply, SessionDir, Stand, find, prefixes, reap};
 
-fn record(pid: u32, stands: bool) -> Record {
+fn record(stands: bool) -> Record {
     Record {
-        pid,
         vendor: "claude-code".to_owned(),
         model: "model-1".to_owned(),
         system: String::new(),
@@ -13,15 +12,14 @@ fn record(pid: u32, stands: bool) -> Record {
         stands: stands.then(|| Stand {
             seen: 1,
             key: "k".to_owned(),
-            said: None,
+            said: Reply::Cut(String::new()),
         }),
     }
 }
 
 /// A directory under `root` kept with `record`, its session gone.
-fn kept(root: &Path, record: &Record) -> std::path::PathBuf {
-    let held = Held::default();
-    let Ok(mut dir) = SessionDir::create(root, &held) else {
+fn kept(root: &Path, record: &Record) -> PathBuf {
+    let Ok(mut dir) = SessionDir::create(root) else {
         return root.to_path_buf();
     };
     assert!(dir.keep(record));
@@ -29,33 +27,33 @@ fn kept(root: &Path, record: &Record) -> std::path::PathBuf {
 }
 
 #[test]
-fn a_saved_session_is_found_once_and_not_while_it_is_answering_or_another_s() {
+fn a_saved_session_is_one_session_s_at_a_time_and_not_found_while_it_answers() {
     let name = format!("rig-bridge-test-{}", uuid::Uuid::new_v4().simple());
     let root = std::env::temp_dir().join(name);
-    let me = std::process::id();
-    let held = Held::default();
     // A directory that was never kept goes with its session.
-    let unkept = SessionDir::create(&root, &held).map(|dir| dir.path().to_path_buf());
+    let unkept = SessionDir::create(&root).map(|dir| dir.path().to_path_buf());
     assert!(unkept.is_ok_and(|path| !path.exists()));
 
-    // One whose program is answering, and one a live process works in.
-    kept(&root, &record(me, false));
-    kept(&root, &record(1, true));
-    assert!(find(&root, &held, |_, _| true).is_none());
+    // One whose program is answering.
+    kept(&root, &record(false));
+    assert!(find(&root, |_, _| true).is_none());
 
-    let stands = kept(&root, &record(me, true));
-    let found = find(&root, &held, |record, stands| {
+    let stands = kept(&root, &record(true));
+    let found = find(&root, |record, stands| {
         record.session == "s1" && stands.seen == 1
     });
     assert_eq!(found.as_ref().map(|(dir, _)| dir.path()), Some(&*stands));
     // A session works in it now: no other goes on from it.
-    assert!(find(&root, &held, |_, _| true).is_none());
+    assert!(find(&root, |_, _| true).is_none());
     drop(found);
-    assert!(find(&root, &held, |_, _| false).is_none());
-    assert!(stands.exists());
+    assert!(find(&root, |_, _| false).is_none());
+    assert!(find(&root, |_, _| true).is_some());
 
-    // Nothing kept is removed, whoever made it.
+    // What a process that is gone left unkept is removed; nothing kept is.
+    let left = root.join("rig-bridge-1-left");
+    assert!(std::fs::create_dir(&left).is_ok());
     reap(&root);
+    assert!(!left.exists());
     assert!(stands.exists());
     let _ = std::fs::remove_dir_all(&root);
 }

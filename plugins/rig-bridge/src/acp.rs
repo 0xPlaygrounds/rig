@@ -362,13 +362,14 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Peer<R, W> {
     /// Sends `asked` as the session's next prompt and waits for its answer,
     /// as [`request`](Self::request) does. A steer that comes meanwhile is
     /// given to the agent its own way, and told whether the agent took it;
-    /// a stop cancels the prompt, which the agent then answers as cancelled.
+    /// a stop for this prompt, the `turn`th, cancels it, and the agent then
+    /// answers it as cancelled.
     async fn prompted(
         &mut self,
         session: &str,
         asked: Value,
         steers: &mut mpsc::UnboundedReceiver<Steer>,
-        stops: &mut mpsc::UnboundedReceiver<()>,
+        (turn, stops): (u64, &mut mpsc::UnboundedReceiver<u64>),
     ) -> Result<Value, Failed> {
         let closed = |()| Failed::Closed;
         let send = self.transport.send_request("session/prompt", asked, true);
@@ -379,7 +380,10 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Peer<R, W> {
         loop {
             let message = tokio::select! {
                 message = self.read() => message?,
-                Some(()) = stops.recv() => {
+                Some(stop) = stops.recv() => {
+                    if stop != turn {
+                        continue;
+                    }
                     let cancel = json!({
                         "jsonrpc": "2.0",
                         "method": "session/cancel",
@@ -479,6 +483,8 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Peer<R, W> {
                 if !self.loading {
                     self.update(params.get("update").unwrap_or(&Value::Null));
                 }
+            } else if self.loading {
+                // What a loaded session counts again was counted before.
             } else if let Some(usage) = self.agent.counted(method, params) {
                 self.counted = true;
                 let _ = self.events.send(Event::Usage(usage));
@@ -639,7 +645,7 @@ pub(crate) async fn converse<R, W>(
     opening: Opening,
     mut prompts: mpsc::UnboundedReceiver<Prompt>,
     mut steers: mpsc::UnboundedReceiver<Steer>,
-    mut stops: mpsc::UnboundedReceiver<()>,
+    mut stops: mpsc::UnboundedReceiver<u64>,
 ) -> Result<(), String>
 where
     R: AsyncRead + Unpin,
@@ -652,15 +658,20 @@ where
             .await
             .map_err(|_| "it did not finish starting in time".to_owned())??;
 
+    // The number of the prompt being answered.
+    let mut turn = 0u64;
     loop {
-        // Between prompts the agent may still send requests and updates.
+        // Between prompts the agent may still send requests and updates. A
+        // prompt is taken before a stop, which may be the one for it; a
+        // stop with no prompt being answered is for one that is over.
         let prompt = loop {
             tokio::select! {
+                biased;
                 prompt = prompts.recv() => break prompt,
                 Some(steer) = steers.recv() => {
                     let _ = steer.taken.send(Err("no prompt is being answered".to_owned()));
                 }
-                Some(()) = stops.recv() => {}
+                Some(_) = stops.recv() => {}
                 message = peer.read() => {
                     let message = message.map_err(|why| why.to_string())?;
                     peer.incoming(&message).await.map_err(|why| why.to_string())?;
@@ -670,6 +681,7 @@ where
         let Some(prompt) = prompt else {
             return Ok(());
         };
+        turn += 1;
         if prompt.effort != current_effort
             && let EffortConfig::Supported(default_effort) = effort_config
             && let Some(value) = prompt
@@ -703,26 +715,26 @@ where
         peer.prompt = Some(named);
         peer.call_titles.clear();
         let answered = peer
-            .prompted(&session, asked, &mut steers, &mut stops)
+            .prompted(&session, asked, &mut steers, (turn, &mut stops))
             .await;
         peer.prompt = None;
         let done = match answered {
             Ok(result) => {
                 peer.count(&result);
                 match result.get("stopReason").and_then(Value::as_str) {
-                    Some("max_tokens") => Ok(FinishReason::Length),
-                    Some("refusal") => Err("the model refused to answer".to_owned()),
-                    Some("cancelled") => Err("the turn was cancelled".to_owned()),
-                    _ => Ok(FinishReason::Stop),
+                    Some("max_tokens") => Event::Done(Ok(FinishReason::Length)),
+                    Some("refusal") => Event::Done(Err("the model refused to answer".to_owned())),
+                    Some("cancelled") => Event::Stopped,
+                    _ => Event::Done(Ok(FinishReason::Stop)),
                 }
             }
             Err(Failed::Closed) => return Err(Failed::Closed.to_string()),
             Err(refused) => {
                 peer.counted = false;
-                Err(refused.to_string())
+                Event::Done(Err(refused.to_string()))
             }
         };
-        let _ = peer.events.send(Event::Done(done));
+        let _ = peer.events.send(done);
     }
 }
 
@@ -779,12 +791,10 @@ where
     let open = match (&opening.resume, new.as_object_mut()) {
         (Some(saved), Some(new)) => {
             new.insert("sessionId".to_owned(), saved.as_str().into());
-            let able = |path: &str| {
-                initialized
-                    .pointer(path)
-                    .is_some_and(|able| !able.is_null())
-            };
-            if able("/agentCapabilities/sessionCapabilities/resume") {
+            let resumes = initialized.pointer("/agentCapabilities/sessionCapabilities/resume");
+            let resumes =
+                resumes.is_some_and(|able| able.is_object() || able.as_bool() == Some(true));
+            if resumes {
                 "session/resume"
             } else if initialized.pointer("/agentCapabilities/loadSession") == Some(&true.into()) {
                 "session/load"
