@@ -265,3 +265,16 @@ fn a_result_with_a_line_still_held_ends_the_reply_only_if_the_line_is_dropped() 
         vec![Event::Done(Ok(FinishReason::Stop))]
     );
 }
+
+#[test]
+fn the_id_the_program_saves_the_session_under_is_reported_once() {
+    let mut reader = Reader::default();
+    let init = json!({ "type": "system", "subtype": "init", "session_id": "s1" });
+
+    assert_eq!(
+        read(&mut reader, init.clone()),
+        vec![Event::Saved("s1".to_owned())]
+    );
+    // Each turn says it again.
+    assert_eq!(read(&mut reader, init), Vec::new());
+}

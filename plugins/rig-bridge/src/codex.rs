@@ -204,15 +204,17 @@ impl Harness for Codex {
         let Launch {
             mut command,
             dir,
+            resume,
             system,
             model,
             effort: _,
             mcp,
             tools: _,
         } = launch;
+        // The program's home, where it saves the thread.
         let home = dir.join("codex");
         let catalog = dir.join("models.json");
-        std::fs::create_dir(&home)
+        std::fs::create_dir_all(&home)
             .and_then(|()| std::fs::write(&catalog, &*self.catalog))
             .map_err(|why| format!("could not write the session's files: {why}"))?;
         // The sign-in is shared, so a token the program renews is renewed
@@ -246,16 +248,19 @@ impl Harness for Codex {
         let (process, pipes) = spawn(command)?;
         let (prompts, prompted) = mpsc::unbounded_channel();
         let (steers, steered) = mpsc::unbounded_channel();
+        let (stops, stopped) = mpsc::unbounded_channel();
         let (events, reported) = mpsc::unbounded_channel();
         let stderr = Stderr::follow(pipes.stderr);
         let opening = Opening {
             dir: dir.to_path_buf(),
             system: system.to_owned(),
             model: model.to_owned(),
+            resume: resume.map(str::to_owned),
         };
         tokio::spawn(async move {
             let mut wire = Wire::new(pipes.stdout, pipes.stdin, events.clone());
-            if let Err(why) = converse(&mut wire, opening, prompted, steered).await {
+            let conversed = converse(&mut wire, opening, prompted, steered, stopped);
+            if let Err(why) = conversed.await {
                 let why = stderr.explain(&format!("codex: {why}")).await;
                 let _ = events.send(Event::Done(Err(why)));
             }
@@ -263,6 +268,7 @@ impl Harness for Codex {
         Ok(Running {
             prompts,
             steers: Some(steers),
+            stops,
             events: reported,
             _alive: Box::new(process),
         })
@@ -277,6 +283,8 @@ pub(crate) struct Opening {
     pub system: String,
     /// The model's id.
     pub model: String,
+    /// The thread a process before this one saved, to go on from.
+    pub resume: Option<String>,
 }
 
 /// The client's end of the connection: JSON lines, each request answered
@@ -476,13 +484,15 @@ fn input(prompt: &[Part], dir: &Path, images: &mut usize) -> Result<Vec<Value>, 
     Ok(items)
 }
 
-/// Opens the thread, then answers each prompt until the prompts end. A
-/// steer goes into the turn being answered.
+/// Opens the thread, a new one or the saved one, then answers each prompt
+/// until the prompts end. A steer goes into the turn being answered, and a
+/// stop interrupts it.
 pub(crate) async fn converse<R, W>(
     wire: &mut Wire<R, W>,
     opening: Opening,
     mut prompts: mpsc::UnboundedReceiver<Prompt>,
     mut steers: mpsc::UnboundedReceiver<Steer>,
+    mut stops: mpsc::UnboundedReceiver<()>,
 ) -> Result<(), String>
 where
     R: AsyncRead + Unpin,
@@ -501,20 +511,24 @@ where
         if account.get("account").is_none_or(Value::is_null) {
             return Err("it is not signed in: run `codex login`".to_owned());
         }
-        let started = wire
-            .request(
-                "thread/start",
-                json!({
-                    "model": opening.model,
-                    "cwd": opening.dir.to_string_lossy(),
-                    // Nothing of Codex's own is left to approve or to sandbox.
-                    "approvalPolicy": "never",
-                    "sandbox": "read-only",
-                    "ephemeral": true,
-                    "baseInstructions": opening.system,
-                }),
-            )
-            .await?;
+        let mut thread = json!({
+            "model": opening.model,
+            "cwd": opening.dir.to_string_lossy(),
+            // Nothing of Codex's own is left to approve or to sandbox.
+            "approvalPolicy": "never",
+            "sandbox": "read-only",
+            "baseInstructions": opening.system,
+        });
+        let open = match (&opening.resume, thread.as_object_mut()) {
+            (Some(saved), Some(thread)) => {
+                thread.insert("threadId".to_owned(), saved.as_str().into());
+                // Its turns are the program's to keep, not ours to read.
+                thread.insert("excludeTurns".to_owned(), true.into());
+                "thread/resume"
+            }
+            _ => "thread/start",
+        };
+        let started = wire.request(open, thread).await?;
         let thread = started
             .pointer("/thread/id")
             .and_then(Value::as_str)
@@ -534,6 +548,8 @@ where
     .await
     .map_err(|_| "it did not finish starting in time".to_owned())??;
 
+    let _ = wire.events.send(Event::Saved(thread.clone()));
+
     let mut images = 0;
     loop {
         // Between prompts the program still sends notifications.
@@ -543,6 +559,7 @@ where
                 Some(steer) = steers.recv() => {
                     let _ = steer.taken.send(Err("no turn is running".to_owned()));
                 }
+                Some(()) = stops.recv() => {}
                 msg = wire.next_message() => wire.handle(msg?).await?,
             }
         };
@@ -581,6 +598,13 @@ where
                             (_, Err(why)) => Err(why),
                         };
                         let _ = steer.taken.send(taken);
+                    }
+                    Some(()) = stops.recv() => {
+                        // The turn then completes as interrupted.
+                        if let Some(id) = started.pointer("/turn/id") {
+                            let turn = json!({ "threadId": thread, "turnId": id });
+                            let _ = wire.request("turn/interrupt", turn).await;
+                        }
                     }
                 }
             },

@@ -42,6 +42,8 @@ mod muse;
 #[cfg(not(target_family = "wasm"))]
 mod rpc;
 #[cfg(not(target_family = "wasm"))]
+mod saved;
+#[cfg(not(target_family = "wasm"))]
 mod session;
 #[cfg(all(test, not(target_family = "wasm")))]
 mod tests;
@@ -134,9 +136,13 @@ mod plugin {
                 let project = world
                     .get_resource::<ProjectRoot>()
                     .map(|root| root.0.clone());
-                let scratch_root = RigHome::of(world).root().join("run").join("bridge");
+                let home = RigHome::of(world);
+                let scratch_root = home.root().join("run").join("bridge");
                 reap_stale_dirs(&scratch_root);
                 let _ = std::fs::create_dir_all(&scratch_root);
+                // Where each conversation's directory is kept.
+                let kept_root = home.root().join("bridge");
+                crate::saved::reap(&kept_root);
 
                 let (signal_tx, signal_rx) = mpsc::unbounded_channel::<BridgeSignal>();
                 let bridge = Arc::new(
@@ -146,6 +152,7 @@ mod plugin {
                         settings.sessions,
                         project,
                         scratch_root.clone(),
+                        kept_root,
                     )
                     .with_signals(signal_tx.clone()),
                 );

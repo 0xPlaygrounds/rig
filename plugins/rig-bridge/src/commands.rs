@@ -215,10 +215,8 @@ pub(crate) fn command(
         "reset" => {
             let text = match handle.bridge.reset() {
                 0 => "No warm bridge sessions were running.".to_owned(),
-                1 => "Stopped 1 warm bridge session and removed its scratch directory.".to_owned(),
-                n => format!(
-                    "Stopped {n} warm bridge sessions and removed their scratch directories."
-                ),
+                1 => "Stopped 1 warm bridge session.".to_owned(),
+                n => format!("Stopped {n} warm bridge sessions."),
             };
             Notice::info(args.agent, text)
         }
@@ -260,9 +258,9 @@ fn format_status(handle: &BridgeHandle) -> String {
     let snap = handle.bridge.snapshot();
     let mut lines = vec![
         format!(
-            "Bridge status ({} warm session(s), scratch: {})",
+            "Bridge status ({} warm session(s), saved sessions: {})",
             snap.warm.len(),
-            snap.scratch_root.display()
+            snap.kept_root.display()
         ),
         String::new(),
     ];

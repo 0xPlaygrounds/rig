@@ -57,6 +57,7 @@ impl Harness for Muse {
         let Launch {
             mut command,
             dir,
+            resume,
             system,
             model,
             effort: _,
@@ -79,7 +80,6 @@ impl Harness for Muse {
             .current_dir(dir)
             .args([
                 "serve",
-                "--no-session-log",
                 "--preset",
                 "empty",
                 "--disable-shell",
@@ -99,17 +99,20 @@ impl Harness for Muse {
         let (process, pipes) = spawn(command)?;
         let (prompts, prompted) = mpsc::unbounded_channel();
         let (steers, steered) = mpsc::unbounded_channel();
+        let (stops, stopped) = mpsc::unbounded_channel();
         let (events, reported) = mpsc::unbounded_channel();
         let stderr = Stderr::follow(pipes.stderr);
         let opening = Opening {
             system: system.to_owned(),
             model: model.to_owned(),
+            resume: resume.map(str::to_owned),
             mcp_url: mcp.url().to_owned(),
             mcp_token: mcp.token().to_owned(),
         };
         tokio::spawn(async move {
             let mut wire = Wire::new(pipes.stdout, pipes.stdin, events.clone());
-            if let Err(why) = converse(&mut wire, opening, prompted, steered).await {
+            let conversed = converse(&mut wire, opening, prompted, steered, stopped);
+            if let Err(why) = conversed.await {
                 let why = stderr.explain(&format!("muse: {why}")).await;
                 let _ = events.send(Event::Done(Err(why)));
             }
@@ -117,6 +120,7 @@ impl Harness for Muse {
         Ok(Running {
             prompts,
             steers: Some(steers),
+            stops,
             events: reported,
             _alive: Box::new(process),
         })
@@ -127,6 +131,8 @@ impl Harness for Muse {
 pub(crate) struct Opening {
     pub system: String,
     pub model: String,
+    /// The session a process before this one saved, to go on from.
+    pub resume: Option<String>,
     pub mcp_url: String,
     pub mcp_token: String,
 }
@@ -350,13 +356,15 @@ fn input(parts: &[Part]) -> Vec<Value> {
         .collect()
 }
 
-/// Runs one Muse MSP session from `initialize` through every prompt. A
-/// steer goes into the turn being answered.
+/// Runs one Muse MSP session, a new one or the saved one, from
+/// `initialize` through every prompt. A steer goes into the turn being
+/// answered, and a stop interrupts it.
 pub(crate) async fn converse<R, W>(
     wire: &mut Wire<R, W>,
     opening: Opening,
     mut prompts: mpsc::UnboundedReceiver<Prompt>,
     mut steers: mpsc::UnboundedReceiver<Steer>,
+    mut stops: mpsc::UnboundedReceiver<()>,
 ) -> Result<(), String>
 where
     R: AsyncRead + Unpin,
@@ -402,20 +410,27 @@ where
         {
             obj.insert("developerPrompt".to_owned(), opening.system.into());
         }
-        let started = wire
-            .request(
-                "session/start",
-                json!({
-                    "commandId": uuidv7(),
-                    "modelId": opening.model,
-                    "approvalMode": "allowAll",
-                    "config": config,
-                }),
-            )
-            .await
-            .map_err(|why| {
-                format!("it opened no session (run `muse login` if signed out): {why}")
-            })?;
+        let mut session = json!({
+            "commandId": uuidv7(),
+            "modelId": opening.model,
+            "config": config,
+        });
+        let open = match (&opening.resume, session.as_object_mut()) {
+            (Some(saved), Some(session)) => {
+                session.insert("sessionId".to_owned(), saved.as_str().into());
+                // Its history is the program's to keep, not ours to read.
+                session.insert("excludeItems".to_owned(), true.into());
+                "session/resume"
+            }
+            (None, Some(session)) => {
+                session.insert("approvalMode".to_owned(), "allowAll".into());
+                "session/start"
+            }
+            (_, None) => "session/start",
+        };
+        let started = wire.request(open, session).await.map_err(|why| {
+            format!("it opened no session (run `muse login` if signed out): {why}")
+        })?;
         started
             .pointer("/session/sessionId")
             .or_else(|| started.get("sessionId"))
@@ -426,6 +441,8 @@ where
     .await
     .map_err(|_| "it did not finish starting in time".to_owned())??;
 
+    let _ = wire.events.send(Event::Saved(session_id.clone()));
+
     loop {
         let prompt = loop {
             tokio::select! {
@@ -433,6 +450,7 @@ where
                 Some(steer) = steers.recv() => {
                     let _ = steer.taken.send(Err("no turn is running".to_owned()));
                 }
+                Some(()) = stops.recv() => {}
                 msg = wire.next_message() => wire.handle(msg?).await?,
             }
         };
@@ -472,6 +490,14 @@ where
                         None => Err("the turn has no id".to_owned()),
                     };
                     let _ = steer.taken.send(taken);
+                }
+                Some(()) = stops.recv() => {
+                    // The turn then completes as interrupted.
+                    let mut turn = json!({ "commandId": uuidv7(), "sessionId": session_id });
+                    if let (Some(id), Some(turn)) = (started.get("turnId"), turn.as_object_mut()) {
+                        turn.insert("turnId".to_owned(), id.clone());
+                    }
+                    let _ = wire.request("turn/interrupt", turn).await;
                 }
             }
         };

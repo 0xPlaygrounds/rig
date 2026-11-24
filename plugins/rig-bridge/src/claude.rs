@@ -3,6 +3,10 @@
 //! file, hook, skill, command, memory and MCP server of the user's is left
 //! out; the process sees the system prompt and the tools Rig gives it.
 //!
+//! Claude Code saves the conversation under a session id, which a later
+//! process is started on to go on from it, and ends a turn when asked on
+//! its input.
+//!
 //! Each line of input carries an id, and Claude Code says under that id
 //! when it holds the line and when its model starts on it. A line written
 //! while a turn runs is given to the model in that turn, after the tool
@@ -62,6 +66,7 @@ impl Harness for Claude {
         let Launch {
             mut command,
             dir,
+            resume,
             system,
             model,
             effort,
@@ -100,7 +105,6 @@ impl Harness for Claude {
             .args(["--setting-sources", ""])
             .args(["--settings", &settings.to_string()])
             .arg("--disable-slash-commands")
-            .arg("--no-session-persistence")
             // Without it newer models send their reasoning as empty text.
             .args(["--thinking-display", "summarized"])
             // Nothing is left to ask about but Rig's tools, which Rig gates.
@@ -114,12 +118,17 @@ impl Harness for Claude {
         if let Some(effort) = effort {
             command.args(["--effort", effort_wire(effort, true)]);
         }
+        match resume {
+            Some(session) => command.args(["--resume", session]),
+            None => command.args(["--session-id", &uuid::Uuid::new_v4().to_string()]),
+        };
         for name in INHERITED {
             command.env_remove(name);
         }
         let (process, pipes) = spawn(command)?;
         let (prompts, mut prompted) = mpsc::unbounded_channel::<Prompt>();
         let (steers, mut steered) = mpsc::unbounded_channel::<Steer>();
+        let (stops, mut stopped) = mpsc::unbounded_channel::<()>();
         let (events, reported) = mpsc::unbounded_channel();
         let stderr = Stderr::follow(pipes.stderr);
         tokio::spawn(async move {
@@ -155,6 +164,19 @@ impl Harness for Claude {
                             break;
                         }
                     }
+                    Some(()) = stopped.recv() => {
+                        let id = uuid::Uuid::new_v4().to_string();
+                        let mut line = json!({
+                            "type": "control_request",
+                            "request_id": id,
+                            "request": { "subtype": "interrupt" },
+                        })
+                        .to_string();
+                        line.push('\n');
+                        if stdin.write_all(line.as_bytes()).await.is_err() {
+                            break;
+                        }
+                    }
                     line = lines.next_line() => match line {
                         Ok(Some(line)) => {
                             for event in reader.read(&line) {
@@ -174,6 +196,7 @@ impl Harness for Claude {
         Ok(Running {
             prompts,
             steers: Some(steers),
+            stops,
             events: reported,
             _alive: Box::new(process),
         })
@@ -221,11 +244,17 @@ struct Reader {
     /// How the turn ended while the program held a line: the reply's end,
     /// unless the program starts on that line.
     ended: Option<Result<FinishReason, String>>,
+    /// The id the program last said it saves the session under.
+    session: Option<String>,
 }
 
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum Line {
+    System {
+        #[serde(default)]
+        session_id: Option<String>,
+    },
     StreamEvent {
         event: Stream,
     },
@@ -419,6 +448,13 @@ impl Reader {
                 events
             }
             Line::Assistant { .. } | Line::Other => Vec::new(),
+            Line::System { session_id } => {
+                if session_id.is_none() || session_id == self.session {
+                    return Vec::new();
+                }
+                self.session.clone_from(&session_id);
+                session_id.map(Event::Saved).into_iter().collect()
+            }
             Line::CommandLifecycle {
                 command_uuid,
                 state,

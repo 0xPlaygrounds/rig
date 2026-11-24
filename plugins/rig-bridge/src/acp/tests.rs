@@ -111,6 +111,21 @@ async fn run_acp_steered(
     system: &str,
     prompts: Vec<Prompt>,
     steers: mpsc::UnboundedReceiver<Steer>,
+    responder: impl FnMut(&Value) -> Vec<Value> + Send + 'static,
+) -> (Vec<Event>, Vec<Value>) {
+    let stops = mpsc::unbounded_channel().1;
+    run_acp_on(agent, system, None, prompts, steers, stops, responder).await
+}
+
+/// As [`run_acp_steered`], on the session saved as `resume` if any, with
+/// `stops` for the prompts being answered.
+async fn run_acp_on(
+    agent: Arc<dyn Agent>,
+    system: &str,
+    resume: Option<&str>,
+    prompts: Vec<Prompt>,
+    steers: mpsc::UnboundedReceiver<Steer>,
+    stops: mpsc::UnboundedReceiver<()>,
     mut responder: impl FnMut(&Value) -> Vec<Value> + Send + 'static,
 ) -> (Vec<Event>, Vec<Value>) {
     let (client, server) = tokio::io::duplex(1 << 16);
@@ -150,6 +165,7 @@ async fn run_acp_steered(
         &mut peer,
         Opening {
             dir: PathBuf::from("/work"),
+            resume: resume.map(str::to_owned),
             system: system.to_owned(),
             model: "model-1".to_owned(),
             effort: None,
@@ -159,6 +175,7 @@ async fn run_acp_steered(
         },
         prompts_rx,
         steers,
+        stops,
     )
     .await;
     drop(peer);
@@ -245,7 +262,10 @@ fn sent<'a>(received: &'a [Value], method: &str) -> Vec<&'a Value> {
 
 #[tokio::test]
 async fn a_prompt_is_answered_with_what_the_agent_says_and_counts() {
-    let (events, _) = conversation().await;
+    let (mut events, _) = conversation().await;
+    // First the agent's name for the session it opened.
+    assert!(matches!(events.first(), Some(Event::Saved(_))));
+    events.remove(0);
 
     let turn = |events: &[Event]| events.iter().take(4).cloned().collect::<Vec<_>>();
     let counted = events.iter().find_map(|event| match event {
@@ -661,4 +681,123 @@ async fn a_steer_sent_as_the_next_prompt_carries_the_turn_on_under_it() {
     assert_eq!(counted, [Some(10), Some(20)]);
     assert_eq!(events.iter().filter(ends).count(), 1);
     assert_eq!(events.last(), Some(&Event::Done(Ok(FinishReason::Stop))));
+}
+
+/// The agent says `text`.
+fn says(text: &str) -> Value {
+    json!({ "method": "session/update", "params": { "sessionId": "s9", "update": {
+        "sessionUpdate": "agent_message_chunk",
+        "content": { "type": "text", "text": text },
+    } } })
+}
+
+#[tokio::test]
+async fn a_saved_session_is_resumed_or_loaded_and_what_it_reports_again_is_no_answer() {
+    let able = [
+        (
+            json!({ "loadSession": true, "sessionCapabilities": { "resume": {} } }),
+            "session/resume",
+        ),
+        (json!({ "loadSession": true }), "session/load"),
+    ];
+    for (able, opens) in able {
+        let prompt = Prompt {
+            parts: vec![Part::Text("two".to_owned())],
+            effort: None,
+        };
+        let (events, received) = run_acp_on(
+            Arc::new(Plain::basic()),
+            "Be brief.",
+            Some("s9"),
+            vec![prompt],
+            mpsc::unbounded_channel().1,
+            mpsc::unbounded_channel().1,
+            move |message| {
+                let id = message.get("id").cloned().unwrap_or(Value::Null);
+                match message.get("method").and_then(Value::as_str) {
+                    Some("initialize") => {
+                        vec![json!({ "id": id, "result": { "agentCapabilities": able } })]
+                    }
+                    // An agent that loads a session says all of it again.
+                    Some("session/load") => {
+                        vec![says("echo: one"), json!({ "id": id, "result": null })]
+                    }
+                    Some("session/prompt") => vec![
+                        says("echo: two"),
+                        json!({ "id": id, "result": { "stopReason": "end_turn" } }),
+                    ],
+                    _ => vec![json!({ "id": id, "result": {} })],
+                }
+            },
+        )
+        .await;
+
+        assert_eq!(
+            events,
+            [
+                Event::Saved("s9".to_owned()),
+                Event::Text("echo: two".to_owned()),
+                Event::Done(Ok(FinishReason::Stop)),
+            ],
+            "{opens}"
+        );
+        let opened = sent(&received, opens);
+        let named = opened
+            .first()
+            .and_then(|sent| sent.pointer("/params/sessionId"));
+        assert_eq!(named, Some(&json!("s9")), "{opens}");
+        assert!(sent(&received, "session/new").is_empty());
+        // The saved session has the system prompt: it is not sent again.
+        assert_eq!(
+            sent(&received, "session/prompt")
+                .first()
+                .and_then(|sent| sent.pointer("/params/prompt")),
+            Some(&json!([{ "type": "text", "text": "two" }])),
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_stop_cancels_the_prompt_being_answered() {
+    let (stops, stopped) = mpsc::unbounded_channel();
+    let mut asked = Value::Null;
+    let prompt = Prompt {
+        parts: vec![Part::Text("one".to_owned())],
+        effort: None,
+    };
+    let (events, received) = run_acp_on(
+        Arc::new(Plain::basic()),
+        "",
+        None,
+        vec![prompt],
+        mpsc::unbounded_channel().1,
+        stopped,
+        move |message| {
+            let id = message.get("id").cloned().unwrap_or(Value::Null);
+            match message.get("method").and_then(Value::as_str) {
+                Some("session/new") => vec![json!({ "id": id, "result": { "sessionId": "s1" } })],
+                // The prompt waits, and the user stops it.
+                Some("session/prompt") => {
+                    asked = id;
+                    let _ = stops.send(());
+                    Vec::new()
+                }
+                Some("session/cancel") => {
+                    vec![json!({ "id": asked, "result": { "stopReason": "cancelled" } })]
+                }
+                _ => vec![json!({ "id": id, "result": {} })],
+            }
+        },
+    )
+    .await;
+
+    let cancelled = sent(&received, "session/cancel");
+    assert_eq!(
+        cancelled.first().and_then(|sent| sent.get("params")),
+        Some(&json!({ "sessionId": "s1" })),
+    );
+    assert_eq!(
+        events.last(),
+        Some(&Event::Done(Err("the turn was cancelled".to_owned()))),
+    );
 }

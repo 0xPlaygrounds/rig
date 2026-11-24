@@ -80,6 +80,7 @@ fn models_from_session_deduplicates_entries_and_parses_reasoning_options() {
 fn copilot_choose_applies_effort_only_when_session_advertises_reasoning_effort() {
     let opening = Opening {
         dir: "/work".into(),
+        resume: None,
         system: String::new(),
         model: "gpt-6.1-terra".to_owned(),
         effort: Some(Effort::High),

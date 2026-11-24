@@ -139,6 +139,9 @@ pub(crate) enum Event {
     Usage(Usage),
     /// Context window metrics reported at runtime by a harness.
     Context(ContextSnapshot),
+    /// The program's own name for the session it saves, with which a
+    /// later process [goes on](Launch::resume) from it.
+    Saved(String),
     /// The prompt is answered with its finish reason, or failed.
     Done(Result<FinishReason, String>),
 }
@@ -148,9 +151,15 @@ pub(crate) struct Launch<'a> {
     /// The harness's program, with the agent's process rules applied and no
     /// arguments yet.
     pub command: Command,
-    /// The session's private, empty directory: the program's working
-    /// directory, and where the files it is pointed at go.
+    /// The session's private directory: the program's working directory,
+    /// where the files it is pointed at go, and where what it saves of the
+    /// conversation is, if the program lets that be chosen. Empty unless
+    /// the session goes on from a saved one.
     pub dir: &'a Path,
+    /// The session a process before this one [saved](Event::Saved) in
+    /// `dir`, to go on from: the program then has the conversation, and is
+    /// sent only what comes next. `None` starts a new session.
+    pub resume: Option<&'a str>,
     /// The system prompt.
     pub system: &'a str,
     /// The model's id, as the harness names it.
@@ -171,6 +180,10 @@ pub(crate) struct Running {
     /// Takes a user message for the turn in progress, which the program
     /// gives its model as one. `None` when the program has no way to.
     pub steers: Option<mpsc::UnboundedSender<Steer>>,
+    /// Asks the program to end the turn in progress, its own way. It keeps
+    /// what it has of the turn and reports the end as any other, with
+    /// [`Event::Done`]; with no turn in progress nothing happens.
+    pub stops: mpsc::UnboundedSender<()>,
     /// What the harness reports. It closes when the program is gone.
     pub events: mpsc::UnboundedReceiver<Event>,
     /// What keeps the program alive: dropping it kills the program.
@@ -193,6 +206,14 @@ pub(crate) trait Harness: Send + Sync + 'static {
     /// runs, once it is told the list changed and has listed the tools
     /// again. One that fixes its tools as it starts says no.
     fn relists(&self) -> bool {
+        true
+    }
+
+    /// Whether a session the program saved offers its model, when a new
+    /// process goes on from it, the tools that process is given. One whose
+    /// saved session keeps the tools it was made with says no: nothing
+    /// goes on from it under other tools.
+    fn retools_saved(&self) -> bool {
         true
     }
 
@@ -247,8 +268,9 @@ pub(crate) fn env_path(var: &str) -> Option<std::path::PathBuf> {
 }
 
 /// Makes `to` a symlink to `from` so renewed credentials stay shared with the
-/// user's own sessions.
+/// user's own sessions. A link a session before this one left is replaced.
 pub(crate) fn link(from: &Path, to: &Path) -> std::io::Result<()> {
+    let _ = std::fs::remove_file(to);
     #[cfg(unix)]
     return std::os::unix::fs::symlink(from, to);
     #[cfg(not(unix))]
