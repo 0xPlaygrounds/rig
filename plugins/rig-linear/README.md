@@ -2,7 +2,8 @@
 
 `rig_linear::LinearPlugin` shows a rig run on a Linear issue as an
 [agent session](https://linear.app/developers/agents), so the people watching
-the issue see the agent's plan, notes, tool calls and result.
+the issue see the agent's plan, notes, tool calls and result, and can write to
+the agent or stop it from the session.
 
 The launcher lists it off. Turn it on with:
 
@@ -46,12 +47,27 @@ it makes rig prompt nobody who does not use Linear.
 
 An option wins over a variable, and a session over an issue.
 
+## Claiming the issue
+
+`--linear-claim` (or `RIG_LINEAR_CLAIM` set to `1` or `true`), off by
+default, has the run claim its issue, on a new session or on an existing
+one that has an issue. Once the session is there the plugin reads the app
+(`viewer`), the issue's delegate and state, and its team's `started` states.
+In one `issueUpdate` it then sets the app as the issue's delegate, unless
+the issue has one, and moves the issue to the `started` state with the
+lowest position, unless it is started, completed or canceled already. A
+failure is a warning and the run goes on. Leave it off for runs an
+automation started: Linear asks agents to keep those issues in triage and
+leave their assignment to a person. Claiming suits an app token, whose
+viewer is the app.
+
 ## Settings
 
 ```toml
 [linear]
 api_url = "https://api.linear.app/graphql" # the OAuth token endpoint is /oauth/token on its origin
 heartbeat_minutes = 10
+poll_seconds = 15                    # 0 reads nothing back
 scope = "read,write,app:assignable,app:mentionable"
 
 [[linear.plan]]
@@ -76,15 +92,20 @@ skill = "reproduce"
 ## What it sends
 
 At startup it creates the session (or reads the existing one), prints its
-link on stderr, sends the plan with every step pending, and publishes the
-link as a `rig_harness::links::SessionLink`. The agent's system prompt gets a
+link on stderr, posts the thought "Working on it." at once, so the session
+never sits pending, sends the plan with every step pending, claims the issue
+when asked, and publishes the link as a `rig_harness::links::SessionLink`. The agent's system prompt gets a
 `linear` section: the run is shown on the issue, the harness posts its
 result, so it posts no comment of its own, and it ends the run with
 `report_outcome`.
 
-`report_outcome { status, summary }`, the plugin's tool, posts at once:
-`done` as a response, `gave_up` as an error, `needs_input` as an
-elicitation, with the summary as the body. Without it, the run's end is the
+`report_outcome { status, summary, options? }`, the plugin's tool, posts at
+once: `done` as a response, `gave_up` as an error, `needs_input` as an
+elicitation, with the summary as the body. With `needs_input`, `options`
+(strings) makes the elicitation a `select`: each option, trimmed, without
+blanks or repeats, at most 100 of 256 characters, goes in
+`signalMetadata.options` as its own label and value. People may still answer
+otherwise, and a pick comes back as a prompt. Other statuses ignore it. Without it, the run's end is the
 main agent's last reply as a response, its failed last turn as an error, or
 "The run was stopped before it finished." when a signal or an exit stopped a
 turn. A reload or a session switch posts no end.
@@ -112,13 +133,39 @@ printed (`https://github.com/<owner>/<repo>/pull/<n>`, as `Pull request
 Requests go one at a time from a task on rig's tokio runtime, at least a
 second apart, each within 10 s. Passing activities queued back to back are
 coalesced to the last. A 429 is sent again after its `Retry-After`. When
-nothing was sent for `heartbeat_minutes`, a passing "Still working…" thought
+nothing was added to the session for `heartbeat_minutes` (reads do not
+count), a passing "Still working…" thought
 keeps the session from going stale. A failure is a warning and never stops
 or slows the run. On exit the plugin waits at most 10 s for the queue.
 The plugin's own token and client secret are scrubbed from everything it
 sends. Other secrets are `rig_basics::redact::RedactPlugin`'s: with it on,
 they reach the records, and so Linear, as `‹SECRET_n›` placeholders.
 Without it nothing else is redacted.
+
+## What it reads back
+
+Every `poll_seconds` (15 by default; 0 turns it off) the plugin reads the
+session's new `prompt` activities, as a request of the same queue and pace
+as the rest. Linear allows 5,000 requests an hour per app user; reading
+every 15 s is 240 of them. The prompts there were when the run attached,
+such as the one Linear adds as it creates a session, are left alone: only
+later ones count.
+
+- A prompt with the `stop` signal ends the run: the plan's open steps are
+  canceled, the error "Stopped at the request of <name>." is posted as the
+  run's end, and nothing is sent after it. The app then exits as a SIGTERM
+  makes it, which stops the running turn and its tool calls, and the
+  process exits with the signal code. The plugin reads nothing more.
+- Any other prompt goes to the main agent as a message from the plugin
+  `linear`, titled `<name> on Linear`, with the running turn's next model
+  call (an idle agent starts a turn with it), and the thought "Got your
+  message: <its first line, cut short>" acknowledges it. A message that
+  comes after the turn's last model call waits in the agent's inbox for its
+  next turn: in print mode, which exits once the turn ends, that is the next
+  run on the same rig session.
+
+A failed read warns once until a read succeeds, and the next read tries
+again; a 429 waits out its `Retry-After`.
 
 ## Smoke test
 
@@ -133,6 +180,7 @@ response and, with a plan, its steps.
 
 ## Not covered
 
-Receiving Linear's webhooks (`created`, `prompted`, `stop`), which a future
-`rig linear` front would serve as `rig acp` does for editors, and asking a
+Receiving Linear's webhooks (`created`, `prompted`), which a future
+`rig linear` front would serve as `rig acp` does for editors, so a run
+learns of prompts and stops by reading them back instead, and asking a
 provider for reasoning summaries.
