@@ -362,14 +362,15 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Peer<R, W> {
     /// Sends `asked` as the session's next prompt and waits for its answer,
     /// as [`request`](Self::request) does. A steer that comes meanwhile is
     /// given to the agent its own way, and told whether the agent took it;
-    /// a stop for this prompt, the `turn`th, cancels it, and the agent then
+    /// a stop for this prompt, the `turn`th, cancels it, as one that came
+    /// before the prompt did (`stopped`) does at once, and the agent then
     /// answers it as cancelled.
     async fn prompted(
         &mut self,
         session: &str,
         asked: Value,
         steers: &mut mpsc::UnboundedReceiver<Steer>,
-        (turn, stops): (u64, &mut mpsc::UnboundedReceiver<u64>),
+        (turn, stopped, stops): (u64, bool, &mut mpsc::UnboundedReceiver<u64>),
     ) -> Result<Value, Failed> {
         let closed = |()| Failed::Closed;
         let send = self.transport.send_request("session/prompt", asked, true);
@@ -377,19 +378,20 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Peer<R, W> {
         // The steer the agent has not answered: its request's id, who waits
         // to hear of it, and whether it is a prompt.
         let mut steering: Option<(u64, oneshot::Sender<Result<(), String>>, bool)> = None;
+        let mut cancelled = stopped;
         loop {
+            if std::mem::take(&mut cancelled) {
+                let cancel = json!({
+                    "jsonrpc": "2.0",
+                    "method": "session/cancel",
+                    "params": { "sessionId": session },
+                });
+                self.transport.write(&cancel).await.map_err(closed)?;
+            }
             let message = tokio::select! {
                 message = self.read() => message?,
                 Some(stop) = stops.recv() => {
-                    if stop != turn {
-                        continue;
-                    }
-                    let cancel = json!({
-                        "jsonrpc": "2.0",
-                        "method": "session/cancel",
-                        "params": { "sessionId": session },
-                    });
-                    self.transport.write(&cancel).await.map_err(closed)?;
+                    cancelled = stop == turn;
                     continue;
                 }
                 Some(steer) = steers.recv(), if steering.is_none() => {
@@ -664,7 +666,8 @@ where
         // Between prompts the agent may still send requests and updates. A
         // prompt is taken before a stop, which may be the one for it. A
         // stop with no prompt being answered is for one that is over, or
-        // for one that is only now on its way: that one is not started on.
+        // for one that is only now on its way: that one is cancelled once
+        // it is sent, so that the agent has it.
         let prompt = loop {
             tokio::select! {
                 biased;
@@ -683,10 +686,6 @@ where
             return Ok(());
         };
         turn += 1;
-        if turn <= stopped {
-            let _ = peer.events.send(Event::Stopped);
-            continue;
-        }
         if prompt.effort != current_effort
             && let EffortConfig::Supported(default_effort) = effort_config
             && let Some(value) = prompt
@@ -720,7 +719,12 @@ where
         peer.prompt = Some(named);
         peer.call_titles.clear();
         let answered = peer
-            .prompted(&session, asked, &mut steers, (turn, &mut stops))
+            .prompted(
+                &session,
+                asked,
+                &mut steers,
+                (turn, turn <= stopped, &mut stops),
+            )
             .await;
         peer.prompt = None;
         let done = match answered {

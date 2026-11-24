@@ -138,6 +138,16 @@ impl Harness for Claude {
             // The number of the prompt last written, whether the program is
             // answering it, and the number of the last prompt stopped.
             let (mut turn, mut answering, mut stopped_to) = (0u64, false, 0u64);
+            // The line that asks the program to stop its turn: the turn's
+            // end is the stop's once the program has answered it.
+            let interrupts = |reader: &mut Reader| {
+                let id = uuid::Uuid::new_v4().to_string();
+                reader.interrupt = Some(id.clone());
+                let request = json!({ "subtype": "interrupt" });
+                let line =
+                    json!({ "type": "control_request", "request_id": id, "request": request });
+                format!("{line}\n")
+            };
             loop {
                 // A prompt is taken before a stop, which may be the one for it.
                 tokio::select! {
@@ -147,17 +157,17 @@ impl Harness for Claude {
                             return;
                         };
                         turn += 1;
-                        // Stopped before it came: it is not started on.
-                        if turn <= stopped_to {
-                            let _ = events.send(Event::Stopped);
-                            continue;
-                        }
                         answering = true;
                         reader.interrupt = None;
                         reader.stopping = false;
                         let id = uuid::Uuid::new_v4().to_string();
                         let mut line = user_message(&prompt.parts, &id, false).to_string();
                         line.push('\n');
+                        // Stopped before it came: it is stopped once the
+                        // program has it.
+                        if turn <= stopped_to {
+                            line.push_str(&interrupts(&mut reader));
+                        }
                         if stdin.write_all(line.as_bytes()).await.is_err() {
                             break;
                         }
@@ -188,20 +198,12 @@ impl Harness for Claude {
                         // answers it later is not known: the session ends
                         // with the message unread, and the conversation
                         // goes on written out, the message in it.
-                        if !reader.held.is_empty() {
+                        if !reader.held.is_empty() || !reader.offered.is_empty() {
                             let unread = "it was stopped with a message of the user's unread";
                             let _ = events.send(Event::Done(Err(unread.to_owned())));
                             continue;
                         }
-                        let id = uuid::Uuid::new_v4().to_string();
-                        reader.interrupt = Some(id.clone());
-                        let mut line = json!({
-                            "type": "control_request",
-                            "request_id": id,
-                            "request": { "subtype": "interrupt" },
-                        })
-                        .to_string();
-                        line.push('\n');
+                        let line = interrupts(&mut reader);
                         if stdin.write_all(line.as_bytes()).await.is_err() {
                             break;
                         }
@@ -491,7 +493,8 @@ impl Reader {
             Line::Assistant { .. } | Line::Other => Vec::new(),
             Line::ControlResponse { response } => {
                 let answers = response.get("request_id").and_then(Value::as_str);
-                if answers.is_some() && answers == self.interrupt.as_deref() {
+                let stops = response.get("subtype").and_then(Value::as_str) == Some("success");
+                if stops && answers.is_some() && answers == self.interrupt.as_deref() {
                     self.interrupt = None;
                     self.stopping = true;
                 }

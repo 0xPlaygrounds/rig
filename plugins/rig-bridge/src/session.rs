@@ -600,7 +600,7 @@ impl Model {
                     let stopped = session.stop().await;
                     let note = match stopped {
                         true => "stopped a turn: its session waits for what is said next",
-                        false => "a turn did not stop in time: its session was ended",
+                        false => "a turn could not be stopped: its session was ended",
                     };
                     self.bridge.record_note(self.vendor, note.to_owned());
                     if stopped {

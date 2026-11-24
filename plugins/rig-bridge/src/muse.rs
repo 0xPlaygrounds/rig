@@ -450,7 +450,8 @@ where
     loop {
         // A prompt is taken before a stop, which may be the one for it. A
         // stop with no turn running is for one that is over, or for a
-        // prompt that is only now on its way: that one is not started on.
+        // prompt that is only now on its way: that one is stopped once it
+        // has started, so that the program has it.
         let prompt = loop {
             tokio::select! {
                 biased;
@@ -466,10 +467,7 @@ where
             return Ok(());
         };
         turn += 1;
-        if turn <= stopped {
-            let _ = wire.events.send(Event::Stopped);
-            continue;
-        }
+        let mut interrupt = turn <= stopped;
         let mut params = json!({
             "commandId": uuidv7(),
             "sessionId": session_id,
@@ -486,6 +484,15 @@ where
         let done = loop {
             if let Some(done) = wire.ended.take() {
                 break done;
+            }
+            // The turn then completes as cancelled.
+            if std::mem::take(&mut interrupt) {
+                let mut asked = json!({ "commandId": uuidv7(), "sessionId": session_id });
+                if let (Some(id), Some(asked)) = (started.get("turnId"), asked.as_object_mut()) {
+                    asked.insert("turnId".to_owned(), id.clone());
+                }
+                let _ = wire.request("turn/interrupt", asked).await;
+                continue;
             }
             tokio::select! {
                 msg = wire.next_message() => wire.handle(msg?).await?,
@@ -505,16 +512,8 @@ where
                     let _ = steer.taken.send(taken);
                 }
                 Some(stop) = stops.recv() => {
-                    if stop != turn {
-                        continue;
-                    }
-                    // The turn then completes as cancelled.
-                    let mut asked = json!({ "commandId": uuidv7(), "sessionId": session_id });
-                    if let (Some(id), Some(asked)) = (started.get("turnId"), asked.as_object_mut())
-                    {
-                        asked.insert("turnId".to_owned(), id.clone());
-                    }
-                    let _ = wire.request("turn/interrupt", asked).await;
+                    stopped = stopped.max(stop);
+                    interrupt = stop == turn;
                 }
             }
         };

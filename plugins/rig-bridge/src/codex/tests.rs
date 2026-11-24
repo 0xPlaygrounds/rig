@@ -502,7 +502,7 @@ async fn a_saved_thread_is_resumed_and_a_stop_interrupts_the_turn_it_names() {
 }
 
 #[tokio::test]
-async fn a_prompt_that_was_stopped_before_it_came_is_not_started_on() {
+async fn a_prompt_that_was_stopped_before_it_came_is_stopped_once_the_program_has_it() {
     let (ours, theirs) = tokio::io::duplex(1 << 16);
     let received = Received::default();
     let scripted = tokio::spawn(server(theirs, received.clone(), true));
@@ -535,12 +535,13 @@ async fn a_prompt_that_was_stopped_before_it_came_is_not_started_on() {
     let _ = scripted.await;
 
     assert_eq!(ended, Ok(()));
-    let started = {
+    let asked = |method: &str| {
         let received = received.lock().unwrap_or_else(PoisonError::into_inner);
-        let named = |message: &&Value| message.get("method") == Some(&json!("turn/start"));
+        let named = |message: &&Value| message.get("method") == Some(&json!(method));
         received.iter().filter(named).count()
     };
-    assert_eq!(started, 0);
+    // The program has the prompt, as the session's record will say.
+    assert_eq!((asked("turn/start"), asked("turn/interrupt")), (1, 1));
     assert_eq!(reported.try_recv(), Ok(Event::Saved("t1".to_owned())));
     assert_eq!(reported.try_recv(), Ok(Event::Stopped));
 }

@@ -560,7 +560,8 @@ where
         // Between prompts the program still sends notifications. A prompt
         // is taken before a stop, which may be the one for it. A stop with
         // no turn running is for one that is over, or for a prompt that is
-        // only now on its way: that one is not started on.
+        // only now on its way: that one is stopped once it has started, so
+        // that the program has it.
         let prompt = loop {
             tokio::select! {
                 biased;
@@ -576,10 +577,7 @@ where
             return Ok(());
         };
         number += 1;
-        if number <= stopped {
-            let _ = wire.events.send(Event::Stopped);
-            continue;
-        }
+        let mut interrupt = number <= stopped;
         let mut turn = json!({
             "threadId": thread,
             "input": input(&prompt.parts, &opening.dir, &mut images)?,
@@ -593,6 +591,13 @@ where
             Ok(started) => loop {
                 if let Some(ended) = wire.ended.take() {
                     break ended;
+                }
+                // The turn then completes as interrupted.
+                if let (true, Some(id)) = (interrupt, started.pointer("/turn/id")) {
+                    interrupt = false;
+                    let interrupted = json!({ "threadId": thread, "turnId": id });
+                    let _ = wire.request("turn/interrupt", interrupted).await;
+                    continue;
                 }
                 tokio::select! {
                     msg = wire.next_message() => wire.handle(msg?).await?,
@@ -614,11 +619,8 @@ where
                         let _ = steer.taken.send(taken);
                     }
                     Some(stop) = stops.recv() => {
-                        // The turn then completes as interrupted.
-                        if let (true, Some(id)) = (stop == number, started.pointer("/turn/id")) {
-                            let interrupted = json!({ "threadId": thread, "turnId": id });
-                            let _ = wire.request("turn/interrupt", interrupted).await;
-                        }
+                        stopped = stopped.max(stop);
+                        interrupt = stop == number;
                     }
                 }
             },
