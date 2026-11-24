@@ -96,12 +96,12 @@ pub(crate) const STATUS_503: Cell = Cell {
 
 // -- rows 3, 4, 5: the stream ends badly --------------------------------------
 
-/// EOF after text: a truncation (`Failed(Response)`), the prefix kept,
+/// EOF after text: a truncation (`Failed(Truncated)`), the prefix kept,
 /// nothing committed.
 pub(crate) const TRUNCATED_AFTER_TEXT: Cell = Cell {
     name: "fault_truncated_after_text",
     program: Program {
-        ending: Ending::Failed(ErrorKind::Response),
+        ending: Ending::Failed(ErrorKind::Truncated),
         ..TEXT_STREAM
     },
     events: true,
@@ -114,7 +114,7 @@ pub(crate) const TRUNCATED_AFTER_TOOL_CALL: Cell = Cell {
     program: Program {
         prompt: super::cells::ADD_PROMPT,
         streamed: true,
-        ending: Ending::Failed(ErrorKind::Response),
+        ending: Ending::Failed(ErrorKind::Truncated),
         ..TOOLS
     },
     tools: &[ToolKind::Adder],

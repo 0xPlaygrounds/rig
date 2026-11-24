@@ -86,19 +86,12 @@ async fn truncation_after_content_fails_the_run_and_keeps_the_prefix() {
     assert_eq!(drained.terminals, 0, "{drained:?}");
     assert!(!drained.errors.is_empty(), "{drained:?}");
     for report in &drained.errors {
-        assert_eq!(report.kind, ErrorKind::Response, "{report:?}");
-        assert!(
-            report
-                .message
-                .contains("ended before the provider ended it"),
-            "a truncation, by name: {report:?}"
-        );
+        assert_eq!(report.kind, ErrorKind::Truncated, "{report:?}");
     }
 
     let log = agent.stamp(recorder.take());
     let recorded = sole_failed_completion(&log);
-    assert_eq!(recorded.kind, ErrorKind::Response, "{recorded:?}");
-    assert_eq!(recorded.message, rig::serve::stream_truncated().message);
+    assert_eq!(recorded.kind, ErrorKind::Truncated, "{recorded:?}");
 }
 
 /// The stream closes after a complete tool call without a terminal record:
@@ -125,7 +118,7 @@ async fn truncation_after_a_complete_tool_call_never_runs_the_tool() {
     assert_eq!(drained.terminals, 0, "{drained:?}");
     assert!(!drained.errors.is_empty(), "{drained:?}");
     for report in &drained.errors {
-        assert_eq!(report.kind, ErrorKind::Response, "{report:?}");
+        assert_eq!(report.kind, ErrorKind::Truncated, "{report:?}");
     }
     assert_eq!(invocations.count(), 0, "the tool never ran");
 
@@ -136,7 +129,7 @@ async fn truncation_after_a_complete_tool_call_never_runs_the_tool() {
         "no tool effect follows the cut turn"
     );
     let recorded = sole_failed_completion(&log);
-    assert_eq!(recorded.message, rig::serve::stream_truncated().message);
+    assert_eq!(recorded.kind, ErrorKind::Truncated, "{recorded:?}");
 }
 
 /// An error event after content: the run fails with the provider's error

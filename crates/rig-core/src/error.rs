@@ -46,6 +46,9 @@ pub enum ErrorKind {
     Request,
     /// The response could not be parsed.
     Response,
+    /// The reply ended without the provider's terminal record.
+    /// A reported output limit is not truncation.
+    Truncated,
     /// The provider reported a failure without a preserved raw response.
     Provider,
     /// The provider replied and its raw response was preserved: a non-2xx
@@ -82,6 +85,7 @@ impl ErrorKind {
             Self::Url => "url",
             Self::Request => "request",
             Self::Response => "response",
+            Self::Truncated => "truncated",
             Self::Provider => "provider",
             Self::ProviderResponse => "provider_response",
             Self::Tool(_) => "tool",
@@ -436,9 +440,8 @@ impl ProviderError {
             Self::Json(_) => ErrorKind::Json,
             Self::Url(_) => ErrorKind::Url,
             Self::Request(_) | Self::UnsupportedOption(_) => ErrorKind::Request,
-            Self::Response(_) | Self::MismatchedDimensions { .. } | Self::Truncated => {
-                ErrorKind::Response
-            }
+            Self::Response(_) | Self::MismatchedDimensions { .. } => ErrorKind::Response,
+            Self::Truncated => ErrorKind::Truncated,
             Self::Provider(_) => ErrorKind::Provider,
             Self::Stalled(_) => ErrorKind::Timeout,
             Self::ProviderResponse(_)
@@ -760,6 +763,7 @@ impl From<ErrorReport> for ToolExecutionError {
             | ErrorKind::Url
             | ErrorKind::Request
             | ErrorKind::Response
+            | ErrorKind::Truncated
             | ErrorKind::Internal
             | ErrorKind::Divergence
             | ErrorKind::Other => ToolErrorKind::Other,
