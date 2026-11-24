@@ -1,7 +1,7 @@
 use serde_json::json;
 
 use super::{Antigravity, definition, models};
-use crate::acp::{Agent, Opening};
+use crate::acp::{Agent, Opening, Steering};
 
 fn opening(tools: &[&str]) -> Opening {
     Opening {
@@ -57,4 +57,23 @@ fn only_a_tool_of_rig_s_server_is_a_rig_tool() {
     let judged = [ours, native, other].map(|call| Antigravity.is_rig_tool(&call, None));
 
     assert_eq!(judged, [true, false, false]);
+}
+
+#[test]
+fn a_prompt_steers_the_running_one_from_1_5_0() {
+    let steers = |version: &str| {
+        let started = json!({ "agentInfo": { "name": "Antigravity", "version": version } });
+        matches!(
+            Antigravity.steer(&started, "s1", &[]),
+            Some(Steering::Prompt)
+        )
+    };
+
+    assert!(steers("1.5.0"));
+    assert!(steers("1.5.15"));
+    assert!(steers("2.0.1-beta"));
+    // The 1.4 program answers the next prompt after the running one.
+    assert!(!steers("1.4.9"));
+    assert!(!steers("soon"));
+    assert!(Antigravity.steer(&json!({}), "s1", &[]).is_none());
 }

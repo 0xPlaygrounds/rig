@@ -1,5 +1,6 @@
 use rig_harness::rig_core::completion::{FinishReason, Usage};
 use serde_json::json;
+use tokio::sync::oneshot;
 
 use super::{Reader, user_message};
 use crate::harness::{Event, Part};
@@ -181,11 +182,91 @@ fn a_prompt_is_one_user_message_of_text_and_images() {
         },
     ];
 
+    let content = json!([
+        { "type": "text", "text": "look" },
+        { "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "AAAA" } },
+    ]);
     assert_eq!(
-        user_message(&prompt),
-        json!({ "type": "user", "message": { "role": "user", "content": [
-            { "type": "text", "text": "look" },
-            { "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "AAAA" } },
-        ] } }),
+        user_message(&prompt, "id-1", false),
+        json!({ "type": "user", "message": { "role": "user", "content": content }, "uuid": "id-1" }),
+    );
+    // One for the running turn waits for the tool calls in flight.
+    assert_eq!(
+        user_message(&prompt, "id-2", true),
+        json!({ "type": "user", "message": { "role": "user", "content": content },
+        "uuid": "id-2", "priority": "next" }),
+    );
+}
+
+fn lifecycle(id: &str, state: &str) -> serde_json::Value {
+    json!({ "type": "command_lifecycle", "command_uuid": id, "state": state })
+}
+
+fn result() -> serde_json::Value {
+    json!({ "type": "result", "subtype": "success", "is_error": false, "result": "ok" })
+}
+
+#[test]
+fn a_line_for_the_running_turn_is_taken_once_the_program_holds_it() {
+    let mut reader = Reader::default();
+    let (taken, mut held) = oneshot::channel();
+    let (dropped, mut unread) = oneshot::channel();
+    reader.offered.insert("steer".to_owned(), taken);
+    reader.offered.insert("late".to_owned(), dropped);
+
+    assert!(!reader.reports);
+    read(&mut reader, lifecycle("prompt", "queued"));
+    assert!(reader.reports);
+    assert!(held.try_recv().is_err());
+    read(&mut reader, lifecycle("steer", "queued"));
+    read(&mut reader, lifecycle("late", "discarded"));
+
+    assert_eq!(held.try_recv(), Ok(Ok(())));
+    assert_eq!(
+        unread.try_recv(),
+        Ok(Err(
+            "Claude Code discarded a message of the user's unread".to_owned()
+        ))
+    );
+}
+
+#[test]
+fn a_result_with_a_line_still_held_is_not_the_reply_s_end() {
+    // The turn ended before the model read the line: the program answers
+    // it as a turn of its own, and that turn's result ends the reply.
+    let mut reader = Reader::default();
+    read(&mut reader, lifecycle("prompt", "queued"));
+    read(&mut reader, lifecycle("prompt", "started"));
+    read(&mut reader, lifecycle("steer", "queued"));
+    assert_eq!(read(&mut reader, result()), Vec::new());
+    assert_eq!(
+        read(&mut reader, lifecycle("prompt", "completed")),
+        Vec::new()
+    );
+    assert_eq!(read(&mut reader, lifecycle("steer", "started")), Vec::new());
+    assert_eq!(
+        read(&mut reader, result()),
+        vec![Event::Done(Ok(FinishReason::Stop))]
+    );
+
+    // The program dropped the line it held instead: the message is lost,
+    // so the turn fails and the message is the user's to send again.
+    let mut reader = Reader::default();
+    read(&mut reader, lifecycle("steer", "queued"));
+    assert_eq!(read(&mut reader, result()), Vec::new());
+    assert_eq!(
+        read(&mut reader, lifecycle("steer", "cancelled")),
+        vec![Event::Done(Err(
+            "Claude Code cancelled a message of the user's unread".to_owned()
+        ))]
+    );
+
+    // A line the model read in the turn leaves the result as it was.
+    let mut reader = Reader::default();
+    read(&mut reader, lifecycle("steer", "queued"));
+    read(&mut reader, lifecycle("steer", "started"));
+    assert_eq!(
+        read(&mut reader, result()),
+        vec![Event::Done(Ok(FinishReason::Stop))]
     );
 }

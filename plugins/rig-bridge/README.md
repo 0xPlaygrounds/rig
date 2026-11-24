@@ -36,8 +36,7 @@ the tools; the program is started with everything of its own turned off:
 
 - **Claude Code**: no built-in tools (`--tools ""`), no settings files, hooks,
   skills, slash commands, `CLAUDE.md`, memory or saved sessions, and no MCP
-  servers but rig's. Rig's system prompt replaces Claude Code's; Claude Code
-  still opens it with one sentence of its own that says what it is.
+  servers but rig's. Rig's system prompt replaces Claude Code's.
 - **Grok Build**: an empty home directory of its own, so none of your (or
   another agent's) settings, rules, skills, hooks, plugins or MCP servers, with
   memory, subagents, web search and the rest switched off, and rig's system
@@ -75,10 +74,15 @@ told, in a sentence or two, how the program prefixes rig's tool names and,
 for programs that report a scratch directory, which directory the project is.
 
 What stays that rig cannot remove: the vendor's own system layer in front of
-rig's prompt on Codex; on Grok, the list of skills bundled with the program
-(and Grok's own preamble when switching away from Grok's default model via
-`session/set_model`); and Codex and Antigravity call tools one at a time,
-never several at once.
+rig's prompt on Codex; on Claude Code, a sentence in front of rig's prompt
+that says what it is, a section after it with the working directory, platform,
+model and date and a few rules of Claude Code's own (make independent tool
+calls together, treat downloaded files as untrusted), and a note in front of
+your first message that holds the signed-in account's email address; on Grok,
+the list of skills bundled with the program and a rule of Grok's own on
+phrasing (and Grok's own preamble when switching away from Grok's default
+model via `session/set_model`); and Codex and Antigravity call tools one at a
+time, never several at once.
 
 Rig's tools reach the program as one MCP server the plugin serves on loopback,
 named by a bearer token only that process is given. When the model calls a
@@ -90,8 +94,44 @@ sessions and replay all see it, and the program waits for the result.
 One process serves one conversation and stays up between your messages, so the
 program's prompt cache is used. Rig remains the owner of the history: when a
 request does not continue what a running process answered (after `/compact`, a
-restart with `-r`, a changed system prompt, model or effort, or Esc), rig
-starts a new process and gives it the conversation so far as text.
+restart with `-r`, a changed system prompt, model or effort, or Esc while a
+reply streams), rig starts a new process and gives it the conversation so far
+as text. Esc while a tool runs keeps the process: the tool's result says it
+was stopped, and the conversation goes on.
+
+In that text a tool's output has a heading of its own, and every heading and
+the closing marker carry a key made for that one start, which the model is
+told. Old tool output cannot hold the key, so a line in it that looks like a
+message of yours, or like the end of the conversation, is read as tool output.
+
+## A message sent while the model works
+
+A message you send while a tool runs joins the turn: rig gives it to the model
+with the tool's result. The bridge hands it to the program as a user message,
+the program's own way, before it answers the tool call, so the model reads it
+as yours and not as something the tool printed:
+
+| Program | How it takes the message |
+| --- | --- |
+| Claude Code | a line of input for the running turn (`priority: "next"`), acknowledged by its id |
+| Codex | `turn/steer`, naming the running turn |
+| Meta AI Muse | `turn/steer`, naming the running turn |
+| Grok Build | `_x.ai/interject` (text only) |
+| Antigravity 1.5.0 and later | the next `session/prompt`, which ends the running one and carries its work on |
+| GitHub Copilot CLI | no way of its own |
+
+A program with no way of its own, one that refuses the message, an older
+Antigravity, and Grok for a message with an image get it at the end of the
+tool's result instead, between `<user-message key="…">` and
+`</user-message>`. The key is random, made as rig starts, and named in a
+sentence after rig's system prompt; a tool's output cannot know it, so it
+cannot pass text off as yours. This is weaker than the program's own way: a
+model talked into printing its system prompt would give the key away.
+
+A program that does not say within ten seconds whether it took the message is
+ended, since giving it the message again could make the model read it twice;
+the conversation goes on in a new process. If Claude Code drops a message it
+said it held, the turn fails and rig hands the message back to you.
 
 When rig's tools change mid-conversation, a running program is told so over
 MCP and lists them again, and the conversation goes on in the same process.

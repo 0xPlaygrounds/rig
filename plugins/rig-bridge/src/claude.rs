@@ -2,18 +2,23 @@
 //! one process for a whole conversation. Every built-in tool, settings
 //! file, hook, skill, command, memory and MCP server of the user's is left
 //! out; the process sees the system prompt and the tools Rig gives it.
+//!
+//! Each line of input carries an id, and Claude Code says under that id
+//! when it holds the line and when its model starts on it. A line written
+//! while a turn runs is given to the model in that turn, after the tool
+//! results it waits for.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use rig_harness::rig_core::completion::{FinishReason, Usage};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 
 use crate::harness::{
-    Event, Harness, Launch, Part, Prompt, Running, Stderr, effort_wire, note, spawn,
+    Event, Harness, Launch, Part, Prompt, Running, Stderr, Steer, effort_wire, note, spawn,
 };
 
 #[cfg(test)]
@@ -114,6 +119,7 @@ impl Harness for Claude {
         }
         let (process, pipes) = spawn(command)?;
         let (prompts, mut prompted) = mpsc::unbounded_channel::<Prompt>();
+        let (steers, mut steered) = mpsc::unbounded_channel::<Steer>();
         let (events, reported) = mpsc::unbounded_channel();
         let stderr = Stderr::follow(pipes.stderr);
         tokio::spawn(async move {
@@ -126,8 +132,25 @@ impl Harness for Claude {
                         let Some(prompt) = prompt else {
                             return;
                         };
-                        let mut line = user_message(&prompt.parts).to_string();
+                        let id = uuid::Uuid::new_v4().to_string();
+                        let mut line = user_message(&prompt.parts, &id, false).to_string();
                         line.push('\n');
+                        if stdin.write_all(line.as_bytes()).await.is_err() {
+                            break;
+                        }
+                    }
+                    Some(steer) = steered.recv() => {
+                        // A program that does not say when it holds a line
+                        // cannot say whether its turn took this one.
+                        if !reader.reports {
+                            let why = "this Claude Code does not report its input".to_owned();
+                            let _ = steer.taken.send(Err(why));
+                            continue;
+                        }
+                        let id = uuid::Uuid::new_v4().to_string();
+                        let mut line = user_message(&steer.parts, &id, true).to_string();
+                        line.push('\n');
+                        reader.offered.insert(id, steer.taken);
                         if stdin.write_all(line.as_bytes()).await.is_err() {
                             break;
                         }
@@ -150,14 +173,17 @@ impl Harness for Claude {
         });
         Ok(Running {
             prompts,
+            steers: Some(steers),
             events: reported,
             _alive: Box::new(process),
         })
     }
 }
 
-/// A prompt as one line of streamed input.
-fn user_message(prompt: &[Part]) -> Value {
+/// A prompt as one line of streamed input, under `id`. One for the turn in
+/// progress waits for the tool calls in flight and is read with their
+/// results.
+fn user_message(prompt: &[Part], id: &str, steers: bool) -> Value {
     let content: Vec<Value> = prompt
         .iter()
         .map(|part| match part {
@@ -168,7 +194,15 @@ fn user_message(prompt: &[Part]) -> Value {
             }),
         })
         .collect();
-    json!({ "type": "user", "message": { "role": "user", "content": content } })
+    let mut line = json!({
+        "type": "user",
+        "message": { "role": "user", "content": content },
+        "uuid": id,
+    });
+    if let (true, Some(line)) = (steers, line.as_object_mut()) {
+        line.insert("priority".to_owned(), "next".into());
+    }
+    line
 }
 
 /// Turns the lines of streamed output into events.
@@ -178,6 +212,15 @@ struct Reader {
     streamed: HashSet<String>,
     /// The input side of the open API message's usage.
     input: Counted,
+    /// Whether the program says what becomes of each line it is sent.
+    reports: bool,
+    /// Who waits to hear that the program holds a line, by the line's id.
+    offered: HashMap<String, oneshot::Sender<Result<(), String>>>,
+    /// The lines the program holds and its model has not started on.
+    held: HashSet<String>,
+    /// How the turn ended while the program held a line: the reply's end,
+    /// unless the program starts on that line or drops it.
+    ended: Option<Result<FinishReason, String>>,
 }
 
 #[derive(Deserialize)]
@@ -188,6 +231,10 @@ enum Line {
     },
     Assistant {
         message: Whole,
+    },
+    CommandLifecycle {
+        command_uuid: String,
+        state: String,
     },
     Result {
         #[serde(default)]
@@ -372,6 +419,40 @@ impl Reader {
                 events
             }
             Line::Assistant { .. } | Line::Other => Vec::new(),
+            Line::CommandLifecycle {
+                command_uuid,
+                state,
+            } => {
+                self.reports = true;
+                let (held, started) = (state == "queued", state == "started");
+                let was_held = match held {
+                    true => !self.held.insert(command_uuid.clone()),
+                    false => self.held.remove(&command_uuid),
+                };
+                let unread = format!("Claude Code {state} a message of the user's unread");
+                if let Some(taken) = self.offered.remove(&command_uuid) {
+                    let _ = taken.send(match held || started {
+                        true => Ok(()),
+                        false => Err(unread.clone()),
+                    });
+                }
+                // A line the program said it held and then dropped is lost:
+                // the turn fails, so the message is the user's to send again.
+                if was_held && !(held || started || state == "completed") {
+                    self.ended = None;
+                    return vec![Event::Done(Err(unread))];
+                }
+                // The program answers a line its turn did not get to as a
+                // turn of its own, at once: the reply goes on into that one.
+                match self.ended.take() {
+                    Some(_) if started => Vec::new(),
+                    Some(done) if self.held.is_empty() => vec![Event::Done(done)],
+                    ended => {
+                        self.ended = ended;
+                        Vec::new()
+                    }
+                }
+            }
             Line::Result {
                 is_error,
                 stop_reason,
@@ -393,6 +474,10 @@ impl Reader {
                         _ => Ok(FinishReason::Stop),
                     }
                 };
+                if done.is_ok() && !self.held.is_empty() {
+                    self.ended = Some(done);
+                    return Vec::new();
+                }
                 vec![Event::Done(done)]
             }
         }

@@ -10,8 +10,8 @@ use std::process::Command;
 use rig_harness::rig_core::completion::{Effort, Usage};
 use serde_json::{Value, json};
 
-use crate::acp::{Agent, Opening, SERVER};
-use crate::harness::{effort_wire, env_path};
+use crate::acp::{Agent, Opening, SERVER, Steering};
+use crate::harness::{Part, effort_wire, env_path};
 
 #[cfg(test)]
 mod tests;
@@ -172,6 +172,29 @@ impl Agent for Grok {
 
     fn prompt_meta(&self, prompt: &str) -> Option<Value> {
         Some(json!({ "promptId": prompt, "requestId": prompt }))
+    }
+
+    /// Grok's interjection: the running tool finishes and the model reads
+    /// the message at its next step. It carries text only.
+    fn steer(&self, _: &Value, session: &str, parts: &[Part]) -> Option<Steering> {
+        let text = parts
+            .iter()
+            .map(|part| match part {
+                Part::Text(text) => Some(text.as_str()),
+                Part::Image { .. } => None,
+            })
+            .collect::<Option<Vec<_>>>()?
+            .join("\n\n");
+        Some(Steering::Request(
+            "_x.ai/interject",
+            json!({ "sessionId": session, "text": text }),
+        ))
+    }
+
+    /// Grok 1.0.92 answers `{ "result": { "status": "queued" } }`.
+    fn steered(&self, result: &Value) -> bool {
+        let status = result.get("result").unwrap_or(result).get("status");
+        status.and_then(Value::as_str) == Some("queued")
     }
 
     /// Grok says a prompt ended in notifications of its own, and may then
