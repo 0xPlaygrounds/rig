@@ -99,10 +99,8 @@ reply streams), rig starts a new process and gives it the conversation so far
 as text. Esc while a tool runs keeps the process: the tool's result says it
 was stopped, and the conversation goes on.
 
-In that text a tool's output has a heading of its own, and every heading and
-the closing marker carry a key made for that one start, which the model is
-told. Old tool output cannot hold the key, so a line in it that looks like a
-message of yours, or like the end of the conversation, is read as tool output.
+In that text a tool's output is under a heading of its own, apart from what
+you said.
 
 ## A message sent while the model works
 
@@ -120,18 +118,15 @@ as yours and not as something the tool printed:
 | Antigravity 1.5.0 and later | the next `session/prompt`, which ends the running one and carries its work on |
 | GitHub Copilot CLI | no way of its own |
 
-A program with no way of its own, one that refuses the message, an older
-Antigravity, and Grok for a message with an image get it at the end of the
-tool's result instead, between `<user-message key="…">` and
-`</user-message>`. The key is random, made as rig starts, and named in a
-sentence after rig's system prompt; a tool's output cannot know it, so it
-cannot pass text off as yours. This is weaker than the program's own way: a
-model talked into printing its system prompt would give the key away.
+A program with no way of its own, one that refuses the message or does not
+say within ten seconds that it took it, an older Antigravity, and Grok for a message with an
+image get it as their next prompt instead, as soon as the running turn ends,
+and rig's reply goes on into the answer. The model then reads it once it has
+stopped calling tools, not at its next step. If a program takes the message
+after the ten seconds are up, the model reads it twice.
 
-A program that does not say within ten seconds whether it took the message is
-ended, since giving it the message again could make the model read it twice;
-the conversation goes on in a new process. If Claude Code drops a message it
-said it held, the turn fails and rig hands the message back to you.
+If Claude Code drops a message it said it held, the turn fails and rig hands
+the message back to you.
 
 When rig's tools change mid-conversation, a running program is told so over
 MCP and lists them again, and the conversation goes on in the same process.

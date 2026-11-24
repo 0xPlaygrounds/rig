@@ -146,7 +146,7 @@ fn a_message_for_the_running_prompt_is_an_interjection_of_text_alone() {
             json!({ "sessionId": "s1", "text": "and b\n\ntoo" })
         )),
     );
-    // An interjection carries no image: it goes with the tool result.
+    // An interjection carries no image: the message is the next prompt.
     assert!(
         Grok.steer(&json!({}), "s1", &[text("look"), image])
             .is_none()
