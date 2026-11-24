@@ -1071,7 +1071,9 @@ impl AgentRun {
             ));
         }
 
-        let call = self.completion_call(turn.usage, turn.identity, turn.finish_reason, turn.raw);
+        let call = self
+            .completion_call(turn.usage, turn.identity, turn.finish_reason, turn.raw)
+            .with_origin(turn.head.origin.clone());
         self.push_completion_call(call);
         self.pin_output_tool(&turn.policy);
 
@@ -1102,6 +1104,7 @@ impl AgentRun {
     ) -> CompletionCall {
         CompletionCall {
             call_index: self.completion_call_index,
+            origin: None,
             usage,
             identity,
             finish_reason,
@@ -1525,12 +1528,41 @@ impl AgentRun {
     /// its streamed rollback before the next model step. Other states and
     /// duplicate records return a cancellation error. Abandoned streams must
     /// still be drained for usage.
+    ///
+    /// Origin remains unset; use [`Self::record_streamed_completion_response`]
+    /// when the driver has the folded response.
     pub fn record_streamed_completion_call(
         &mut self,
         usage: Usage,
         identity: ResponseIdentity,
         finish_reason: Option<FinishReason>,
         raw: serde_json::Value,
+    ) -> Result<CompletionCall, PromptError> {
+        let call = self.completion_call(usage, identity, finish_reason, raw);
+        self.record_streamed_call(call)
+    }
+
+    /// Record a streamed attempt's terminal response, including its origin.
+    /// Only pass a response from a stream that ended successfully. The same
+    /// once-per-attempt rules as [`Self::record_streamed_completion_call`] apply.
+    pub fn record_streamed_completion_response(
+        &mut self,
+        response: &CompletionResponse,
+    ) -> Result<CompletionCall, PromptError> {
+        let call = self
+            .completion_call(
+                response.usage,
+                response.identity(),
+                response.finish_reason(),
+                response.raw.clone(),
+            )
+            .with_origin(response.origin.clone());
+        self.record_streamed_call(call)
+    }
+
+    fn record_streamed_call(
+        &mut self,
+        call: CompletionCall,
     ) -> Result<CompletionCall, PromptError> {
         let recordable = match &mut self.state {
             RunState::AwaitingModel { recorded } => !std::mem::replace(recorded, true),
@@ -1543,7 +1575,6 @@ impl AgentRun {
             ));
         }
 
-        let call = self.completion_call(usage, identity, finish_reason, raw);
         self.push_completion_call(call.clone());
         Ok(call)
     }

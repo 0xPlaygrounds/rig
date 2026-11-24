@@ -14,13 +14,13 @@ use crate::{
         StructuredOutputError, Usage,
     },
     test_utils::{
-        MockAddTool, MockCompletionModel, MockContextProbeTool, MockSubtractTool, MockTurn,
-        SessionId,
+        MOCK_API, MOCK_MODEL, MOCK_PROVIDER, MockAddTool, MockCompletionModel,
+        MockContextProbeTool, MockSubtractTool, MockTurn, SessionId,
     },
     tool::ToolContext,
 };
 use rig_core::error::ProviderError;
-use rig_core::message::{ToolChoice, UserContent};
+use rig_core::message::{Origin, ToolChoice, UserContent};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -402,9 +402,10 @@ async fn typed_prompt_response_preserves_completion_calls() {
         }
     );
     assert_eq!(response.usage, call_usage);
+    let origin = Origin::new(MOCK_API, MOCK_PROVIDER, MOCK_MODEL);
     assert_eq!(
         response.completion_calls(),
-        &[CompletionCall::new(0, call_usage, raw)]
+        &[CompletionCall::new(0, call_usage, raw).with_origin(origin)]
     );
     assert_eq!(
         response.messages.len(),
@@ -744,11 +745,12 @@ async fn prompt_request_stops_cleanly_on_empty_terminal_turn() {
             .output_tokens(2)
             .total_tokens(4)
     );
+    let origin = Origin::new(MOCK_API, MOCK_PROVIDER, MOCK_MODEL);
     assert_eq!(
         response.completion_calls(),
         &[
-            CompletionCall::new(0, first_call_usage, first_raw),
-            CompletionCall::new(1, second_call_usage, second_raw)
+            CompletionCall::new(0, first_call_usage, first_raw).with_origin(origin.clone()),
+            CompletionCall::new(1, second_call_usage, second_raw).with_origin(origin)
         ]
     );
 

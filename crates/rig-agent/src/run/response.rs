@@ -8,7 +8,7 @@
 
 use rig_core::completion::{FinishReason, ResponseIdentity, Usage};
 use rig_core::error::ProviderError;
-use rig_core::message::{AssistantContent, Message};
+use rig_core::message::{AssistantContent, Message, Origin};
 use rig_core::tool::validate::Problem;
 use serde::{Deserialize, Serialize};
 
@@ -17,6 +17,9 @@ use serde::{Deserialize, Serialize};
 pub struct CompletionCall {
     /// Zero-based index of the completion request within this agent run.
     pub call_index: usize,
+    /// The wire, provider and model that produced this attempt, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<Origin>,
     /// Token usage reported for this completion request.
     ///
     /// A counter the provider did not report is `None`; a reported zero is
@@ -37,16 +40,23 @@ pub struct CompletionCall {
 
 impl CompletionCall {
     /// Create details for one completion request in an agent run, carrying
-    /// the provider's own response `raw` (see [`Self::raw`]); identity and
-    /// finish reason start unset.
+    /// the provider's own response `raw` (see [`Self::raw`]). Origin, identity,
+    /// and finish reason start unset.
     pub fn new(call_index: usize, usage: Usage, raw: serde_json::Value) -> Self {
         Self {
             call_index,
+            origin: None,
             usage,
             identity: ResponseIdentity::default(),
             finish_reason: None,
             raw,
         }
+    }
+
+    /// Attach the origin of this call's response.
+    pub fn with_origin(mut self, origin: impl Into<Option<Origin>>) -> Self {
+        self.origin = origin.into();
+        self
     }
 }
 
