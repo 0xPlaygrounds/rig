@@ -1,10 +1,12 @@
 //! The task that talks to Linear, on rig's tokio runtime: it signs in,
-//! creates or attaches to the session, then sends what the app queues, one
-//! request at a time, at most one a second. Consecutive passing activities
-//! are coalesced, a 429 is retried after its `Retry-After`, a heartbeat
-//! keeps the session from going stale, and every failure is a warning.
+//! creates or attaches to the session, says it is working, claims the issue
+//! when asked, then sends what the app queues and reads the session's new
+//! prompts back every so often, one request at a time, at most one a
+//! second. Consecutive passing activities are coalesced, a 429 is retried
+//! after its `Retry-After`, a heartbeat keeps the session from going stale,
+//! and every failure is a warning.
 
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use std::time::Duration;
 
 use async_channel::{Receiver, Sender};
@@ -14,7 +16,7 @@ use serde_json::Value;
 use tokio::time::Instant;
 
 use crate::activity::{Activity, Content, Redactor, head};
-use crate::api::{Api, ApiError, Credentials, Link, Session, authorization};
+use crate::api::{Api, ApiError, Credentials, Link, Seen, Session, authorization};
 
 #[cfg(test)]
 mod tests;
@@ -30,6 +32,9 @@ const RETRY_MOST: Duration = Duration::from_secs(60);
 
 /// What the heartbeat says.
 const STILL_WORKING: &str = "Still working…";
+
+/// The thought that goes as soon as the session is there.
+pub(crate) const WORKING: &str = "Working on it.";
 
 /// One piece of work for the task, in the order queued.
 #[derive(Debug)]
@@ -59,6 +64,10 @@ pub(crate) struct Config {
     pub(crate) heartbeat: Duration,
     /// The least time between two requests.
     pub(crate) spacing: Duration,
+    /// How often the session's new prompts are read; `None` for never.
+    pub(crate) poll: Option<Duration>,
+    /// Whether the issue is delegated to the app and moved to started.
+    pub(crate) claim: bool,
 }
 
 /// The session a run shows on.
@@ -68,6 +77,24 @@ pub(crate) enum Target {
     Issue(String),
     /// The session with this id, which exists.
     Session(String),
+}
+
+/// What the task tells the app.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Told {
+    /// The session is there.
+    Started(Started),
+    /// A person wrote `body` in the session.
+    Prompt {
+        body: String,
+        /// The person's name.
+        by: Option<String>,
+    },
+    /// A person asked the agent to stop.
+    Stop {
+        /// The person's name.
+        by: Option<String>,
+    },
 }
 
 /// What the task tells the app once the session is there.
@@ -124,14 +151,15 @@ pub(crate) fn coalesce(queue: &mut VecDeque<Job>) {
     });
 }
 
-/// The task: starts the session, tells `started`, and sends `jobs` until
-/// the close or until the app is gone.
+/// The task: starts the session, tells `told` so, says it is working,
+/// claims the issue when asked, and sends `jobs` until the close or until
+/// the app is gone, telling `told` each new prompt it reads back.
 pub(crate) async fn run(
     config: Config,
     http: DynHttpClient,
     redactor: Redactor,
     jobs: Receiver<Job>,
-    started: Sender<Started>,
+    told: Sender<Told>,
 ) {
     let mut sender = match start(&config, &http, &redactor).await {
         Ok(sender) => sender,
@@ -152,17 +180,28 @@ pub(crate) async fn run(
     if let Some(url) = &link {
         eprintln!("Linear agent session: {url}");
     }
-    started
-        .send(Started {
-            url: link,
-            issue: sender.session.issue.clone(),
-        })
-        .await
-        .ok();
+    told.send(Told::Started(Started {
+        url: link,
+        issue: sender.session.issue.clone(),
+    }))
+    .await
+    .ok();
+    sender
+        .send(Job::Activity(Activity::note(WORKING.to_owned())))
+        .await;
+    if let Some(every) = config.poll {
+        sender.watch = Some(Watch::new(every));
+        sender.pace().await;
+        sender.poll().await;
+    }
     if let Some(plan) = config.plan.clone() {
+        sender.pace().await;
         sender.send(Job::Plan(plan)).await;
     }
-    sender.serve(jobs, config.heartbeat).await;
+    if config.claim {
+        sender.claim().await;
+    }
+    sender.serve(jobs, config.heartbeat, &told).await;
 }
 
 /// The warning for a session that could not start: Linear's own words when
@@ -215,9 +254,73 @@ async fn start(
         redactor,
         spacing: config.spacing,
         last: None,
+        last_write: None,
         last_action: None,
         ended: false,
+        watch: None,
     })
+}
+
+/// The most pages of new prompts one read goes through.
+const PAGES: usize = 4;
+
+/// What the task knows of the session's prompts, to read only the new ones.
+#[derive(Debug)]
+struct Watch {
+    /// How often it reads.
+    every: Duration,
+    /// When it reads next.
+    next: Instant,
+    /// Whether it read the prompts there were as the run attached, which it
+    /// leaves alone, such as the one Linear adds as it creates a session.
+    ready: bool,
+    /// The newest prompt's `createdAt`.
+    since: Option<String>,
+    /// The ids of the prompts read.
+    seen: HashSet<String>,
+    /// Whether the last read failed, so the next failure warns no more.
+    failing: bool,
+}
+
+impl Watch {
+    fn new(every: Duration) -> Self {
+        Self {
+            every,
+            next: Instant::now(),
+            ready: false,
+            since: None,
+            seen: HashSet::new(),
+            failing: false,
+        }
+    }
+
+    /// Takes in `read`, newest first: what the new ones tell, oldest
+    /// first, unless these are the prompts there were as the run attached.
+    fn take(&mut self, mut read: Vec<Seen>) -> Vec<Told> {
+        read.retain(|seen| self.seen.insert(seen.id.clone()));
+        read.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+        if let Some(newest) = read.last()
+            && self
+                .since
+                .as_ref()
+                .is_none_or(|since| *since < newest.created_at)
+        {
+            self.since = Some(newest.created_at.clone());
+        }
+        if !std::mem::replace(&mut self.ready, true) {
+            return Vec::new();
+        }
+        read.into_iter()
+            .filter_map(|seen| match (seen.stop, seen.prompt) {
+                (true, _) => Some(Told::Stop { by: seen.by }),
+                (false, Some(body)) if !body.trim().is_empty() => Some(Told::Prompt {
+                    body: body.trim().to_owned(),
+                    by: seen.by,
+                }),
+                _ => None,
+            })
+            .collect()
+    }
 }
 
 /// The task once the session is there.
@@ -228,31 +331,25 @@ struct Connected {
     spacing: Duration,
     /// When the last request went.
     last: Option<Instant>,
+    /// When the last request that adds to the session went, for the
+    /// heartbeat.
+    last_write: Option<Instant>,
     /// The last tool call sent, for the heartbeat.
     last_action: Option<String>,
     /// Whether the last activity sent ended the run, so no heartbeat goes.
     ended: bool,
+    /// The session's prompts, when they are read back.
+    watch: Option<Watch>,
 }
 
 impl Connected {
-    /// Sends the jobs as they come, until the close.
-    async fn serve(&mut self, jobs: Receiver<Job>, heartbeat: Duration) {
+    /// Sends the jobs as they come, until the close, and reads the new
+    /// prompts when it is time, telling `told` what they say.
+    async fn serve(&mut self, jobs: Receiver<Job>, heartbeat: Duration, told: &Sender<Told>) {
         let mut queue = VecDeque::new();
         loop {
             while let Ok(job) = jobs.try_recv() {
                 queue.push_back(job);
-            }
-            if queue.is_empty() {
-                let quiet = self
-                    .last
-                    .map_or(heartbeat, |last| heartbeat.saturating_sub(last.elapsed()));
-                match tokio::time::timeout(quiet, jobs.recv()).await {
-                    Ok(Ok(job)) => queue.push_back(job),
-                    Ok(Err(_)) => return,
-                    Err(_) if self.ended => self.last = Some(Instant::now()),
-                    Err(_) => queue.push_back(Job::Activity(self.heartbeat())),
-                }
-                continue;
             }
             coalesce(&mut queue);
             if matches!(queue.front(), Some(Job::Close(_))) {
@@ -260,6 +357,34 @@ impl Connected {
                     done.send(()).ok();
                 }
                 return;
+            }
+            if self
+                .watch
+                .as_ref()
+                .is_some_and(|watch| watch.next <= Instant::now())
+            {
+                self.pace().await;
+                for news in self.poll().await {
+                    told.send(news).await.ok();
+                }
+                continue;
+            }
+            if queue.is_empty() {
+                let quiet = self
+                    .last_write
+                    .map_or(heartbeat, |last| heartbeat.saturating_sub(last.elapsed()));
+                let poll = (self.watch.as_ref())
+                    .map(|watch| watch.next.saturating_duration_since(Instant::now()));
+                let wait = poll.map_or(quiet, |poll| poll.min(quiet));
+                match tokio::time::timeout(wait, jobs.recv()).await {
+                    Ok(Ok(job)) => queue.push_back(job),
+                    Ok(Err(_)) => return,
+                    // The read is due, not the heartbeat.
+                    Err(_) if wait < quiet => {}
+                    Err(_) if self.ended => self.last_write = Some(Instant::now()),
+                    Err(_) => queue.push_back(Job::Activity(self.heartbeat())),
+                }
+                continue;
             }
             self.pace().await;
             while let Ok(job) = jobs.try_recv() {
@@ -274,6 +399,94 @@ impl Connected {
                 return;
             }
             self.send(job).await;
+        }
+    }
+
+    /// Reads the session's prompts since the last read: what the new ones
+    /// tell. A stop ends the reading. A failed read warns, once until one
+    /// succeeds, and the next read tries again.
+    async fn poll(&mut self) -> Vec<Told> {
+        let Some(mut watch) = self.watch.take() else {
+            return Vec::new();
+        };
+        let since = watch.since.clone().filter(|_| watch.ready);
+        let mut read = Vec::new();
+        let mut after = None;
+        let mut failed = None;
+        for page in 0..PAGES {
+            if page > 0 {
+                self.pace().await;
+            }
+            let got = (self.api)
+                .activities(&self.session.id, since.as_deref(), after.as_deref())
+                .await;
+            self.last = Some(Instant::now());
+            match got {
+                Ok(page) => {
+                    read.extend(page.activities);
+                    after = page.next;
+                }
+                Err(why) => {
+                    failed = Some(why);
+                    break;
+                }
+            }
+            // The prompts there were as the run attached need only the newest.
+            if after.is_none() || !watch.ready {
+                break;
+            }
+        }
+        watch.next = Instant::now() + watch.every;
+        let told = match failed {
+            None => {
+                watch.failing = false;
+                watch.take(read)
+            }
+            Some(why) => {
+                if let ApiError::RateLimited(wait) = &why {
+                    let wait = wait.unwrap_or(RETRY_WAIT).min(RETRY_MOST);
+                    watch.next = Instant::now() + wait.max(watch.every);
+                }
+                if !std::mem::replace(&mut watch.failing, true) {
+                    warn!(
+                        "Linear: the session's prompts could not be read: {}",
+                        self.redactor.text(&why.to_string())
+                    );
+                }
+                Vec::new()
+            }
+        };
+        if !told.iter().any(|news| matches!(news, Told::Stop { .. })) {
+            self.watch = Some(watch);
+        }
+        told
+    }
+
+    /// Delegates the session's issue to the app when it has no delegate,
+    /// and moves it to its team's first `started` state unless it is
+    /// started, completed or canceled. A failure warns.
+    async fn claim(&mut self) {
+        let Some(issue) = self.session.issue_id.clone() else {
+            return;
+        };
+        self.pace().await;
+        let state = self.api.issue_state(&issue).await;
+        self.last = Some(Instant::now());
+        let claimed = match state.map(|state| state.claim()) {
+            Ok(Some(input)) => {
+                self.pace().await;
+                let updated = self.api.update_issue(&issue, input).await;
+                self.last = Some(Instant::now());
+                updated
+            }
+            Ok(None) => Ok(()),
+            Err(why) => Err(why),
+        };
+        if let Err(why) = claimed {
+            warn!(
+                "Linear: the issue was not claimed: {}",
+                self.redactor.text(&why.to_string())
+            );
         }
     }
 
@@ -327,6 +540,7 @@ impl Connected {
                 Job::Close(_) => Ok(()),
             };
             self.last = Some(Instant::now());
+            self.last_write = self.last;
             match sent {
                 Err(ApiError::RateLimited(wait)) if tries < RETRIES => {
                     tries += 1;

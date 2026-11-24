@@ -38,12 +38,12 @@ fn without_a_token_or_a_target_it_is_off() {
     let issue = || Target::Issue("ENG-1".to_owned());
     assert_eq!(target(None, &no_env), None);
     assert_eq!(target(Some(&invoked(&[(ISSUE_FLAG, " ")])), &no_env), None);
-    assert!(configure(issue(), None, None, &no_env).is_none());
+    assert!(configure(issue(), false, None, None, &no_env).is_none());
     let empty = Secrets::from_iter([(TOKEN_SECRET, " ")]);
-    assert!(configure(issue(), Some(&empty), None, &no_env).is_none());
+    assert!(configure(issue(), false, Some(&empty), None, &no_env).is_none());
     let half = Secrets::from_iter([(CLIENT_ID_SECRET, "client")]);
-    assert!(configure(issue(), Some(&half), None, &no_env).is_none());
-    assert!(configure(issue(), Some(&token), None, &no_env).is_some());
+    assert!(configure(issue(), false, Some(&half), None, &no_env).is_none());
+    assert!(configure(issue(), false, Some(&token), None, &no_env).is_some());
 }
 
 #[test]
@@ -86,7 +86,8 @@ fn an_access_token_beats_client_credentials_which_take_the_scope_setting() {
         (CLIENT_SECRET_SECRET, "secret"),
     ]);
     let credentials = |secrets: &Secrets, settings: Option<&LinearSettings>| {
-        configure(issue(), Some(secrets), settings, &no_env).map(|setup| setup.config.credentials)
+        configure(issue(), false, Some(secrets), settings, &no_env)
+            .map(|setup| setup.config.credentials)
     };
     assert_eq!(
         credentials(&both, None),
@@ -142,7 +143,7 @@ fn the_plan_file_replaces_the_settings_plan_and_a_bad_one_does_not() {
         let path = path.display().to_string();
         let env = move |name: &str| (name == PLAN_ENV).then(|| path.clone());
         let issue = Target::Issue("ENG-1".to_owned());
-        configure(issue, Some(&token), Some(&settings), &env).map(|setup| setup.plan)
+        configure(issue, false, Some(&token), Some(&settings), &env).map(|setup| setup.plan)
     };
     assert_eq!(
         plan(&good),
@@ -171,7 +172,8 @@ fn the_plan_file_replaces_the_settings_plan_and_a_bad_one_does_not() {
 fn the_settings_read_from_the_linear_table() {
     let mut app = App::new();
     app.insert_resource(Settings::from_toml(
-        "[linear]\napi_url = \"http://127.0.0.1:1/graphql\"\nheartbeat_minutes = 3\n\n\
+        "[linear]\napi_url = \"http://127.0.0.1:1/graphql\"\nheartbeat_minutes = 3\n\
+         poll_seconds = 0\n\n\
          [[linear.plan]]\ncontent = \"Triage\"\nskill = \"triage\"\n",
     ))
     .add_plugins(LinearPlugin);
@@ -181,6 +183,7 @@ fn the_settings_read_from_the_linear_table() {
         Some(LinearSettings {
             api_url: "http://127.0.0.1:1/graphql".to_owned(),
             heartbeat_minutes: 3,
+            poll_seconds: 0,
             scope: DEFAULT_SCOPE.to_owned(),
             plan: vec![PlanStep {
                 content: "Triage".to_owned(),
@@ -224,7 +227,7 @@ fn with_a_target_but_no_token_it_asks_for_secrets_but_adds_no_tool_state_or_sect
     assert!(!app.world().contains_resource::<Linear>());
     let mut flags = app.world_mut().query::<&Flag>();
     let names: Vec<&str> = flags.iter(app.world()).map(|flag| flag.name).collect();
-    assert_eq!(names, [ISSUE_FLAG, SESSION_FLAG]);
+    assert_eq!(names, [ISSUE_FLAG, SESSION_FLAG, CLAIM_FLAG]);
     assert_eq!(
         secrets_asked(&mut app),
         [TOKEN_SECRET, CLIENT_ID_SECRET, CLIENT_SECRET_SECRET]
@@ -238,21 +241,86 @@ fn with_a_target_but_no_token_it_asks_for_secrets_but_adds_no_tool_state_or_sect
 #[test]
 fn a_reported_outcome_maps_to_its_activity_and_plan_end() {
     let summary = || "Summary.".to_owned();
+    let options = ["a".to_owned()];
     assert_eq!(
-        outcome(OutcomeStatus::Done, summary()),
+        outcome(OutcomeStatus::Done, summary(), &options),
         (Content::Response(summary()), End::Done)
     );
     assert_eq!(
-        outcome(OutcomeStatus::GaveUp, summary()),
+        outcome(OutcomeStatus::GaveUp, summary(), &options),
         (Content::Error(summary()), End::Failed)
     );
     assert_eq!(
-        outcome(OutcomeStatus::NeedsInput, summary()),
-        (Content::Elicitation(summary()), End::NeedsInput)
+        outcome(OutcomeStatus::NeedsInput, summary(), &[]),
+        (
+            Content::Elicitation {
+                body: summary(),
+                options: Vec::new(),
+            },
+            End::NeedsInput
+        )
     );
     let args: Result<OutcomeArgs, _> =
         serde_json::from_value(json!({ "status": "gave_up", "summary": "No." }));
-    assert!(args.is_ok_and(|args| args.status == OutcomeStatus::GaveUp));
+    assert!(args.is_ok_and(|args| args.status == OutcomeStatus::GaveUp && args.options.is_empty()));
+}
+
+#[test]
+fn a_question_offers_its_options_trimmed_without_blanks_or_repeats() {
+    let options = [" sqlite ", "", "postgres", "sqlite", "  "].map(str::to_owned);
+    let long = "x".repeat(300);
+    let (content, _) = outcome(
+        OutcomeStatus::NeedsInput,
+        "Which?".to_owned(),
+        &[options.as_slice(), &[long]].concat(),
+    );
+    let options = match content {
+        Content::Elicitation { options, .. } => options,
+        _ => Vec::new(),
+    };
+    assert_eq!(
+        options.get(..2),
+        Some(["sqlite", "postgres"].map(str::to_owned).as_slice())
+    );
+    assert_eq!(options.len(), 3);
+    assert!(
+        options
+            .get(2)
+            .is_some_and(|long| long.chars().count() == 256)
+    );
+    let many: Vec<String> = (0..150).map(|at| at.to_string()).collect();
+    let (content, _) = outcome(OutcomeStatus::NeedsInput, "Which?".to_owned(), &many);
+    assert!(matches!(content, Content::Elicitation { options, .. } if options.len() == 100));
+}
+
+#[test]
+fn the_outcome_tool_takes_options_but_does_not_require_them() {
+    let schema = serde_json::to_value(schemars::schema_for!(OutcomeArgs)).unwrap_or_default();
+    assert_eq!(schema.get("required"), Some(&json!(["status", "summary"])));
+    assert_eq!(
+        schema.pointer("/properties/options/items/type"),
+        Some(&json!("string"))
+    );
+}
+
+#[test]
+fn the_issue_is_claimed_with_the_option_or_a_true_variable() {
+    let env = |value: &'static str| move |name: &str| (name == CLAIM_ENV).then(|| value.to_owned());
+    assert!(!claims(None, &no_env));
+    assert!(claims(Some(&invoked(&[(CLAIM_FLAG, "")])), &no_env));
+    assert!(!claims(Some(&invoked(&[(ISSUE_FLAG, "ENG-1")])), &no_env));
+    for on in ["1", "true", "TRUE", " true "] {
+        assert!(claims(None, &env(on)), "{on}");
+    }
+    for off in ["", "0", "false", "yes"] {
+        assert!(!claims(None, &env(off)), "{off}");
+    }
+    let token = Secrets::from_iter([(TOKEN_SECRET, "lin_api_key")]);
+    let issue = Target::Issue("ENG-1".to_owned());
+    let setup = configure(issue, true, Some(&token), None, &no_env);
+    assert!(setup.is_some_and(
+        |setup| setup.config.claim && setup.config.poll == Some(Duration::from_secs(15))
+    ));
 }
 
 #[test]
@@ -280,8 +348,8 @@ fn the_prompt_section_names_the_issue_and_the_tool() {
 }
 
 /// An active app on the stand-in at `url`, for the issue `ENG-1`, with a
-/// main agent `main`, its plan `plan` (TOML) and requests sent as soon as
-/// they may.
+/// main agent `main`, its plan `plan` (TOML), requests sent as soon as
+/// they may and no prompt read back ([`poll_every`] turns that on).
 fn active_app(url: &str, plan: &str, runtime: &tokio::runtime::Runtime) -> App {
     let mut app = App::new();
     app.insert_resource(Settings::from_toml(&format!(
@@ -296,10 +364,21 @@ fn active_app(url: &str, plan: &str, runtime: &tokio::runtime::Runtime) -> App {
         && let Some((config, ..)) = &mut linear.pending
     {
         config.spacing = Duration::from_millis(5);
+        config.poll = None;
     }
     app.finish();
     spawn_root(app.world_mut(), AgentId("main".to_owned()));
     app
+}
+
+/// Has `app`, before its first update, read the session's prompts back
+/// every `every`.
+fn poll_every(app: &mut App, every: Duration) {
+    if let Some(mut linear) = app.world_mut().get_resource_mut::<Linear>()
+        && let Some((config, ..)) = &mut linear.pending
+    {
+        config.poll = Some(every);
+    }
 }
 
 /// Updates `app` until the session's link is known, for at most 10 s.
@@ -471,7 +550,7 @@ fn a_run_shows_its_plan_notes_calls_links_and_last_reply() {
     assert_eq!(names, [OUTCOME_TOOL]);
     // The exit's plan would replace the one still queued.
     for _ in 0..1000 {
-        if linear.requests().len() >= 9 {
+        if linear.requests().len() >= 10 {
             break;
         }
         std::thread::sleep(Duration::from_millis(10));
@@ -482,6 +561,7 @@ fn a_run_shows_its_plan_notes_calls_links_and_last_reply() {
     let thought =
         |body: &str| json!({ "id": "session-1", "content": { "type": "thought", "body": body } });
     let expected = vec![
+        thought(crate::send::WORKING),
         json!({ "id": "session-1", "plan": plan(&[("Triage", "pending"), ("Ship", "pending")]) }),
         json!({ "id": "session-1", "content": { "type": "thought", "body": "Hmm." }, "ephemeral": true }),
         thought("Looking."),
@@ -504,7 +584,7 @@ fn a_run_shows_its_plan_notes_calls_links_and_last_reply() {
     assert_eq!(sent, expected, "{:#?}", linear.bodies());
     let link_query = linear
         .bodies()
-        .get(8)
+        .get(9)
         .map(|body| body.get("query").cloned().unwrap_or_default());
     assert_eq!(
         link_query,
@@ -569,6 +649,7 @@ fn a_reported_outcome_posts_at_once_and_mutes_the_rest_of_the_turn() {
     let args = OutcomeArgs {
         status: OutcomeStatus::GaveUp,
         summary: " The tests need a database. ".to_owned(),
+        options: Vec::new(),
     };
     let call = call_outcome(&mut app, main, args);
     let answered = call
@@ -582,7 +663,7 @@ fn a_reported_outcome_posts_at_once_and_mutes_the_rest_of_the_turn() {
     );
     app.world_mut().write_message(AppExit::Success);
     app.update();
-    let sent = variables(&linear, 3);
+    let sent = variables(&linear, 4);
     assert_eq!(
         sent,
         [
@@ -607,6 +688,7 @@ fn only_the_main_agent_may_report_the_outcome() {
     let args = OutcomeArgs {
         status: OutcomeStatus::Done,
         summary: "Done.".to_owned(),
+        options: Vec::new(),
     };
     let call = call_outcome(&mut app, helper, args);
     let refused = call
@@ -650,4 +732,177 @@ fn main_agent_of(app: &mut App) -> Option<Entity> {
         .iter(app.world())
         .find(|(_, id)| id.0 == "main")
         .map(|(entity, _)| entity)
+}
+
+#[test]
+fn a_question_with_options_is_posted_as_a_select() {
+    let Ok(runtime) = tokio::runtime::Runtime::new() else {
+        return;
+    };
+    let linear = StandIn::start();
+    let mut app = active_app(&linear.url, "", &runtime);
+    wait_until_started(&mut app);
+    let Some(main) = main_agent_of(&mut app) else {
+        return;
+    };
+    let args = OutcomeArgs {
+        status: OutcomeStatus::NeedsInput,
+        summary: "Which database?".to_owned(),
+        options: vec!["sqlite".to_owned(), "postgres".to_owned()],
+    };
+    call_outcome(&mut app, main, args);
+    app.world_mut().write_message(AppExit::Success);
+    app.update();
+    let last = variables(&linear, 0).last().cloned().unwrap_or_default();
+    assert_eq!(
+        last,
+        json!({
+            "id": "session-1",
+            "content": { "type": "elicitation", "body": "Which database?" },
+            "signal": "select",
+            "signalMetadata": { "options": [
+                { "label": "sqlite", "value": "sqlite" },
+                { "label": "postgres", "value": "postgres" },
+            ] },
+        })
+    );
+}
+
+/// A stand-in whose reads of the session's prompts find none at first,
+/// then `later` (each a prompt's body, its author `Ana`, a stop when
+/// `None`), then nothing new.
+fn prompting(later: &'static [Option<&'static str>]) -> StandIn {
+    let read = std::sync::atomic::AtomicUsize::new(0);
+    StandIn::scripted(move |request, _| {
+        if !request.query().starts_with("query Activities") {
+            return None;
+        }
+        let nodes: Vec<Value> = match read.fetch_add(1, std::sync::atomic::Ordering::SeqCst) {
+            0 => Vec::new(),
+            _ => later
+                .iter()
+                .enumerate()
+                .map(|(at, body)| {
+                    let at_time = format!("2026-01-01T00:00:0{at}.000Z");
+                    let id = format!("prompt-{at}");
+                    stand_in::prompt(
+                        &id,
+                        &at_time,
+                        "Ana",
+                        body.unwrap_or_default(),
+                        body.is_none(),
+                    )
+                })
+                .rev()
+                .collect(),
+        };
+        Some(stand_in::reply(stand_in::activities(&nodes)))
+    })
+}
+
+/// Updates `app` until `done` holds, for at most 10 s.
+fn update_until(app: &mut App, done: impl Fn(&App) -> bool) {
+    for _ in 0..1000 {
+        app.update();
+        if done(app) {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+/// The messages delivered to agents, as a test observer keeps them.
+#[derive(Resource, Default)]
+struct Delivered(Vec<(Entity, Incoming)>);
+
+#[test]
+fn a_persons_message_goes_to_the_main_agent_and_is_acknowledged() {
+    let Ok(runtime) = tokio::runtime::Runtime::new() else {
+        return;
+    };
+    let linear = prompting(&[Some("Use sqlite, please.\nAnd keep it small.")]);
+    let mut app = active_app(&linear.url, "", &runtime);
+    poll_every(&mut app, Duration::from_millis(50));
+    app.init_resource::<Delivered>().add_observer(
+        |deliver: On<Deliver>, mut delivered: ResMut<Delivered>| {
+            delivered.0.push((deliver.entity, deliver.message.clone()));
+        },
+    );
+    update_until(&mut app, |app| {
+        app.world()
+            .get_resource::<Delivered>()
+            .is_some_and(|delivered| !delivered.0.is_empty())
+    });
+    let main = main_agent_of(&mut app);
+    let delivered = app
+        .world_mut()
+        .remove_resource::<Delivered>()
+        .unwrap_or_default();
+    let [(agent, message)] = delivered.0.as_slice() else {
+        assert_eq!(delivered.0.len(), 1);
+        return;
+    };
+    assert_eq!(Some(*agent), main);
+    assert_eq!(message.text(), "Use sqlite, please.\nAnd keep it small.");
+    assert_eq!(message.mode, DeliveryMode::Steer);
+    assert_eq!(
+        message.author,
+        Author::plugin(ORIGIN).titled("Ana on Linear")
+    );
+    app.world_mut().write_message(AppExit::Success);
+    app.update();
+    let ack = json!({
+        "id": "session-1",
+        "content": { "type": "thought", "body": "Got your message: Use sqlite, please.…" },
+    });
+    assert!(
+        variables(&linear, 0).contains(&ack),
+        "{:#?}",
+        linear.bodies()
+    );
+}
+
+#[test]
+fn a_stop_from_linear_exits_as_a_signal_and_posts_only_the_stop() {
+    let Ok(runtime) = tokio::runtime::Runtime::new() else {
+        return;
+    };
+    let linear = prompting(&[None]);
+    let mut app = active_app(&linear.url, PLAN, &runtime);
+    poll_every(&mut app, Duration::from_millis(50));
+    app.add_observer(|exit: On<Exit>, mut commands: Commands| {
+        commands.insert_resource(exit.0.clone());
+    });
+    update_until(&mut app, |app| {
+        app.world().contains_resource::<ExitReason>()
+    });
+    assert_eq!(
+        app.world().get_resource::<ExitReason>(),
+        Some(&ExitReason::Signal)
+    );
+    // What the agent does as the exit stops it is not shown.
+    recorded(
+        &mut app,
+        vec![
+            reply(1, "main", vec![AssistantContent::text("Still going.")]),
+            call(2, "main", "shell", json!({ "command": "ls" }), "", Some(0)),
+        ],
+    );
+    app.world_mut().write_message(AppExit::from_code(130));
+    app.update();
+    let sent: Vec<Value> = variables(&linear, 0)
+        .into_iter()
+        .filter(|sent| sent.get("content").is_some() || sent.get("plan").is_some())
+        .collect();
+    let stopped = json!({
+        "id": "session-1",
+        "content": { "type": "error", "body": "Stopped at the request of Ana." },
+    });
+    let canceled =
+        json!({ "id": "session-1", "plan": plan(&[("Triage", "canceled"), ("Ship", "canceled")]) });
+    assert_eq!(
+        sent.get(sent.len().saturating_sub(2)..),
+        Some([canceled, stopped].as_slice()),
+        "{sent:#?}"
+    );
 }

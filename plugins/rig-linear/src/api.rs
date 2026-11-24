@@ -1,5 +1,6 @@
 //! Linear's GraphQL API, as far as the plugin calls it: the client
-//! credentials exchange, the issue, the agent session and its activities.
+//! credentials exchange, the issue and its claim, the agent session and its
+//! activities, both those it adds and those it reads back.
 
 use std::time::Duration;
 
@@ -83,6 +84,8 @@ pub(crate) struct Session {
     pub(crate) url: Option<String>,
     /// The issue's identifier, such as `ENG-123`, when known.
     pub(crate) issue: Option<String>,
+    /// The issue's id, when known.
+    pub(crate) issue_id: Option<String>,
 }
 
 /// One external link of a session.
@@ -182,7 +185,7 @@ impl Api {
             )
             .await?;
         let found = data.get("issue").unwrap_or(&Value::Null);
-        let Some(id) = found.get("id").and_then(Value::as_str) else {
+        let Some(issue_id) = found.get("id").and_then(Value::as_str) else {
             return Err(ApiError::Reply(format!("no issue {issue}")));
         };
         let identifier = found
@@ -195,7 +198,7 @@ impl Api {
                 "mutation CreateSession($issueId: String!) { \
                  agentSessionCreateOnIssue(input: { issueId: $issueId }) \
                  { success agentSession { id url } } }",
-                json!({ "issueId": id }),
+                json!({ "issueId": issue_id }),
             )
             .await?;
         let session = payload.get("agentSession").unwrap_or(&Value::Null);
@@ -209,6 +212,7 @@ impl Api {
                 .and_then(Value::as_str)
                 .map(str::to_owned),
             issue: identifier,
+            issue_id: Some(issue_id.to_owned()),
         })
     }
 
@@ -217,7 +221,7 @@ impl Api {
     pub(crate) async fn session(&self, id: &str) -> Result<Session, ApiError> {
         let data = self
             .graphql(
-                "query Session($id: String!) { agentSession(id: $id) { id url issue { identifier } } }",
+                "query Session($id: String!) { agentSession(id: $id) { id url issue { id identifier } } }",
                 json!({ "id": id }),
             )
             .await?;
@@ -230,6 +234,10 @@ impl Api {
                 .map(str::to_owned),
             issue: session
                 .pointer("/issue/identifier")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+            issue_id: session
+                .pointer("/issue/id")
                 .and_then(Value::as_str)
                 .map(str::to_owned),
         })
@@ -282,29 +290,214 @@ impl Api {
             .map(drop)
     }
 
-    /// Adds `activity` to the session.
+    /// Adds `activity` to the session: passing when it is, and a question
+    /// that offers answers with the `select` signal.
     pub(crate) async fn create_activity(
         &self,
         session: &str,
         activity: &Activity,
     ) -> Result<(), ApiError> {
-        let (query, variables) = match activity.ephemeral {
-            true => (
-                "mutation CreateActivity($id: String!, $content: JSONObject!, $ephemeral: Boolean) { \
-                 agentActivityCreate(input: { agentSessionId: $id, content: $content, \
-                 ephemeral: $ephemeral }) { success } }",
-                json!({ "id": session, "content": activity.content.json(), "ephemeral": true }),
-            ),
-            false => (
-                "mutation CreateActivity($id: String!, $content: JSONObject!) { \
-                 agentActivityCreate(input: { agentSessionId: $id, content: $content }) \
-                 { success } }",
-                json!({ "id": session, "content": activity.content.json() }),
-            ),
-        };
-        self.mutate("agentActivityCreate", query, variables)
+        let mut declared = vec!["$id: String!", "$content: JSONObject!"];
+        let mut input = vec!["agentSessionId: $id", "content: $content"];
+        let mut variables = serde_json::Map::new();
+        variables.insert("id".to_owned(), Value::from(session));
+        variables.insert("content".to_owned(), activity.content.json());
+        if activity.ephemeral {
+            declared.push("$ephemeral: Boolean");
+            input.push("ephemeral: $ephemeral");
+            variables.insert("ephemeral".to_owned(), Value::Bool(true));
+        }
+        if let Some(metadata) = activity.content.select() {
+            declared.push("$signal: AgentActivitySignal, $signalMetadata: JSONObject");
+            input.push("signal: $signal, signalMetadata: $signalMetadata");
+            variables.insert("signal".to_owned(), Value::from("select"));
+            variables.insert("signalMetadata".to_owned(), metadata);
+        }
+        let query = format!(
+            "mutation CreateActivity({}) {{ agentActivityCreate(input: {{ {} }}) {{ success }} }}",
+            declared.join(", "),
+            input.join(", ")
+        );
+        self.mutate("agentActivityCreate", &query, Value::Object(variables))
             .await
             .map(drop)
+    }
+
+    /// One page of the session's prompts, newest first: those created at
+    /// `since` or later when given, after the cursor `after` when given.
+    pub(crate) async fn activities(
+        &self,
+        session: &str,
+        since: Option<&str>,
+        after: Option<&str>,
+    ) -> Result<Page, ApiError> {
+        let (declared, created) = match since {
+            Some(_) => (
+                ", $since: DateTimeOrDuration",
+                ", createdAt: { gte: $since }",
+            ),
+            None => ("", ""),
+        };
+        let query = format!(
+            "query Activities($id: String!, $after: String{declared}) {{ agentSession(id: $id) {{ \
+             activities(first: {PAGE}, after: $after, filter: {{ type: {{ eq: \"prompt\" }}{created} }}) \
+             {{ nodes {{ id createdAt signal user {{ name }} content {{ __typename \
+             ... on AgentActivityPromptContent {{ body }} }} }} pageInfo {{ hasNextPage endCursor }} }} \
+             }} }}"
+        );
+        let mut variables = json!({ "id": session, "after": after });
+        if let (Some(since), Some(variables)) = (since, variables.as_object_mut()) {
+            variables.insert("since".to_owned(), Value::from(since));
+        }
+        let data = self.graphql(&query, variables).await?;
+        let Some(activities) = data.pointer("/agentSession/activities") else {
+            return Err(ApiError::Reply(
+                "the session's activities are missing".to_owned(),
+            ));
+        };
+        let text =
+            |value: &Value, at: &str| value.pointer(at).and_then(Value::as_str).map(str::to_owned);
+        let nodes = activities
+            .get("nodes")
+            .and_then(Value::as_array)
+            .map(Vec::as_slice)
+            .unwrap_or_default();
+        Ok(Page {
+            activities: nodes
+                .iter()
+                .filter_map(|node| {
+                    let prompt = text(node, "/content/__typename").as_deref()
+                        == Some("AgentActivityPromptContent");
+                    Some(Seen {
+                        id: text(node, "/id")?,
+                        created_at: text(node, "/createdAt")?,
+                        prompt: prompt.then(|| text(node, "/content/body").unwrap_or_default()),
+                        stop: text(node, "/signal").as_deref() == Some("stop"),
+                        by: text(node, "/user/name"),
+                    })
+                })
+                .collect(),
+            next: activities
+                .pointer("/pageInfo/hasNextPage")
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+                .then(|| text(activities, "/pageInfo/endCursor"))
+                .flatten(),
+        })
+    }
+
+    /// What claiming the issue `issue` (its id) needs: who the app is, the
+    /// issue's delegate and state, and its team's `started` states.
+    pub(crate) async fn issue_state(&self, issue: &str) -> Result<IssueState, ApiError> {
+        let data = self
+            .graphql(
+                "query Claim($id: String!) { viewer { id } issue(id: $id) { id delegate { id } \
+                 state { type } team { states(filter: { type: { eq: \"started\" } }) \
+                 { nodes { id position } } } } }",
+                json!({ "id": issue }),
+            )
+            .await?;
+        let Some(viewer) = data.pointer("/viewer/id").and_then(Value::as_str) else {
+            return Err(ApiError::Reply("the reply names no viewer".to_owned()));
+        };
+        let Some(found) = data.get("issue").filter(|issue| issue.is_object()) else {
+            return Err(ApiError::Reply(format!("no issue {issue}")));
+        };
+        let states = found
+            .pointer("/team/states/nodes")
+            .and_then(Value::as_array)
+            .map(Vec::as_slice)
+            .unwrap_or_default();
+        let started = states
+            .iter()
+            .filter_map(|state| {
+                let id = state.get("id").and_then(Value::as_str)?;
+                let position = state.get("position").and_then(Value::as_f64)?;
+                Some((id, position))
+            })
+            .min_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|(id, _)| id.to_owned());
+        Ok(IssueState {
+            viewer: viewer.to_owned(),
+            delegated: found.get("delegate").is_some_and(Value::is_object),
+            state: found
+                .pointer("/state/type")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+            started,
+        })
+    }
+
+    /// Updates the issue `issue` (its id) with `input`, an
+    /// `IssueUpdateInput`.
+    pub(crate) async fn update_issue(&self, issue: &str, input: Value) -> Result<(), ApiError> {
+        self.mutate(
+            "issueUpdate",
+            "mutation Claim($id: String!, $input: IssueUpdateInput!) { \
+             issueUpdate(id: $id, input: $input) { success } }",
+            json!({ "id": issue, "input": input }),
+        )
+        .await
+        .map(drop)
+    }
+}
+
+/// How many activities one page asks for.
+const PAGE: usize = 50;
+
+/// One page of a session's activities.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Page {
+    /// Its activities, newest first.
+    pub(crate) activities: Vec<Seen>,
+    /// The cursor of the next page, when there is one.
+    pub(crate) next: Option<String>,
+}
+
+/// One activity of a session, as far as the plugin reads it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Seen {
+    pub(crate) id: String,
+    /// When it was created, as Linear writes it (ISO 8601, UTC).
+    pub(crate) created_at: String,
+    /// A prompt's body; `None` for any other activity.
+    pub(crate) prompt: Option<String>,
+    /// Whether it has the `stop` signal.
+    pub(crate) stop: bool,
+    /// Its author's name.
+    pub(crate) by: Option<String>,
+}
+
+/// What claiming an issue needs to know.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct IssueState {
+    /// The app's own user id.
+    pub(crate) viewer: String,
+    /// Whether the issue has a delegate already.
+    pub(crate) delegated: bool,
+    /// The type of its state, such as `triage` or `started`.
+    pub(crate) state: Option<String>,
+    /// The team's `started` state with the lowest position.
+    pub(crate) started: Option<String>,
+}
+
+impl IssueState {
+    /// The `IssueUpdateInput` that claims the issue, or `None` when there is
+    /// nothing to change: the app as delegate when it has none, and the
+    /// first `started` state unless it is started, completed or canceled.
+    pub(crate) fn claim(&self) -> Option<Value> {
+        let mut input = serde_json::Map::new();
+        if !self.delegated {
+            input.insert("delegateId".to_owned(), Value::from(self.viewer.as_str()));
+        }
+        let moves = !matches!(
+            self.state.as_deref(),
+            Some("started" | "completed" | "canceled")
+        );
+        if let Some(started) = self.started.as_deref().filter(|_| moves) {
+            input.insert("stateId".to_owned(), Value::from(started));
+        }
+        (!input.is_empty()).then_some(Value::Object(input))
     }
 }
 

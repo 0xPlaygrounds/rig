@@ -13,6 +13,9 @@ pub(crate) const SESSION_ID: &str = "session-1";
 /// Its link.
 pub(crate) const SESSION_URL: &str = "https://linear.example/acme/issue/ENG-1/agent-session-1";
 
+/// The app's own user, as `viewer` names it.
+pub(crate) const APP_USER: &str = "app-user";
+
 /// One request as the stand-in got it.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Request {
@@ -176,7 +179,24 @@ pub(crate) fn linear(request: &Request) -> Reply {
         return (200, Vec::new(), token.to_string());
     }
     let query = request.query();
-    let data = if query.contains("issue(id:") {
+    let data = if query.contains("issueUpdate") {
+        json!({ "issueUpdate": { "success": true } })
+    } else if query.contains("query Claim") {
+        json!({
+            "viewer": { "id": APP_USER },
+            "issue": {
+                "id": "issue-uuid",
+                "delegate": null,
+                "state": { "type": "unstarted" },
+                "team": { "states": { "nodes": [
+                    { "id": "state-review", "position": 2.0 },
+                    { "id": "state-progress", "position": 1.0 },
+                ] } },
+            },
+        })
+    } else if query.contains("query Activities") {
+        activities(&[])
+    } else if query.contains("issue(id:") {
         json!({ "issue": {
             "id": "issue-uuid",
             "identifier": "ENG-1",
@@ -191,7 +211,7 @@ pub(crate) fn linear(request: &Request) -> Reply {
         json!({ "agentSession": {
             "id": SESSION_ID,
             "url": SESSION_URL,
-            "issue": { "identifier": "ENG-1" },
+            "issue": { "id": "issue-uuid", "identifier": "ENG-1" },
         } })
     } else if query.contains("agentSessionUpdate") {
         json!({ "agentSessionUpdate": { "success": true } })
@@ -204,5 +224,31 @@ pub(crate) fn linear(request: &Request) -> Reply {
             json!({ "errors": [{ "message": "unknown query" }] }).to_string(),
         );
     };
+    (200, Vec::new(), json!({ "data": data }).to_string())
+}
+
+/// The `data` of a read of the session's activities that finds `nodes`,
+/// with no page after.
+pub(crate) fn activities(nodes: &[Value]) -> Value {
+    json!({ "agentSession": { "activities": {
+        "nodes": nodes,
+        "pageInfo": { "hasNextPage": false, "endCursor": null },
+    } } })
+}
+
+/// A prompt activity as Linear reads it back: `id`, created at `at`, by
+/// `by`, saying `body`, a stop when `stop`.
+pub(crate) fn prompt(id: &str, at: &str, by: &str, body: &str, stop: bool) -> Value {
+    json!({
+        "id": id,
+        "createdAt": at,
+        "signal": if stop { json!("stop") } else { Value::Null },
+        "user": { "name": by },
+        "content": { "__typename": "AgentActivityPromptContent", "body": body },
+    })
+}
+
+/// A whole reply of `data`.
+pub(crate) fn reply(data: Value) -> Reply {
     (200, Vec::new(), json!({ "data": data }).to_string())
 }

@@ -28,8 +28,14 @@ const REDACTED: &str = "[REDACTED]";
 pub(crate) enum Content {
     /// A thought: a note, or reasoning.
     Thought(String),
-    /// A question to the people watching.
-    Elicitation(String),
+    /// A question to the people watching, with the answers offered to pick
+    /// from, if any.
+    Elicitation {
+        /// The question.
+        body: String,
+        /// The answers offered; none for a free answer.
+        options: Vec<String>,
+    },
     /// The run's result.
     Response(String),
     /// Why the run failed.
@@ -50,7 +56,7 @@ impl Content {
     pub(crate) fn json(&self) -> Value {
         match self {
             Self::Thought(body) => json!({ "type": "thought", "body": body }),
-            Self::Elicitation(body) => json!({ "type": "elicitation", "body": body }),
+            Self::Elicitation { body, .. } => json!({ "type": "elicitation", "body": body }),
             Self::Response(body) => json!({ "type": "response", "body": body }),
             Self::Error(body) => json!({ "type": "error", "body": body }),
             Self::Action {
@@ -71,12 +77,27 @@ impl Content {
         }
     }
 
+    /// The `signalMetadata` of a question that offers answers, which goes
+    /// with the `select` signal: each option as its label and value.
+    pub(crate) fn select(&self) -> Option<Value> {
+        match self {
+            Self::Elicitation { options, .. } if !options.is_empty() => {
+                let options: Vec<Value> = options
+                    .iter()
+                    .map(|option| json!({ "label": option, "value": option }))
+                    .collect();
+                Some(json!({ "options": options }))
+            }
+            _ => None,
+        }
+    }
+
     /// Whether this ends the run on Linear's side: a response, an error or
     /// a question.
     pub(crate) fn ends(&self) -> bool {
         matches!(
             self,
-            Self::Response(_) | Self::Error(_) | Self::Elicitation(_)
+            Self::Response(_) | Self::Error(_) | Self::Elicitation { .. }
         )
     }
 }
@@ -180,7 +201,10 @@ impl Redactor {
     pub(crate) fn activity(&self, activity: Activity) -> Activity {
         let content = match activity.content {
             Content::Thought(body) => Content::Thought(self.text(&body)),
-            Content::Elicitation(body) => Content::Elicitation(self.text(&body)),
+            Content::Elicitation { body, options } => Content::Elicitation {
+                body: self.text(&body),
+                options: options.iter().map(|option| self.text(option)).collect(),
+            },
             Content::Response(body) => Content::Response(self.text(&body)),
             Content::Error(body) => Content::Error(self.text(&body)),
             Content::Action {

@@ -68,7 +68,11 @@ fn each_content_variant_is_the_json_linear_takes() {
         json!({ "type": "thought", "body": "hm" })
     );
     assert_eq!(
-        Content::Elicitation("which?".into()).json(),
+        Content::Elicitation {
+            body: "which?".into(),
+            options: vec!["a".into()],
+        }
+        .json(),
         json!({ "type": "elicitation", "body": "which?" })
     );
     assert_eq!(
@@ -109,10 +113,33 @@ fn an_action_carries_its_result_only_when_it_has_one() {
 }
 
 #[test]
+fn only_a_question_with_options_selects_each_as_its_label_and_value() {
+    let question = |options: &[&str]| Content::Elicitation {
+        body: "Which database?".into(),
+        options: options.iter().map(|option| (*option).to_owned()).collect(),
+    };
+    assert_eq!(
+        question(&["sqlite", "postgres"]).select(),
+        Some(json!({ "options": [
+            { "label": "sqlite", "value": "sqlite" },
+            { "label": "postgres", "value": "postgres" },
+        ] }))
+    );
+    assert_eq!(question(&[]).select(), None);
+    assert_eq!(Content::Response("done".into()).select(), None);
+}
+
+#[test]
 fn only_a_response_an_error_or_a_question_ends_the_run() {
     assert!(Content::Response(String::new()).ends());
     assert!(Content::Error(String::new()).ends());
-    assert!(Content::Elicitation(String::new()).ends());
+    assert!(
+        Content::Elicitation {
+            body: String::new(),
+            options: Vec::new(),
+        }
+        .ends()
+    );
     assert!(!Content::Thought(String::new()).ends());
     assert!(
         !Content::Action {

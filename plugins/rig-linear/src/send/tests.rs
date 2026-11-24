@@ -1,9 +1,12 @@
 use std::time::Duration;
 
-use serde_json::json;
+use serde_json::{Value, json};
 
 use super::*;
-use crate::tests::stand_in::{Request, SESSION_ID, SESSION_URL, StandIn};
+use crate::api::IssueState;
+use crate::tests::stand_in::{
+    self, APP_USER, Request, SESSION_ID, SESSION_URL, StandIn, activities, prompt,
+};
 
 /// The query of a lasting activity, as sent.
 const ACTIVITY: &str = "mutation CreateActivity($id: String!, $content: JSONObject!) { \
@@ -100,6 +103,8 @@ fn config(url: &str, credentials: Credentials, target: Target) -> Config {
         plan: None,
         heartbeat: Duration::from_secs(3600),
         spacing: Duration::from_millis(5),
+        poll: None,
+        claim: false,
     }
 }
 
@@ -110,7 +115,7 @@ fn run_with(config: Config, jobs: Vec<Job>) -> Option<Started> {
         return None;
     };
     let (queue, queued) = async_channel::unbounded();
-    let (tell, started) = async_channel::unbounded();
+    let (tell, told) = async_channel::unbounded();
     for job in jobs {
         queue.try_send(job).ok();
     }
@@ -119,7 +124,10 @@ fn run_with(config: Config, jobs: Vec<Job>) -> Option<Started> {
     let redactor = Redactor::new(Vec::new());
     runtime.spawn(run(config, rig_reqwest::shared(), redactor, queued, tell));
     closed.recv_timeout(Duration::from_secs(20)).ok()?;
-    started.try_recv().ok()
+    match told.try_recv().ok()? {
+        Told::Started(started) => Some(started),
+        _ => None,
+    }
 }
 
 fn activity(content: serde_json::Value) -> serde_json::Value {
@@ -160,6 +168,7 @@ fn an_issue_gets_a_session_then_the_plan_then_the_coalesced_activities() {
                       { issueId: $issueId }) { success agentSession { id url } } }",
             "variables": { "issueId": "issue-uuid" },
         }),
+        activity(json!({ "type": "thought", "body": WORKING })),
         json!({
             "query": "mutation UpdateSession($id: String!, $plan: JSONObject) { \
                       agentSessionUpdate(id: $id, input: { plan: $plan }) { success } }",
@@ -202,7 +211,7 @@ fn client_credentials_are_exchanged_once_for_a_bearer_token() {
         .iter()
         .map(|request| request.path.as_str())
         .collect();
-    assert_eq!(paths, ["/oauth/token", "/graphql", "/graphql"]);
+    assert_eq!(paths, ["/oauth/token", "/graphql", "/graphql", "/graphql"]);
     let token = requests.first().cloned().unwrap_or_default();
     assert_eq!(
         token.body,
@@ -222,12 +231,16 @@ fn client_credentials_are_exchanged_once_for_a_bearer_token() {
     assert_eq!(
         bodies.get(1),
         Some(&json!({
-            "query": "query Session($id: String!) { agentSession(id: $id) { id url issue { identifier } } }",
+            "query": "query Session($id: String!) { agentSession(id: $id) { id url issue { id identifier } } }",
             "variables": { "id": SESSION_ID },
         }))
     );
     assert_eq!(
         bodies.get(2),
+        Some(&activity(json!({ "type": "thought", "body": WORKING })))
+    );
+    assert_eq!(
+        bodies.get(3),
         Some(&activity(json!({ "type": "thought", "body": "Hi." })))
     );
 }
@@ -244,7 +257,7 @@ fn adds(request: &Request, body: &str) -> bool {
 #[test]
 fn a_rate_limited_request_is_sent_again_after_its_retry_after() {
     let linear = StandIn::scripted(|request, index| {
-        (adds(request, "first") && index == 1).then(|| {
+        (adds(request, "first") && index == 2).then(|| {
             let wait = vec![("retry-after", "0".to_owned())];
             (429, wait, "{}".to_owned())
         })
@@ -258,7 +271,7 @@ fn a_rate_limited_request_is_sent_again_after_its_retry_after() {
     let requests = linear.requests();
     let notes: Vec<bool> = requests
         .iter()
-        .skip(1)
+        .skip(2)
         .map(|request| adds(request, "first"))
         .collect();
     assert_eq!(notes, [true, true, false], "{requests:?}");
@@ -288,7 +301,7 @@ fn a_failed_request_is_dropped_and_the_next_one_still_goes() {
     let bodies: Vec<bool> = linear
         .requests()
         .iter()
-        .skip(1)
+        .skip(2)
         .map(|request| adds(request, "second"))
         .collect();
     assert_eq!(bodies, [false, true]);
@@ -346,7 +359,7 @@ fn a_quiet_session_gets_a_heartbeat_naming_the_last_action() {
     closed.recv_timeout(Duration::from_secs(10)).ok();
     let bodies = linear.bodies();
     let beat = passing(json!({ "type": "thought", "body": "Still working… Last: Ran cargo test" }));
-    assert_eq!(bodies.get(2), Some(&beat), "{bodies:?}");
+    assert_eq!(bodies.get(3), Some(&beat), "{bodies:?}");
 }
 
 #[test]
@@ -376,7 +389,7 @@ fn no_heartbeat_follows_the_end_of_the_run() {
     let (done, closed) = std::sync::mpsc::channel();
     queue.try_send(Job::Close(done)).ok();
     closed.recv_timeout(Duration::from_secs(10)).ok();
-    assert_eq!(linear.requests().len(), 2);
+    assert_eq!(linear.requests().len(), 3);
 }
 
 #[test]
@@ -390,7 +403,7 @@ fn what_is_sent_is_redacted_and_the_token_never_shows() {
     );
     let bodies = linear.bodies();
     assert_eq!(
-        bodies.get(1),
+        bodies.get(2),
         Some(&activity(
             json!({ "type": "thought", "body": "the key is [REDACTED]" })
         ))
@@ -409,10 +422,343 @@ fn the_plan_is_redacted_too() {
     run_with(config, Vec::new());
     let plan = linear
         .bodies()
-        .get(1)
+        .get(2)
         .and_then(|body| body.pointer("/variables/plan").cloned());
     assert_eq!(
         plan,
         Some(json!([{ "content": "use [REDACTED]", "status": "pending" }]))
+    );
+}
+
+/// Runs the task on `config` for `for_how_long`, then closes it: what it
+/// told after it started.
+fn run_for(config: Config, for_how_long: Duration) -> Vec<Told> {
+    let Ok(runtime) = tokio::runtime::Runtime::new() else {
+        return Vec::new();
+    };
+    let (queue, queued) = async_channel::unbounded();
+    let (tell, told) = async_channel::unbounded();
+    runtime.spawn(run(
+        config,
+        rig_reqwest::shared(),
+        Redactor::default(),
+        queued,
+        tell,
+    ));
+    std::thread::sleep(for_how_long);
+    let (done, closed) = std::sync::mpsc::channel();
+    queue.try_send(Job::Close(done)).ok();
+    closed.recv_timeout(Duration::from_secs(10)).ok();
+    std::iter::from_fn(|| told.try_recv().ok())
+        .filter(|news| !matches!(news, Told::Started(_)))
+        .collect()
+}
+
+/// Whether `request` reads the session's prompts.
+fn reads(request: &Request) -> bool {
+    request.query().starts_with("query Activities")
+}
+
+#[test]
+fn only_prompts_after_the_run_attached_are_told_and_a_stop_ends_the_reading() {
+    let read = std::sync::atomic::AtomicUsize::new(0);
+    let linear = StandIn::scripted(move |request, _| {
+        if !reads(request) {
+            return None;
+        }
+        let first = prompt(
+            "p1",
+            "2026-01-01T00:00:00.000Z",
+            "Ana",
+            "Fix the bug.",
+            false,
+        );
+        let nodes = match read.fetch_add(1, std::sync::atomic::Ordering::SeqCst) {
+            // Linear's own prompt, there as the run attached.
+            0 => vec![first],
+            // Newest first, with the one already read.
+            1 => vec![
+                prompt(
+                    "p3",
+                    "2026-01-01T00:02:00.000Z",
+                    "Ana",
+                    "And add a test.",
+                    false,
+                ),
+                prompt(
+                    "p2",
+                    "2026-01-01T00:01:00.000Z",
+                    "Ana",
+                    "Use sqlite.",
+                    false,
+                ),
+                first,
+            ],
+            2 => vec![prompt("p4", "2026-01-01T00:03:00.000Z", "Ana", "", true)],
+            _ => vec![prompt(
+                "p5",
+                "2026-01-01T00:04:00.000Z",
+                "Ana",
+                "Too late.",
+                false,
+            )],
+        };
+        Some(stand_in::reply(activities(&nodes)))
+    });
+    let mut config = config(
+        &linear.url,
+        Credentials::Token("lin_api_key".to_owned()),
+        Target::Session(SESSION_ID.to_owned()),
+    );
+    config.poll = Some(Duration::from_millis(100));
+    let told = run_for(config, Duration::from_millis(1500));
+    let by = || Some("Ana".to_owned());
+    assert_eq!(
+        told,
+        [
+            Told::Prompt {
+                body: "Use sqlite.".to_owned(),
+                by: by(),
+            },
+            Told::Prompt {
+                body: "And add a test.".to_owned(),
+                by: by(),
+            },
+            Told::Stop { by: by() },
+        ]
+    );
+    let reading: Vec<Value> = linear
+        .requests()
+        .iter()
+        .filter(|request| reads(request))
+        .map(|request| request.json())
+        .collect();
+    assert_eq!(reading.len(), 3, "{reading:#?}");
+    let since = |at: usize| {
+        reading
+            .get(at)
+            .and_then(|body| body.pointer("/variables/since").cloned())
+    };
+    assert_eq!(since(0), None);
+    assert_eq!(since(1), Some(json!("2026-01-01T00:00:00.000Z")));
+    assert_eq!(since(2), Some(json!("2026-01-01T00:02:00.000Z")));
+    let query = reading
+        .get(1)
+        .and_then(|body| body.get("query").cloned())
+        .unwrap_or_default();
+    assert_eq!(
+        query,
+        json!(
+            "query Activities($id: String!, $after: String, $since: DateTimeOrDuration) { \
+             agentSession(id: $id) { activities(first: 50, after: $after, filter: { type: { eq: \
+             \"prompt\" }, createdAt: { gte: $since } }) { nodes { id createdAt signal user { \
+             name } content { __typename ... on AgentActivityPromptContent { body } } } pageInfo { \
+             hasNextPage endCursor } } } }"
+        )
+    );
+}
+
+#[test]
+fn a_failed_first_read_is_tried_again_before_any_prompt_counts() {
+    let read = std::sync::atomic::AtomicUsize::new(0);
+    let linear = StandIn::scripted(move |request, _| {
+        if !reads(request) {
+            return None;
+        }
+        let old = prompt(
+            "p1",
+            "2026-01-01T00:00:00.000Z",
+            "Ana",
+            "Fix the bug.",
+            false,
+        );
+        Some(
+            match read.fetch_add(1, std::sync::atomic::Ordering::SeqCst) {
+                0 => (500, Vec::new(), "{}".to_owned()),
+                _ => stand_in::reply(activities(&[old])),
+            },
+        )
+    });
+    let mut config = config(
+        &linear.url,
+        Credentials::Token("lin_api_key".to_owned()),
+        Target::Session(SESSION_ID.to_owned()),
+    );
+    config.poll = Some(Duration::from_millis(100));
+    assert_eq!(run_for(config, Duration::from_millis(800)), []);
+}
+
+#[test]
+fn the_first_thought_goes_before_the_plan_and_no_prompt_is_read_when_polling_is_off() {
+    let linear = StandIn::start();
+    let mut config = config(
+        &linear.url,
+        Credentials::Token("lin_api_key".to_owned()),
+        Target::Session(SESSION_ID.to_owned()),
+    );
+    config.plan = Some(json!([{ "content": "Fix it", "status": "pending" }]));
+    run_with(config, Vec::new());
+    let bodies = linear.bodies();
+    assert_eq!(
+        bodies.get(1),
+        Some(&activity(json!({ "type": "thought", "body": WORKING })))
+    );
+    assert!(
+        bodies
+            .get(2)
+            .is_some_and(|body| body.pointer("/variables/plan").is_some())
+    );
+    assert!(!linear.requests().iter().any(reads));
+}
+
+/// The `issueUpdate` inputs sent.
+fn updates(linear: &StandIn) -> Vec<Value> {
+    linear
+        .bodies()
+        .into_iter()
+        .filter(|body| {
+            body.get("query")
+                .and_then(Value::as_str)
+                .is_some_and(|query| query.contains("issueUpdate"))
+        })
+        .filter_map(|body| body.get("variables").cloned())
+        .collect()
+}
+
+#[test]
+fn a_claimed_issue_is_delegated_and_moved_to_its_first_started_state() {
+    let linear = StandIn::start();
+    let mut config = config(
+        &linear.url,
+        Credentials::Token("lin_api_key".to_owned()),
+        Target::Issue("ENG-1".to_owned()),
+    );
+    config.claim = true;
+    run_with(config, vec![note("Looking.")]);
+    assert_eq!(
+        updates(&linear),
+        [json!({
+            "id": "issue-uuid",
+            "input": { "delegateId": APP_USER, "stateId": "state-progress" },
+        })]
+    );
+    let claim = linear.bodies().into_iter().find(|body| {
+        body.get("query")
+            .and_then(Value::as_str)
+            .is_some_and(|query| query.starts_with("query Claim"))
+    });
+    assert_eq!(
+        claim,
+        Some(json!({
+            "query": "query Claim($id: String!) { viewer { id } issue(id: $id) { id delegate { id } \
+                      state { type } team { states(filter: { type: { eq: \"started\" } }) { nodes \
+                      { id position } } } } }",
+            "variables": { "id": "issue-uuid" },
+        }))
+    );
+    assert!(
+        linear
+            .requests()
+            .iter()
+            .any(|request| adds(request, "Looking."))
+    );
+}
+
+#[test]
+fn an_issue_is_claimed_only_when_asked_and_only_as_far_as_it_needs() {
+    let linear = StandIn::start();
+    let config = config(
+        &linear.url,
+        Credentials::Token("lin_api_key".to_owned()),
+        Target::Issue("ENG-1".to_owned()),
+    );
+    run_with(config, Vec::new());
+    assert_eq!(updates(&linear), Vec::<Value>::new());
+    assert!(
+        !linear
+            .requests()
+            .iter()
+            .any(|request| request.query().starts_with("query Claim"))
+    );
+    let state = |delegated: bool, state: &str| IssueState {
+        viewer: APP_USER.to_owned(),
+        delegated,
+        state: Some(state.to_owned()),
+        started: Some("state-progress".to_owned()),
+    };
+    assert_eq!(state(true, "started").claim(), None);
+    assert_eq!(state(true, "completed").claim(), None);
+    assert_eq!(state(true, "canceled").claim(), None);
+    assert_eq!(
+        state(false, "started").claim(),
+        Some(json!({ "delegateId": APP_USER }))
+    );
+    assert_eq!(
+        state(true, "triage").claim(),
+        Some(json!({ "stateId": "state-progress" }))
+    );
+    let no_started = IssueState {
+        started: None,
+        ..state(true, "backlog")
+    };
+    assert_eq!(no_started.claim(), None);
+}
+
+#[test]
+fn a_session_attached_to_claims_its_issue_and_a_failed_claim_stops_nothing() {
+    let linear = StandIn::scripted(|request, _| {
+        request
+            .query()
+            .contains("issueUpdate")
+            .then(|| (500, Vec::new(), "{}".to_owned()))
+    });
+    let mut config = config(
+        &linear.url,
+        Credentials::Token("lin_api_key".to_owned()),
+        Target::Session(SESSION_ID.to_owned()),
+    );
+    config.claim = true;
+    run_with(config, vec![note("After the claim.")]);
+    assert_eq!(updates(&linear).len(), 1);
+    assert!(
+        linear
+            .requests()
+            .last()
+            .is_some_and(|request| adds(request, "After the claim."))
+    );
+}
+
+#[test]
+fn a_question_with_options_goes_with_the_select_signal() {
+    let linear = StandIn::start();
+    let question = Activity::end(Content::Elicitation {
+        body: "Which database?".to_owned(),
+        options: vec!["sqlite".to_owned(), "postgres".to_owned()],
+    });
+    run_with(
+        config(
+            &linear.url,
+            Credentials::Token("lin_api_key".to_owned()),
+            Target::Session(SESSION_ID.to_owned()),
+        ),
+        vec![Job::Activity(question)],
+    );
+    assert_eq!(
+        linear.bodies().last(),
+        Some(&json!({
+            "query": "mutation CreateActivity($id: String!, $content: JSONObject!, $signal: \
+                      AgentActivitySignal, $signalMetadata: JSONObject) { agentActivityCreate(input: \
+                      { agentSessionId: $id, content: $content, signal: $signal, signalMetadata: \
+                      $signalMetadata }) { success } }",
+            "variables": {
+                "id": SESSION_ID,
+                "content": { "type": "elicitation", "body": "Which database?" },
+                "signal": "select",
+                "signalMetadata": { "options": [
+                    { "label": "sqlite", "value": "sqlite" },
+                    { "label": "postgres", "value": "postgres" },
+                ] },
+            },
+        }))
     );
 }
