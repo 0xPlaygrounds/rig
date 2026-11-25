@@ -217,7 +217,7 @@ fn without_a_target_it_asks_for_no_secret() {
 }
 
 #[test]
-fn with_a_target_but_no_token_it_asks_for_secrets_but_adds_no_tool_state_or_section() {
+fn with_a_target_but_no_token_it_asks_for_no_secret_and_adds_no_tool_state_or_section() {
     let mut app = App::new();
     app.insert_resource(invoked(&[(ISSUE_FLAG, "ENG-1")]))
         .insert_resource(Secrets::default())
@@ -228,10 +228,7 @@ fn with_a_target_but_no_token_it_asks_for_secrets_but_adds_no_tool_state_or_sect
     let mut flags = app.world_mut().query::<&Flag>();
     let names: Vec<&str> = flags.iter(app.world()).map(|flag| flag.name).collect();
     assert_eq!(names, [ISSUE_FLAG, SESSION_FLAG, CLAIM_FLAG]);
-    assert_eq!(
-        secrets_asked(&mut app),
-        [TOKEN_SECRET, CLIENT_ID_SECRET, CLIENT_SECRET_SECRET]
-    );
+    assert_eq!(secrets_asked(&mut app), Vec::<&str>::new());
     let mut tools = app.world_mut().query::<&ToolDef>();
     assert_eq!(tools.iter(app.world()).count(), 0);
     let mut sections = app.world_mut().query::<&PromptSection>();
@@ -239,19 +236,44 @@ fn with_a_target_but_no_token_it_asks_for_secrets_but_adds_no_tool_state_or_sect
 }
 
 #[test]
+fn both_supplied_credentials_are_redacted_regardless_of_selected_mode() {
+    let issue = Target::Issue("ENG-1".to_owned());
+    let both = Secrets::from_iter([
+        (TOKEN_SECRET, "lin_api_token_val"),
+        (CLIENT_ID_SECRET, "client-id"),
+        (CLIENT_SECRET_SECRET, "client_secret_val"),
+    ]);
+    let setup = configure(issue, false, Some(&both), None, &no_env);
+    assert!(setup.is_some());
+    if let Some(setup) = setup {
+        assert_eq!(
+            setup.config.credentials,
+            Credentials::Token("lin_api_token_val".to_owned())
+        );
+        assert_eq!(
+            setup
+                .redactor
+                .text("tok=lin_api_token_val sec=client_secret_val"),
+            "tok=[REDACTED] sec=[REDACTED]"
+        );
+    }
+}
+
+#[test]
 fn a_reported_outcome_maps_to_its_activity_and_plan_end() {
     let summary = || "Summary.".to_owned();
     let options = ["a".to_owned()];
+    let redactor = Redactor::default();
     assert_eq!(
-        outcome(OutcomeStatus::Done, summary(), &options),
+        outcome(OutcomeStatus::Done, summary(), &options, &redactor),
         (Content::Response(summary()), End::Done)
     );
     assert_eq!(
-        outcome(OutcomeStatus::GaveUp, summary(), &options),
+        outcome(OutcomeStatus::GaveUp, summary(), &options, &redactor),
         (Content::Error(summary()), End::Failed)
     );
     assert_eq!(
-        outcome(OutcomeStatus::NeedsInput, summary(), &[]),
+        outcome(OutcomeStatus::NeedsInput, summary(), &[], &redactor),
         (
             Content::Elicitation {
                 body: summary(),
@@ -269,10 +291,12 @@ fn a_reported_outcome_maps_to_its_activity_and_plan_end() {
 fn a_question_offers_its_options_trimmed_without_blanks_or_repeats() {
     let options = [" sqlite ", "", "postgres", "sqlite", "  "].map(str::to_owned);
     let long = "x".repeat(300);
+    let redactor = Redactor::default();
     let (content, _) = outcome(
         OutcomeStatus::NeedsInput,
         "Which?".to_owned(),
         &[options.as_slice(), &[long]].concat(),
+        &redactor,
     );
     let options = match content {
         Content::Elicitation { options, .. } => options,
@@ -289,7 +313,12 @@ fn a_question_offers_its_options_trimmed_without_blanks_or_repeats() {
             .is_some_and(|long| long.chars().count() == 256)
     );
     let many: Vec<String> = (0..150).map(|at| at.to_string()).collect();
-    let (content, _) = outcome(OutcomeStatus::NeedsInput, "Which?".to_owned(), &many);
+    let (content, _) = outcome(
+        OutcomeStatus::NeedsInput,
+        "Which?".to_owned(),
+        &many,
+        &redactor,
+    );
     assert!(matches!(content, Content::Elicitation { options, .. } if options.len() == 100));
 }
 
@@ -339,12 +368,18 @@ fn without_a_report_the_end_is_the_stop_the_failure_or_the_last_reply() {
 }
 
 #[test]
-fn the_prompt_section_names_the_issue_and_the_tool() {
-    let text = section(Some("ENG-1"));
+fn the_prompt_section_names_the_issue_and_mentions_the_tool_only_when_allowed() {
+    let text = section(Some("ENG-1"), true);
     assert!(text.contains("Linear issue ENG-1"), "{text}");
     assert!(text.contains(OUTCOME_TOOL), "{text}");
     assert!(text.contains("do not post a comment"), "{text}");
-    assert!(section(None).contains("a Linear issue"));
+    assert!(section(None, true).contains("a Linear issue"));
+    let without_tool = section(Some("ENG-1"), false);
+    assert!(
+        without_tool.contains("Linear issue ENG-1"),
+        "{without_tool}"
+    );
+    assert!(!without_tool.contains(OUTCOME_TOOL), "{without_tool}");
 }
 
 /// An active app on the stand-in at `url`, for the issue `ENG-1`, with a
@@ -536,12 +571,17 @@ fn a_run_shows_its_plan_notes_calls_links_and_last_reply() {
         ],
     );
     wait_until_started(&mut app);
-    let mut sections = app.world_mut().query::<&PromptSection>();
-    let texts: Vec<String> = sections
+    let main = main_agent_of(&mut app);
+    let mut sections = app.world_mut().query::<(&PromptSection, &SectionOf)>();
+    let owned: Vec<(String, Entity)> = sections
         .iter(app.world())
-        .map(|section| section.text.clone())
+        .map(|(section, owner)| (section.text.clone(), owner.0))
         .collect();
-    assert_eq!(texts, [section(Some("ENG-1"))]);
+    assert_eq!(
+        owned,
+        main.map(|main| vec![(section(Some("ENG-1"), true), main)])
+            .unwrap_or_default()
+    );
     let mut tools = app.world_mut().query::<&ToolDef>();
     let names: Vec<String> = tools
         .iter(app.world())
@@ -904,5 +944,103 @@ fn a_stop_from_linear_exits_as_a_signal_and_posts_only_the_stop() {
         sent.get(sent.len().saturating_sub(2)..),
         Some([canceled, stopped].as_slice()),
         "{sent:#?}"
+    );
+}
+
+#[test]
+fn the_prompt_section_is_scoped_to_main_and_omits_outcome_tool_when_disallowed() {
+    let Ok(runtime) = tokio::runtime::Runtime::new() else {
+        return;
+    };
+    let linear = StandIn::start();
+    let mut app = active_app(&linear.url, "", &runtime);
+    if let Some(main) = main_agent_of(&mut app) {
+        app.world_mut()
+            .entity_mut(main)
+            .insert(ToolAccess::only(["read"]));
+    }
+    wait_until_started(&mut app);
+    let main = main_agent_of(&mut app);
+    let mut sections = app
+        .world_mut()
+        .query::<(&PromptSection, Option<&SectionOf>)>();
+    let found: Vec<(String, Option<Entity>)> = sections
+        .iter(app.world())
+        .map(|(section, owner)| (section.text.clone(), owner.map(|owner| owner.0)))
+        .collect();
+    assert_eq!(found, vec![(section(Some("ENG-1"), false), main)]);
+    app.world_mut().write_message(AppExit::Success);
+    app.update();
+}
+
+#[test]
+fn a_reload_reuses_the_saved_linear_session_and_a_switch_ends_the_outgoing_one() {
+    let Ok(runtime) = tokio::runtime::Runtime::new() else {
+        return;
+    };
+    let linear = StandIn::start();
+    let mut app = active_app(&linear.url, "", &runtime);
+    wait_until_started(&mut app);
+    let saved = app
+        .world()
+        .get_resource::<SavedLinearSession>()
+        .cloned()
+        .unwrap_or_default();
+    assert_eq!(
+        saved,
+        SavedLinearSession {
+            session_id: Some("session-1".to_owned()),
+            issue: Some("ENG-1".to_owned()),
+        }
+    );
+    // Reload skips posting a final activity.
+    app.insert_resource(ExitReason::Reload);
+    app.world_mut().write_message(AppExit::Success);
+    app.update();
+    assert!(
+        !linear.bodies().iter().any(|body| matches!(
+            body.pointer("/variables/content/type")
+                .and_then(Value::as_str),
+            Some("response" | "error" | "elicitation")
+        )),
+        "{:#?}",
+        linear.bodies()
+    );
+
+    // Next process with the restored SavedLinearSession reattaches instead of creating a new one.
+    let reloaded_server = StandIn::start();
+    let mut reloaded = active_app(&reloaded_server.url, "", &runtime);
+    reloaded.insert_resource(saved);
+    wait_until_started(&mut reloaded);
+    assert!(
+        !reloaded_server
+            .requests()
+            .iter()
+            .any(|req| req.query().contains("agentSessionCreateOnIssue")),
+        "{:#?}",
+        reloaded_server.bodies()
+    );
+    assert!(
+        reloaded_server
+            .requests()
+            .iter()
+            .any(|req| req.query().starts_with("query Session")),
+        "{:#?}",
+        reloaded_server.bodies()
+    );
+    // Switching sessions ends the outgoing Linear session.
+    recorded(
+        &mut reloaded,
+        vec![reply(1, "main", vec![AssistantContent::text("Done here.")])],
+    );
+    reloaded.insert_resource(ExitReason::Switch(None));
+    reloaded.world_mut().write_message(AppExit::Success);
+    reloaded.update();
+    assert_eq!(
+        reloaded_server
+            .bodies()
+            .last()
+            .and_then(|body| body.pointer("/variables/content").cloned()),
+        Some(json!({ "type": "response", "body": "Done here." }))
     );
 }

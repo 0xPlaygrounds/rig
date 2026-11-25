@@ -255,7 +255,7 @@ fn a_reply_becomes_a_passing_thought_for_reasoning_then_a_note_for_text() {
         calls_tools: false,
     };
     assert_eq!(
-        reply.activities(),
+        reply.activities(&Redactor::default()),
         vec![
             Activity::passing("thinking".into()),
             Activity::note("answer".into()),
@@ -265,7 +265,10 @@ fn a_reply_becomes_a_passing_thought_for_reasoning_then_a_note_for_text() {
 
 #[test]
 fn an_empty_reply_becomes_no_activity() {
-    assert_eq!(Reply::default().activities(), Vec::<Activity>::new());
+    assert_eq!(
+        Reply::default().activities(&Redactor::default()),
+        Vec::<Activity>::new()
+    );
 }
 
 #[test]
@@ -275,14 +278,17 @@ fn a_long_reply_text_is_cut_to_two_thousand_characters() {
         ..Reply::default()
     };
     let expected = format!("{}…", "a".repeat(2000));
-    assert_eq!(reply.activities(), vec![Activity::note(expected)]);
+    assert_eq!(
+        reply.activities(&Redactor::default()),
+        vec![Activity::note(expected)]
+    );
 }
 
 #[test]
 fn a_shell_call_is_ran_with_its_command() {
     let outcome = ok("");
     assert_eq!(
-        call("shell", r#"{"command":"cargo test"}"#, &outcome).activity(),
+        call("shell", r#"{"command":"cargo test"}"#, &outcome).activity(&Redactor::default()),
         action("Ran", "cargo test", None)
     );
 }
@@ -291,7 +297,7 @@ fn a_shell_call_is_ran_with_its_command() {
 fn a_read_call_is_read_with_its_path() {
     let outcome = ok("");
     assert_eq!(
-        call("read", r#"{"path":"/a/b.rs"}"#, &outcome).activity(),
+        call("read", r#"{"path":"/a/b.rs"}"#, &outcome).activity(&Redactor::default()),
         action("Read", "/a/b.rs", None)
     );
 }
@@ -301,7 +307,8 @@ fn a_write_or_edit_call_is_edited_with_its_path() {
     let outcome = ok("");
     for name in ["write", "edit"] {
         assert_eq!(
-            call(name, r#"{"path":"/a/b.rs","content":"x"}"#, &outcome).activity(),
+            call(name, r#"{"path":"/a/b.rs","content":"x"}"#, &outcome)
+                .activity(&Redactor::default()),
             action("Edited", "/a/b.rs", None)
         );
     }
@@ -311,11 +318,12 @@ fn a_write_or_edit_call_is_edited_with_its_path() {
 fn a_search_call_is_searched_with_its_pattern_and_path() {
     let outcome = ok("");
     assert_eq!(
-        call("search", r#"{"pattern":"fn main","path":"src"}"#, &outcome).activity(),
+        call("search", r#"{"pattern":"fn main","path":"src"}"#, &outcome)
+            .activity(&Redactor::default()),
         action("Searched", "fn main in src", None)
     );
     assert_eq!(
-        call("search", r#"{"pattern":"fn main"}"#, &outcome).activity(),
+        call("search", r#"{"pattern":"fn main"}"#, &outcome).activity(&Redactor::default()),
         action("Searched", "fn main", None)
     );
 }
@@ -324,7 +332,7 @@ fn a_search_call_is_searched_with_its_pattern_and_path() {
 fn a_task_call_is_delegated_with_its_compact_arguments() {
     let outcome = ok("");
     assert_eq!(
-        call("task", "{ \"prompt\": \"do it\" }", &outcome).activity(),
+        call("task", "{ \"prompt\": \"do it\" }", &outcome).activity(&Redactor::default()),
         action("Delegated", r#"{"prompt":"do it"}"#, None)
     );
 }
@@ -333,7 +341,8 @@ fn a_task_call_is_delegated_with_its_compact_arguments() {
 fn an_mcp_tool_call_is_called_with_the_tool_name() {
     let outcome = ok("");
     assert_eq!(
-        call("github__create_issue", r#"{ "title": "t" }"#, &outcome).activity(),
+        call("github__create_issue", r#"{ "title": "t" }"#, &outcome)
+            .activity(&Redactor::default()),
         action("Called create_issue", r#"{"title":"t"}"#, None)
     );
 }
@@ -342,15 +351,15 @@ fn an_mcp_tool_call_is_called_with_the_tool_name() {
 fn another_tool_call_is_its_name_with_compact_arguments() {
     let outcome = ok("");
     assert_eq!(
-        call("custom", r#"{ "a": 1 }"#, &outcome).activity(),
+        call("custom", r#"{ "a": 1 }"#, &outcome).activity(&Redactor::default()),
         action("custom", r#"{"a":1}"#, None)
     );
     assert_eq!(
-        call("custom", "{}", &outcome).activity(),
+        call("custom", "{}", &outcome).activity(&Redactor::default()),
         action("custom", "", None)
     );
     assert_eq!(
-        call("custom", "not json", &outcome).activity(),
+        call("custom", "not json", &outcome).activity(&Redactor::default()),
         action("custom", "not json", None)
     );
 }
@@ -361,7 +370,7 @@ fn a_long_parameter_is_cut_to_three_hundred_characters() {
     let args = json!({ "command": "x".repeat(400) }).to_string();
     let expected = format!("{}…", "x".repeat(300));
     assert_eq!(
-        call("shell", &args, &outcome).activity(),
+        call("shell", &args, &outcome).activity(&Redactor::default()),
         action("Ran", &expected, None)
     );
 }
@@ -370,7 +379,7 @@ fn a_long_parameter_is_cut_to_three_hundred_characters() {
 fn a_tool_error_is_its_kind_then_the_end_of_its_output() {
     let outcome = timed_out("took too long");
     assert_eq!(
-        call("shell", r#"{"command":"sleep 99"}"#, &outcome).activity(),
+        call("shell", r#"{"command":"sleep 99"}"#, &outcome).activity(&Redactor::default()),
         action("Ran", "sleep 99", Some("timeout\ntook too long"))
     );
 }
@@ -380,7 +389,7 @@ fn a_tool_error_keeps_only_the_last_three_hundred_characters() {
     let outcome = timed_out(&format!("{}{}", "a".repeat(500), "b".repeat(300)));
     let expected = format!("timeout\n…{}", "b".repeat(300));
     assert_eq!(
-        call("shell", r#"{"command":"x"}"#, &outcome).activity(),
+        call("shell", r#"{"command":"x"}"#, &outcome).activity(&Redactor::default()),
         action("Ran", "x", Some(&expected))
     );
 }
@@ -395,7 +404,7 @@ fn a_shell_call_that_exited_non_zero_fails_with_its_code_and_output() {
         outcome: &outcome,
         published: Some(&published),
     }
-    .activity();
+    .activity(&Redactor::default());
     let expected = format!("exit code 2\n…{}tail end", "a".repeat(292));
     assert_eq!(activity, action("Ran", "make", Some(&expected)));
 }
@@ -410,7 +419,7 @@ fn a_shell_call_that_exited_zero_has_no_result() {
         outcome: &outcome,
         published: Some(&published),
     }
-    .activity();
+    .activity(&Redactor::default());
     assert_eq!(activity, action("Ran", "make", None));
 }
 
@@ -418,7 +427,7 @@ fn a_shell_call_that_exited_zero_has_no_result() {
 fn a_call_that_never_answered_fails_with_its_error_message() {
     let outcome = Err(ErrorReport::new(ErrorKind::Internal, "boom"));
     assert_eq!(
-        call("read", r#"{"path":"/a"}"#, &outcome).activity(),
+        call("read", r#"{"path":"/a"}"#, &outcome).activity(&Redactor::default()),
         action("Read", "/a", Some("failed\nboom"))
     );
 }
@@ -518,4 +527,56 @@ fn redacting_a_note_keeps_it_persistent_and_redacts_its_body() {
         redactor.activity(Activity::end(Content::Error("s3cret".into()))),
         Activity::end(Content::Error("[REDACTED]".into()))
     );
+}
+
+#[test]
+fn secrets_straddling_truncation_cutoffs_are_scrubbed_before_cutting() {
+    let secret = "lin_api_SUPER_SECRET_TOKEN_VALUE";
+    let redactor = Redactor::new([secret.to_owned()]);
+
+    // Action parameter crossing 300 chars.
+    let cmd = format!("{}{secret}", "a".repeat(290));
+    let outcome = ok("");
+    let args = json!({ "command": cmd }).to_string();
+    let act = call("shell", &args, &outcome).activity(&redactor);
+    assert!(
+        matches!(
+            &act.content,
+            Content::Action { parameter, .. }
+                if !parameter.contains("lin_api_") && parameter.contains("[REDACTED]")
+        ),
+        "{act:?}"
+    );
+
+    // Failure tail crossing 300 chars.
+    let err_out = format!("{secret}{}", "b".repeat(290));
+    let fail = timed_out(&err_out);
+    let act = call("shell", r#"{"command":"x"}"#, &fail).activity(&redactor);
+    assert!(
+        matches!(
+            &act.content,
+            Content::Action { result: Some(res), .. }
+                if !res.contains("TOKEN_VALUE") && res.contains("[REDACTED]")
+        ),
+        "{act:?}"
+    );
+
+    // Reply text and reasoning crossing 2,000 chars.
+    let reply = Reply {
+        text: format!("{}{secret}", "c".repeat(1990)),
+        reasoning: format!("{}{secret}", "d".repeat(1990)),
+        calls_tools: false,
+    };
+    let activities = reply.activities(&redactor);
+    assert_eq!(activities.len(), 2);
+    for activity in activities {
+        assert!(
+            matches!(
+                &activity.content,
+                Content::Thought(body)
+                    if !body.contains("lin_api_") && body.contains("[REDACTED]")
+            ),
+            "{activity:?}"
+        );
+    }
 }

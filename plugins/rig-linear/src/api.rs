@@ -86,6 +86,8 @@ pub(crate) struct Session {
     pub(crate) issue: Option<String>,
     /// The issue's id, when known.
     pub(crate) issue_id: Option<String>,
+    /// Prompts already on the session at attach time: `(id, createdAt)`.
+    pub(crate) initial_prompts: Vec<(String, String)>,
 }
 
 /// One external link of a session.
@@ -175,9 +177,9 @@ impl Api {
         }
     }
 
-    /// Creates an agent session on the issue `issue`, an identifier such as
-    /// `ENG-123` or its id.
-    pub(crate) async fn create_session(&self, issue: &str) -> Result<Session, ApiError> {
+    /// Looks up the issue `issue` (an identifier such as `ENG-123` or its id):
+    /// returns `(issue_id, identifier)`.
+    pub(crate) async fn issue(&self, issue: &str) -> Result<(String, Option<String>), ApiError> {
         let data = self
             .graphql(
                 "query Issue($id: String!) { issue(id: $id) { id identifier url } }",
@@ -192,6 +194,15 @@ impl Api {
             .get("identifier")
             .and_then(Value::as_str)
             .map(str::to_owned);
+        Ok((issue_id.to_owned(), identifier))
+    }
+
+    /// Creates an agent session on the issue with id `issue_id`.
+    pub(crate) async fn create_session_on_issue(
+        &self,
+        issue_id: &str,
+        identifier: Option<String>,
+    ) -> Result<Session, ApiError> {
         let payload = self
             .mutate(
                 "agentSessionCreateOnIssue",
@@ -213,19 +224,40 @@ impl Api {
                 .map(str::to_owned),
             issue: identifier,
             issue_id: Some(issue_id.to_owned()),
+            initial_prompts: Vec::new(),
         })
     }
 
-    /// The agent session `id`, which exists already: its link and its
-    /// issue's identifier, when Linear tells.
+    /// The agent session `id`, which exists already: its link, its issue's
+    /// identifier, and the prompts already on it at attach time.
     pub(crate) async fn session(&self, id: &str) -> Result<Session, ApiError> {
         let data = self
             .graphql(
-                "query Session($id: String!) { agentSession(id: $id) { id url issue { id identifier } } }",
+                &format!(
+                    "query Session($id: String!) {{ agentSession(id: $id) {{ id url issue {{ id \
+                     identifier }} activities(first: {PAGE}, filter: {{ type: {{ eq: \"prompt\" }} \
+                     }}) {{ nodes {{ id createdAt }} }} }} }}"
+                ),
                 json!({ "id": id }),
             )
             .await?;
-        let session = data.get("agentSession").unwrap_or(&Value::Null);
+        let Some(session) = data.get("agentSession").filter(|value| value.is_object()) else {
+            return Err(ApiError::Reply(format!("no agent session {id}")));
+        };
+        let initial_prompts = session
+            .pointer("/activities/nodes")
+            .and_then(Value::as_array)
+            .map(|nodes| {
+                nodes
+                    .iter()
+                    .filter_map(|node| {
+                        let id = node.get("id").and_then(Value::as_str)?;
+                        let created_at = node.get("createdAt").and_then(Value::as_str)?;
+                        Some((id.to_owned(), created_at.to_owned()))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
         Ok(Session {
             id: id.to_owned(),
             url: session
@@ -240,6 +272,7 @@ impl Api {
                 .pointer("/issue/id")
                 .and_then(Value::as_str)
                 .map(str::to_owned),
+            initial_prompts,
         })
     }
 

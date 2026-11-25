@@ -154,6 +154,7 @@ fn an_issue_gets_a_session_then_the_plan_then_the_coalesced_activities() {
     assert_eq!(
         started,
         Some(Started {
+            id: SESSION_ID.to_owned(),
             url: Some(SESSION_URL.to_owned()),
             issue: Some("ENG-1".to_owned()),
         })
@@ -202,6 +203,7 @@ fn client_credentials_are_exchanged_once_for_a_bearer_token() {
     assert_eq!(
         started,
         Some(Started {
+            id: SESSION_ID.to_owned(),
             url: Some(SESSION_URL.to_owned()),
             issue: Some("ENG-1".to_owned()),
         })
@@ -231,7 +233,9 @@ fn client_credentials_are_exchanged_once_for_a_bearer_token() {
     assert_eq!(
         bodies.get(1),
         Some(&json!({
-            "query": "query Session($id: String!) { agentSession(id: $id) { id url issue { id identifier } } }",
+            "query": "query Session($id: String!) { agentSession(id: $id) { id url issue { id \
+                      identifier } activities(first: 50, filter: { type: { eq: \"prompt\" } }) \
+                      { nodes { id createdAt } } } }",
             "variables": { "id": SESSION_ID },
         }))
     );
@@ -463,6 +467,18 @@ fn reads(request: &Request) -> bool {
 fn only_prompts_after_the_run_attached_are_told_and_a_stop_ends_the_reading() {
     let read = std::sync::atomic::AtomicUsize::new(0);
     let linear = StandIn::scripted(move |request, _| {
+        if request.query().starts_with("query Session") {
+            return Some(stand_in::reply(json!({
+                "agentSession": {
+                    "id": SESSION_ID,
+                    "url": SESSION_URL,
+                    "issue": { "id": "issue-uuid", "identifier": "ENG-1" },
+                    "activities": {
+                        "nodes": [{ "id": "p1", "createdAt": "2026-01-01T00:00:00.000Z" }]
+                    },
+                }
+            })));
+        }
         if !reads(request) {
             return None;
         }
@@ -474,10 +490,8 @@ fn only_prompts_after_the_run_attached_are_told_and_a_stop_ends_the_reading() {
             false,
         );
         let nodes = match read.fetch_add(1, std::sync::atomic::Ordering::SeqCst) {
-            // Linear's own prompt, there as the run attached.
-            0 => vec![first],
-            // Newest first, with the one already read.
-            1 => vec![
+            // Newest first, with the one already present at attach.
+            0 => vec![
                 prompt(
                     "p3",
                     "2026-01-01T00:02:00.000Z",
@@ -494,7 +508,7 @@ fn only_prompts_after_the_run_attached_are_told_and_a_stop_ends_the_reading() {
                 ),
                 first,
             ],
-            2 => vec![prompt("p4", "2026-01-01T00:03:00.000Z", "Ana", "", true)],
+            1 => vec![prompt("p4", "2026-01-01T00:03:00.000Z", "Ana", "", true)],
             _ => vec![prompt(
                 "p5",
                 "2026-01-01T00:04:00.000Z",
@@ -533,17 +547,16 @@ fn only_prompts_after_the_run_attached_are_told_and_a_stop_ends_the_reading() {
         .filter(|request| reads(request))
         .map(|request| request.json())
         .collect();
-    assert_eq!(reading.len(), 3, "{reading:#?}");
+    assert_eq!(reading.len(), 2, "{reading:#?}");
     let since = |at: usize| {
         reading
             .get(at)
             .and_then(|body| body.pointer("/variables/since").cloned())
     };
-    assert_eq!(since(0), None);
-    assert_eq!(since(1), Some(json!("2026-01-01T00:00:00.000Z")));
-    assert_eq!(since(2), Some(json!("2026-01-01T00:02:00.000Z")));
+    assert_eq!(since(0), Some(json!("2026-01-01T00:00:00.000Z")));
+    assert_eq!(since(1), Some(json!("2026-01-01T00:02:00.000Z")));
     let query = reading
-        .get(1)
+        .first()
         .and_then(|body| body.get("query").cloned())
         .unwrap_or_default();
     assert_eq!(
@@ -559,9 +572,21 @@ fn only_prompts_after_the_run_attached_are_told_and_a_stop_ends_the_reading() {
 }
 
 #[test]
-fn a_failed_first_read_is_tried_again_before_any_prompt_counts() {
+fn a_failed_first_read_still_delivers_prompts_created_after_attach() {
     let read = std::sync::atomic::AtomicUsize::new(0);
     let linear = StandIn::scripted(move |request, _| {
+        if request.query().starts_with("query Session") {
+            return Some(stand_in::reply(json!({
+                "agentSession": {
+                    "id": SESSION_ID,
+                    "url": SESSION_URL,
+                    "issue": { "id": "issue-uuid", "identifier": "ENG-1" },
+                    "activities": {
+                        "nodes": [{ "id": "p1", "createdAt": "2026-01-01T00:00:00.000Z" }]
+                    },
+                }
+            })));
+        }
         if !reads(request) {
             return None;
         }
@@ -572,10 +597,11 @@ fn a_failed_first_read_is_tried_again_before_any_prompt_counts() {
             "Fix the bug.",
             false,
         );
+        let newer = prompt("p2", "2026-01-01T00:00:05.000Z", "Ana", "Stop now.", true);
         Some(
             match read.fetch_add(1, std::sync::atomic::Ordering::SeqCst) {
                 0 => (500, Vec::new(), "{}".to_owned()),
-                _ => stand_in::reply(activities(&[old])),
+                _ => stand_in::reply(activities(&[newer, old])),
             },
         )
     });
@@ -585,7 +611,12 @@ fn a_failed_first_read_is_tried_again_before_any_prompt_counts() {
         Target::Session(SESSION_ID.to_owned()),
     );
     config.poll = Some(Duration::from_millis(100));
-    assert_eq!(run_for(config, Duration::from_millis(800)), []);
+    assert_eq!(
+        run_for(config, Duration::from_millis(800)),
+        [Told::Stop {
+            by: Some("Ana".to_owned())
+        }]
+    );
 }
 
 #[test]
@@ -760,5 +791,64 @@ fn a_question_with_options_goes_with_the_select_signal() {
                 ] },
             },
         }))
+    );
+}
+
+#[test]
+fn a_failed_attach_answers_close_and_sends_nothing_more() {
+    let linear = StandIn::scripted(|_, _| Some((401, Vec::new(), "{}".to_owned())));
+    let target = Target::Session(SESSION_ID.to_owned());
+    let credentials = Credentials::Token("lin_api_key".to_owned());
+    let started = run_with(config(&linear.url, credentials, target), vec![note("lost")]);
+    assert_eq!(started, None);
+    assert_eq!(linear.requests().len(), 1);
+}
+
+#[test]
+fn a_missing_attached_session_is_treated_as_a_startup_failure() {
+    let linear = StandIn::scripted(|_, _| Some(stand_in::reply(json!({ "agentSession": null }))));
+    let target = Target::Session(SESSION_ID.to_owned());
+    let credentials = Credentials::Token("lin_api_key".to_owned());
+    let started = run_with(config(&linear.url, credentials, target), vec![note("lost")]);
+    assert_eq!(started, None);
+    assert_eq!(linear.requests().len(), 1);
+}
+
+#[test]
+fn startup_requests_respect_minimum_spacing() {
+    let linear = StandIn::start();
+    let mut cfg = config(
+        &linear.url,
+        Credentials::Client {
+            id: "client".to_owned(),
+            secret: "s3cret".to_owned(),
+            scope: "read,write".to_owned(),
+        },
+        Target::Issue("ENG-1".to_owned()),
+    );
+    cfg.spacing = Duration::from_millis(80);
+    let started_at = std::time::Instant::now();
+    run_with(cfg, Vec::new());
+    // 4 startup requests (token exchange, issue lookup, create session, WORKING) => >= 3 spacings.
+    assert_eq!(linear.requests().len(), 4);
+    assert!(started_at.elapsed() >= Duration::from_millis(220));
+}
+
+#[test]
+fn retry_delay_honors_full_retry_after_and_enforces_spacing() {
+    let spacing = Duration::from_secs(1);
+    assert_eq!(retry_delay(Some(Duration::ZERO), spacing), spacing);
+    assert_eq!(
+        retry_delay(Some(Duration::from_millis(200)), spacing),
+        spacing
+    );
+    assert_eq!(
+        retry_delay(Some(Duration::from_secs(120)), spacing),
+        Duration::from_secs(120)
+    );
+    assert_eq!(retry_delay(None, spacing), RETRY_WAIT);
+    assert_eq!(
+        retry_delay(None, Duration::from_secs(10)),
+        Duration::from_secs(10)
     );
 }

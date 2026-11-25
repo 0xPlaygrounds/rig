@@ -212,6 +212,7 @@ pub(crate) fn linear(request: &Request) -> Reply {
             "id": SESSION_ID,
             "url": SESSION_URL,
             "issue": { "id": "issue-uuid", "identifier": "ENG-1" },
+            "activities": { "nodes": [] },
         } })
     } else if query.contains("agentSessionUpdate") {
         json!({ "agentSessionUpdate": { "success": true } })

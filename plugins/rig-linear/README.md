@@ -35,8 +35,8 @@ nothing more for the rest of the run.
 
 Give them in the environment as `RIG_SECRET_LINEAR`,
 `RIG_SECRET_LINEAR_CLIENT_ID` and `RIG_SECRET_LINEAR_CLIENT_SECRET`. The
-plugin asks for them only in a build that is given a target, so enabling
-it makes rig prompt nobody who does not use Linear.
+plugin reads them from the environment and does not prompt interactively,
+so enabling it never prompts runs that do not use Linear.
 
 ## Target
 
@@ -108,7 +108,9 @@ blanks or repeats, at most 100 of 256 characters, goes in
 otherwise, and a pick comes back as a prompt. Other statuses ignore it. Without it, the run's end is the
 main agent's last reply as a response, its failed last turn as an error, or
 "The run was stopped before it finished." when a signal or an exit stopped a
-turn. A reload or a session switch posts no end.
+turn. On reload the Linear session id is saved with the rig session so the
+next process reattaches to it instead of opening a second session; a
+session switch ends the outgoing session.
 
 From the main agent's effect records (a subagent's own are skipped):
 
@@ -137,10 +139,11 @@ nothing was added to the session for `heartbeat_minutes` (reads do not
 count), a passing "Still working…" thought
 keeps the session from going stale. A failure is a warning and never stops
 or slows the run. On exit the plugin waits at most 10 s for the queue.
-The plugin's own token and client secret are scrubbed from everything it
-sends. Other secrets are `rig_basics::redact::RedactPlugin`'s: with it on,
-they reach the records, and so Linear, as `‹SECRET_n›` placeholders.
-Without it nothing else is redacted.
+The plugin's own supplied token and client secret (and any exchanged app
+token) are scrubbed from everything it sends before any truncation. Other
+secrets are `rig_basics::redact::RedactPlugin`'s: with it on, effect records
+are scrubbed before `rig-linear` reads them, so they reach Linear as
+`‹SECRET_n›` placeholders. Without it nothing else is redacted.
 
 ## What it reads back
 

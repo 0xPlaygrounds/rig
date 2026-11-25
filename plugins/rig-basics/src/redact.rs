@@ -172,8 +172,7 @@ impl Plugin for RedactPlugin {
                         .before(RunExitSystems)
                         .before(StopTurnsOnExit),
                     (
-                        redact_records
-                            .run_if(resource_exists::<crate::telemetry::effect_log::EffectLog>),
+                        redact_records.in_set(RecordRedactSystems),
                         // Every number handed out, the exit's too, is saved.
                         keep_count,
                     )

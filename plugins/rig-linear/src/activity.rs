@@ -281,14 +281,16 @@ impl Reply {
     }
 
     /// The activities it becomes: the reasoning as a passing thought, then
-    /// the text as a note.
-    pub(crate) fn activities(&self) -> Vec<Activity> {
+    /// the text as a note, each scrubbed before it is cut short.
+    pub(crate) fn activities(&self, redactor: &Redactor) -> Vec<Activity> {
         let mut activities = Vec::new();
         if !self.reasoning.is_empty() {
-            activities.push(Activity::passing(head(&self.reasoning, NOTE_MOST)));
+            let scrubbed = redactor.text(&self.reasoning);
+            activities.push(Activity::passing(head(&scrubbed, NOTE_MOST)));
         }
         if !self.text.is_empty() {
-            activities.push(Activity::note(head(&self.text, NOTE_MOST)));
+            let scrubbed = redactor.text(&self.text);
+            activities.push(Activity::note(head(&scrubbed, NOTE_MOST)));
         }
         activities
     }
@@ -336,8 +338,8 @@ impl Call<'_> {
     }
 
     /// How it failed, if it did: its exit status or error kind, then the
-    /// end of its output.
-    fn failure(&self) -> Option<String> {
+    /// end of its output, scrubbed before it is cut short.
+    fn failure(&self, redactor: &Redactor) -> Option<String> {
         let status = self
             .published
             .and_then(|published| published.get::<ExitStatus>().ok().flatten());
@@ -354,16 +356,16 @@ impl Call<'_> {
             (_, Some(ExitStatus::TimedOut)) => "timed out".to_owned(),
             (_, Some(ExitStatus::Killed)) => "stopped".to_owned(),
         };
-        let output = tail(&self.output(), ACTION_MOST);
+        let output = tail(&redactor.text(&self.output()), ACTION_MOST);
         Some(match output.is_empty() {
             true => why,
             false => format!("{why}\n{output}"),
         })
     }
 
-    /// The action it becomes: a verb by tool, what it acted on, and how it
-    /// failed, if it did.
-    pub(crate) fn activity(&self) -> Activity {
+    /// The action it becomes: a verb by tool, what it acted on (scrubbed
+    /// before it is cut short), and how it failed, if it did.
+    pub(crate) fn activity(&self, redactor: &Redactor) -> Activity {
         let path = || self.arg("path").unwrap_or_default();
         let (action, parameter) = match self.name {
             "shell" => ("Ran".to_owned(), self.arg("command").unwrap_or_default()),
@@ -383,7 +385,13 @@ impl Call<'_> {
                 None => (name.to_owned(), self.compact()),
             },
         };
-        Activity::action(action, head(&parameter, ACTION_MOST), self.failure())
+        let action = redactor.text(&action);
+        let parameter = redactor.text(&parameter);
+        Activity::action(
+            action,
+            head(&parameter, ACTION_MOST),
+            self.failure(redactor),
+        )
     }
 
     /// The arguments on one line.

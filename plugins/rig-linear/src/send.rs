@@ -27,11 +27,41 @@ const RETRIES: usize = 3;
 /// The wait after a 429 that names none.
 const RETRY_WAIT: Duration = Duration::from_secs(5);
 
-/// The longest wait after a 429 that names one.
-const RETRY_MOST: Duration = Duration::from_secs(60);
+/// How long a rate-limited request waits before trying again: honors the
+/// server's `Retry-After` in full and never goes below `spacing`.
+pub(crate) fn retry_delay(wait: Option<Duration>, spacing: Duration) -> Duration {
+    wait.unwrap_or(RETRY_WAIT).max(spacing)
+}
 
 /// What the heartbeat says.
 const STILL_WORKING: &str = "Still working…";
+
+/// Enforces the minimum delay between two Linear API requests.
+struct Pacer {
+    spacing: Duration,
+    last: Option<Instant>,
+}
+
+impl Pacer {
+    fn new(spacing: Duration) -> Self {
+        Self {
+            spacing,
+            last: None,
+        }
+    }
+
+    /// Waits until the next request may go.
+    async fn pace(&self) {
+        if let Some(last) = self.last {
+            tokio::time::sleep_until(last + self.spacing).await;
+        }
+    }
+
+    /// Notes that a request just finished.
+    fn mark(&mut self) {
+        self.last = Some(Instant::now());
+    }
+}
 
 /// The thought that goes as soon as the session is there.
 pub(crate) const WORKING: &str = "Working on it.";
@@ -100,6 +130,8 @@ pub(crate) enum Told {
 /// What the task tells the app once the session is there.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Started {
+    /// The agent session's id.
+    pub(crate) id: String,
     /// Where a person sees the session.
     pub(crate) url: Option<String>,
     /// The issue's identifier, when known.
@@ -181,21 +213,21 @@ pub(crate) async fn run(
         eprintln!("Linear agent session: {url}");
     }
     told.send(Told::Started(Started {
+        id: sender.session.id.clone(),
         url: link,
         issue: sender.session.issue.clone(),
     }))
     .await
     .ok();
+    sender.pacer.pace().await;
     sender
         .send(Job::Activity(Activity::note(WORKING.to_owned())))
         .await;
     if let Some(every) = config.poll {
-        sender.watch = Some(Watch::new(every));
-        sender.pace().await;
-        sender.poll().await;
+        sender.watch = Some(Watch::new(every, &sender.session.initial_prompts));
     }
     if let Some(plan) = config.plan.clone() {
-        sender.pace().await;
+        sender.pacer.pace().await;
         sender.send(Job::Plan(plan)).await;
     }
     if config.claim {
@@ -216,35 +248,39 @@ pub(crate) fn refused(why: &ApiError) -> String {
     }
 }
 
-/// Signs in and creates or attaches to the session.
+/// Signs in and creates or attaches to the session, pacing every request.
 async fn start(
     config: &Config,
     http: &DynHttpClient,
     redactor: &Redactor,
 ) -> Result<Connected, ApiError> {
+    let mut pacer = Pacer::new(config.spacing);
     let token = match &config.credentials {
         Credentials::Token(token) => token.clone(),
         Credentials::Client { id, secret, scope } => {
             let token_url = crate::api::token_url(&config.api_url);
-            Api::exchange(http, &token_url, id, secret, scope).await?
+            let token = Api::exchange(http, &token_url, id, secret, scope).await?;
+            pacer.mark();
+            token
         }
     };
     let api = Api::new(http.clone(), config.api_url.clone(), authorization(&token));
     let session = match &config.target {
-        Target::Issue(issue) => api.create_session(issue).await?,
-        Target::Session(id) => match api.session(id).await {
-            Ok(session) => session,
-            Err(why) => {
-                warn!(
-                    "Linear: agent session {id} could not be read: {}",
-                    redactor.text(&why.to_string())
-                );
-                Session {
-                    id: id.clone(),
-                    ..Session::default()
-                }
-            }
-        },
+        Target::Issue(issue) => {
+            pacer.pace().await;
+            let (issue_id, identifier) = api.issue(issue).await?;
+            pacer.mark();
+            pacer.pace().await;
+            let session = api.create_session_on_issue(&issue_id, identifier).await?;
+            pacer.mark();
+            session
+        }
+        Target::Session(id) => {
+            pacer.pace().await;
+            let session = api.session(id).await?;
+            pacer.mark();
+            session
+        }
     };
     let mut redactor = redactor.clone();
     redactor.add(token);
@@ -252,8 +288,7 @@ async fn start(
         api,
         session,
         redactor,
-        spacing: config.spacing,
-        last: None,
+        pacer,
         last_write: None,
         last_action: None,
         ended: false,
@@ -264,38 +299,43 @@ async fn start(
 /// The most pages of new prompts one read goes through.
 const PAGES: usize = 4;
 
-/// What the task knows of the session's prompts, to read only the new ones.
+/// What the task knows of the session's prompts, to read only those created
+/// after the run created or attached to the session.
 #[derive(Debug)]
 struct Watch {
     /// How often it reads.
     every: Duration,
     /// When it reads next.
     next: Instant,
-    /// Whether it read the prompts there were as the run attached, which it
-    /// leaves alone, such as the one Linear adds as it creates a session.
-    ready: bool,
     /// The newest prompt's `createdAt`.
     since: Option<String>,
-    /// The ids of the prompts read.
+    /// The ids of the prompts already known (including those present at
+    /// attachment).
     seen: HashSet<String>,
     /// Whether the last read failed, so the next failure warns no more.
     failing: bool,
 }
 
 impl Watch {
-    fn new(every: Duration) -> Self {
+    fn new(every: Duration, initial: &[(String, String)]) -> Self {
+        let mut seen = HashSet::new();
+        let mut since: Option<String> = None;
+        for (id, created_at) in initial {
+            seen.insert(id.clone());
+            if since.as_ref().is_none_or(|cur| cur < created_at) {
+                since = Some(created_at.clone());
+            }
+        }
         Self {
             every,
             next: Instant::now(),
-            ready: false,
-            since: None,
-            seen: HashSet::new(),
+            since,
+            seen,
             failing: false,
         }
     }
 
-    /// Takes in `read`, newest first: what the new ones tell, oldest
-    /// first, unless these are the prompts there were as the run attached.
+    /// Takes in `read`, newest first: what the new ones tell, oldest first.
     fn take(&mut self, mut read: Vec<Seen>) -> Vec<Told> {
         read.retain(|seen| self.seen.insert(seen.id.clone()));
         read.sort_by(|a, b| a.created_at.cmp(&b.created_at));
@@ -306,9 +346,6 @@ impl Watch {
                 .is_none_or(|since| *since < newest.created_at)
         {
             self.since = Some(newest.created_at.clone());
-        }
-        if !std::mem::replace(&mut self.ready, true) {
-            return Vec::new();
         }
         read.into_iter()
             .filter_map(|seen| match (seen.stop, seen.prompt) {
@@ -328,9 +365,7 @@ struct Connected {
     api: Api,
     session: Session,
     redactor: Redactor,
-    spacing: Duration,
-    /// When the last request went.
-    last: Option<Instant>,
+    pacer: Pacer,
     /// When the last request that adds to the session went, for the
     /// heartbeat.
     last_write: Option<Instant>,
@@ -363,7 +398,7 @@ impl Connected {
                 .as_ref()
                 .is_some_and(|watch| watch.next <= Instant::now())
             {
-                self.pace().await;
+                self.pacer.pace().await;
                 for news in self.poll().await {
                     told.send(news).await.ok();
                 }
@@ -386,7 +421,7 @@ impl Connected {
                 }
                 continue;
             }
-            self.pace().await;
+            self.pacer.pace().await;
             while let Ok(job) = jobs.try_recv() {
                 queue.push_back(job);
             }
@@ -409,18 +444,18 @@ impl Connected {
         let Some(mut watch) = self.watch.take() else {
             return Vec::new();
         };
-        let since = watch.since.clone().filter(|_| watch.ready);
+        let since = watch.since.clone();
         let mut read = Vec::new();
         let mut after = None;
         let mut failed = None;
         for page in 0..PAGES {
             if page > 0 {
-                self.pace().await;
+                self.pacer.pace().await;
             }
             let got = (self.api)
                 .activities(&self.session.id, since.as_deref(), after.as_deref())
                 .await;
-            self.last = Some(Instant::now());
+            self.pacer.mark();
             match got {
                 Ok(page) => {
                     read.extend(page.activities);
@@ -431,8 +466,7 @@ impl Connected {
                     break;
                 }
             }
-            // The prompts there were as the run attached need only the newest.
-            if after.is_none() || !watch.ready {
+            if after.is_none() {
                 break;
             }
         }
@@ -444,7 +478,7 @@ impl Connected {
             }
             Some(why) => {
                 if let ApiError::RateLimited(wait) = &why {
-                    let wait = wait.unwrap_or(RETRY_WAIT).min(RETRY_MOST);
+                    let wait = retry_delay(*wait, self.pacer.spacing);
                     watch.next = Instant::now() + wait.max(watch.every);
                 }
                 if !std::mem::replace(&mut watch.failing, true) {
@@ -469,14 +503,14 @@ impl Connected {
         let Some(issue) = self.session.issue_id.clone() else {
             return;
         };
-        self.pace().await;
+        self.pacer.pace().await;
         let state = self.api.issue_state(&issue).await;
-        self.last = Some(Instant::now());
+        self.pacer.mark();
         let claimed = match state.map(|state| state.claim()) {
             Ok(Some(input)) => {
-                self.pace().await;
+                self.pacer.pace().await;
                 let updated = self.api.update_issue(&issue, input).await;
-                self.last = Some(Instant::now());
+                self.pacer.mark();
                 updated
             }
             Ok(None) => Ok(()),
@@ -496,13 +530,6 @@ impl Connected {
             Some(action) => format!("{STILL_WORKING} Last: {action}"),
             None => STILL_WORKING.to_owned(),
         })
-    }
-
-    /// Waits until the next request may go.
-    async fn pace(&self) {
-        if let Some(last) = self.last {
-            tokio::time::sleep_until(last + self.spacing).await;
-        }
     }
 
     /// Sends `job`, again after each 429 up to [`RETRIES`] times; warns
@@ -539,13 +566,12 @@ impl Connected {
                 Job::Links(links) => self.api.update_session(&self.session.id, None, links).await,
                 Job::Close(_) => Ok(()),
             };
-            self.last = Some(Instant::now());
-            self.last_write = self.last;
+            self.pacer.mark();
+            self.last_write = self.pacer.last;
             match sent {
                 Err(ApiError::RateLimited(wait)) if tries < RETRIES => {
                     tries += 1;
-                    let wait = wait.unwrap_or(RETRY_WAIT).min(RETRY_MOST);
-                    tokio::time::sleep(wait).await;
+                    tokio::time::sleep(retry_delay(wait, self.pacer.spacing)).await;
                 }
                 Err(why) => {
                     warn!(

@@ -78,6 +78,13 @@ pub use bevy_app::{App, AppExit, PluginGroup, PluginGroupBuilder};
 /// Bevy's error handlers, for [`App::set_error_handler`]: `warn` logs a
 /// failing system, observer or command instead of stopping the app.
 pub use bevy_ecs::error;
+
+/// In `Last`, after [`rig_ecs::StopTurnsOnExit`]: systems that scrub secrets
+/// from [`rig_core::effect::EffectRecord`] messages
+/// ([`rig_ecs::prelude::EffectRecorded`]) before plugins read or persist them.
+/// A plugin that reads `EffectRecorded` in `Last` goes `.after(RecordRedactSystems)`.
+#[derive(bevy_ecs::schedule::SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct RecordRedactSystems;
 /// The rig-core this app is built on, for the conversation's messages
 /// (`rig_harness::rig_core::message::Message`) and rig-core's tools.
 pub use rig_core;
@@ -152,7 +159,7 @@ pub mod prelude {
     pub use crate::workspace::ProjectWorkspace;
     pub use crate::{
         AppKeepsExt, HeadlessPlugins, Keeps, PluginEntity, PluginSource, PluginSystems, ProvidedBy,
-        Provides, RigHarnessPlugins, SavedAs,
+        Provides, RecordRedactSystems, RigHarnessPlugins, SavedAs,
     };
     pub use rig_core::conversation::Note;
     pub use rig_tools::attach::{first_typed, typed};

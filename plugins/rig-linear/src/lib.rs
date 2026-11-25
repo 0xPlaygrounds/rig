@@ -24,6 +24,7 @@ use rig_core::effect::{Answered, EffectKind, EffectRecord};
 use rig_core::tool::{ToolExecutionError, ToolOutput};
 use rig_harness::prelude::*;
 use rig_harness::rig_ecs::StopTurnsOnExit;
+use rig_harness::rig_ecs::agent::ToolAccess;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -195,6 +196,15 @@ struct Setup {
     redactor: Redactor,
 }
 
+/// The Linear agent session id saved with this rig session, so a reload
+/// reattaches to the same Linear session instead of opening a second one.
+#[derive(Resource, Reflect, Default, Clone, Debug, PartialEq, Eq)]
+#[reflect(Resource, Saved, Default)]
+struct SavedLinearSession {
+    session_id: Option<String>,
+    issue: Option<String>,
+}
+
 /// The plugin's state, present only when it is active.
 #[derive(Resource)]
 struct Linear {
@@ -205,6 +215,8 @@ struct Linear {
     told: Receiver<Told>,
     /// What [`start`] hands the task.
     pending: Option<(Config, Receiver<Job>, Sender<Told>, Redactor)>,
+    /// Scrubs the plugin's own credentials before any truncation.
+    redactor: Redactor,
     plan: Plan,
     /// The issue, as the prompt names it.
     issue: Option<String>,
@@ -235,10 +247,12 @@ impl Linear {
             Target::Issue(issue) => Some(issue.clone()),
             Target::Session(_) => None,
         };
+        let redactor = setup.redactor.clone();
         Self {
             jobs,
             told,
             pending: Some((setup.config, queued, tell, setup.redactor)),
+            redactor,
             plan: Plan::new(setup.plan),
             issue,
             session_url: None,
@@ -319,7 +333,7 @@ impl Linear {
                         if !reply.text.is_empty() {
                             self.last_reply = Some(reply.text.clone());
                         }
-                        for activity in reply.activities() {
+                        for activity in reply.activities(&self.redactor) {
                             self.note(activity);
                         }
                     }
@@ -352,7 +366,7 @@ impl Linear {
                 if moved {
                     self.send_plan();
                 }
-                self.note(call.activity());
+                self.note(call.activity(&self.redactor));
             }
             _ => {}
         }
@@ -379,25 +393,13 @@ impl Plugin for LinearPlugin {
             CLAIM_FLAG,
             "Delegate the Linear issue to the app and move it to started",
         ))
-        .add_setting::<LinearSettings>("linear");
+        .add_setting::<LinearSettings>("linear")
+        .init_resource::<SavedLinearSession>()
+        .register_type::<SavedLinearSession>();
         let env = |name: &str| std::env::var(name).ok();
-        // Only a run shown on Linear asks for its secrets, so a build with
-        // the plugin on prompts nobody else.
         let Some(target) = target(app.world().get_resource::<Invoked>(), &env) else {
             return;
         };
-        app.add_secret(Secret::new(
-            TOKEN_SECRET,
-            "Linear access token or API key, empty to leave Linear off",
-        ))
-        .add_secret(Secret::new(
-            CLIENT_ID_SECRET,
-            "Linear OAuth client id, empty unless signing in as an app",
-        ))
-        .add_secret(Secret::new(
-            CLIENT_SECRET_SECRET,
-            "Linear OAuth client secret, empty unless signing in as an app",
-        ));
         let world = app.world();
         let claims = claims(world.get_resource::<Invoked>(), &env);
         let Some(setup) = configure(
@@ -419,7 +421,8 @@ impl Plugin for LinearPlugin {
             .add_observer(publish_link)
             .add_observer(turn_started)
             .add_systems(Startup, start)
-            .add_systems(Update, take_told)
+            .add_systems(Update, (take_told, sync_section).chain())
+            .add_systems(AgentPass, sync_section.in_set(PrepareSystems::Input))
             .add_systems(
                 Last,
                 (
@@ -428,7 +431,8 @@ impl Plugin for LinearPlugin {
                         .run_if(on_message::<AppExit>),
                     (read_records, close.run_if(on_message::<AppExit>))
                         .chain()
-                        .after(StopTurnsOnExit),
+                        .after(StopTurnsOnExit)
+                        .after(RecordRedactSystems),
                 ),
             );
     }
@@ -474,18 +478,18 @@ fn configure(
     let secret = |name| given(secrets.and_then(|secrets| secrets.get(name).map(str::to_owned)));
     let defaults = LinearSettings::default();
     let settings = settings.unwrap_or(&defaults);
-    let credentials = match secret(TOKEN_SECRET) {
+    let token = secret(TOKEN_SECRET);
+    let client_id = secret(CLIENT_ID_SECRET);
+    let client_secret = secret(CLIENT_SECRET_SECRET);
+    let redactor = Redactor::new(token.iter().chain(client_secret.iter()).cloned());
+    let credentials = match token {
         Some(token) => Credentials::Token(token),
         None => Credentials::Client {
-            id: secret(CLIENT_ID_SECRET)?,
-            secret: secret(CLIENT_SECRET_SECRET)?,
+            id: client_id?,
+            secret: client_secret?,
             scope: settings.scope.clone(),
         },
     };
-    let redactor = Redactor::new(match &credentials {
-        Credentials::Token(token) => vec![token.clone()],
-        Credentials::Client { secret, .. } => vec![secret.clone()],
-    });
     let plan = match given(env(PLAN_ENV)) {
         Some(path) => match read_plan(&path) {
             Ok(plan) => plan,
@@ -528,29 +532,40 @@ fn read_plan(path: &str) -> Result<Vec<PlanStep>, PlanFileError> {
     Ok(toml::from_str::<PlanFile>(&text)?.plan)
 }
 
-/// The prompt section, naming `issue` when known.
-fn section(issue: Option<&str>) -> String {
+/// The prompt section for the main agent, naming `issue` when known, and
+/// mentioning [`OUTCOME_TOOL`] only when the agent has access to it.
+fn section(issue: Option<&str>, can_report_outcome: bool) -> String {
     let shown = match issue {
         Some(issue) => format!("This run is shown on the Linear issue {issue} as an agent session"),
         None => "This run is shown on a Linear issue as an agent session".to_owned(),
     };
-    format!(
+    let mut text = format!(
         "{shown}: the people watching the issue see your plan, notes and tool calls. The \
          harness posts your result there, so do not post a comment of your own on the issue. \
          They may write to you there while you work: their messages reach you from the plugin \
-         {ORIGIN}, titled with their name; answer them as you would the user. End the run by \
-         calling `{OUTCOME_TOOL}` with `done`, `gave_up` or `needs_input` and a summary for \
-         those people."
-    )
+         {ORIGIN}, titled with their name; answer them as you would the user."
+    );
+    if can_report_outcome {
+        text.push_str(&format!(
+            " End the run by calling `{OUTCOME_TOOL}` with `done`, `gave_up` or `needs_input` \
+             and a summary for those people."
+        ));
+    }
+    text
 }
 
 /// On the plugin's prompt section.
 #[derive(Component)]
 struct LinearSection;
 
-/// Starts the task on rig's tokio runtime and adds the prompt section.
-fn start(mut linear: ResMut<Linear>, runtime: Option<Res<TokioRuntime>>, mut commands: Commands) {
-    let Some((config, jobs, told, redactor)) = linear.pending.take() else {
+/// Starts the task on rig's tokio runtime, reusing a Linear session saved
+/// with this rig session across reloads when targeting the same issue.
+fn start(
+    mut linear: ResMut<Linear>,
+    saved: Res<SavedLinearSession>,
+    runtime: Option<Res<TokioRuntime>>,
+) {
+    let Some((mut config, jobs, told, redactor)) = linear.pending.take() else {
         return;
     };
     let Some(runtime) = runtime else {
@@ -558,15 +573,15 @@ fn start(mut linear: ResMut<Linear>, runtime: Option<Res<TokioRuntime>>, mut com
         linear.closed = true;
         return;
     };
-    commands.spawn((
-        Name::new("linear"),
-        LinearSection,
-        PromptSection::new(
-            PromptSection::ORDER_PROJECT,
-            SECTION_TAG,
-            section(linear.issue.as_deref()),
-        ),
-    ));
+    if let Target::Issue(issue) = &config.target
+        && let Some(session_id) = saved.session_id.as_ref().filter(|id| !id.trim().is_empty())
+        && saved
+            .issue
+            .as_deref()
+            .is_none_or(|saved_issue| saved_issue == issue)
+    {
+        config.target = Target::Session(session_id.clone());
+    }
     runtime.0.spawn(send::run(
         config,
         rig_reqwest::shared(),
@@ -576,23 +591,59 @@ fn start(mut linear: ResMut<Linear>, runtime: Option<Res<TokioRuntime>>, mut com
     ));
 }
 
-/// Takes what the task tells: once the session is there, names the issue
-/// in the prompt section and publishes the session's link; a person's
-/// message goes to the main agent, acknowledged on Linear; a stop ends the
-/// run.
+/// Keeps the plugin's prompt section scoped to the main agent and aligned
+/// with its current issue name and access to [`OUTCOME_TOOL`].
+fn sync_section(
+    linear: Res<Linear>,
+    agents: MainAgentQuery,
+    access: Query<&ToolAccess>,
+    mut sections: Query<(Entity, &SectionOf, &mut PromptSection), With<LinearSection>>,
+    mut commands: Commands,
+) {
+    let Some(main) = main_agent(&agents) else {
+        return;
+    };
+    let can_report = access
+        .get(main)
+        .map_or(true, |access| access.allows(OUTCOME_TOOL));
+    let text = section(linear.issue.as_deref(), can_report);
+    let mut matched = false;
+    for (entity, owner, mut section_text) in &mut sections {
+        if owner.0 == main && !matched {
+            matched = true;
+            if section_text.text != text {
+                section_text.text = text.clone();
+            }
+        } else {
+            commands.entity(entity).despawn();
+        }
+    }
+    if !matched {
+        commands.spawn((
+            Name::new("linear"),
+            LinearSection,
+            SectionOf(main),
+            PromptSection::new(PromptSection::ORDER_PROJECT, SECTION_TAG, text),
+        ));
+    }
+}
+
+/// Takes what the task tells: once the session is there, saves its id, names
+/// the issue and publishes the session's link; a person's message goes to
+/// the main agent, acknowledged on Linear; a stop ends the run.
 fn take_told(
     mut linear: ResMut<Linear>,
-    mut sections: Query<&mut PromptSection, With<LinearSection>>,
+    mut saved: ResMut<SavedLinearSession>,
     agents: MainAgentQuery,
     mut commands: Commands,
 ) {
     while let Ok(told) = linear.told.try_recv() {
         match told {
             Told::Started(started) => {
-                linear.started(started, &mut sections, &mut commands);
+                linear.started(started, &mut saved, &mut commands);
             }
             Told::Prompt { body, by } => {
-                let quoted = quote(&body);
+                let quoted = quote(&body, &linear.redactor);
                 let ack = match main_agent(&agents) {
                     Some(agent) => {
                         let title = format!("{} on Linear", by.as_deref().unwrap_or("a person"));
@@ -611,9 +662,10 @@ fn take_told(
 }
 
 /// The start of a person's message, as its acknowledgement quotes it: its
-/// first line, cut short.
-fn quote(body: &str) -> String {
-    let mut lines = body.trim().lines();
+/// first line, scrubbed before it is cut short.
+fn quote(body: &str, redactor: &Redactor) -> String {
+    let scrubbed = redactor.text(body);
+    let mut lines = scrubbed.trim().lines();
     let mut quoted = head(lines.next().unwrap_or_default(), ACK_MOST);
     if lines.next().is_some() && !quoted.ends_with('…') {
         quoted.push('…');
@@ -622,22 +674,22 @@ fn quote(body: &str) -> String {
 }
 
 impl Linear {
-    /// The session is there: names the issue in the prompt section and
+    /// The session is there: saves its id for reloads, names the issue and
     /// publishes the session's link.
     fn started(
         &mut self,
         started: Started,
-        sections: &mut Query<&mut PromptSection, With<LinearSection>>,
+        saved: &mut SavedLinearSession,
         commands: &mut Commands,
     ) {
+        if !started.id.trim().is_empty() {
+            saved.session_id = Some(started.id);
+        }
         if let Some(issue) = started.issue {
-            for mut section_text in sections.iter_mut() {
-                let text = section(Some(&issue));
-                if section_text.text != text {
-                    section_text.text = text;
-                }
-            }
             self.issue = Some(issue);
+        }
+        if let Some(issue) = &self.issue {
+            saved.issue = Some(issue.clone());
         }
         if let Some(url) = started.url {
             self.session_url = Some(url.clone());
@@ -714,7 +766,12 @@ fn report_outcome(
     } else if summary.is_empty() {
         ToolResult::failed(ToolExecutionError::refused("`summary` must not be empty."))
     } else {
-        let (content, end) = outcome(called.args.status, summary.to_owned(), &called.args.options);
+        let (content, end) = outcome(
+            called.args.status,
+            summary.to_owned(),
+            &called.args.options,
+            &linear.redactor,
+        );
         linear.end(content, end);
         ToolResult::success(ToolOutput::text(
             "Posted to the Linear issue. End the run now, without a comment of your own.",
@@ -726,16 +783,24 @@ fn report_outcome(
 }
 
 /// The activity and plan end of a reported outcome. A question offers
-/// `options`, trimmed, without blanks or repeats, at most
+/// `options`, scrubbed, trimmed, without blanks or repeats, at most
 /// [`OPTIONS_MOST`]; any other outcome leaves them out.
-fn outcome(status: OutcomeStatus, summary: String, options: &[String]) -> (Content, End) {
+fn outcome(
+    status: OutcomeStatus,
+    summary: String,
+    options: &[String],
+    redactor: &Redactor,
+) -> (Content, End) {
     match status {
         OutcomeStatus::Done => (Content::Response(summary), End::Done),
         OutcomeStatus::GaveUp => (Content::Error(summary), End::Failed),
         OutcomeStatus::NeedsInput => {
             let (most, longest) = OPTIONS_MOST;
             let mut offered: Vec<String> = Vec::new();
-            for option in options.iter().map(|option| head(option, longest)) {
+            for option in options
+                .iter()
+                .map(|option| head(&redactor.text(option), longest))
+            {
                 if !option.is_empty() && !offered.contains(&option) && offered.len() < most {
                     offered.push(option);
                 }
@@ -770,16 +835,13 @@ fn note_working(
 }
 
 /// Posts the run's end unless the agent reported it, then waits up to
-/// [`FLUSH_WAIT`] for the queue to be sent. A reload or a session switch
-/// posts no end: the run goes on in the next process.
+/// [`FLUSH_WAIT`] for the queue to be sent. A reload posts no end: the run
+/// reattaches to the saved Linear session in the next process.
 fn close(mut linear: ResMut<Linear>, reason: Option<Res<ExitReason>>) {
     if linear.closed || linear.pending.is_some() {
         return;
     }
-    let goes_on = matches!(
-        reason.as_deref(),
-        Some(ExitReason::Reload | ExitReason::Switch(_))
-    );
+    let goes_on = matches!(reason.as_deref(), Some(ExitReason::Reload));
     if !linear.reported && !goes_on {
         let stopped = linear.working || matches!(reason.as_deref(), Some(ExitReason::Signal));
         let (content, end) = fallback(
