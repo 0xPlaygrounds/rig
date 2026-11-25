@@ -73,28 +73,29 @@ fn harness(head: &[&str], tail: &[&str]) -> Step {
     args.extend(tail);
     cargo(&args)
 }
+fn guard_step(package: &str, module: &str) -> Step {
+    let filter = format!("test(/^{module}/)");
+    cargo(&[
+        "nextest",
+        "run",
+        "--locked",
+        "-p",
+        package,
+        "--test",
+        "integration",
+        "--run-ignored",
+        "only",
+        "--no-tests",
+        "fail",
+        "-E",
+        &filter,
+    ])
+}
+
 /// The ignored tests of `package`'s integration binary under `module`, run
 /// alone.
 fn guard(id: &str, package: &str, module: &str) -> Check {
-    let filter = format!("test(/^{module}/)");
-    check(
-        id,
-        vec![cargo(&[
-            "nextest",
-            "run",
-            "--locked",
-            "-p",
-            package,
-            "--test",
-            "integration",
-            "--run-ignored",
-            "only",
-            "--no-tests",
-            "fail",
-            "-E",
-            &filter,
-        ])],
-    )
+    check(id, vec![guard_step(package, module)])
 }
 fn check(id: &str, steps: Vec<Step>) -> Check {
     Check {
@@ -451,7 +452,18 @@ pub(super) fn all() -> Vec<Check> {
             "rig-reqwest",
             "middleware_features::",
         ),
-        guard("guard-agent-stepper", "rig", "core::agent_run_stepper::"),
+        // Seed the standalone fixture's gitignored lockfile from the root
+        // lockfile so release version bumps do not leave a stale lock behind.
+        check(
+            "guard-agent-stepper",
+            vec![
+                Step::new(
+                    "@copy",
+                    &["Cargo.lock", "tests/fixtures/agent_run_stepper/Cargo.lock"],
+                ),
+                guard_step("rig", "core::agent_run_stepper::"),
+            ],
+        ),
         guard("guard-macro-hygiene", "rig-core", "macro_hygiene::"),
         guard(
             "guard-dependency-rename",

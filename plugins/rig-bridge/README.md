@@ -35,8 +35,8 @@ Inference, and nothing else. Rig keeps the conversation, the system prompt and
 the tools; the program is started with everything of its own turned off:
 
 - **Claude Code**: no built-in tools (`--tools ""`), no settings files, hooks,
-  skills, slash commands, `CLAUDE.md`, memory or saved sessions, and no MCP
-  servers but rig's. Rig's system prompt replaces Claude Code's.
+  skills, slash commands, `CLAUDE.md` or memory, and no MCP servers but rig's.
+  Rig's system prompt replaces Claude Code's.
 - **Grok Build**: an empty home directory of its own, so none of your (or
   another agent's) settings, rules, skills, hooks, plugins or MCP servers, with
   memory, subagents, web search and the rest switched off, and rig's system
@@ -57,8 +57,7 @@ the tools; the program is started with everything of its own turned off:
   turned off and find nothing. The model sees rig's tools as
   `mcp__rig.<tool>`.
 - **Meta AI Muse**: private XDG directories (sharing only `auth.json`),
-  `--no-session-log`, `--preset empty`, and shell/write/user-input tools
-  disabled. Rig's system prompt is passed as `config.developerPrompt` and
+  `--preset empty`, and shell/write/user-input tools disabled. Rig's system prompt is passed as `config.developerPrompt` and
   Rig's MCP server as `config.mcpServers.rig`, so the model sees only
   `mcp__rig.<tool>`.
 - **GitHub Copilot CLI**: a private `COPILOT_HOME` holding one custom agent
@@ -67,9 +66,9 @@ the tools; the program is started with everything of its own turned off:
   (`rig-<tool>`), and built-in MCPs, custom instructions, auto-update,
   ask-user and telemetry switched off.
 
-Each program runs in a private, disk-backed empty directory under
-`RIG_HOME/run/bridge/`, never in your project or RAM-backed `/tmp`, so it finds
-no project files to read on its own. After rig's system prompt each model is
+Each program runs in a private, disk-backed directory of its conversation's
+own under `RIG_HOME/bridge/`, never in your project or RAM-backed `/tmp`, so it
+finds no project files to read on its own. After rig's system prompt each model is
 told, in a sentence or two, how the program prefixes rig's tool names and,
 for programs that report a scratch directory, which directory the project is.
 
@@ -92,15 +91,88 @@ sessions and replay all see it, and the program waits for the result.
 ## How a conversation maps to a program
 
 One process serves one conversation and stays up between your messages, so the
-program's prompt cache is used. Rig remains the owner of the history: when a
-request does not continue what a running process answered (after `/compact`, a
-restart with `-r`, a changed system prompt, model or effort, or Esc while a
-reply streams), rig starts a new process and gives it the conversation so far
-as text. Esc while a tool runs keeps the process: the tool's result says it
-was stopped, and the conversation goes on.
+program's prompt cache is used. Rig remains the owner of the history.
 
-In that text a tool's output is under a heading of its own, apart from what
-you said.
+### Esc
+
+Esc stops the program's turn, not the program. The bridge asks the program to
+end the turn its own way, and the process waits for what you say next with
+everything it had, the part of the reply it was stopped in included:
+
+| Program | How its turn is stopped |
+| --- | --- |
+| Claude Code | an `interrupt` control request on its input |
+| Codex | `turn/interrupt` |
+| Meta AI Muse | `turn/interrupt` |
+| Grok Build, Antigravity, GitHub Copilot CLI | `session/cancel` |
+
+A program that does not end the turn within ten seconds, or whose turn fails
+instead, is ended. So is Claude Code when it is stopped while it holds a
+message of yours it has not read (one sent while a tool ran): whether it
+would drop the message or answer it later is not known, so the conversation
+goes on in a new process, written out, with the message in it. Esc while a
+tool runs stops the tool: its result says it was stopped, and the turn goes
+on.
+
+### A new process
+
+A new process is needed when none that is running can go on: rig was started
+again (`-r`), the process was ended as one idle process too many (`sessions`
+below) or is gone, or it cannot take a changed set of tools. Where it can be,
+it is started on the session the program itself saved, the program's own way,
+so the model has the conversation as it had it, and is sent only what you
+said since:
+
+| Program | Started on its saved session with |
+| --- | --- |
+| Claude Code | `--resume` and the session's id |
+| Codex | `thread/resume` |
+| Meta AI Muse | `session/resume` |
+| Grok Build, Antigravity | `session/resume` |
+| GitHub Copilot CLI | `session/load` |
+
+This is done only where rig's history is what the program had when it last
+ended a turn or was stopped, under the same model and system prompt. A saved
+session is found by that history, whichever conversation left it. In every
+other case the new process is given the conversation so far written out as
+text, in at most 160 KB: old tool output is cut first, then the oldest turns
+are left out. Those cases are `/compact`, a history that was edited, another
+model or system prompt, a process that ended in the middle of a turn (a tool
+call open, or a message of yours not yet given to it), a saved session the
+program does not open, and on Antigravity another set of tools: its saved
+session keeps the tools it was made with. In that text a tool's output is
+under a heading of its own, apart from what you said.
+
+### What is kept on disk
+
+Each conversation has a directory `RIG_HOME/bridge/rig-bridge-<pid>-<id>/`:
+the program's working directory and private home, where the program saves the
+conversation in its own format. Beside it the bridge writes `rig.json`: the
+program, the model, the program's name for the saved session, and digests of
+the history it stands at; of the conversation's text it holds only the part
+of a reply that was said before you stopped it. One session works in a
+directory at a time, and holds `rig.lock` there locked while it does. Claude
+Code is the exception: it writes its session file in its own home, as
+`~/.claude/projects/<the directory's path, with - for />/<session id>.jsonl`,
+so apart from the sessions of your own projects.
+
+A directory is kept from the first turn its program completes, for every
+conversation, each `rig -p` run and each subagent included, and it holds your
+conversation in plain text. One measured after a three-message conversation was
+about 15 MB for Grok Build, 11 MB for Muse, 4 MB each for Codex and
+Antigravity, 1 MB for Copilot CLI and a few KB for Claude Code; most of it is
+files the program unpacks into a new home. Where the program's sign-in is a
+file, the directory holds a link to yours, not a copy.
+
+On startup, rig prunes idle directories under `RIG_HOME/bridge/` that cannot be
+resumed (a process ended mid-turn), have gone unused for three days, or fall
+past the 100 most recent sessions (oldest first). Live sessions hold `rig.lock`
+and are never removed. Run `/bridge prune` to remove all idle saved sessions
+immediately, or delete directories under `RIG_HOME/bridge/` by hand (for Claude
+Code also the folders in `~/.claude/projects/` whose names contain
+`rig-bridge-`; `/bridge status` prints the path). Deleting one costs only this:
+its conversation, if it goes on in a new process, goes on from text. Do not
+delete the directory of a conversation whose process is running.
 
 ## A message sent while the model works
 
@@ -129,7 +201,8 @@ When rig's tools change mid-conversation, a running program is told so over
 MCP and lists them again, and the conversation goes on in the same process.
 Claude Code does this. A program that keeps no connection open to be told on
 (Grok), or that fixes its tools as it starts (Antigravity), gets a new
-process instead.
+process instead: Grok's on its saved session, Antigravity's on the
+conversation written out, as its saved session keeps the tools it had.
 
 `[bridge]` in `RIG_HOME/settings.toml`:
 
@@ -146,15 +219,18 @@ sessions = 8           # how many idle processes are kept; the oldest ends first
 
 ## Commands
 
-- `/bridge` or `/bridge status`: installed harnesses, warm sessions, scratch
-  directory path, session token totals, and cache hit rates.
+- `/bridge` or `/bridge status`: installed harnesses, warm sessions, where
+  saved sessions are kept, session token totals, and cache hit rates.
 - `/bridge usage`: queries plan/subscription quotas in parallel in the
   background across all 6 harnesses (Claude Code `get_usage`, Codex
   `account/rateLimits/read`, Muse `muse usage --json`, Grok billing endpoint
   with CLI fallback, Antigravity `fetchAvailableModels` quota, and Copilot
   via `gh api /copilot_internal/user`) alongside Rig's session token totals.
-- `/bridge reset`: stops all warm idle harness processes and removes their
-  scratch directories without restarting rig.
+- `/bridge reset`: stops all warm idle harness processes without restarting
+  rig. What they saved stays: a conversation whose turn had ended goes on
+  from it, and one stopped in a tool call from the conversation written out.
+- `/bridge prune`: removes all idle saved session directories under
+  `RIG_HOME/bridge/` immediately, leaving any session currently in use intact.
 
 ## Limits
 
@@ -169,6 +245,6 @@ sessions = 8           # how many idle processes are kept; the oldest ends first
 - No cost is reported: the programs bill your subscription.
 - Starting rig discovers models across installed harnesses in parallel
   (bounded by one 5-second timeout).
-- When starting a fresh harness mid-conversation, rig budgets the replayed
-  history so large prior tool outputs are elided before old turns are dropped
-  and the latest user turn is always preserved intact.
+- When a new process cannot be started on a saved session, rig budgets the
+  history it writes out so large prior tool outputs are elided before old
+  turns are dropped and the latest user turn is always preserved intact.

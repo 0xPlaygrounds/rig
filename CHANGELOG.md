@@ -7,7 +7,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Sections are generated on the release PR from the merged pull requests; do not
 edit this file in an ordinary PR (CI fails). Put notes under `## Changelog` in
-your PR description.
+your PR description.## [0.47.1](https://github.com/0xPlaygrounds/rig/compare/v0.47.0...v0.47.1) - 2026-11-24
+
+### Added
+
+- *(rig-bridge)* Esc stops the program's turn, and a new process goes on from the session the program saved ([#3463](https://github.com/0xPlaygrounds/rig/pull/3463)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-watch)* rig-watch, an optional plugin that wakes the agent when a file it waits on changes ([#3462](https://github.com/0xPlaygrounds/rig/pull/3462)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-core)* refresh model catalog (Gemini 4 Neon, Copilot MAI-Code 2, Bedrock/Azure/Copilot GPT-6.2) ([#3458](https://github.com/0xPlaygrounds/rig/pull/3458)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-bridge)* populate reasoning effort controls and reuse warm sessions across effort changes ([#3455](https://github.com/0xPlaygrounds/rig/pull/3455)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-bridge)* add live quota probes for Grok, Antigravity, and Copilot in /bridge usage ([#3454](https://github.com/0xPlaygrounds/rig/pull/3454)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-bridge)* other coding agents' CLIs as model providers ([#3445](https://github.com/0xPlaygrounds/rig/pull/3445)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-tui)* add StickyPromptPlugin to pin off-screen user messages over top row ([#3451](https://github.com/0xPlaygrounds/rig/pull/3451)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-tui)* recall waiting inbox message on Up when input is empty ([#3449](https://github.com/0xPlaygrounds/rig/pull/3449)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-ecs)* skip unstarted tool calls when user steering arrives ([#3448](https://github.com/0xPlaygrounds/rig/pull/3448)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-tui)* scroll half a page on PageUp and PageDown ([#3446](https://github.com/0xPlaygrounds/rig/pull/3446)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Fixed
+
+- *(rig-bridge)* rename Copilot CLI bridge vendor to copilot-cli to avoid built-in copilot catalog collision ([#3459](https://github.com/0xPlaygrounds/rig/pull/3459)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-bridge)* emit per-turn Copilot usage deltas, tighten scratch-dir note, and share nested TMPDIR guard ([#3457](https://github.com/0xPlaygrounds/rig/pull/3457)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-bridge)* harden handshakes, probe isolation, Codex 0.171 flags, and warm recovery ([#3453](https://github.com/0xPlaygrounds/rig/pull/3453)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Other
+
+- say how to merge through the merge queue in AGENTS.md ([#3456](https://github.com/0xPlaygrounds/rig/pull/3456)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #3456
+- remove the rig-claude-cloak plugin ([#3452](https://github.com/0xPlaygrounds/rig/pull/3452)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #3452
+- *(rig-basics, rig-tools)* tighten system prompt, framing, and tool descriptions ([#3447](https://github.com/0xPlaygrounds/rig/pull/3447)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
+## [0.47.1](https://github.com/0xPlaygrounds/rig/compare/v0.47.0...v0.47.1) - 2026-11-25
+
+### Added
+
+- *(rig-bridge)* Esc stops the program's turn, and a new process goes on from the session the program saved ([#3463](https://github.com/0xPlaygrounds/rig/pull/3463)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-watch)* rig-watch, an optional plugin that wakes the agent when a file it waits on changes ([#3462](https://github.com/0xPlaygrounds/rig/pull/3462)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-core)* refresh model catalog (Gemini 4 Neon, Copilot MAI-Code 2, Bedrock/Azure/Copilot GPT-6.2) ([#3458](https://github.com/0xPlaygrounds/rig/pull/3458)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-bridge)* populate reasoning effort controls and reuse warm sessions across effort changes ([#3455](https://github.com/0xPlaygrounds/rig/pull/3455)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-bridge)* add live quota probes for Grok, Antigravity, and Copilot in /bridge usage ([#3454](https://github.com/0xPlaygrounds/rig/pull/3454)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-bridge)* other coding agents' CLIs as model providers ([#3445](https://github.com/0xPlaygrounds/rig/pull/3445)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-tui)* add StickyPromptPlugin to pin off-screen user messages over top row ([#3451](https://github.com/0xPlaygrounds/rig/pull/3451)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-tui)* recall waiting inbox message on Up when input is empty ([#3449](https://github.com/0xPlaygrounds/rig/pull/3449)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-ecs)* skip unstarted tool calls when user steering arrives ([#3448](https://github.com/0xPlaygrounds/rig/pull/3448)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-tui)* scroll half a page on PageUp and PageDown ([#3446](https://github.com/0xPlaygrounds/rig/pull/3446)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Fixed
+
+- *(xtask)* seed agent_run_stepper Cargo.lock from the workspace root ([#3468](https://github.com/0xPlaygrounds/rig/pull/3468)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-bridge)* rename Copilot CLI bridge vendor to copilot-cli to avoid built-in copilot catalog collision ([#3459](https://github.com/0xPlaygrounds/rig/pull/3459)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-bridge)* emit per-turn Copilot usage deltas, tighten scratch-dir note, and share nested TMPDIR guard ([#3457](https://github.com/0xPlaygrounds/rig/pull/3457)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-bridge)* harden handshakes, probe isolation, Codex 0.171 flags, and warm recovery ([#3453](https://github.com/0xPlaygrounds/rig/pull/3453)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Other
+
+- release v0.47.1 ([#3442](https://github.com/0xPlaygrounds/rig/pull/3442)) (by [github-actions[bot]](https://github.com/github-actions[bot])) - #3442
+- say how to merge through the merge queue in AGENTS.md ([#3456](https://github.com/0xPlaygrounds/rig/pull/3456)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #3456
+- remove the rig-claude-cloak plugin ([#3452](https://github.com/0xPlaygrounds/rig/pull/3452)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #3452
+- *(rig-basics, rig-tools)* tighten system prompt, framing, and tool descriptions ([#3447](https://github.com/0xPlaygrounds/rig/pull/3447)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
+* [github-actions[bot]](https://github.com/github-actions[bot])
+
 ## [0.47.0](https://github.com/0xPlaygrounds/rig/compare/v0.46.0...v0.47.0) - 2026-11-20
 
 ### Added

@@ -146,6 +146,13 @@ impl Agent for Antigravity {
         false
     }
 
+    /// A session keeps the tools of the agent definition it was made with:
+    /// started again under another, its model reaches a new tool only
+    /// through `call_mcp_tool`, which is not Rig's to allow.
+    fn retools_saved(&self) -> bool {
+        false
+    }
+
     fn is_rig_tool(&self, tool_call: &Value, _: Option<&str>) -> bool {
         let name = tool_call.get("name").and_then(Value::as_str);
         name.is_some_and(|name| name.starts_with(&format!("mcp_{SERVER}_")))

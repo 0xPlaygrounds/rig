@@ -11,11 +11,12 @@ use rig_harness::rig_core::effect::{Answered, EffectId, EffectKind};
 use rig_harness::rig_core::message::{
     AssistantMessage, ToolCall, ToolFunction, ToolName, ToolResultContent, UserContent,
 };
+use rig_harness::rig_core::message::{DocumentSourceKind, Image};
 use rig_harness::rig_core::serve::{Dispatch, Reply, Serve};
 use serde_json::{Value, json};
 use tokio::sync::{Notify, mpsc};
 
-use super::{Bridge, Model, apply_context, budgeted_opening};
+use super::{Bridge, Model, STOPPED, apply_context, budgeted_opening, digested};
 use crate::harness::{Event, Harness, Launch, Part, Prompt, Running, Steer, Vendor};
 use crate::mcp::tests::{post, request};
 
@@ -28,11 +29,15 @@ struct Seen {
     listed: Vec<Vec<String>>,
     /// The messages a harness took for its running turn.
     steered: Vec<String>,
+    /// The saved sessions harnesses were started on.
+    resumed: Vec<String>,
 }
 
 /// A harness whose model does what its prompt says. A prompt containing
 /// `call read <path>` calls Rig's `read` tool once for each such phrase, at
-/// once, and then says what came back; any other prompt is echoed.
+/// once, and then says what came back; one containing `wait` says so and
+/// goes on until it is stopped, and one containing `crash` fails then; any
+/// other prompt is echoed.
 #[derive(Default)]
 struct Scripted {
     seen: Arc<Mutex<Seen>>,
@@ -50,6 +55,10 @@ struct Scripted {
     /// Whether the harness takes a message for its running turn, when it
     /// has a way to be given one.
     steers: Option<bool>,
+    /// Whether the harness saves its session, under a name it says.
+    saves: bool,
+    /// Whether a harness started on a saved session finds none.
+    forgets: bool,
 }
 
 /// Holds a notification stream open on the server at `url` and lists the
@@ -126,15 +135,28 @@ impl Harness for Scripted {
         !self.fixed_tools
     }
 
+    fn retools_saved(&self) -> bool {
+        !self.fixed_tools
+    }
+
     fn start(&self, launch: Launch<'_>) -> Result<Running, String> {
         let (prompts, mut prompted) = mpsc::unbounded_channel::<Prompt>();
+        let (stops, mut stopped) = mpsc::unbounded_channel::<u64>();
+        let forgot = self.forgets && launch.resume.is_some();
         let (events, reported) = mpsc::unbounded_channel();
         let seen = self.seen.clone();
         let index = {
             let mut seen = seen.lock().unwrap_or_else(PoisonError::into_inner);
             seen.started.push((launch.system.to_owned(), Vec::new()));
+            seen.resumed.extend(launch.resume.map(str::to_owned));
             seen.started.len() - 1
         };
+        if self.saves {
+            let name = launch
+                .resume
+                .map_or_else(|| format!("saved-{index}"), str::to_owned);
+            let _ = events.send(Event::Saved(name));
+        }
         let (url, token) = (launch.mcp.url().to_owned(), launch.mcp.token().to_owned());
         if self.listens {
             tokio::spawn(listen(
@@ -146,7 +168,15 @@ impl Harness for Scripted {
             ));
         }
         tokio::spawn(async move {
-            while let Some(prompt) = prompted.recv().await {
+            loop {
+                // A stop with no turn to stop does nothing.
+                let prompt = tokio::select! {
+                    prompt = prompted.recv() => prompt,
+                    Some(_) = stopped.recv() => continue,
+                };
+                let Some(prompt) = prompt else {
+                    return;
+                };
                 let text: String = prompt
                     .parts
                     .iter()
@@ -170,8 +200,21 @@ impl Harness for Scripted {
                     .skip(1)
                     .filter_map(|rest| rest.split_whitespace().next())
                     .collect();
+                if forgot {
+                    let _ = events.send(Event::Done(Err("no such session".to_owned())));
+                    return;
+                }
                 let _ = events.send(Event::Began);
                 let _ = events.send(Event::Reasoning("thinking".to_owned()));
+                if asked.contains("wait") || asked.contains("crash") {
+                    let _ = events.send(Event::Text("Waiting.".to_owned()));
+                    let _ = stopped.recv().await;
+                    let _ = events.send(match asked.contains("crash") {
+                        true => Event::Done(Err("it crashed".to_owned())),
+                        false => Event::Stopped,
+                    });
+                    continue;
+                }
                 if paths.is_empty() {
                     let _ = events.send(Event::Text(format!("echo: {asked}")));
                 } else {
@@ -241,6 +284,7 @@ impl Harness for Scripted {
         Ok(Running {
             prompts,
             steers,
+            stops,
             events: reported,
             _alive: Box::new(Ended(self.ended.clone())),
         })
@@ -255,15 +299,25 @@ fn model(limit: usize) -> (Model, Arc<Mutex<Seen>>, Arc<AtomicUsize>) {
 
 /// A model on `harness`.
 fn on(harness: Scripted, limit: usize) -> (Model, Arc<Mutex<Seen>>, Arc<AtomicUsize>) {
-    let (seen, ended) = (harness.seen.clone(), harness.ended.clone());
     let scratch =
         std::env::temp_dir().join(format!("rig-bridge-test-{}", uuid::Uuid::new_v4().simple()));
+    at(&scratch, harness, limit)
+}
+
+/// A model on `harness` whose bridge keeps its directories under `root`.
+fn at(
+    root: &std::path::Path,
+    harness: Scripted,
+    limit: usize,
+) -> (Model, Arc<Mutex<Seen>>, Arc<AtomicUsize>) {
+    let (seen, ended) = (harness.seen.clone(), harness.ended.clone());
     let bridge = Bridge::new(
         tokio::runtime::Handle::current(),
         Processes::default(),
         limit,
         None,
-        scratch,
+        root.join("scratch"),
+        root.join("kept"),
     );
     let model = Model {
         bridge: Arc::new(bridge),
@@ -587,30 +641,270 @@ async fn a_harness_that_takes_no_message_is_prompted_with_it_when_its_turn_ends(
     }
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn a_dropped_reply_ends_its_harness() {
-    let (model, _, ended) = model(4);
-
-    let Reply::Stream(mut stream) =
-        reply(&model, asks("", &[Message::user("call read a.txt")])).await
-    else {
+/// Reads `stream` until `text` was said, then drops it, as Rig does with a
+/// reply the user stopped, and gives the session time to stop its turn.
+async fn stopped_at(model: &Model, request: CompletionRequest, text: &str) {
+    let Reply::Stream(mut stream) = reply(model, request).await else {
         return;
     };
-    // Up to the tool call, then the reply is dropped while the harness waits.
     while let Some(Ok(item)) = stream.next().await {
-        if format!("{item:?}").contains("ToolCall") {
+        if format!("{item:?}").contains(text) {
             break;
         }
     }
     drop(stream);
-    for _ in 0..200 {
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_dropped_reply_stops_the_turn_and_the_harness_goes_on_with_what_is_said_next() {
+    let (model, seen, ended) = model(4);
+    let stopped = Message::user(STOPPED);
+
+    // Rig may keep what it had of the reply, or nothing of it.
+    stopped_at(&model, asks("", &[Message::user("wait a")]), "Waiting.").await;
+    let kept = [
+        Message::user("wait a"),
+        Message::assistant("Wai"),
+        stopped.clone(),
+        Message::user("one"),
+    ];
+    let first = answer(&model, asks("", &kept)).await;
+    let mut history = kept.to_vec();
+    history.extend([turn(first.as_ref()), Message::user("wait b")]);
+    stopped_at(&model, asks("", &history), "Waiting.").await;
+    history.extend([stopped, Message::user("two")]);
+    let second = answer(&model, asks("", &history)).await;
+
+    assert_eq!(said(first.as_ref()).0, format!("echo: {STOPPED}\none"));
+    assert_eq!(said(second.as_ref()).0, format!("echo: {STOPPED}\ntwo"));
+    // One harness had every prompt, and only what was said after each stop.
+    assert_eq!(
+        prompts(&seen),
+        vec![vec![
+            "wait a".to_owned(),
+            format!("{STOPPED}\none"),
+            "wait b".to_owned(),
+            format!("{STOPPED}\ntwo"),
+        ]]
+    );
+    assert_eq!(ended.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_stopped_harness_goes_on_only_the_conversation_it_was_stopped_in() {
+    let (model, seen, _) = model(4);
+
+    stopped_at(&model, asks("", &[Message::user("wait a")]), "Waiting.").await;
+    // The same request answered in full elsewhere, and one stopped after
+    // other words: neither is what this harness has.
+    let whole = [
+        Message::user("wait a"),
+        Message::assistant("Waiting. Done."),
+        Message::user("one"),
+    ];
+    let other = [
+        Message::user("wait a"),
+        Message::assistant("Wondering"),
+        Message::user(STOPPED),
+        Message::user("one"),
+    ];
+    let _ = answer(&model, asks("", &whole)).await;
+    let _ = answer(&model, asks("", &other)).await;
+
+    let opened = prompts(&seen);
+    assert_eq!(opened.len(), 3, "{opened:?}");
+    let written = opened.concat().concat();
+    assert!(written.contains("Waiting. Done.") && written.contains("Wondering"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_turn_that_fails_instead_of_stopping_ends_its_harness() {
+    let (model, _, ended) = model(4);
+
+    stopped_at(&model, asks("", &[Message::user("crash")]), "Waiting.").await;
+    for _ in 0..300 {
         if ended.load(Ordering::SeqCst) == 1 {
             break;
         }
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
     }
 
+    // Nothing says the harness has the prompt: nothing goes on from it.
     assert_eq!(ended.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn the_digest_of_a_message_tells_images_apart() {
+    let with = |bytes: &str| {
+        let image = Image {
+            data: DocumentSourceKind::Base64(bytes.to_owned()),
+            ..Image::default()
+        };
+        let content = vec![UserContent::text("look"), UserContent::Image(image)];
+        digested(&Message::User { content })
+    };
+
+    assert_eq!(with("AAAA"), with("AAAA"));
+    assert_ne!(with("AAAA"), with("AAAB"));
+    // And where an image is among the words.
+    let image = || UserContent::Image(Image::default());
+    let word = || UserContent::text("[an image]");
+    assert_ne!(
+        digested(&Message::User {
+            content: vec![image(), word()]
+        }),
+        digested(&Message::User {
+            content: vec![word(), image()]
+        }),
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_reply_dropped_with_a_call_open_gives_the_call_up_and_keeps_the_harness() {
+    let (model, seen, ended) = model(4);
+    let history = [Message::user("call read a.txt")];
+
+    stopped_at(&model, asks("", &history), "ToolCall").await;
+    let next = [
+        history[0].clone(),
+        Message::user(STOPPED),
+        Message::user("more"),
+    ];
+    let went_on = answer(&model, asks("", &next)).await;
+
+    assert_eq!(said(went_on.as_ref()).0, format!("echo: {STOPPED}\nmore"));
+    assert_eq!(prompts(&seen).len(), 1);
+    assert_eq!(ended.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_new_bridge_goes_on_from_the_session_a_harness_saved() {
+    let root =
+        std::env::temp_dir().join(format!("rig-bridge-test-{}", uuid::Uuid::new_v4().simple()));
+    let saving = || Scripted {
+        saves: true,
+        ..Scripted::default()
+    };
+    let mut history = vec![Message::user("one")];
+    {
+        let (model, ..) = at(&root, saving(), 4);
+        let first = answer(&model, asks("", &history)).await;
+        history.extend([turn(first.as_ref()), Message::user("two")]);
+    }
+
+    // Another bridge, as after Rig started again: the harness is started on
+    // what the first saved, and sent only what the user said since.
+    let (model, seen, _) = at(&root, saving(), 4);
+    let second = answer(&model, asks("", &history)).await;
+    assert_eq!(said(second.as_ref()).0, "echo: two");
+    assert_eq!(prompts(&seen), vec![vec!["two".to_owned()]]);
+    let resumed = |seen: &Arc<Mutex<Seen>>| {
+        let seen = seen.lock().unwrap_or_else(PoisonError::into_inner);
+        seen.resumed.clone()
+    };
+    assert_eq!(resumed(&seen), ["saved-0"]);
+
+    // While the harness answers, nothing can go on from what it saved: its
+    // session is ahead of Rig's history.
+    history.extend([turn(second.as_ref()), Message::user("call read a.txt")]);
+    let called = answer(&model, asks("", &history)).await;
+    history.extend([
+        turn(called.as_ref()),
+        results(called.as_ref(), |_| "alpha".to_owned()),
+    ]);
+    drop(model);
+    let (model, seen, _) = at(&root, saving(), 4);
+    let _ = answer(&model, asks("", &history)).await;
+    assert_eq!(resumed(&seen), Vec::<String>::new());
+    let opened = prompts(&seen).concat().concat();
+    assert!(opened.contains("<conversation>"), "{opened}");
+
+    // Nor from a conversation that is not the one it saved.
+    let other = [
+        Message::user("one"),
+        Message::assistant("echo: uno"),
+        Message::user("two"),
+    ];
+    let (model, seen, _) = at(&root, saving(), 4);
+    let _ = answer(&model, asks("", &other)).await;
+    assert_eq!(resumed(&seen), Vec::<String>::new());
+    drop(model);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_new_bridge_goes_on_from_a_turn_that_was_stopped_and_writes_out_what_it_cannot() {
+    let root =
+        std::env::temp_dir().join(format!("rig-bridge-test-{}", uuid::Uuid::new_v4().simple()));
+    let saving = |forgets| Scripted {
+        saves: true,
+        forgets,
+        ..Scripted::default()
+    };
+    let mut history = vec![Message::user("wait a")];
+    {
+        let (model, ..) = at(&root, saving(false), 4);
+        stopped_at(&model, asks("", &history), "Waiting.").await;
+        // The stopped session is waiting once its turn has ended.
+        for _ in 0..300 {
+            if model.bridge.snapshot().warm.len() == 1 {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    }
+    history.extend([
+        Message::assistant("Wai"),
+        Message::user(STOPPED),
+        Message::user("one"),
+    ]);
+
+    let (model, seen, _) = at(&root, saving(false), 4);
+    let first = answer(&model, asks("", &history)).await;
+    assert_eq!(said(first.as_ref()).0, format!("echo: {STOPPED}\none"));
+    assert_eq!(prompts(&seen), vec![vec![format!("{STOPPED}\none")]]);
+    history.extend([turn(first.as_ref()), Message::user("two")]);
+    drop(model);
+
+    // A harness that no longer has what it saved: the conversation is
+    // written out for a new one, and answered all the same.
+    let (model, seen, _) = at(&root, saving(true), 4);
+    let second = answer(&model, asks("", &history)).await;
+    assert_eq!(said(second.as_ref()).0, "echo: \n\ntwo");
+    let opened = prompts(&seen);
+    assert_eq!(opened.len(), 2, "{opened:?}");
+    assert_eq!(opened.first(), Some(&vec!["two".to_owned()]));
+    assert!(opened.concat().concat().contains("<conversation>"));
+    drop(model);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_saved_session_that_keeps_its_tools_is_gone_on_from_only_under_them() {
+    let root =
+        std::env::temp_dir().join(format!("rig-bridge-test-{}", uuid::Uuid::new_v4().simple()));
+    for (fixed_tools, goes_on) in [(false, 1), (true, 0)] {
+        let root = root.join(if fixed_tools { "fixed" } else { "free" });
+        let saving = || Scripted {
+            saves: true,
+            fixed_tools,
+            ..Scripted::default()
+        };
+        let mut history = vec![Message::user("one")];
+        {
+            let (model, ..) = at(&root, saving(), 4);
+            let first = answer(&model, asks("", &history)).await;
+            history.extend([turn(first.as_ref()), Message::user("two")]);
+        }
+
+        // The conversation goes on without the tool it was offered before.
+        let (model, seen, _) = at(&root, saving(), 4);
+        let bare = CompletionRequest::new(Message::system("")).messages(history.iter().cloned());
+        let _ = answer(&model, bare).await;
+        let seen = seen.lock().unwrap_or_else(PoisonError::into_inner);
+        assert_eq!(seen.resumed.len(), goes_on, "fixed tools: {fixed_tools}");
+    }
+    let _ = std::fs::remove_dir_all(&root);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -921,6 +1215,7 @@ where
         Ok(Running {
             prompts,
             steers: None,
+            stops: mpsc::unbounded_channel().0,
             events: reported,
             _alive: Box::new(()),
         })
@@ -953,7 +1248,8 @@ where
         Processes::default(),
         2,
         None,
-        scratch,
+        scratch.join("scratch"),
+        scratch.join("kept"),
     ));
     let model = Model {
         bridge: bridge.clone(),
@@ -1187,7 +1483,8 @@ async fn warm_prompt_retries_at_most_once_and_skips_non_recoverable_errors() {
     for (error, expected_starts) in [
         ("corrupted thinking signature", 2),
         ("the model refused to answer", 1),
-        ("the turn was cancelled", 1),
+        // A turn the harness says was stopped, though Rig stopped none.
+        ("the turn was stopped", 1),
     ] {
         let (_, model, starts) = fn_model(
             Vendor::Antigravity,
@@ -1200,7 +1497,10 @@ async fn warm_prompt_retries_at_most_once_and_skips_non_recoverable_errors() {
                         let _ = events.send(Event::Text("ok-0".to_owned()));
                         let _ = events.send(Event::Done(Ok(FinishReason::Stop)));
                     } else {
-                        let _ = events.send(Event::Done(Err(error.to_owned())));
+                        let _ = events.send(match error {
+                            "the turn was stopped" => Event::Stopped,
+                            error => Event::Done(Err(error.to_owned())),
+                        });
                         return;
                     }
                 }

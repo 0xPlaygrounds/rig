@@ -3,6 +3,10 @@
 //! file, hook, skill, command, memory and MCP server of the user's is left
 //! out; the process sees the system prompt and the tools Rig gives it.
 //!
+//! Claude Code saves the conversation under a session id, which a later
+//! process is started on to go on from it, and ends a turn when asked on
+//! its input.
+//!
 //! Each line of input carries an id, and Claude Code says under that id
 //! when it holds the line and when its model starts on it. A line written
 //! while a turn runs is given to the model in that turn, after the tool
@@ -62,6 +66,7 @@ impl Harness for Claude {
         let Launch {
             mut command,
             dir,
+            resume,
             system,
             model,
             effort,
@@ -100,7 +105,6 @@ impl Harness for Claude {
             .args(["--setting-sources", ""])
             .args(["--settings", &settings.to_string()])
             .arg("--disable-slash-commands")
-            .arg("--no-session-persistence")
             // Without it newer models send their reasoning as empty text.
             .args(["--thinking-display", "summarized"])
             // Nothing is left to ask about but Rig's tools, which Rig gates.
@@ -114,27 +118,56 @@ impl Harness for Claude {
         if let Some(effort) = effort {
             command.args(["--effort", effort_wire(effort, true)]);
         }
+        match resume {
+            Some(session) => command.args(["--resume", session]),
+            None => command.args(["--session-id", &uuid::Uuid::new_v4().to_string()]),
+        };
         for name in INHERITED {
             command.env_remove(name);
         }
         let (process, pipes) = spawn(command)?;
         let (prompts, mut prompted) = mpsc::unbounded_channel::<Prompt>();
         let (steers, mut steered) = mpsc::unbounded_channel::<Steer>();
+        let (stops, mut stopped) = mpsc::unbounded_channel::<u64>();
         let (events, reported) = mpsc::unbounded_channel();
         let stderr = Stderr::follow(pipes.stderr);
         tokio::spawn(async move {
             let mut stdin = pipes.stdin;
             let mut reader = Reader::default();
             let mut lines = BufReader::new(pipes.stdout).lines();
+            // The number of the prompt last written, whether the program is
+            // answering it, and the number of the last prompt stopped.
+            let (mut turn, mut answering, mut stopped_to) = (0u64, false, 0u64);
+            // The line that asks the program to stop its turn: the turn's
+            // end is the stop's once the program has answered it.
+            let interrupts = |reader: &mut Reader| {
+                let id = uuid::Uuid::new_v4().to_string();
+                reader.interrupt = Some(id.clone());
+                let request = json!({ "subtype": "interrupt" });
+                let line =
+                    json!({ "type": "control_request", "request_id": id, "request": request });
+                format!("{line}\n")
+            };
             loop {
+                // A prompt is taken before a stop, which may be the one for it.
                 tokio::select! {
+                    biased;
                     prompt = prompted.recv() => {
                         let Some(prompt) = prompt else {
                             return;
                         };
+                        turn += 1;
+                        answering = true;
+                        reader.interrupt = None;
+                        reader.stopping = false;
                         let id = uuid::Uuid::new_v4().to_string();
                         let mut line = user_message(&prompt.parts, &id, false).to_string();
                         line.push('\n');
+                        // Stopped before it came: it is stopped once the
+                        // program has it.
+                        if turn <= stopped_to {
+                            line.push_str(&interrupts(&mut reader));
+                        }
                         if stdin.write_all(line.as_bytes()).await.is_err() {
                             break;
                         }
@@ -155,9 +188,30 @@ impl Harness for Claude {
                             break;
                         }
                     }
+                    Some(stop) = stopped.recv() => {
+                        stopped_to = stopped_to.max(stop);
+                        // A stop for a turn that is over stops nothing.
+                        if stop != turn || !answering {
+                            continue;
+                        }
+                        // Whether the program drops a line it holds or
+                        // answers it later is not known: the session ends
+                        // with the message unread, and the conversation
+                        // goes on written out, the message in it.
+                        if !reader.held.is_empty() || !reader.offered.is_empty() {
+                            let unread = "it was stopped with a message of the user's unread";
+                            let _ = events.send(Event::Done(Err(unread.to_owned())));
+                            continue;
+                        }
+                        let line = interrupts(&mut reader);
+                        if stdin.write_all(line.as_bytes()).await.is_err() {
+                            break;
+                        }
+                    }
                     line = lines.next_line() => match line {
                         Ok(Some(line)) => {
                             for event in reader.read(&line) {
+                                answering &= !matches!(event, Event::Done(_) | Event::Stopped);
                                 if events.send(event).is_err() {
                                     return;
                                 }
@@ -174,6 +228,7 @@ impl Harness for Claude {
         Ok(Running {
             prompts,
             steers: Some(steers),
+            stops,
             events: reported,
             _alive: Box::new(process),
         })
@@ -221,11 +276,24 @@ struct Reader {
     /// How the turn ended while the program held a line: the reply's end,
     /// unless the program starts on that line.
     ended: Option<Result<FinishReason, String>>,
+    /// The id the program last said it saves the session under.
+    session: Option<String>,
+    /// The id of the request to stop the turn, until the program answers
+    /// it.
+    interrupt: Option<String>,
+    /// Whether the program said it is stopping the turn: its result, an
+    /// error like any other, then says it did. A result that was on its way
+    /// before is the turn's own.
+    stopping: bool,
 }
 
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum Line {
+    System {
+        #[serde(default)]
+        session_id: Option<String>,
+    },
     StreamEvent {
         event: Stream,
     },
@@ -235,6 +303,10 @@ enum Line {
     CommandLifecycle {
         command_uuid: String,
         state: String,
+    },
+    ControlResponse {
+        #[serde(default)]
+        response: Value,
     },
     Result {
         #[serde(default)]
@@ -419,6 +491,22 @@ impl Reader {
                 events
             }
             Line::Assistant { .. } | Line::Other => Vec::new(),
+            Line::ControlResponse { response } => {
+                let answers = response.get("request_id").and_then(Value::as_str);
+                let stops = response.get("subtype").and_then(Value::as_str) == Some("success");
+                if stops && answers.is_some() && answers == self.interrupt.as_deref() {
+                    self.interrupt = None;
+                    self.stopping = true;
+                }
+                Vec::new()
+            }
+            Line::System { session_id } => {
+                if session_id.is_none() || session_id == self.session {
+                    return Vec::new();
+                }
+                self.session.clone_from(&session_id);
+                session_id.map(Event::Saved).into_iter().collect()
+            }
             Line::CommandLifecycle {
                 command_uuid,
                 state,
@@ -455,6 +543,19 @@ impl Reader {
                 errors,
             } => {
                 self.streamed.clear();
+                if is_error {
+                    // The program goes on with nothing of a turn that failed
+                    // or was stopped: a line it held then is not waited for.
+                    self.held.clear();
+                    self.ended = None;
+                    for (_, taken) in self.offered.drain() {
+                        let _ = taken.send(Err("the turn ended first".to_owned()));
+                    }
+                }
+                self.interrupt = None;
+                if is_error && std::mem::take(&mut self.stopping) {
+                    return vec![Event::Stopped];
+                }
                 let done = if is_error {
                     let why = result.unwrap_or_else(|| errors.join("; "));
                     Err(if why.is_empty() {

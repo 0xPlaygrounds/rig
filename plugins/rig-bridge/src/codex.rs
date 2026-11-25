@@ -204,15 +204,17 @@ impl Harness for Codex {
         let Launch {
             mut command,
             dir,
+            resume,
             system,
             model,
             effort: _,
             mcp,
             tools: _,
         } = launch;
+        // The program's home, where it saves the thread.
         let home = dir.join("codex");
         let catalog = dir.join("models.json");
-        std::fs::create_dir(&home)
+        std::fs::create_dir_all(&home)
             .and_then(|()| std::fs::write(&catalog, &*self.catalog))
             .map_err(|why| format!("could not write the session's files: {why}"))?;
         // The sign-in is shared, so a token the program renews is renewed
@@ -246,16 +248,19 @@ impl Harness for Codex {
         let (process, pipes) = spawn(command)?;
         let (prompts, prompted) = mpsc::unbounded_channel();
         let (steers, steered) = mpsc::unbounded_channel();
+        let (stops, stopped) = mpsc::unbounded_channel();
         let (events, reported) = mpsc::unbounded_channel();
         let stderr = Stderr::follow(pipes.stderr);
         let opening = Opening {
             dir: dir.to_path_buf(),
             system: system.to_owned(),
             model: model.to_owned(),
+            resume: resume.map(str::to_owned),
         };
         tokio::spawn(async move {
             let mut wire = Wire::new(pipes.stdout, pipes.stdin, events.clone());
-            if let Err(why) = converse(&mut wire, opening, prompted, steered).await {
+            let conversed = converse(&mut wire, opening, prompted, steered, stopped);
+            if let Err(why) = conversed.await {
                 let why = stderr.explain(&format!("codex: {why}")).await;
                 let _ = events.send(Event::Done(Err(why)));
             }
@@ -263,6 +268,7 @@ impl Harness for Codex {
         Ok(Running {
             prompts,
             steers: Some(steers),
+            stops,
             events: reported,
             _alive: Box::new(process),
         })
@@ -277,6 +283,8 @@ pub(crate) struct Opening {
     pub system: String,
     /// The model's id.
     pub model: String,
+    /// The thread a process before this one saved, to go on from.
+    pub resume: Option<String>,
 }
 
 /// The client's end of the connection: JSON lines, each request answered
@@ -288,7 +296,7 @@ pub(crate) struct Wire<R, W> {
     /// Whether the program reached Rig's MCP server, once it said.
     server: Option<Result<(), String>>,
     /// How the turn being answered ended, once it did.
-    ended: Option<Result<FinishReason, String>>,
+    ended: Option<Event>,
 }
 
 impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Wire<R, W> {
@@ -355,7 +363,7 @@ fn decide(method: &str, params: &Value) -> Value {
 fn notify(
     events: &mpsc::UnboundedSender<Event>,
     server: &mut Option<Result<(), String>>,
-    ended: &mut Option<Result<FinishReason, String>>,
+    ended: &mut Option<Event>,
     method: &str,
     params: &Value,
 ) {
@@ -400,13 +408,13 @@ fn notify(
         "turn/completed" => {
             let turn = params.get("turn").unwrap_or(&Value::Null);
             *ended = Some(match turn.get("status").and_then(Value::as_str) {
-                Some("completed") => Ok(FinishReason::Stop),
-                Some("interrupted") => Err("the turn was interrupted".to_owned()),
-                _ => Err(turn
+                Some("completed") => Event::Done(Ok(FinishReason::Stop)),
+                Some("interrupted") => Event::Stopped,
+                _ => Event::Done(Err(turn
                     .pointer("/error/message")
                     .and_then(Value::as_str)
                     .unwrap_or("the turn failed")
-                    .to_owned()),
+                    .to_owned())),
             });
             None
         }
@@ -466,7 +474,10 @@ fn input(prompt: &[Part], dir: &Path, images: &mut usize) -> Result<Vec<Value>, 
                 let bytes = bytes.map_err(|why| format!("an image is not base 64: {why}"))?;
                 let kind = image_extension(media_type);
                 *images += 1;
-                let path = dir.join(format!("image-{images}.{kind}"));
+                // A process that went on from a saved thread counts from 1
+                // again: its files are told apart from the ones before.
+                let id = uuid::Uuid::new_v4().simple();
+                let path = dir.join(format!("image-{images}-{id}.{kind}"));
                 std::fs::write(&path, bytes)
                     .map_err(|why| format!("could not write an image: {why}"))?;
                 json!({ "type": "localImage", "path": path.to_string_lossy() })
@@ -476,13 +487,15 @@ fn input(prompt: &[Part], dir: &Path, images: &mut usize) -> Result<Vec<Value>, 
     Ok(items)
 }
 
-/// Opens the thread, then answers each prompt until the prompts end. A
-/// steer goes into the turn being answered.
+/// Opens the thread, a new one or the saved one, then answers each prompt
+/// until the prompts end. A steer goes into the turn being answered, and a
+/// stop interrupts it.
 pub(crate) async fn converse<R, W>(
     wire: &mut Wire<R, W>,
     opening: Opening,
     mut prompts: mpsc::UnboundedReceiver<Prompt>,
     mut steers: mpsc::UnboundedReceiver<Steer>,
+    mut stops: mpsc::UnboundedReceiver<u64>,
 ) -> Result<(), String>
 where
     R: AsyncRead + Unpin,
@@ -501,20 +514,24 @@ where
         if account.get("account").is_none_or(Value::is_null) {
             return Err("it is not signed in: run `codex login`".to_owned());
         }
-        let started = wire
-            .request(
-                "thread/start",
-                json!({
-                    "model": opening.model,
-                    "cwd": opening.dir.to_string_lossy(),
-                    // Nothing of Codex's own is left to approve or to sandbox.
-                    "approvalPolicy": "never",
-                    "sandbox": "read-only",
-                    "ephemeral": true,
-                    "baseInstructions": opening.system,
-                }),
-            )
-            .await?;
+        let mut thread = json!({
+            "model": opening.model,
+            "cwd": opening.dir.to_string_lossy(),
+            // Nothing of Codex's own is left to approve or to sandbox.
+            "approvalPolicy": "never",
+            "sandbox": "read-only",
+            "baseInstructions": opening.system,
+        });
+        let open = match (&opening.resume, thread.as_object_mut()) {
+            (Some(saved), Some(thread)) => {
+                thread.insert("threadId".to_owned(), saved.as_str().into());
+                // Its turns are the program's to keep, not ours to read.
+                thread.insert("excludeTurns".to_owned(), true.into());
+                "thread/resume"
+            }
+            _ => "thread/start",
+        };
+        let started = wire.request(open, thread).await?;
         let thread = started
             .pointer("/thread/id")
             .and_then(Value::as_str)
@@ -534,21 +551,33 @@ where
     .await
     .map_err(|_| "it did not finish starting in time".to_owned())??;
 
+    let _ = wire.events.send(Event::Saved(thread.clone()));
+
     let mut images = 0;
+    // The number of the prompt being answered, and of the last one stopped.
+    let (mut number, mut stopped) = (0u64, 0u64);
     loop {
-        // Between prompts the program still sends notifications.
+        // Between prompts the program still sends notifications. A prompt
+        // is taken before a stop, which may be the one for it. A stop with
+        // no turn running is for one that is over, or for a prompt that is
+        // only now on its way: that one is stopped once it has started, so
+        // that the program has it.
         let prompt = loop {
             tokio::select! {
+                biased;
                 prompt = prompts.recv() => break prompt,
                 Some(steer) = steers.recv() => {
                     let _ = steer.taken.send(Err("no turn is running".to_owned()));
                 }
+                Some(stop) = stops.recv() => stopped = stopped.max(stop),
                 msg = wire.next_message() => wire.handle(msg?).await?,
             }
         };
         let Some(prompt) = prompt else {
             return Ok(());
         };
+        number += 1;
+        let mut interrupt = number <= stopped;
         let mut turn = json!({
             "threadId": thread,
             "input": input(&prompt.parts, &opening.dir, &mut images)?,
@@ -562,6 +591,13 @@ where
             Ok(started) => loop {
                 if let Some(ended) = wire.ended.take() {
                     break ended;
+                }
+                // The turn then completes as interrupted.
+                if let (true, Some(id)) = (interrupt, started.pointer("/turn/id")) {
+                    interrupt = false;
+                    let interrupted = json!({ "threadId": thread, "turnId": id });
+                    let _ = wire.request("turn/interrupt", interrupted).await;
+                    continue;
                 }
                 tokio::select! {
                     msg = wire.next_message() => wire.handle(msg?).await?,
@@ -582,10 +618,14 @@ where
                         };
                         let _ = steer.taken.send(taken);
                     }
+                    Some(stop) = stops.recv() => {
+                        stopped = stopped.max(stop);
+                        interrupt = stop == number;
+                    }
                 }
             },
-            Err(why) => Err(why),
+            Err(why) => Event::Done(Err(why)),
         };
-        let _ = wire.events.send(Event::Done(done));
+        let _ = wire.events.send(done);
     }
 }

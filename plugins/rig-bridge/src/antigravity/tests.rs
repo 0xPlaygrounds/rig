@@ -6,6 +6,7 @@ use crate::acp::{Agent, Opening, Steering};
 fn opening(tools: &[&str]) -> Opening {
     Opening {
         dir: "/session".into(),
+        resume: None,
         system: "Be brief.".to_owned(),
         model: "gemini-4-neon-high".to_owned(),
         effort: None,

@@ -18,7 +18,7 @@ bevy_ecs = { workspace = true }
 bevy_log = { workspace = true }
 bevy_reflect = { workspace = true }
 rig-core = { workspace = true }
-rig-harness = { path = "../../crates/rig-harness", version = "0.47.0" }
+rig-harness = { path = "../../crates/rig-harness", version = "0.47.1" }
 # The process-wide HTTP client.
 rig-reqwest = { workspace = true }
 schemars = { workspace = true }

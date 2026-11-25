@@ -24,11 +24,12 @@ fn target_dir() -> PathBuf {
 #[ignore = "a nested Cargo build: cargo xtask verify --check guard-agent-stepper"]
 fn agent_run_is_steppable_without_the_futures_driver() -> Result<(), Box<dyn std::error::Error>> {
     // CI compiles the fixture with warnings denied; do the same here so a
-    // warning in the fixture fails locally, not on the runner. `--locked`
-    // fails on a stale fixture lock instead of rewriting the tracked file.
+    // warning in the fixture fails locally, not on the runner. The fixture's
+    // lockfile is gitignored and seeded from the workspace's Cargo.lock, so
+    // Cargo can record the fixture package without dirtying the tree.
     let output = Command::new(env!("CARGO"))
         .env("RUSTFLAGS", "-D warnings")
-        .args(["run", "--quiet", "--locked", "--manifest-path"])
+        .args(["run", "--quiet", "--manifest-path"])
         .arg(fixture_manifest())
         .arg("--target-dir")
         .arg(target_dir())
@@ -52,13 +53,7 @@ fn agent_run_is_steppable_without_the_futures_driver() -> Result<(), Box<dyn std
 #[ignore = "a nested Cargo build: cargo xtask verify --check guard-agent-stepper"]
 fn agent_run_stepper_fixture_graph_is_runtime_free() -> Result<(), Box<dyn std::error::Error>> {
     let output = Command::new(env!("CARGO"))
-        .args([
-            "metadata",
-            "--locked",
-            "--format-version",
-            "1",
-            "--manifest-path",
-        ])
+        .args(["metadata", "--format-version", "1", "--manifest-path"])
         .arg(fixture_manifest())
         .output()?;
     if !output.status.success() {

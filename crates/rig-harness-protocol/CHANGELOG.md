@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.47.1](https://github.com/0xPlaygrounds/rig/compare/rig-harness-protocol-v0.47.0...rig-harness-protocol-v0.47.1) - 2026-11-24
+
+### Added
+
+- *(rig-watch)* rig-watch, an optional plugin that wakes the agent when a file it waits on changes ([#3462](https://github.com/0xPlaygrounds/rig/pull/3462)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-bridge)* other coding agents' CLIs as model providers ([#3445](https://github.com/0xPlaygrounds/rig/pull/3445)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-tui)* add StickyPromptPlugin to pin off-screen user messages over top row ([#3451](https://github.com/0xPlaygrounds/rig/pull/3451)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Fixed
+
+- *(rig-bridge)* rename Copilot CLI bridge vendor to copilot-cli to avoid built-in copilot catalog collision ([#3459](https://github.com/0xPlaygrounds/rig/pull/3459)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Other
+
+- remove the rig-claude-cloak plugin ([#3452](https://github.com/0xPlaygrounds/rig/pull/3452)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #3452
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 ## [0.47.0](https://github.com/0xPlaygrounds/rig/compare/rig-harness-protocol-v0.46.0...rig-harness-protocol-v0.47.0) - 2026-11-20
 
 ### Added
