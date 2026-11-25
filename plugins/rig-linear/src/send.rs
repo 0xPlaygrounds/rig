@@ -348,9 +348,9 @@ impl Watch {
             self.since = Some(newest.created_at.clone());
         }
         read.into_iter()
-            .filter_map(|seen| match (seen.stop, seen.prompt) {
-                (true, _) => Some(Told::Stop { by: seen.by }),
-                (false, Some(body)) if !body.trim().is_empty() => Some(Told::Prompt {
+            .filter_map(|seen| match (seen.stop, seen.from_app, seen.prompt) {
+                (true, _, _) => Some(Told::Stop { by: seen.by }),
+                (false, false, Some(body)) if !body.trim().is_empty() => Some(Told::Prompt {
                     body: body.trim().to_owned(),
                     by: seen.by,
                 }),

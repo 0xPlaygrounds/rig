@@ -166,7 +166,8 @@ fn an_issue_gets_a_session_then_the_plan_then_the_coalesced_activities() {
         }),
         json!({
             "query": "mutation CreateSession($issueId: String!) { agentSessionCreateOnIssue(input: \
-                      { issueId: $issueId }) { success agentSession { id url } } }",
+                      { issueId: $issueId }) { success agentSession { id url activities(first: 50, \
+                      filter: { type: { eq: \"prompt\" } }) { nodes { id createdAt } } } } }",
             "variables": { "issueId": "issue-uuid" },
         }),
         activity(json!({ "type": "thought", "body": WORKING })),
@@ -565,7 +566,7 @@ fn only_prompts_after_the_run_attached_are_told_and_a_stop_ends_the_reading() {
             "query Activities($id: String!, $after: String, $since: DateTimeOrDuration) { \
              agentSession(id: $id) { activities(first: 50, after: $after, filter: { type: { eq: \
              \"prompt\" }, createdAt: { gte: $since } }) { nodes { id createdAt signal user { \
-             name } content { __typename ... on AgentActivityPromptContent { body } } } pageInfo { \
+             name app } content { __typename ... on AgentActivityPromptContent { body } } } pageInfo { \
              hasNextPage endCursor } } } }"
         )
     );
@@ -850,5 +851,66 @@ fn retry_delay_honors_full_retry_after_and_enforces_spacing() {
     assert_eq!(
         retry_delay(None, Duration::from_secs(10)),
         Duration::from_secs(10)
+    );
+}
+
+#[test]
+fn synthetic_app_prompts_on_proactive_session_creation_are_ignored() {
+    let linear = StandIn::scripted(|request, _| {
+        if request.query().contains("agentSessionCreateOnIssue") {
+            return Some(stand_in::reply(json!({
+                "agentSessionCreateOnIssue": {
+                    "success": true,
+                    "agentSession": {
+                        "id": SESSION_ID,
+                        "url": SESSION_URL,
+                        "activities": {
+                            "nodes": [{ "id": "p0", "createdAt": "2026-01-01T00:00:00.000Z" }]
+                        },
+                    },
+                }
+            })));
+        }
+        if !reads(request) {
+            return None;
+        }
+        let nodes = vec![
+            json!({
+                "id": "p2",
+                "createdAt": "2026-01-01T00:00:02.000Z",
+                "signal": Value::Null,
+                "user": { "name": "Ana", "app": false },
+                "content": { "__typename": "AgentActivityPromptContent", "body": "Human follow-up." },
+            }),
+            json!({
+                "id": "p1",
+                "createdAt": "2026-01-01T00:00:01.000Z",
+                "signal": Value::Null,
+                "user": { "name": "Rigged Intern", "app": true },
+                "content": { "__typename": "AgentActivityPromptContent", "body": "Work on ENG-1" },
+            }),
+            json!({
+                "id": "p0",
+                "createdAt": "2026-01-01T00:00:00.000Z",
+                "signal": Value::Null,
+                "user": { "name": "Rigged Intern", "app": true },
+                "content": { "__typename": "AgentActivityPromptContent", "body": "Work on ENG-1" },
+            }),
+        ];
+        Some(stand_in::reply(activities(&nodes)))
+    });
+    let mut cfg = config(
+        &linear.url,
+        Credentials::Token("lin_api_key".to_owned()),
+        Target::Issue("ENG-1".to_owned()),
+    );
+    cfg.poll = Some(Duration::from_millis(80));
+    let told = run_for(cfg, Duration::from_millis(400));
+    assert_eq!(
+        told,
+        [Told::Prompt {
+            body: "Human follow-up.".to_owned(),
+            by: Some("Ana".to_owned()),
+        }]
     );
 }

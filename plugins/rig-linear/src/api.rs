@@ -197,7 +197,8 @@ impl Api {
         Ok((issue_id.to_owned(), identifier))
     }
 
-    /// Creates an agent session on the issue with id `issue_id`.
+    /// Creates an agent session on the issue with id `issue_id`, reading any
+    /// synthetic initial prompt Linear creates with it.
     pub(crate) async fn create_session_on_issue(
         &self,
         issue_id: &str,
@@ -206,9 +207,12 @@ impl Api {
         let payload = self
             .mutate(
                 "agentSessionCreateOnIssue",
-                "mutation CreateSession($issueId: String!) { \
-                 agentSessionCreateOnIssue(input: { issueId: $issueId }) \
-                 { success agentSession { id url } } }",
+                &format!(
+                    "mutation CreateSession($issueId: String!) {{ \
+                     agentSessionCreateOnIssue(input: {{ issueId: $issueId }}) \
+                     {{ success agentSession {{ id url activities(first: {PAGE}, filter: {{ type: \
+                     {{ eq: \"prompt\" }} }}) {{ nodes {{ id createdAt }} }} }} }} }}"
+                ),
                 json!({ "issueId": issue_id }),
             )
             .await?;
@@ -224,7 +228,7 @@ impl Api {
                 .map(str::to_owned),
             issue: identifier,
             issue_id: Some(issue_id.to_owned()),
-            initial_prompts: Vec::new(),
+            initial_prompts: initial_prompts(session),
         })
     }
 
@@ -244,20 +248,6 @@ impl Api {
         let Some(session) = data.get("agentSession").filter(|value| value.is_object()) else {
             return Err(ApiError::Reply(format!("no agent session {id}")));
         };
-        let initial_prompts = session
-            .pointer("/activities/nodes")
-            .and_then(Value::as_array)
-            .map(|nodes| {
-                nodes
-                    .iter()
-                    .filter_map(|node| {
-                        let id = node.get("id").and_then(Value::as_str)?;
-                        let created_at = node.get("createdAt").and_then(Value::as_str)?;
-                        Some((id.to_owned(), created_at.to_owned()))
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
         Ok(Session {
             id: id.to_owned(),
             url: session
@@ -272,7 +262,7 @@ impl Api {
                 .pointer("/issue/id")
                 .and_then(Value::as_str)
                 .map(str::to_owned),
-            initial_prompts,
+            initial_prompts: initial_prompts(session),
         })
     }
 
@@ -374,7 +364,7 @@ impl Api {
         let query = format!(
             "query Activities($id: String!, $after: String{declared}) {{ agentSession(id: $id) {{ \
              activities(first: {PAGE}, after: $after, filter: {{ type: {{ eq: \"prompt\" }}{created} }}) \
-             {{ nodes {{ id createdAt signal user {{ name }} content {{ __typename \
+             {{ nodes {{ id createdAt signal user {{ name app }} content {{ __typename \
              ... on AgentActivityPromptContent {{ body }} }} }} pageInfo {{ hasNextPage endCursor }} }} \
              }} }}"
         );
@@ -407,6 +397,10 @@ impl Api {
                         prompt: prompt.then(|| text(node, "/content/body").unwrap_or_default()),
                         stop: text(node, "/signal").as_deref() == Some("stop"),
                         by: text(node, "/user/name"),
+                        from_app: node
+                            .pointer("/user/app")
+                            .and_then(Value::as_bool)
+                            .unwrap_or(false),
                     })
                 })
                 .collect(),
@@ -475,6 +469,24 @@ impl Api {
     }
 }
 
+/// Extracts `(id, createdAt)` of prompts already on `session`.
+fn initial_prompts(session: &Value) -> Vec<(String, String)> {
+    session
+        .pointer("/activities/nodes")
+        .and_then(Value::as_array)
+        .map(|nodes| {
+            nodes
+                .iter()
+                .filter_map(|node| {
+                    let id = node.get("id").and_then(Value::as_str)?;
+                    let created_at = node.get("createdAt").and_then(Value::as_str)?;
+                    Some((id.to_owned(), created_at.to_owned()))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// How many activities one page asks for.
 const PAGE: usize = 50;
 
@@ -499,6 +511,9 @@ pub(crate) struct Seen {
     pub(crate) stop: bool,
     /// Its author's name.
     pub(crate) by: Option<String>,
+    /// Whether the author is an OAuth application (such as Linear's synthetic
+    /// `"Work on …"` prompt on proactive session creation).
+    pub(crate) from_app: bool,
 }
 
 /// What claiming an issue needs to know.
