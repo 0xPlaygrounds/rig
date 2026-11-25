@@ -836,3 +836,29 @@ fn the_redact_guard_finds_every_way_to_name_the_library() {
         Some(3)
     );
 }
+
+#[test]
+fn guard_agent_stepper_seeds_its_lockfile_from_the_workspace_root() {
+    let all = checks::all();
+    let check = all
+        .iter()
+        .find(|check| check.id == "guard-agent-stepper")
+        .unwrap();
+    let first = &check.steps[0];
+    assert_eq!(first.program, "@copy");
+    assert_eq!(
+        first.args,
+        ["Cargo.lock", "tests/fixtures/agent_run_stepper/Cargo.lock"]
+    );
+
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    let extra_locks: Vec<String> = execute::tracked_inputs(root)
+        .unwrap()
+        .into_iter()
+        .filter(|path| path.ends_with("/Cargo.lock"))
+        .collect();
+    assert!(
+        extra_locks.is_empty(),
+        "standalone fixtures must gitignore Cargo.lock and seed from the root lockfile: {extra_locks:?}"
+    );
+}
