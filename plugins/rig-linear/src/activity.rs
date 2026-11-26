@@ -2,12 +2,12 @@
 //! to size and redacted, and the pull request link a `gh pr create`
 //! command printed.
 
+use crate::SessionLink;
 use rig_core::completion::CompletionResponse;
 use rig_core::effect::Answered;
 use rig_core::error::ErrorReport;
 use rig_core::message::AssistantContent;
 use rig_core::tool::{ExitStatus, ToolResultContext};
-use rig_harness::links::SessionLink;
 use serde_json::{Value, json};
 
 #[cfg(test)]

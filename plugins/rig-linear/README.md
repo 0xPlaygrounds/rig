@@ -98,7 +98,7 @@ skill = "reproduce"
 At startup it creates the session (or reads the existing one), prints its
 link on stderr, posts the thought "Working on it." at once, so the session
 never sits pending, sends the plan with every step pending, claims the issue
-when asked, and publishes the link as a `rig_harness::links::SessionLink`. The agent's system prompt gets a
+when asked, and publishes the link as a `rig_linear::SessionLink`. The agent's system prompt gets a
 `linear` section: the run is shown on the issue, the harness posts its
 result, so it posts no comment of its own, and it ends the run with
 `report_outcome`.

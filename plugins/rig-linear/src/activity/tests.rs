@@ -1,8 +1,8 @@
 use super::*;
+use crate::SessionLink;
 use rig_core::completion::Usage;
 use rig_core::message::Reasoning;
 use rig_core::tool::{ToolErrorKind, ToolExecutionError, ToolOutput, ToolResult};
-use rig_harness::links::SessionLink;
 
 fn ok(text: &str) -> Result<Answered, ErrorReport> {
     Ok(Answered::ToolResult {

@@ -20,6 +20,7 @@ use std::time::Duration;
 
 use async_channel::{Receiver, Sender};
 use bevy_log::warn;
+use rig_basics::redact::RecordRedactSystems;
 use rig_core::effect::{Answered, EffectKind, EffectRecord};
 use rig_core::tool::{ToolExecutionError, ToolOutput};
 use rig_harness::prelude::*;
@@ -123,6 +124,28 @@ once, as the last thing you do.";
 /// target. See the [crate] docs.
 #[derive(Default)]
 pub struct LinearPlugin;
+
+/// A link about this session, on an entity of its own: `label` is what is
+/// shown, `url` where it leads. Another plugin can spawn one for
+/// [`LinearPlugin`] to attach as an external link on the Linear session, or
+/// query it to read links published by this plugin.
+#[derive(Component, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct SessionLink {
+    /// What the link is, such as `Pull request #7`.
+    pub label: String,
+    /// The absolute URL.
+    pub url: String,
+}
+
+impl SessionLink {
+    /// The link to `url`, shown as `label`.
+    pub fn new(label: impl Into<String>, url: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+            url: url.into(),
+        }
+    }
+}
 
 /// `[linear]` in `settings.toml`.
 #[derive(Resource, Deserialize, Clone, Debug, PartialEq, Eq)]
