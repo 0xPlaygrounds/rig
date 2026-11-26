@@ -36,7 +36,16 @@ your PR description.## [0.47.1](https://github.com/0xPlaygrounds/rig/compare/v0.
 
 ### Contributors
 
-* [gold-silver-copper](https://github.com/gold-silver-copper)
+* [gold-silver-copper](https://github.com/gold-silver-copper)## [0.47.2](https://github.com/0xPlaygrounds/rig/compare/v0.47.1...v0.47.2) - 2026-11-26
+
+### Other
+
+- *(readme)* add animated pixel hero logo (zooming blade stack) ([#2953](https://github.com/0xPlaygrounds/rig/pull/2953)) (by [mateobelanger](https://github.com/mateobelanger))
+
+### Contributors
+
+* [mateobelanger](https://github.com/mateobelanger)
+
 ## [0.47.1](https://github.com/0xPlaygrounds/rig/compare/v0.47.0...v0.47.1) - 2026-11-25
 
 ### Added
