@@ -245,7 +245,7 @@ impl Linear {
         let (tell, told) = async_channel::unbounded();
         let issue = match &setup.config.target {
             Target::Issue(issue) => Some(issue.clone()),
-            Target::Session(_) => None,
+            Target::Session(_) | Target::Saved(_) => None,
         };
         let redactor = setup.redactor.clone();
         Self {
@@ -580,7 +580,7 @@ fn start(
             .as_deref()
             .is_none_or(|saved_issue| saved_issue == issue)
     {
-        config.target = Target::Session(session_id.clone());
+        config.target = Target::Saved(session_id.clone());
     }
     runtime.0.spawn(send::run(
         config,

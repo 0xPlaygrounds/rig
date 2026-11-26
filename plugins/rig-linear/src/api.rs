@@ -88,6 +88,30 @@ pub(crate) struct Session {
     pub(crate) issue_id: Option<String>,
     /// Prompts already on the session at attach time: `(id, createdAt)`.
     pub(crate) initial_prompts: Vec<(String, String)>,
+    /// When the session last got an answer (a response, an error or a
+    /// question), as Linear writes it; `None` when it never did or was just
+    /// created.
+    pub(crate) answered_at: Option<String>,
+}
+
+impl Session {
+    /// The prompts on the session at attach time that the run leaves alone:
+    /// all of them, or, when `catch_up`, only those up to its last answer.
+    /// The later ones no run answered yet, such as the person's request on a
+    /// session a webhook created, so they are the run's to read.
+    pub(crate) fn known_prompts(&self, catch_up: bool) -> Vec<(String, String)> {
+        self.initial_prompts
+            .iter()
+            .filter(|(_, created_at)| {
+                !catch_up
+                    || self
+                        .answered_at
+                        .as_ref()
+                        .is_some_and(|answered| created_at <= answered)
+            })
+            .cloned()
+            .collect()
+    }
 }
 
 /// One external link of a session.
@@ -229,18 +253,22 @@ impl Api {
             issue: identifier,
             issue_id: Some(issue_id.to_owned()),
             initial_prompts: initial_prompts(session),
+            answered_at: None,
         })
     }
 
     /// The agent session `id`, which exists already: its link, its issue's
-    /// identifier, and the prompts already on it at attach time.
+    /// identifier, the prompts already on it at attach time, and when it
+    /// last got an answer.
     pub(crate) async fn session(&self, id: &str) -> Result<Session, ApiError> {
         let data = self
             .graphql(
                 &format!(
                     "query Session($id: String!) {{ agentSession(id: $id) {{ id url issue {{ id \
                      identifier }} activities(first: {PAGE}, filter: {{ type: {{ eq: \"prompt\" }} \
-                     }}) {{ nodes {{ id createdAt }} }} }} }}"
+                     }}) {{ nodes {{ id createdAt }} }} answers: activities(first: 1, filter: {{ \
+                     type: {{ in: [\"response\", \"error\", \"elicitation\"] }} }}) {{ nodes {{ \
+                     createdAt }} }} }} }}"
                 ),
                 json!({ "id": id }),
             )
@@ -263,6 +291,10 @@ impl Api {
                 .and_then(Value::as_str)
                 .map(str::to_owned),
             initial_prompts: initial_prompts(session),
+            answered_at: session
+                .pointer("/answers/nodes/0/createdAt")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
         })
     }
 

@@ -236,7 +236,9 @@ fn client_credentials_are_exchanged_once_for_a_bearer_token() {
         Some(&json!({
             "query": "query Session($id: String!) { agentSession(id: $id) { id url issue { id \
                       identifier } activities(first: 50, filter: { type: { eq: \"prompt\" } }) \
-                      { nodes { id createdAt } } } }",
+                      { nodes { id createdAt } } answers: activities(first: 1, filter: { type: { \
+                      in: [\"response\", \"error\", \"elicitation\"] } }) { nodes { createdAt } \
+                      } } }",
             "variables": { "id": SESSION_ID },
         }))
     );
@@ -465,7 +467,7 @@ fn reads(request: &Request) -> bool {
 }
 
 #[test]
-fn only_prompts_after_the_run_attached_are_told_and_a_stop_ends_the_reading() {
+fn only_prompts_after_the_last_answer_are_told_and_a_stop_ends_the_reading() {
     let read = std::sync::atomic::AtomicUsize::new(0);
     let linear = StandIn::scripted(move |request, _| {
         if request.query().starts_with("query Session") {
@@ -477,6 +479,7 @@ fn only_prompts_after_the_run_attached_are_told_and_a_stop_ends_the_reading() {
                     "activities": {
                         "nodes": [{ "id": "p1", "createdAt": "2026-01-01T00:00:00.000Z" }]
                     },
+                    "answers": { "nodes": [{ "createdAt": "2026-01-01T00:00:30.000Z" }] },
                 }
             })));
         }
@@ -585,6 +588,7 @@ fn a_failed_first_read_still_delivers_prompts_created_after_attach() {
                     "activities": {
                         "nodes": [{ "id": "p1", "createdAt": "2026-01-01T00:00:00.000Z" }]
                     },
+                    "answers": { "nodes": [{ "createdAt": "2026-01-01T00:00:01.000Z" }] },
                 }
             })));
         }
@@ -913,4 +917,143 @@ fn synthetic_app_prompts_on_proactive_session_creation_are_ignored() {
             by: Some("Ana".to_owned()),
         }]
     );
+}
+
+/// A stand-in for a session that exists, whose prompts are `prompts` (each
+/// `(id, createdAt, author, body)`, oldest first, an author `None` for the
+/// app's synthetic one) and whose last answer is at `answered`.
+fn existing_session(
+    prompts: &'static [(
+        &'static str,
+        &'static str,
+        Option<&'static str>,
+        &'static str,
+    )],
+    answered: Option<&'static str>,
+) -> StandIn {
+    StandIn::scripted(move |request, _| {
+        let node = |&(id, at, by, body): &(&str, &str, Option<&str>, &str)| {
+            json!({
+                "id": id,
+                "createdAt": at,
+                "signal": Value::Null,
+                "user": { "name": by.unwrap_or("Rigged Intern"), "app": by.is_none() },
+                "content": { "__typename": "AgentActivityPromptContent", "body": body },
+            })
+        };
+        if request.query().starts_with("query Session") {
+            let known: Vec<Value> = prompts
+                .iter()
+                .rev()
+                .map(|&(id, at, _, _)| json!({ "id": id, "createdAt": at }))
+                .collect();
+            let answers: Vec<Value> = answered
+                .into_iter()
+                .map(|at| json!({ "createdAt": at }))
+                .collect();
+            return Some(stand_in::reply(json!({
+                "agentSession": {
+                    "id": SESSION_ID,
+                    "url": SESSION_URL,
+                    "issue": { "id": "issue-uuid", "identifier": "ENG-1" },
+                    "activities": { "nodes": known },
+                    "answers": { "nodes": answers },
+                }
+            })));
+        }
+        if !reads(request) {
+            return None;
+        }
+        let since = request
+            .json()
+            .pointer("/variables/since")
+            .and_then(Value::as_str)
+            .map(str::to_owned);
+        let nodes: Vec<Value> = prompts
+            .iter()
+            .rev()
+            .filter(|&&(_, at, _, _)| since.as_deref().is_none_or(|since| at >= since))
+            .map(node)
+            .collect();
+        Some(stand_in::reply(activities(&nodes)))
+    })
+}
+
+/// What a run on `target` of `linear` tells within half a second.
+fn told_on(linear: &StandIn, target: Target) -> Vec<Told> {
+    let mut config = config(
+        &linear.url,
+        Credentials::Token("lin_api_key".to_owned()),
+        target,
+    );
+    config.poll = Some(Duration::from_millis(80));
+    run_for(config, Duration::from_millis(500))
+}
+
+#[test]
+fn a_given_session_no_run_answered_tells_its_request_but_not_the_synthetic_prompt() {
+    // As a webhook creates it: delegated (Linear's synthetic prompt), then a
+    // person's mention.
+    let linear = existing_session(
+        &[
+            ("p0", "2026-01-01T00:00:00.000Z", None, "Work on ENG-1"),
+            (
+                "p1",
+                "2026-01-01T00:00:01.000Z",
+                Some("Ana"),
+                "Fix it, but leave auth alone.",
+            ),
+        ],
+        None,
+    );
+    assert_eq!(
+        told_on(&linear, Target::Session(SESSION_ID.to_owned())),
+        [Told::Prompt {
+            body: "Fix it, but leave auth alone.".to_owned(),
+            by: Some("Ana".to_owned()),
+        }]
+    );
+}
+
+#[test]
+fn a_given_session_tells_only_the_prompts_after_its_last_answer() {
+    // A run answered the first request; a person answered it back since.
+    let linear = existing_session(
+        &[
+            (
+                "p1",
+                "2026-01-01T00:00:00.000Z",
+                Some("Ana"),
+                "Fix the bug.",
+            ),
+            (
+                "p2",
+                "2026-01-01T00:02:00.000Z",
+                Some("Ana"),
+                "Use postgres.",
+            ),
+        ],
+        Some("2026-01-01T00:01:00.000Z"),
+    );
+    assert_eq!(
+        told_on(&linear, Target::Session(SESSION_ID.to_owned())),
+        [Told::Prompt {
+            body: "Use postgres.".to_owned(),
+            by: Some("Ana".to_owned()),
+        }]
+    );
+}
+
+#[test]
+fn a_saved_session_after_a_reload_tells_none_of_the_prompts_already_there() {
+    let linear = existing_session(
+        &[(
+            "p1",
+            "2026-01-01T00:00:00.000Z",
+            Some("Ana"),
+            "Fix the bug.",
+        )],
+        None,
+    );
+    assert_eq!(told_on(&linear, Target::Saved(SESSION_ID.to_owned())), []);
 }

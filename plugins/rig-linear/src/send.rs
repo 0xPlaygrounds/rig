@@ -105,8 +105,13 @@ pub(crate) struct Config {
 pub(crate) enum Target {
     /// A new session on this issue (identifier or id).
     Issue(String),
-    /// The session with this id, which exists.
+    /// The session with this id, which exists, given to the run: its prompts
+    /// that came after the session's last answer (response, error or
+    /// question) are the run's request, and are told like later ones.
     Session(String),
+    /// The session with this id, which this rig session showed on before a
+    /// reload: every prompt on it at attach time was told already.
+    Saved(String),
 }
 
 /// What the task tells the app.
@@ -224,7 +229,8 @@ pub(crate) async fn run(
         .send(Job::Activity(Activity::note(WORKING.to_owned())))
         .await;
     if let Some(every) = config.poll {
-        sender.watch = Some(Watch::new(every, &sender.session.initial_prompts));
+        let catch_up = matches!(config.target, Target::Session(_));
+        sender.watch = Some(Watch::new(every, &sender.session.known_prompts(catch_up)));
     }
     if let Some(plan) = config.plan.clone() {
         sender.pacer.pace().await;
@@ -275,7 +281,7 @@ async fn start(
             pacer.mark();
             session
         }
-        Target::Session(id) => {
+        Target::Session(id) | Target::Saved(id) => {
             pacer.pace().await;
             let session = api.session(id).await?;
             pacer.mark();

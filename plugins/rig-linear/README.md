@@ -43,7 +43,11 @@ so enabling it never prompts runs that do not use Linear.
 - `--linear-issue <ID>` (or `RIG_LINEAR_ISSUE`): a new agent session on this
   issue, an identifier such as `ENG-123` or the issue's id.
 - `--linear-session <ID>` (or `RIG_LINEAR_SESSION`): the existing agent
-  session with this id, such as one a webhook created.
+  session with this id, such as one a webhook created. The prompts on it
+  that came after its last answer (a response, an error or a question), such
+  as the request a person wrote as they mentioned or delegated to the app,
+  are the run's to read: they reach the agent with the first read back (see
+  below).
 
 An option wins over a variable, and a session over an issue.
 
@@ -150,9 +154,13 @@ are scrubbed before `rig-linear` reads them, so they reach Linear as
 Every `poll_seconds` (15 by default; 0 turns it off) the plugin reads the
 session's new `prompt` activities, as a request of the same queue and pace
 as the rest. Linear allows 5,000 requests an hour per app user; reading
-every 15 s is 240 of them. The prompts there were when the run attached,
-such as the one Linear adds as it creates a session, are left alone: only
-later ones count.
+every 15 s is 240 of them. On a session the run creates, the prompts there
+were when it attached, such as the one Linear adds as it creates a session,
+are left alone: only later ones count. On a session given with
+`--linear-session`, so are those up to its last answer; the first read
+tells the later ones, which no run answered yet. A run that reattaches to
+its own session after a reload tells none of those already there. Prompts
+from an app, such as Linear's synthetic "Work on …", are never told.
 
 - A prompt with the `stop` signal ends the run: the plan's open steps are
   canceled, the error "Stopped at the request of <name>." is posted as the
