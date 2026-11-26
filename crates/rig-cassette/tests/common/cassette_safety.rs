@@ -28,6 +28,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
             "with_openai_vllm_cassette",
             "with_local_reasoning_content_cassette",
             "with_local_dual_reasoning_keys_cassette",
+            "with_openai_video_cassette",
             "with_openai_truncation_cassette",
             "with_openai_audio_cassette",
             "with_openai_websocket_cassette",

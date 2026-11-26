@@ -1,0 +1,16 @@
+when:
+  path: /api/paas/v4/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":1024,"messages":[{"content":[{"text":"Describe the visible action in this video briefly in English.","type":"text"},{"type":"video_url","video_url":{"url":"https://cdn.bigmodel.cn/agent-demos/lark/113123.mov"}}],"role":"user"}],"model":"glm-4.1v-thinking-flash"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  - name: x-request-id
+    value: 4d22c64a-7ab0-44f6-b698-e9ab9cd29670
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"<think>Got it, let''s analyze the video sequence. The user is using Google search, typing \"智谱\" (Zhipu), then pressing enter or clicking search. The search results appear with various links related to Zhipu companies and platforms. So the action is a Google search for \"智谱\" and displaying the search results. I need to describe the visible actions: starting from the Google homepage, typing the keyword, initiating the search, and showing the results.</think><answer>The video shows a Google search interface where a user types \"智谱\" into the search bar, initiates the search, and displays the resulting web pages related to \"智谱,\" including company websites and informational links about</answer>","role":"assistant"}}],"created":0,"id":"202611211930151ad7d36e600a48cb","model":"glm-4.1v-thinking-flash","request_id":"202611211930151ad7d36e600a48cb","usage":{"completion_tokens":143,"prompt_tokens":46918,"total_tokens":47061}}'

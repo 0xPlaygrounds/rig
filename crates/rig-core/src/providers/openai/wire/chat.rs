@@ -211,6 +211,10 @@ impl Chat {
 
     /// The same wire, encoding with `facts` and pricing its replies by
     /// them.
+    ///
+    /// On OpenAI and Azure, video input requires facts with `input.video`
+    /// set to `true` for the requested model. Videos use `video_url` parts
+    /// containing a URL or base64 data with a media type.
     pub fn with_facts(mut self, facts: ModelFacts) -> Self {
         self.facts = facts;
         self
@@ -888,11 +892,12 @@ impl crate::completion::ReplayTarget for Chat {
 
     /// What the Chat encoder carries, by dialect: an image as a URL or
     /// typed data; audio as data; video as a URL or typed data, except to
-    /// OpenAI, Azure and Mistral; a PDF as data, or as a URL OpenRouter or
-    /// Mistral fetches; a file id where the dialect takes one; and a text
-    /// document as text. Mira takes text only; DeepSeek, Perplexity and
-    /// Cohere take no media but images, and Ollama only images as data.
-    fn encodes(&self, _model: &str, media: crate::completion::Media<'_>) -> bool {
+    /// Mistral and requiring model facts on OpenAI and Azure; a PDF as data,
+    /// or as a URL OpenRouter or Mistral fetches; a file id where the dialect
+    /// takes one; and a text document as text. Mira takes text only;
+    /// DeepSeek, Perplexity and Cohere take no media but images, and Ollama
+    /// only images as data.
+    fn encodes(&self, model: &str, media: crate::completion::Media<'_>) -> bool {
         use crate::completion::Media;
         let dialect = &self.provider.dialect;
         let rewrite = dialect.quirks.rewrite;
@@ -920,8 +925,9 @@ impl crate::completion::ReplayTarget for Chat {
             Media::Video(video) => {
                 files
                     && rewrite != BodyRewrite::Mistral
-                    && ![super::dialects::OPENAI.name, super::dialects::AZURE.name]
+                    && (![super::dialects::OPENAI.name, super::dialects::AZURE.name]
                         .contains(&dialect.name)
+                        || reads_video(&self.facts, dialect, model))
                     && linked(&video.data, video.media_type.is_some())
             }
             Media::Document(document) => {
@@ -1077,6 +1083,15 @@ fn reads_images(facts: &ModelFacts, dialect: &super::Dialect, model: &str) -> bo
         _ => image_rule(dialect.name)
             .is_some_and(|(vendor, rule)| facts.reads_images_or(vendor, model, rule)),
     }
+}
+
+/// Whether `model` reads video according to the facts bound to this dialect.
+/// An unlisted model needs an explicit spec because a provider's video
+/// support cannot be inferred from its model name.
+fn reads_video(facts: &ModelFacts, dialect: &super::Dialect, model: &str) -> bool {
+    facts
+        .for_model(dialect.name, model)
+        .is_some_and(|spec| spec.input.video)
 }
 
 /// Classified Chat Completions frame, including whole replies and terminal signals.

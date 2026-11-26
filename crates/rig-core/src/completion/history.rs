@@ -516,6 +516,7 @@ struct Shape {
     model: String,
     context: Option<crate::message::Fingerprint>,
     accepts: Accepts,
+    video_input: bool,
     from_user: bool,
 }
 
@@ -630,6 +631,12 @@ pub(crate) fn adapt_for(
         model: model.to_owned(),
         context: same.context,
         accepts,
+        // A changed video fact must re-adapt the cached message prefix.
+        video_input: target
+            .facts()
+            .unwrap_or_else(|| crate::catalog::ModelFacts::builtin())
+            .for_model(target.provider(), model)
+            .is_some_and(|spec| spec.input.video),
         from_user: starts_with_user,
     };
     let resumed = memo.shape.as_ref() == Some(&shape)

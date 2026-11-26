@@ -1595,6 +1595,45 @@
       }
     }
   },
+  "openai_compatible/video_base64.yaml#0": {
+    "mode": "unary",
+    "choice": [
+      {
+        "text": "<think>Got it, let's look at each frame's color. First frame is red (wait, first image is red? Wait, no, wait the images: first image is red, then green, then blue? Wait, let's check again. The user says \"temporal order\", so first frame to last. Let's list them:\n\nFirst image (first second) is red, then next is green, then blue. So the sequence is red, green, blue.</think><answer><|begin_of_box|>red, green, blue<|end_of_box|></answer>",
+        "native": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 159,
+      "output_tokens": 107,
+      "total_tokens": 266
+    },
+    "response_id": "202611211932057fea17bc1eb74a5f",
+    "finish_reason": "stop",
+    "model": "glm-4.1v-thinking-flash",
+    "provider_request_id": "9c2e7139-40e1-458a-a5f2-67a9da268f93",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "message": {
+            "content": "<think>Got it, let's look at each frame's color. First frame is red (wait, first image is red? Wait, no, wait the images: first image is red, then green, then blue? Wait, let's check again. The user says \"temporal order\", so first frame to last. Let's list them:\n\nFirst image (first second) is red, then next is green, then blue. So the sequence is red, green, blue.</think><answer><|begin_of_box|>red, green, blue<|end_of_box|></answer>",
+            "role": "assistant"
+          }
+        }
+      ],
+      "created": 0,
+      "id": "202611211932057fea17bc1eb74a5f",
+      "model": "glm-4.1v-thinking-flash",
+      "request_id": "202611211932057fea17bc1eb74a5f",
+      "usage": {
+        "completion_tokens": 107,
+        "prompt_tokens": 159,
+        "total_tokens": 266
+      }
+    }
+  },
   "raw_capture_matrix/chat_raw_round_trips_typed.yaml#0": {
     "mode": "unary",
     "choice": [

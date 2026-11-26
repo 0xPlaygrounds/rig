@@ -2189,6 +2189,8 @@ openai/models/gpt_6_sol/session.yaml	POST /v1/responses;83ea2842dab56179;	POST /
 openai/multi_extract/batch_multi_extract_chain.yaml	POST /v1/responses;a14226ac7ba81f98;submit	POST /v1/responses;5537ca2a393731c5;submit	POST /v1/responses;8add22aff55b860e;submit	POST /v1/responses;8add22aff55b860e;submit	POST /v1/responses;8add22aff55b860e;submit	POST /v1/responses;5537ca2a393731c5;submit	POST /v1/responses;a14226ac7ba81f98;submit	POST /v1/responses;5537ca2a393731c5;submit	POST /v1/responses;a14226ac7ba81f98;submit
 openai/openai_compatible/dual_reasoning_keys_tool_roundtrip.yaml	POST /v1/chat/completions;adfc3ea78c0c8752;get_weather	POST /v1/chat/completions;f6d1ea189808ba91;
 openai/openai_compatible/reasoning_content_tool_roundtrip.yaml	POST /v1/responses;716de7db1e36c58d;get_weather	POST /v1/responses;74535185f0b7d1fc;
+openai/openai_compatible/video_base64.yaml	POST /api/paas/v4/chat/completions;119e2b4f44cc96a8;
+openai/openai_compatible/video_url.yaml	POST /api/paas/v4/chat/completions;119e2b4f44cc96a8;
 openai/permission_control/permission_control_prompt_example.yaml	POST /v1/responses;a72268e1eef05fe9;read_file_head,read_file_tail	POST /v1/responses;7583b90b7a73c557;
 openai/permission_control/permission_control_streaming_example.yaml	POST /v1/responses;651a4e3b6e047d32;read_file_head,read_file_tail	POST /v1/responses;e588ac4bb860e5be;
 openai/portability_matrix/chat_from_anthropic.yaml	POST /v1/chat/completions;8fe14392e5f46d8a;

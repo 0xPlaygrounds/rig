@@ -44,6 +44,7 @@ mod cassette {
     mod multi_extract;
     mod openai_compatible_dual_reasoning_keys;
     mod openai_compatible_reasoning_content;
+    mod openai_compatible_video;
     mod portability_matrix_chat;
     mod prompt_caching;
     mod raw_capture_agent_matrix;
