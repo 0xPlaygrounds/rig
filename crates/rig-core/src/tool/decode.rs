@@ -22,6 +22,7 @@
 //! # Ok::<(), serde_json::Error>(())
 //! ```
 
+use crate::json_utils::{holds_literals, literal_integer};
 use serde::de::DeserializeOwned;
 use serde_json::{Number, Value};
 
@@ -108,6 +109,9 @@ pub(crate) fn whole(number: &Number) -> Option<Whole> {
     if let Some(signed) = number.as_i64() {
         return Some(Whole::Signed(signed));
     }
+    if holds_literals() {
+        return whole_literal(&number.to_string());
+    }
     let float = number.as_f64().filter(|float| float.fract() == 0.0)?;
     // Both bounds are powers of two, exact in an `f64`, so each cast below
     // is of a whole number inside the integer's range, and exact.
@@ -117,6 +121,17 @@ pub(crate) fn whole(number: &Number) -> Option<Whole> {
         Some(Whole::Signed(float as i64))
     } else {
         None
+    }
+}
+
+/// The [`Whole`] number a JSON number literal is, read from its digits: with
+/// `arbitrary_precision` the literal is exact where its `f64` is not, so
+/// `9007199254740993.0` is not `2^53` and `1.0000000000000001` is not `1`.
+fn whole_literal(text: &str) -> Option<Whole> {
+    let integer = literal_integer(text)?;
+    match u64::try_from(integer) {
+        Ok(unsigned) => Some(Whole::Unsigned(unsigned)),
+        Err(_) => i64::try_from(integer).ok().map(Whole::Signed),
     }
 }
 
