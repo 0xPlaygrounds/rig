@@ -220,6 +220,9 @@ struct Linear {
     plan: Plan,
     /// The issue, as the prompt names it.
     issue: Option<String>,
+    /// The issue target as requested (`--linear-issue` / `RIG_LINEAR_ISSUE`),
+    /// kept so reloads match even when the target was a UUID.
+    target_issue: Option<String>,
     /// The session's own link.
     session_url: Option<String>,
     /// The links sent.
@@ -254,6 +257,7 @@ impl Linear {
             pending: Some((setup.config, queued, tell, setup.redactor)),
             redactor,
             plan: Plan::new(setup.plan),
+            target_issue: issue.clone(),
             issue,
             session_url: None,
             linked: HashSet::new(),
@@ -674,6 +678,19 @@ fn quote(body: &str, redactor: &Redactor) -> String {
 }
 
 impl Linear {
+    /// Saves the started session id and requested issue target for reloads.
+    fn save_started(&mut self, started: &Started, saved: &mut SavedLinearSession) {
+        if !started.id.trim().is_empty() {
+            saved.session_id = Some(started.id.clone());
+        }
+        if let Some(issue) = &started.issue {
+            self.issue = Some(issue.clone());
+        }
+        if let Some(issue) = self.target_issue.as_ref().or(self.issue.as_ref()) {
+            saved.issue = Some(issue.clone());
+        }
+    }
+
     /// The session is there: saves its id for reloads, names the issue and
     /// publishes the session's link.
     fn started(
@@ -682,15 +699,7 @@ impl Linear {
         saved: &mut SavedLinearSession,
         commands: &mut Commands,
     ) {
-        if !started.id.trim().is_empty() {
-            saved.session_id = Some(started.id);
-        }
-        if let Some(issue) = started.issue {
-            self.issue = Some(issue);
-        }
-        if let Some(issue) = &self.issue {
-            saved.issue = Some(issue.clone());
-        }
+        self.save_started(&started, saved);
         if let Some(url) = started.url {
             self.session_url = Some(url.clone());
             commands.spawn(SessionLink::new(SESSION_LINK_LABEL, url));
@@ -837,7 +846,11 @@ fn note_working(
 /// Posts the run's end unless the agent reported it, then waits up to
 /// [`FLUSH_WAIT`] for the queue to be sent. A reload posts no end: the run
 /// reattaches to the saved Linear session in the next process.
-fn close(mut linear: ResMut<Linear>, reason: Option<Res<ExitReason>>) {
+fn close(
+    mut linear: ResMut<Linear>,
+    mut saved: ResMut<SavedLinearSession>,
+    reason: Option<Res<ExitReason>>,
+) {
     if linear.closed || linear.pending.is_some() {
         return;
     }
@@ -854,10 +867,24 @@ fn close(mut linear: ResMut<Linear>, reason: Option<Res<ExitReason>>) {
     let (done, wait) = std::sync::mpsc::channel();
     linear.queue(Job::Close(done));
     linear.closed = true;
-    if wait.recv_timeout(FLUSH_WAIT).is_err() {
-        warn!(
-            "Linear: not everything was sent within {} s",
-            FLUSH_WAIT.as_secs()
-        );
+    let timed_out = wait.recv_timeout(FLUSH_WAIT).is_err();
+    while let Ok(told) = linear.told.try_recv() {
+        if let Told::Started(started) = told {
+            linear.save_started(&started, &mut saved);
+        }
+    }
+    if timed_out {
+        if goes_on && saved.session_id.is_none() {
+            warn!(
+                "Linear: session did not finish starting within {} s before reload; the next \
+                 process may open a new session",
+                FLUSH_WAIT.as_secs()
+            );
+        } else {
+            warn!(
+                "Linear: not everything was sent within {} s",
+                FLUSH_WAIT.as_secs()
+            );
+        }
     }
 }

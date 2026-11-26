@@ -254,7 +254,29 @@ pub(crate) fn refused(why: &ApiError) -> String {
     }
 }
 
-/// Signs in and creates or attaches to the session, pacing every request.
+/// Runs `call`, pacing before it and retrying on 429 up to [`RETRIES`] times.
+async fn paced_retry<T, F, Fut>(pacer: &mut Pacer, mut call: F) -> Result<T, ApiError>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<T, ApiError>>,
+{
+    let mut tries = 0;
+    loop {
+        pacer.pace().await;
+        let result = call().await;
+        pacer.mark();
+        match result {
+            Err(ApiError::RateLimited(wait)) if tries < RETRIES => {
+                tries += 1;
+                tokio::time::sleep(retry_delay(wait, pacer.spacing)).await;
+            }
+            other => return other,
+        }
+    }
+}
+
+/// Signs in and creates or attaches to the session, pacing every request
+/// and honoring 429 `Retry-After` up to [`RETRIES`] times.
 async fn start(
     config: &Config,
     http: &DynHttpClient,
@@ -265,27 +287,23 @@ async fn start(
         Credentials::Token(token) => token.clone(),
         Credentials::Client { id, secret, scope } => {
             let token_url = crate::api::token_url(&config.api_url);
-            let token = Api::exchange(http, &token_url, id, secret, scope).await?;
-            pacer.mark();
-            token
+            paced_retry(&mut pacer, || {
+                Api::exchange(http, &token_url, id, secret, scope)
+            })
+            .await?
         }
     };
     let api = Api::new(http.clone(), config.api_url.clone(), authorization(&token));
     let session = match &config.target {
         Target::Issue(issue) => {
-            pacer.pace().await;
-            let (issue_id, identifier) = api.issue(issue).await?;
-            pacer.mark();
-            pacer.pace().await;
-            let session = api.create_session_on_issue(&issue_id, identifier).await?;
-            pacer.mark();
-            session
+            let (issue_id, identifier) = paced_retry(&mut pacer, || api.issue(issue)).await?;
+            paced_retry(&mut pacer, || {
+                api.create_session_on_issue(&issue_id, identifier.clone())
+            })
+            .await?
         }
         Target::Session(id) | Target::Saved(id) => {
-            pacer.pace().await;
-            let session = api.session(id).await?;
-            pacer.mark();
-            session
+            paced_retry(&mut pacer, || api.session(id)).await?
         }
     };
     let mut redactor = redactor.clone();
@@ -305,6 +323,16 @@ async fn start(
 /// The most pages of new prompts one read goes through.
 const PAGES: usize = 4;
 
+/// Unfinished pagination from a previous poll that reached [`PAGES`]: keeps
+/// the original `since` cutoff and cursor so older unread pages are not
+/// skipped before advancing `Watch::since`.
+#[derive(Debug)]
+struct Continuation {
+    since: Option<String>,
+    after: String,
+    newest: Option<String>,
+}
+
 /// What the task knows of the session's prompts, to read only those created
 /// after the run created or attached to the session.
 #[derive(Debug)]
@@ -315,6 +343,8 @@ struct Watch {
     next: Instant,
     /// The newest prompt's `createdAt`.
     since: Option<String>,
+    /// Remaining pages from a truncated poll, if any.
+    continuation: Option<Continuation>,
     /// The ids of the prompts already known (including those present at
     /// attachment).
     seen: HashSet<String>,
@@ -336,24 +366,32 @@ impl Watch {
             every,
             next: Instant::now(),
             since,
+            continuation: None,
             seen,
             failing: false,
         }
     }
 
-    /// Takes in `read`, newest first: what the new ones tell, oldest first.
-    fn take(&mut self, mut read: Vec<Seen>) -> Vec<Told> {
+    fn advance_since(&mut self, candidate: Option<String>) {
+        if let Some(candidate) = candidate
+            && self.since.as_ref().is_none_or(|cur| *cur < candidate)
+        {
+            self.since = Some(candidate);
+        }
+    }
+
+    /// Takes in `read`, newest first: what the new ones tell, oldest first,
+    /// and the newest `createdAt` seen in `read`. Advances `since` only when
+    /// `advance` is true (all pages of the current sweep were read).
+    fn take(&mut self, mut read: Vec<Seen>, advance: bool) -> (Vec<Told>, Option<String>) {
         read.retain(|seen| self.seen.insert(seen.id.clone()));
         read.sort_by(|a, b| a.created_at.cmp(&b.created_at));
-        if let Some(newest) = read.last()
-            && self
-                .since
-                .as_ref()
-                .is_none_or(|since| *since < newest.created_at)
-        {
-            self.since = Some(newest.created_at.clone());
+        let newest = read.last().map(|seen| seen.created_at.clone());
+        if advance {
+            self.advance_since(newest.clone());
         }
-        read.into_iter()
+        let told = read
+            .into_iter()
             .filter_map(|seen| match (seen.stop, seen.from_app, seen.prompt) {
                 (true, _, _) => Some(Told::Stop { by: seen.by }),
                 (false, false, Some(body)) if !body.trim().is_empty() => Some(Told::Prompt {
@@ -362,7 +400,8 @@ impl Watch {
                 }),
                 _ => None,
             })
-            .collect()
+            .collect();
+        (told, newest)
     }
 }
 
@@ -450,9 +489,16 @@ impl Connected {
         let Some(mut watch) = self.watch.take() else {
             return Vec::new();
         };
-        let since = watch.since.clone();
+        let resuming = watch.continuation.take();
+        let (since, mut after, mut sweep_newest) = match &resuming {
+            Some(cont) => (
+                cont.since.clone(),
+                Some(cont.after.clone()),
+                cont.newest.clone(),
+            ),
+            None => (watch.since.clone(), None, None),
+        };
         let mut read = Vec::new();
-        let mut after = None;
         let mut failed = None;
         for page in 0..PAGES {
             if page > 0 {
@@ -480,9 +526,26 @@ impl Connected {
         let told = match failed {
             None => {
                 watch.failing = false;
-                watch.take(read)
+                let complete = after.is_none();
+                let (told, newest) = watch.take(read, complete);
+                if let Some(newest) = newest
+                    && sweep_newest.as_ref().is_none_or(|cur| *cur < newest)
+                {
+                    sweep_newest = Some(newest);
+                }
+                if let Some(after) = after {
+                    watch.continuation = Some(Continuation {
+                        since,
+                        after,
+                        newest: sweep_newest,
+                    });
+                } else {
+                    watch.advance_since(sweep_newest);
+                }
+                told
             }
             Some(why) => {
+                watch.continuation = resuming;
                 if let ApiError::RateLimited(wait) = &why {
                     let wait = retry_delay(*wait, self.pacer.spacing);
                     watch.next = Instant::now() + wait.max(watch.every);

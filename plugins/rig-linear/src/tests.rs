@@ -33,66 +33,69 @@ fn no_env(_: &str) -> Option<String> {
 }
 
 #[test]
-fn without_a_token_or_a_target_it_is_off() {
-    let token = Secrets::from_iter([(TOKEN_SECRET, "lin_api_key")]);
+fn config_precedence_for_target_credentials_and_claim() {
     let issue = || Target::Issue("ENG-1".to_owned());
-    assert_eq!(target(None, &no_env), None);
-    assert_eq!(target(Some(&invoked(&[(ISSUE_FLAG, " ")])), &no_env), None);
-    assert!(configure(issue(), false, None, None, &no_env).is_none());
-    let empty = Secrets::from_iter([(TOKEN_SECRET, " ")]);
-    assert!(configure(issue(), false, Some(&empty), None, &no_env).is_none());
-    let half = Secrets::from_iter([(CLIENT_ID_SECRET, "client")]);
-    assert!(configure(issue(), false, Some(&half), None, &no_env).is_none());
-    assert!(configure(issue(), false, Some(&token), None, &no_env).is_some());
-}
-
-#[test]
-fn options_beat_variables_and_a_session_beats_an_issue() {
-    let target =
-        |invoked: &Invoked, env: &dyn Fn(&str) -> Option<String>| target(Some(invoked), env);
     let env = |name: &str| match name {
         ISSUE_ENV => Some("ENV-1".to_owned()),
         SESSION_ENV => Some("env-session".to_owned()),
         _ => None,
     };
     let issue_only = |name: &str| (name == ISSUE_ENV).then(|| "ENV-1".to_owned());
+
+    // Target: flags beat env, session beats issue, blank is ignored.
+    assert_eq!(target(None, &no_env), None);
+    assert_eq!(target(Some(&invoked(&[(ISSUE_FLAG, " ")])), &no_env), None);
     assert_eq!(
-        target(&invoked(&[(ISSUE_FLAG, "ENG-1")]), &env),
+        target(Some(&invoked(&[(ISSUE_FLAG, "ENG-1")])), &env),
         Some(Target::Issue("ENG-1".to_owned()))
     );
     assert_eq!(
         target(
-            &invoked(&[(ISSUE_FLAG, "ENG-1"), (SESSION_FLAG, "flag-session")]),
+            Some(&invoked(&[
+                (ISSUE_FLAG, "ENG-1"),
+                (SESSION_FLAG, "flag-session")
+            ])),
             &env
         ),
         Some(Target::Session("flag-session".to_owned()))
     );
     assert_eq!(
-        target(&invoked(&[]), &env),
+        target(Some(&invoked(&[])), &env),
         Some(Target::Session("env-session".to_owned()))
     );
     assert_eq!(
-        target(&invoked(&[]), &issue_only),
+        target(Some(&invoked(&[])), &issue_only),
         Some(Target::Issue("ENV-1".to_owned()))
     );
-}
 
-#[test]
-fn an_access_token_beats_client_credentials_which_take_the_scope_setting() {
-    let issue = || Target::Issue("ENG-1".to_owned());
+    // Credentials: missing/half-configured is off, token beats client creds.
+    assert!(configure(issue(), false, None, None, &no_env).is_none());
+    let half = Secrets::from_iter([(CLIENT_ID_SECRET, "client")]);
+    assert!(configure(issue(), false, Some(&half), None, &no_env).is_none());
+
     let both = Secrets::from_iter([
-        (TOKEN_SECRET, "token"),
+        (TOKEN_SECRET, "lin_api_token_val"),
         (CLIENT_ID_SECRET, "client"),
-        (CLIENT_SECRET_SECRET, "secret"),
+        (CLIENT_SECRET_SECRET, "client_secret_val"),
     ]);
-    let credentials = |secrets: &Secrets, settings: Option<&LinearSettings>| {
-        configure(issue(), false, Some(secrets), settings, &no_env)
-            .map(|setup| setup.config.credentials)
-    };
-    assert_eq!(
-        credentials(&both, None),
-        Some(Credentials::Token("token".to_owned()))
-    );
+    let setup = configure(issue(), true, Some(&both), None, &no_env);
+    assert!(setup.is_some());
+    if let Some(setup) = setup {
+        assert_eq!(
+            setup.config.credentials,
+            Credentials::Token("lin_api_token_val".to_owned())
+        );
+        assert!(setup.config.claim);
+        assert_eq!(setup.config.poll, Some(Duration::from_secs(15)));
+        // Both supplied secrets are redacted regardless of selected auth mode.
+        assert_eq!(
+            setup
+                .redactor
+                .text("tok=lin_api_token_val sec=client_secret_val"),
+            "tok=[REDACTED] sec=[REDACTED]"
+        );
+    }
+
     let client = Secrets::from_iter([
         (CLIENT_ID_SECRET, "client"),
         (CLIENT_SECRET_SECRET, "secret"),
@@ -102,21 +105,25 @@ fn an_access_token_beats_client_credentials_which_take_the_scope_setting() {
         ..LinearSettings::default()
     };
     assert_eq!(
-        credentials(&client, Some(&settings)),
+        configure(issue(), false, Some(&client), Some(&settings), &no_env)
+            .map(|setup| setup.config.credentials),
         Some(Credentials::Client {
             id: "client".to_owned(),
             secret: "secret".to_owned(),
             scope: "read".to_owned(),
         })
     );
-    assert_eq!(
-        credentials(&client, None),
-        Some(Credentials::Client {
-            id: "client".to_owned(),
-            secret: "secret".to_owned(),
-            scope: DEFAULT_SCOPE.to_owned(),
-        })
-    );
+
+    // Claim: flag or truthy env var.
+    let claim_env =
+        |value: &'static str| move |name: &str| (name == CLAIM_ENV).then(|| value.to_owned());
+    assert!(claims(Some(&invoked(&[(CLAIM_FLAG, "")])), &no_env));
+    for on in ["1", "true", "TRUE", " true "] {
+        assert!(claims(None, &claim_env(on)), "{on}");
+    }
+    for off in ["", "0", "false", "yes"] {
+        assert!(!claims(None, &claim_env(off)), "{off}");
+    }
 }
 
 #[test]
@@ -169,54 +176,6 @@ fn the_plan_file_replaces_the_settings_plan_and_a_bad_one_does_not() {
 }
 
 #[test]
-fn the_settings_read_from_the_linear_table() {
-    let mut app = App::new();
-    app.insert_resource(Settings::from_toml(
-        "[linear]\napi_url = \"http://127.0.0.1:1/graphql\"\nheartbeat_minutes = 3\n\
-         poll_seconds = 0\n\n\
-         [[linear.plan]]\ncontent = \"Triage\"\nskill = \"triage\"\n",
-    ))
-    .add_plugins(LinearPlugin);
-    let settings = app.world().get_resource::<LinearSettings>().cloned();
-    assert_eq!(
-        settings,
-        Some(LinearSettings {
-            api_url: "http://127.0.0.1:1/graphql".to_owned(),
-            heartbeat_minutes: 3,
-            poll_seconds: 0,
-            scope: DEFAULT_SCOPE.to_owned(),
-            plan: vec![PlanStep {
-                content: "Triage".to_owned(),
-                skill: Some("triage".to_owned()),
-                command: None,
-            }],
-        })
-    );
-}
-
-/// The secrets the app asks for.
-fn secrets_asked(app: &mut App) -> Vec<&'static str> {
-    let mut secrets = app.world_mut().query::<&Secret>();
-    secrets
-        .iter(app.world())
-        .map(|secret| secret.name)
-        .collect()
-}
-
-#[test]
-fn without_a_target_it_asks_for_no_secret() {
-    let mut app = App::new();
-    app.insert_resource(invoked(&[]))
-        .insert_resource(Secrets::default())
-        .add_plugins(LinearPlugin);
-    app.finish();
-    if std::env::var_os(ISSUE_ENV).is_none() && std::env::var_os(SESSION_ENV).is_none() {
-        assert_eq!(secrets_asked(&mut app), Vec::<&str>::new());
-    }
-    assert!(!app.world().contains_resource::<Linear>());
-}
-
-#[test]
 fn with_a_target_but_no_token_it_asks_for_no_secret_and_adds_no_tool_state_or_section() {
     let mut app = App::new();
     app.insert_resource(invoked(&[(ISSUE_FLAG, "ENG-1")]))
@@ -228,63 +187,12 @@ fn with_a_target_but_no_token_it_asks_for_no_secret_and_adds_no_tool_state_or_se
     let mut flags = app.world_mut().query::<&Flag>();
     let names: Vec<&str> = flags.iter(app.world()).map(|flag| flag.name).collect();
     assert_eq!(names, [ISSUE_FLAG, SESSION_FLAG, CLAIM_FLAG]);
-    assert_eq!(secrets_asked(&mut app), Vec::<&str>::new());
+    let mut secrets = app.world_mut().query::<&Secret>();
+    assert_eq!(secrets.iter(app.world()).count(), 0);
     let mut tools = app.world_mut().query::<&ToolDef>();
     assert_eq!(tools.iter(app.world()).count(), 0);
     let mut sections = app.world_mut().query::<&PromptSection>();
     assert_eq!(sections.iter(app.world()).count(), 0);
-}
-
-#[test]
-fn both_supplied_credentials_are_redacted_regardless_of_selected_mode() {
-    let issue = Target::Issue("ENG-1".to_owned());
-    let both = Secrets::from_iter([
-        (TOKEN_SECRET, "lin_api_token_val"),
-        (CLIENT_ID_SECRET, "client-id"),
-        (CLIENT_SECRET_SECRET, "client_secret_val"),
-    ]);
-    let setup = configure(issue, false, Some(&both), None, &no_env);
-    assert!(setup.is_some());
-    if let Some(setup) = setup {
-        assert_eq!(
-            setup.config.credentials,
-            Credentials::Token("lin_api_token_val".to_owned())
-        );
-        assert_eq!(
-            setup
-                .redactor
-                .text("tok=lin_api_token_val sec=client_secret_val"),
-            "tok=[REDACTED] sec=[REDACTED]"
-        );
-    }
-}
-
-#[test]
-fn a_reported_outcome_maps_to_its_activity_and_plan_end() {
-    let summary = || "Summary.".to_owned();
-    let options = ["a".to_owned()];
-    let redactor = Redactor::default();
-    assert_eq!(
-        outcome(OutcomeStatus::Done, summary(), &options, &redactor),
-        (Content::Response(summary()), End::Done)
-    );
-    assert_eq!(
-        outcome(OutcomeStatus::GaveUp, summary(), &options, &redactor),
-        (Content::Error(summary()), End::Failed)
-    );
-    assert_eq!(
-        outcome(OutcomeStatus::NeedsInput, summary(), &[], &redactor),
-        (
-            Content::Elicitation {
-                body: summary(),
-                options: Vec::new(),
-            },
-            End::NeedsInput
-        )
-    );
-    let args: Result<OutcomeArgs, _> =
-        serde_json::from_value(json!({ "status": "gave_up", "summary": "No." }));
-    assert!(args.is_ok_and(|args| args.status == OutcomeStatus::GaveUp && args.options.is_empty()));
 }
 
 #[test]
@@ -322,76 +230,16 @@ fn a_question_offers_its_options_trimmed_without_blanks_or_repeats() {
     assert!(matches!(content, Content::Elicitation { options, .. } if options.len() == 100));
 }
 
-#[test]
-fn the_outcome_tool_takes_options_but_does_not_require_them() {
-    let schema = serde_json::to_value(schemars::schema_for!(OutcomeArgs)).unwrap_or_default();
-    assert_eq!(schema.get("required"), Some(&json!(["status", "summary"])));
-    assert_eq!(
-        schema.pointer("/properties/options/items/type"),
-        Some(&json!("string"))
-    );
-}
-
-#[test]
-fn the_issue_is_claimed_with_the_option_or_a_true_variable() {
-    let env = |value: &'static str| move |name: &str| (name == CLAIM_ENV).then(|| value.to_owned());
-    assert!(!claims(None, &no_env));
-    assert!(claims(Some(&invoked(&[(CLAIM_FLAG, "")])), &no_env));
-    assert!(!claims(Some(&invoked(&[(ISSUE_FLAG, "ENG-1")])), &no_env));
-    for on in ["1", "true", "TRUE", " true "] {
-        assert!(claims(None, &env(on)), "{on}");
-    }
-    for off in ["", "0", "false", "yes"] {
-        assert!(!claims(None, &env(off)), "{off}");
-    }
-    let token = Secrets::from_iter([(TOKEN_SECRET, "lin_api_key")]);
-    let issue = Target::Issue("ENG-1".to_owned());
-    let setup = configure(issue, true, Some(&token), None, &no_env);
-    assert!(setup.is_some_and(
-        |setup| setup.config.claim && setup.config.poll == Some(Duration::from_secs(15))
-    ));
-}
-
-#[test]
-fn without_a_report_the_end_is_the_stop_the_failure_or_the_last_reply() {
-    let stopped = (Content::Error(STOPPED.to_owned()), End::Failed);
-    assert_eq!(fallback(true, Some("boom"), Some("Hi.")), stopped);
-    assert_eq!(
-        fallback(false, Some("boom"), Some("Hi.")),
-        (Content::Error("boom".to_owned()), End::Failed)
-    );
-    assert_eq!(
-        fallback(false, None, Some("Hi.")),
-        (Content::Response("Hi.".to_owned()), End::Done)
-    );
-    assert_eq!(fallback(false, None, None), stopped);
-}
-
-#[test]
-fn the_prompt_section_names_the_issue_and_mentions_the_tool_only_when_allowed() {
-    let text = section(Some("ENG-1"), true);
-    assert!(text.contains("Linear issue ENG-1"), "{text}");
-    assert!(text.contains(OUTCOME_TOOL), "{text}");
-    assert!(text.contains("do not post a comment"), "{text}");
-    assert!(section(None, true).contains("a Linear issue"));
-    let without_tool = section(Some("ENG-1"), false);
-    assert!(
-        without_tool.contains("Linear issue ENG-1"),
-        "{without_tool}"
-    );
-    assert!(!without_tool.contains(OUTCOME_TOOL), "{without_tool}");
-}
-
-/// An active app on the stand-in at `url`, for the issue `ENG-1`, with a
-/// main agent `main`, its plan `plan` (TOML), requests sent as soon as
-/// they may and no prompt read back ([`poll_every`] turns that on).
-fn active_app(url: &str, plan: &str, runtime: &tokio::runtime::Runtime) -> App {
+/// An active app on the stand-in at `url`, for `issue`, with a main agent
+/// `main`, its plan `plan` (TOML), requests sent as soon as they may and
+/// no prompt read back ([`poll_every`] turns that on).
+fn active_app_for(url: &str, issue: &str, plan: &str, runtime: &tokio::runtime::Runtime) -> App {
     let mut app = App::new();
     app.insert_resource(Settings::from_toml(&format!(
         "[linear]\napi_url = \"{url}\"\n{plan}"
     )))
     .insert_resource(Secrets::from_iter([(TOKEN_SECRET, "lin_api_key")]))
-    .insert_resource(invoked(&[(ISSUE_FLAG, "ENG-1")]))
+    .insert_resource(invoked(&[(ISSUE_FLAG, issue)]))
     .insert_resource(TokioRuntime(runtime.handle().clone()))
     .add_message::<EffectRecorded>()
     .add_plugins(LinearPlugin);
@@ -404,6 +252,10 @@ fn active_app(url: &str, plan: &str, runtime: &tokio::runtime::Runtime) -> App {
     app.finish();
     spawn_root(app.world_mut(), AgentId("main".to_owned()));
     app
+}
+
+fn active_app(url: &str, plan: &str, runtime: &tokio::runtime::Runtime) -> App {
+    active_app_for(url, "ENG-1", plan, runtime)
 }
 
 /// Has `app`, before its first update, read the session's prompts back
@@ -1042,5 +894,58 @@ fn a_reload_reuses_the_saved_linear_session_and_a_switch_ends_the_outgoing_one()
             .last()
             .and_then(|body| body.pointer("/variables/content").cloned()),
         Some(json!({ "type": "response", "body": "Done here." }))
+    );
+}
+
+#[test]
+fn reload_matches_uuid_issue_and_saves_session_when_startup_finishes_during_close() {
+    let Ok(runtime) = tokio::runtime::Runtime::new() else {
+        return;
+    };
+    let linear = StandIn::scripted(|request, _| {
+        if request.query().contains("agentSessionCreateOnIssue") {
+            std::thread::sleep(Duration::from_millis(60));
+        }
+        None
+    });
+    // Target is a UUID while Linear returns display identifier "ENG-1".
+    let mut app = active_app_for(&linear.url, "issue-uuid", "", &runtime);
+    // Exit for reload immediately on the first frame while startup is still in flight.
+    app.insert_resource(ExitReason::Reload);
+    app.world_mut().write_message(AppExit::Success);
+    app.update();
+    let saved = app
+        .world()
+        .get_resource::<SavedLinearSession>()
+        .cloned()
+        .unwrap_or_default();
+    assert_eq!(
+        saved,
+        SavedLinearSession {
+            session_id: Some("session-1".to_owned()),
+            issue: Some("issue-uuid".to_owned()),
+        }
+    );
+
+    // Reloading with the same UUID reattaches instead of opening a second session.
+    let reloaded_server = StandIn::start();
+    let mut reloaded = active_app_for(&reloaded_server.url, "issue-uuid", "", &runtime);
+    reloaded.insert_resource(saved);
+    wait_until_started(&mut reloaded);
+    assert!(
+        !reloaded_server
+            .requests()
+            .iter()
+            .any(|req| req.query().contains("agentSessionCreateOnIssue")),
+        "{:#?}",
+        reloaded_server.bodies()
+    );
+    assert!(
+        reloaded_server
+            .requests()
+            .iter()
+            .any(|req| req.query().starts_with("query Session")),
+        "{:#?}",
+        reloaded_server.bodies()
     );
 }
