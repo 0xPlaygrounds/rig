@@ -20,7 +20,7 @@ bevy_app = { workspace = true }
 bevy_ecs = { workspace = true }
 # The stream of notifications a harness holds open.
 futures = { workspace = true }
-rig-harness = { path = "../../crates/rig-harness", version = "0.47.1" }
+rig-harness = { path = "../../crates/rig-harness", version = "0.47.2" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 # The digest of a history, by which a saved session is found again.
