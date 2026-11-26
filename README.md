@@ -1,14 +1,19 @@
 <p align="center">
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="img/rig-rebranded-logo-white.svg">
-  <img src="img/rig-rebranded-logo-black.svg" width="40%" alt="Rig">
+  <source media="(prefers-color-scheme: dark) and (prefers-reduced-motion: reduce)" srcset="img/pixel-logo/blade-zoom-dark-still.webp">
+  <source media="(prefers-color-scheme: light) and (prefers-reduced-motion: reduce)" srcset="img/pixel-logo/blade-zoom-light-still.webp">
+  <source media="(prefers-color-scheme: dark)" srcset="img/pixel-logo/blade-zoom-dark.webp">
+  <source media="(prefers-color-scheme: light)" srcset="img/pixel-logo/blade-zoom-light.webp">
+  <img src="img/pixel-logo/blade-zoom-dark.webp" width="288" height="120" alt="Rig logo">
 </picture>
 </p>
 
-[![crates.io](https://img.shields.io/crates/v/rig.svg)](https://crates.io/crates/rig)
-[![docs.rs](https://img.shields.io/docsrs/rig)](https://docs.rs/rig)
-[![Discord](https://img.shields.io/discord/511303648119226382?label=Discord)](https://discord.gg/playgrounds)
-<a href="https://ryzome.ai"><img src="img/ryzome-bg.png" height="32" align="absmiddle" alt="Ryzome"></a>
+<p align="center">
+  <a href="https://crates.io/crates/rig"><img src="https://img.shields.io/crates/v/rig.svg" alt="crates.io"></a>
+  <a href="https://docs.rs/rig"><img src="https://img.shields.io/docsrs/rig" alt="docs.rs"></a>
+  <a href="https://discord.gg/playgrounds"><img src="https://img.shields.io/discord/511303648119226382?label=Discord" alt="Discord"></a>
+  <a href="https://ryzome.ai"><img src="img/ryzome-badge.svg" alt="Ryzome"></a>
+</p>
 
 Rig is a Rust library for building applications on large language models.
 It also ships `rig`, a terminal coding agent built on the library that you

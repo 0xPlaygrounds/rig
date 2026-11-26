@@ -49,12 +49,14 @@ include = [
     "/LICENSE",
     "/CHANGELOG.md",
     "/MIGRATING.md",
-    # Referenced by README.md, which registries render from the tarball. The
-    # other five img/ files are referenced by nothing and stay out.
-    "/img/rig-rebranded-logo-white.svg",
-    "/img/rig-rebranded-logo-black.svg",
+    # Referenced by README.md, which registries render from the tarball. Every
+    # other img/ file (generators, the gear accent, old logos) stays out.
+    "/img/pixel-logo/blade-zoom-dark.webp",
+    "/img/pixel-logo/blade-zoom-light.webp",
+    "/img/pixel-logo/blade-zoom-dark-still.webp",
+    "/img/pixel-logo/blade-zoom-light-still.webp",
     "/img/built-by-playgrounds.svg",
-    "/img/ryzome-bg.png",
+    "/img/ryzome-badge.svg",
 ]
 
 # docs.rs builds with a current nightly, on which `surrealdb`'s `diskann`
