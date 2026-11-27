@@ -1,6 +1,6 @@
 //! Linear's GraphQL API, as far as the plugin calls it: the client
-//! credentials exchange, the issue and its claim, the agent session and its
-//! activities, both those it adds and those it reads back.
+//! credentials exchange, the issue and its claim, the agent session, the
+//! prompts on it at attach time, and the activities it adds.
 
 use std::time::Duration;
 
@@ -86,8 +86,8 @@ pub(crate) struct Session {
     pub(crate) issue: Option<String>,
     /// The issue's id, when known.
     pub(crate) issue_id: Option<String>,
-    /// Prompts already on the session at attach time: `(id, createdAt)`.
-    pub(crate) initial_prompts: Vec<(String, String)>,
+    /// The prompts already on the session at attach time.
+    pub(crate) initial_prompts: Vec<Seen>,
     /// When the session last got an answer (a response, an error or a
     /// question), as Linear writes it; `None` when it never did or was just
     /// created.
@@ -95,22 +95,21 @@ pub(crate) struct Session {
 }
 
 impl Session {
-    /// The prompts on the session at attach time that the run leaves alone:
-    /// all of them, or, when `catch_up`, only those up to its last answer.
-    /// The later ones no run answered yet, such as the person's request on a
-    /// session a webhook created, so they are the run's to read.
-    pub(crate) fn known_prompts(&self, catch_up: bool) -> Vec<(String, String)> {
-        self.initial_prompts
-            .iter()
-            .filter(|(_, created_at)| {
-                !catch_up
-                    || self
-                        .answered_at
-                        .as_ref()
-                        .is_some_and(|answered| created_at <= answered)
+    /// The prompts on the session at attach time that no run answered yet,
+    /// oldest first: those after its last answer, such as the person's
+    /// request on a session a webhook created. None when not `catch_up`.
+    pub(crate) fn unanswered(&self, catch_up: bool) -> Vec<Seen> {
+        if !catch_up {
+            return Vec::new();
+        }
+        let mut unanswered: Vec<Seen> = (self.initial_prompts.iter())
+            .filter(|seen| {
+                (self.answered_at.as_ref()).is_none_or(|answered| seen.created_at > *answered)
             })
             .cloned()
-            .collect()
+            .collect();
+        unanswered.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+        unanswered
     }
 }
 
@@ -235,7 +234,7 @@ impl Api {
                     "mutation CreateSession($issueId: String!) {{ \
                      agentSessionCreateOnIssue(input: {{ issueId: $issueId }}) \
                      {{ success agentSession {{ id url activities(first: {PAGE}, filter: {{ type: \
-                     {{ eq: \"prompt\" }} }}) {{ nodes {{ id createdAt }} }} }} }} }}"
+                     {{ eq: \"prompt\" }} }}) {{ nodes {{ {PROMPT} }} }} }} }} }}"
                 ),
                 json!({ "issueId": issue_id }),
             )
@@ -266,7 +265,7 @@ impl Api {
                 &format!(
                     "query Session($id: String!) {{ agentSession(id: $id) {{ id url issue {{ id \
                      identifier }} activities(first: {PAGE}, filter: {{ type: {{ eq: \"prompt\" }} \
-                     }}) {{ nodes {{ id createdAt }} }} answers: activities(first: 1, filter: {{ \
+                     }}) {{ nodes {{ {PROMPT} }} }} answers: activities(first: 1, filter: {{ \
                      type: {{ in: [\"response\", \"error\", \"elicitation\"] }} }}) {{ nodes {{ \
                      createdAt }} }} }} }}"
                 ),
@@ -378,73 +377,6 @@ impl Api {
             .map(drop)
     }
 
-    /// One page of the session's prompts, newest first: those created at
-    /// `since` or later when given, after the cursor `after` when given.
-    pub(crate) async fn activities(
-        &self,
-        session: &str,
-        since: Option<&str>,
-        after: Option<&str>,
-    ) -> Result<Page, ApiError> {
-        let (declared, created) = match since {
-            Some(_) => (
-                ", $since: DateTimeOrDuration",
-                ", createdAt: { gte: $since }",
-            ),
-            None => ("", ""),
-        };
-        let query = format!(
-            "query Activities($id: String!, $after: String{declared}) {{ agentSession(id: $id) {{ \
-             activities(first: {PAGE}, after: $after, filter: {{ type: {{ eq: \"prompt\" }}{created} }}) \
-             {{ nodes {{ id createdAt signal user {{ name app }} content {{ __typename \
-             ... on AgentActivityPromptContent {{ body }} }} }} pageInfo {{ hasNextPage endCursor }} }} \
-             }} }}"
-        );
-        let mut variables = json!({ "id": session, "after": after });
-        if let (Some(since), Some(variables)) = (since, variables.as_object_mut()) {
-            variables.insert("since".to_owned(), Value::from(since));
-        }
-        let data = self.graphql(&query, variables).await?;
-        let Some(activities) = data.pointer("/agentSession/activities") else {
-            return Err(ApiError::Reply(
-                "the session's activities are missing".to_owned(),
-            ));
-        };
-        let text =
-            |value: &Value, at: &str| value.pointer(at).and_then(Value::as_str).map(str::to_owned);
-        let nodes = activities
-            .get("nodes")
-            .and_then(Value::as_array)
-            .map(Vec::as_slice)
-            .unwrap_or_default();
-        Ok(Page {
-            activities: nodes
-                .iter()
-                .filter_map(|node| {
-                    let prompt = text(node, "/content/__typename").as_deref()
-                        == Some("AgentActivityPromptContent");
-                    Some(Seen {
-                        id: text(node, "/id")?,
-                        created_at: text(node, "/createdAt")?,
-                        prompt: prompt.then(|| text(node, "/content/body").unwrap_or_default()),
-                        stop: text(node, "/signal").as_deref() == Some("stop"),
-                        by: text(node, "/user/name"),
-                        from_app: node
-                            .pointer("/user/app")
-                            .and_then(Value::as_bool)
-                            .unwrap_or(false),
-                    })
-                })
-                .collect(),
-            next: activities
-                .pointer("/pageInfo/hasNextPage")
-                .and_then(Value::as_bool)
-                .unwrap_or(false)
-                .then(|| text(activities, "/pageInfo/endCursor"))
-                .flatten(),
-        })
-    }
-
     /// What claiming the issue `issue` (its id) needs: who the app is, the
     /// issue's delegate and state, and its team's `started` states.
     pub(crate) async fn issue_state(&self, issue: &str) -> Result<IssueState, ApiError> {
@@ -501,43 +433,29 @@ impl Api {
     }
 }
 
-/// Extracts `(id, createdAt)` of prompts already on `session`.
-fn initial_prompts(session: &Value) -> Vec<(String, String)> {
+/// The prompts already on `session`.
+fn initial_prompts(session: &Value) -> Vec<Seen> {
     session
         .pointer("/activities/nodes")
         .and_then(Value::as_array)
-        .map(|nodes| {
-            nodes
-                .iter()
-                .filter_map(|node| {
-                    let id = node.get("id").and_then(Value::as_str)?;
-                    let created_at = node.get("createdAt").and_then(Value::as_str)?;
-                    Some((id.to_owned(), created_at.to_owned()))
-                })
-                .collect()
-        })
+        .map(|nodes| nodes.iter().filter_map(Seen::read).collect())
         .unwrap_or_default()
 }
 
-/// How many activities one page asks for.
+/// How many prompts the attach reads.
 const PAGE: usize = 50;
 
-/// One page of a session's activities.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct Page {
-    /// Its activities, newest first.
-    pub(crate) activities: Vec<Seen>,
-    /// The cursor of the next page, when there is one.
-    pub(crate) next: Option<String>,
-}
+/// What the attach reads of each prompt.
+const PROMPT: &str = "id createdAt signal user { name app } content { __typename \
+... on AgentActivityPromptContent { body } }";
 
-/// One activity of a session, as far as the plugin reads it.
+/// One prompt of a session, as far as the plugin reads it.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Seen {
     pub(crate) id: String,
     /// When it was created, as Linear writes it (ISO 8601, UTC).
     pub(crate) created_at: String,
-    /// A prompt's body; `None` for any other activity.
+    /// Its body; `None` for any other activity.
     pub(crate) prompt: Option<String>,
     /// Whether it has the `stop` signal.
     pub(crate) stop: bool,
@@ -546,6 +464,22 @@ pub(crate) struct Seen {
     /// Whether the author is an OAuth application (such as Linear's synthetic
     /// `"Work on …"` prompt on proactive session creation).
     pub(crate) from_app: bool,
+}
+
+impl Seen {
+    /// A prompt node as the attach query reads it.
+    fn read(node: &Value) -> Option<Self> {
+        let text = |at: &str| node.pointer(at).and_then(Value::as_str).map(str::to_owned);
+        let prompt = text("/content/__typename").as_deref() == Some("AgentActivityPromptContent");
+        Some(Self {
+            id: text("/id")?,
+            created_at: text("/createdAt")?,
+            prompt: prompt.then(|| text("/content/body").unwrap_or_default()),
+            stop: text("/signal").as_deref() == Some("stop"),
+            by: text("/user/name"),
+            from_app: (node.pointer("/user/app").and_then(Value::as_bool)).unwrap_or(false),
+        })
+    }
 }
 
 /// What claiming an issue needs to know.

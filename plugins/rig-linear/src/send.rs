@@ -1,10 +1,10 @@
 //! The task that talks to Linear, on rig's tokio runtime: it signs in,
 //! creates or attaches to the session, says it is working, claims the issue
-//! when asked, then sends what the app queues and reads the session's new
-//! prompts back every so often, one request at a time, at most one a
-//! second. Consecutive passing activities are coalesced, a 429 is retried
-//! after its `Retry-After`, a heartbeat keeps the session from going stale,
-//! and every failure is a warning.
+//! when asked, then sends what the app queues, one request at a time, at
+//! most one a second, and tells the app the prompts the webhook port hears
+//! of. Consecutive passing activities are coalesced, a 429 is retried after
+//! its `Retry-After`, a heartbeat keeps the session from going stale, and
+//! every failure is a warning.
 
 use std::collections::{HashSet, VecDeque};
 use std::time::Duration;
@@ -17,6 +17,7 @@ use tokio::time::Instant;
 
 use crate::activity::{Activity, Content, Redactor, head};
 use crate::api::{Api, ApiError, Credentials, Link, Seen, Session, authorization};
+use crate::webhook::{Listener, Prompted};
 
 #[cfg(test)]
 mod tests;
@@ -94,10 +95,19 @@ pub(crate) struct Config {
     pub(crate) heartbeat: Duration,
     /// The least time between two requests.
     pub(crate) spacing: Duration,
-    /// How often the session's new prompts are read; `None` for never.
-    pub(crate) poll: Option<Duration>,
+    /// The port that hears of the session's new prompts; `None` for none.
+    pub(crate) listen: Option<Listen>,
     /// Whether the issue is delegated to the app and moved to started.
     pub(crate) claim: bool,
+}
+
+/// Where the webhooks of the session's prompts come in.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Listen {
+    /// The address to bind, such as `0.0.0.0:8787`.
+    pub(crate) addr: String,
+    /// The webhook's signing secret.
+    pub(crate) secret: String,
 }
 
 /// The session a run shows on.
@@ -107,7 +117,7 @@ pub(crate) enum Target {
     Issue(String),
     /// The session with this id, which exists, given to the run: its prompts
     /// that came after the session's last answer (response, error or
-    /// question) are the run's request, and are told like later ones.
+    /// question) are the run's request, and are told as it attaches.
     Session(String),
     /// The session with this id, which this rig session showed on before a
     /// reload: every prompt on it at attach time was told already.
@@ -188,9 +198,10 @@ pub(crate) fn coalesce(queue: &mut VecDeque<Job>) {
     });
 }
 
-/// The task: starts the session, tells `told` so, says it is working,
+/// The task: opens the webhook port when asked, starts the session, tells
+/// `told` so and the prompts no run answered yet, says it is working,
 /// claims the issue when asked, and sends `jobs` until the close or until
-/// the app is gone, telling `told` each new prompt it reads back.
+/// the app is gone, telling `told` each new prompt the port hears of.
 pub(crate) async fn run(
     config: Config,
     http: DynHttpClient,
@@ -198,8 +209,31 @@ pub(crate) async fn run(
     jobs: Receiver<Job>,
     told: Sender<Told>,
 ) {
-    let mut sender = match start(&config, &http, &redactor).await {
-        Ok(sender) => sender,
+    let (heard, prompts) = async_channel::unbounded();
+    let listener = match &config.listen {
+        Some(listen) => {
+            match crate::webhook::listen(&listen.addr, listen.secret.clone(), heard).await {
+                Ok(listener) => {
+                    eprintln!(
+                        "Linear webhooks: http://{}{}",
+                        listener.addr,
+                        crate::webhook::PATH
+                    );
+                    Some(listener)
+                }
+                Err(why) => {
+                    warn!(
+                        "Linear: the webhook port {} was not opened, so no prompt reaches the run: {why}",
+                        listen.addr
+                    );
+                    None
+                }
+            }
+        }
+        None => None,
+    };
+    let (mut sender, unanswered) = match start(&config, &http, &redactor).await {
+        Ok(started) => started,
         Err(why) => {
             warn!("{}", redactor.text(&refused(&why)));
             // Nothing more is sent this run: answer the close, if one comes,
@@ -224,13 +258,15 @@ pub(crate) async fn run(
     }))
     .await
     .ok();
+    for news in unanswered {
+        told.send(news).await.ok();
+    }
     sender.pacer.pace().await;
     sender
         .send(Job::Activity(Activity::note(WORKING.to_owned())))
         .await;
-    if let Some(every) = config.poll {
-        let catch_up = matches!(config.target, Target::Session(_));
-        sender.watch = Some(Watch::new(every, &sender.session.known_prompts(catch_up)));
+    if let Some(listener) = listener {
+        sender.prompts = Some((listener, prompts));
     }
     if let Some(plan) = config.plan.clone() {
         sender.pacer.pace().await;
@@ -276,12 +312,13 @@ where
 }
 
 /// Signs in and creates or attaches to the session, pacing every request
-/// and honoring 429 `Retry-After` up to [`RETRIES`] times.
+/// and honoring 429 `Retry-After` up to [`RETRIES`] times: the task, and
+/// what the session's prompts no run answered yet tell.
 async fn start(
     config: &Config,
     http: &DynHttpClient,
     redactor: &Redactor,
-) -> Result<Connected, ApiError> {
+) -> Result<(Connected, Vec<Told>), ApiError> {
     let mut pacer = Pacer::new(config.spacing);
     let token = match &config.credentials {
         Credentials::Token(token) => token.clone(),
@@ -308,7 +345,9 @@ async fn start(
     };
     let mut redactor = redactor.clone();
     redactor.add(token);
-    Ok(Connected {
+    let catch_up = matches!(config.target, Target::Session(_));
+    let (inbox, unanswered) = Inbox::attach(&session, catch_up);
+    let connected = Connected {
         api,
         session,
         redactor,
@@ -316,92 +355,83 @@ async fn start(
         last_write: None,
         last_action: None,
         ended: false,
-        watch: None,
-    })
+        inbox,
+        prompts: None,
+    };
+    Ok((connected, unanswered))
 }
 
-/// The most pages of new prompts one read goes through.
-const PAGES: usize = 4;
-
-/// Unfinished pagination from a previous poll that reached [`PAGES`]: keeps
-/// the original `since` cutoff and cursor so older unread pages are not
-/// skipped before advancing `Watch::since`.
+/// What the task knows of the session's prompts, to tell each new one
+/// once.
 #[derive(Debug)]
-struct Continuation {
-    since: Option<String>,
-    after: String,
-    newest: Option<String>,
-}
-
-/// What the task knows of the session's prompts, to read only those created
-/// after the run created or attached to the session.
-#[derive(Debug)]
-struct Watch {
-    /// How often it reads.
-    every: Duration,
-    /// When it reads next.
-    next: Instant,
-    /// The newest prompt's `createdAt`.
-    since: Option<String>,
-    /// Remaining pages from a truncated poll, if any.
-    continuation: Option<Continuation>,
+struct Inbox {
+    /// The session's id.
+    session: String,
     /// The ids of the prompts already known (including those present at
     /// attachment).
     seen: HashSet<String>,
-    /// Whether the last read failed, so the next failure warns no more.
-    failing: bool,
+    /// Whether prompts are still told: a stop ends that.
+    open: bool,
+    /// Whether a prompt of another session came, so the next one warns no
+    /// more.
+    strayed: bool,
 }
 
-impl Watch {
-    fn new(every: Duration, initial: &[(String, String)]) -> Self {
-        let mut seen = HashSet::new();
-        let mut since: Option<String> = None;
-        for (id, created_at) in initial {
-            seen.insert(id.clone());
-            if since.as_ref().is_none_or(|cur| cur < created_at) {
-                since = Some(created_at.clone());
-            }
-        }
-        Self {
-            every,
-            next: Instant::now(),
-            since,
-            continuation: None,
-            seen,
-            failing: false,
-        }
-    }
-
-    fn advance_since(&mut self, candidate: Option<String>) {
-        if let Some(candidate) = candidate
-            && self.since.as_ref().is_none_or(|cur| *cur < candidate)
-        {
-            self.since = Some(candidate);
-        }
-    }
-
-    /// Takes in `read`, newest first: what the new ones tell, oldest first,
-    /// and the newest `createdAt` seen in `read`. Advances `since` only when
-    /// `advance` is true (all pages of the current sweep were read).
-    fn take(&mut self, mut read: Vec<Seen>, advance: bool) -> (Vec<Told>, Option<String>) {
-        read.retain(|seen| self.seen.insert(seen.id.clone()));
-        read.sort_by(|a, b| a.created_at.cmp(&b.created_at));
-        let newest = read.last().map(|seen| seen.created_at.clone());
-        if advance {
-            self.advance_since(newest.clone());
-        }
-        let told = read
-            .into_iter()
-            .filter_map(|seen| match (seen.stop, seen.from_app, seen.prompt) {
-                (true, _, _) => Some(Told::Stop { by: seen.by }),
-                (false, false, Some(body)) if !body.trim().is_empty() => Some(Told::Prompt {
-                    body: body.trim().to_owned(),
-                    by: seen.by,
-                }),
-                _ => None,
-            })
+impl Inbox {
+    /// The inbox of `session`, which knows the prompts on it at attach
+    /// time, and what those no run answered yet tell when `catch_up`.
+    fn attach(session: &Session, catch_up: bool) -> (Self, Vec<Told>) {
+        let mut inbox = Self {
+            session: session.id.clone(),
+            seen: HashSet::new(),
+            open: true,
+            strayed: false,
+        };
+        let told = (session.unanswered(catch_up).into_iter())
+            .filter_map(|seen| inbox.take(seen))
             .collect();
-        (told, newest)
+        (inbox.seen).extend(session.initial_prompts.iter().map(|seen| seen.id.clone()));
+        (inbox, told)
+    }
+
+    /// What `prompted` tells, when it is a new prompt of the session.
+    fn receive(&mut self, prompted: Prompted) -> Option<Told> {
+        if prompted.session != self.session {
+            if !std::mem::replace(&mut self.strayed, true) {
+                warn!(
+                    "Linear: a webhook for the agent session {} reached the run of {}",
+                    prompted.session, self.session
+                );
+            }
+            return None;
+        }
+        self.take(prompted.seen)
+    }
+
+    /// What `seen` tells, unless it is known already, it is an app's, it is
+    /// blank, or a stop came before it.
+    fn take(&mut self, seen: Seen) -> Option<Told> {
+        if !self.seen.insert(seen.id.clone()) || !self.open {
+            return None;
+        }
+        let told = match (seen.stop, seen.from_app, seen.prompt) {
+            (true, _, _) => Told::Stop { by: seen.by },
+            (false, false, Some(body)) if !body.trim().is_empty() => Told::Prompt {
+                body: body.trim().to_owned(),
+                by: seen.by,
+            },
+            _ => return None,
+        };
+        self.open = !matches!(told, Told::Stop { .. });
+        Some(told)
+    }
+}
+
+/// The next prompt `prompts` hears of; never without a port.
+async fn next(prompts: Option<&Receiver<Prompted>>) -> Option<Prompted> {
+    match prompts {
+        Some(prompts) => prompts.recv().await.ok(),
+        None => std::future::pending().await,
     }
 }
 
@@ -418,19 +448,22 @@ struct Connected {
     last_action: Option<String>,
     /// Whether the last activity sent ended the run, so no heartbeat goes.
     ended: bool,
-    /// The session's prompts, when they are read back.
-    watch: Option<Watch>,
+    /// The prompts of the session already known.
+    inbox: Inbox,
+    /// The webhook port and the prompts it hears of, when it is open.
+    prompts: Option<(Listener, Receiver<Prompted>)>,
 }
 
 impl Connected {
-    /// Sends the jobs as they come, until the close, and reads the new
-    /// prompts when it is time, telling `told` what they say.
+    /// Sends the jobs as they come, until the close, telling `told` the
+    /// new prompts as the webhook port hears of them.
     async fn serve(&mut self, jobs: Receiver<Job>, heartbeat: Duration, told: &Sender<Told>) {
         let mut queue = VecDeque::new();
         loop {
             while let Ok(job) = jobs.try_recv() {
                 queue.push_back(job);
             }
+            self.tell_heard(told).await;
             coalesce(&mut queue);
             if matches!(queue.front(), Some(Job::Close(_))) {
                 if let Some(Job::Close(done)) = queue.pop_front() {
@@ -438,31 +471,23 @@ impl Connected {
                 }
                 return;
             }
-            if self
-                .watch
-                .as_ref()
-                .is_some_and(|watch| watch.next <= Instant::now())
-            {
-                self.pacer.pace().await;
-                for news in self.poll().await {
-                    told.send(news).await.ok();
-                }
-                continue;
-            }
             if queue.is_empty() {
                 let quiet = self
                     .last_write
                     .map_or(heartbeat, |last| heartbeat.saturating_sub(last.elapsed()));
-                let poll = (self.watch.as_ref())
-                    .map(|watch| watch.next.saturating_duration_since(Instant::now()));
-                let wait = poll.map_or(quiet, |poll| poll.min(quiet));
-                match tokio::time::timeout(wait, jobs.recv()).await {
-                    Ok(Ok(job)) => queue.push_back(job),
-                    Ok(Err(_)) => return,
-                    // The read is due, not the heartbeat.
-                    Err(_) if wait < quiet => {}
-                    Err(_) if self.ended => self.last_write = Some(Instant::now()),
-                    Err(_) => queue.push_back(Job::Activity(self.heartbeat())),
+                let heard = self.prompts.as_ref().map(|(_, prompts)| prompts.clone());
+                tokio::select! {
+                    waited = tokio::time::timeout(quiet, jobs.recv()) => match waited {
+                        Ok(Ok(job)) => queue.push_back(job),
+                        Ok(Err(_)) => return,
+                        Err(_) if self.ended => self.last_write = Some(Instant::now()),
+                        Err(_) => queue.push_back(Job::Activity(self.heartbeat())),
+                    },
+                    Some(prompted) = next(heard.as_ref()) => {
+                        if let Some(news) = self.inbox.receive(prompted) {
+                            told.send(news).await.ok();
+                        }
+                    }
                 }
                 continue;
             }
@@ -482,87 +507,16 @@ impl Connected {
         }
     }
 
-    /// Reads the session's prompts since the last read: what the new ones
-    /// tell. A stop ends the reading. A failed read warns, once until one
-    /// succeeds, and the next read tries again.
-    async fn poll(&mut self) -> Vec<Told> {
-        let Some(mut watch) = self.watch.take() else {
-            return Vec::new();
+    /// Tells `told` the new prompts the webhook port heard of so far.
+    async fn tell_heard(&mut self, told: &Sender<Told>) {
+        let Some((_, prompts)) = &self.prompts else {
+            return;
         };
-        let resuming = watch.continuation.take();
-        let (since, mut after, mut sweep_newest) = match &resuming {
-            Some(cont) => (
-                cont.since.clone(),
-                Some(cont.after.clone()),
-                cont.newest.clone(),
-            ),
-            None => (watch.since.clone(), None, None),
-        };
-        let mut read = Vec::new();
-        let mut failed = None;
-        for page in 0..PAGES {
-            if page > 0 {
-                self.pacer.pace().await;
-            }
-            let got = (self.api)
-                .activities(&self.session.id, since.as_deref(), after.as_deref())
-                .await;
-            self.pacer.mark();
-            match got {
-                Ok(page) => {
-                    read.extend(page.activities);
-                    after = page.next;
-                }
-                Err(why) => {
-                    failed = Some(why);
-                    break;
-                }
-            }
-            if after.is_none() {
-                break;
+        while let Ok(prompted) = prompts.try_recv() {
+            if let Some(news) = self.inbox.receive(prompted) {
+                told.send(news).await.ok();
             }
         }
-        watch.next = Instant::now() + watch.every;
-        let told = match failed {
-            None => {
-                watch.failing = false;
-                let complete = after.is_none();
-                let (told, newest) = watch.take(read, complete);
-                if let Some(newest) = newest
-                    && sweep_newest.as_ref().is_none_or(|cur| *cur < newest)
-                {
-                    sweep_newest = Some(newest);
-                }
-                if let Some(after) = after {
-                    watch.continuation = Some(Continuation {
-                        since,
-                        after,
-                        newest: sweep_newest,
-                    });
-                } else {
-                    watch.advance_since(sweep_newest);
-                }
-                told
-            }
-            Some(why) => {
-                watch.continuation = resuming;
-                if let ApiError::RateLimited(wait) = &why {
-                    let wait = retry_delay(*wait, self.pacer.spacing);
-                    watch.next = Instant::now() + wait.max(watch.every);
-                }
-                if !std::mem::replace(&mut watch.failing, true) {
-                    warn!(
-                        "Linear: the session's prompts could not be read: {}",
-                        self.redactor.text(&why.to_string())
-                    );
-                }
-                Vec::new()
-            }
-        };
-        if !told.iter().any(|news| matches!(news, Told::Stop { .. })) {
-            self.watch = Some(watch);
-        }
-        told
     }
 
     /// Delegates the session's issue to the app when it has no delegate,

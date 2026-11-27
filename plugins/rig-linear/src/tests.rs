@@ -9,7 +9,7 @@ use rig_harness::rig_ecs::spawn::spawn_root;
 use serde_json::{Value, json};
 
 use super::*;
-use crate::tests::stand_in::{SESSION_URL, StandIn};
+use crate::tests::stand_in::{SESSION_ID, SESSION_URL, StandIn, WEBHOOK_SECRET};
 
 pub(crate) mod stand_in;
 
@@ -86,7 +86,8 @@ fn config_precedence_for_target_credentials_and_claim() {
             Credentials::Token("lin_api_token_val".to_owned())
         );
         assert!(setup.config.claim);
-        assert_eq!(setup.config.poll, Some(Duration::from_secs(15)));
+        // No webhook port unless an address is given.
+        assert_eq!(setup.config.listen, None);
         // Both supplied secrets are redacted regardless of selected auth mode.
         assert_eq!(
             setup
@@ -95,6 +96,38 @@ fn config_precedence_for_target_credentials_and_claim() {
             "tok=[REDACTED] sec=[REDACTED]"
         );
     }
+
+    // Webhook port: the variable beats the setting, and it needs the secret.
+    let listening = LinearSettings {
+        listen: Some("0.0.0.0:1".to_owned()),
+        ..LinearSettings::default()
+    };
+    let listen_env = |name: &str| (name == LISTEN_ENV).then(|| "0.0.0.0:2".to_owned());
+    let listen = |secrets: &Secrets, env: &dyn Fn(&str) -> Option<String>| {
+        configure(issue(), false, Some(secrets), Some(&listening), env)
+            .and_then(|setup| setup.config.listen)
+    };
+    assert_eq!(listen(&both, &listen_env), None);
+    let signed = Secrets::from_iter([
+        (TOKEN_SECRET, "lin_api_token_val"),
+        (WEBHOOK_SECRET_SECRET, "webhook_secret_val"),
+    ]);
+    assert_eq!(
+        listen(&signed, &no_env),
+        Some(Listen {
+            addr: "0.0.0.0:1".to_owned(),
+            secret: "webhook_secret_val".to_owned(),
+        })
+    );
+    assert_eq!(
+        listen(&signed, &listen_env).map(|listen| listen.addr),
+        Some("0.0.0.0:2".to_owned())
+    );
+    assert_eq!(
+        configure(issue(), false, Some(&signed), None, &no_env)
+            .map(|setup| setup.redactor.text("hook=webhook_secret_val")),
+        Some("hook=[REDACTED]".to_owned())
+    );
 
     let client = Secrets::from_iter([
         (CLIENT_ID_SECRET, "client"),
@@ -232,7 +265,7 @@ fn a_question_offers_its_options_trimmed_without_blanks_or_repeats() {
 
 /// An active app on the stand-in at `url`, for `issue`, with a main agent
 /// `main`, its plan `plan` (TOML), requests sent as soon as they may and
-/// no prompt read back ([`poll_every`] turns that on).
+/// no webhook port ([`listen`] opens one).
 fn active_app_for(url: &str, issue: &str, plan: &str, runtime: &tokio::runtime::Runtime) -> App {
     let mut app = App::new();
     app.insert_resource(Settings::from_toml(&format!(
@@ -247,7 +280,6 @@ fn active_app_for(url: &str, issue: &str, plan: &str, runtime: &tokio::runtime::
         && let Some((config, ..)) = &mut linear.pending
     {
         config.spacing = Duration::from_millis(5);
-        config.poll = None;
     }
     app.finish();
     spawn_root(app.world_mut(), AgentId("main".to_owned()));
@@ -258,14 +290,34 @@ fn active_app(url: &str, plan: &str, runtime: &tokio::runtime::Runtime) -> App {
     active_app_for(url, "ENG-1", plan, runtime)
 }
 
-/// Has `app`, before its first update, read the session's prompts back
-/// every `every`.
-fn poll_every(app: &mut App, every: Duration) {
+/// Has `app`, before its first update, open a webhook port: its address.
+fn listen(app: &mut App) -> String {
+    let addr = stand_in::free_addr();
     if let Some(mut linear) = app.world_mut().get_resource_mut::<Linear>()
         && let Some((config, ..)) = &mut linear.pending
     {
-        config.poll = Some(every);
+        config.listen = Some(Listen {
+            addr: addr.clone(),
+            secret: WEBHOOK_SECRET.to_owned(),
+        });
     }
+    addr
+}
+
+/// Posts Ana's prompt `id` saying `body` (a stop when `None`) to the
+/// webhook port at `addr`, signed.
+fn ana_says(addr: &str, id: &str, body: Option<&str>) {
+    let event = stand_in::prompted(
+        SESSION_ID,
+        id,
+        "Ana",
+        body.unwrap_or_default(),
+        body.is_none(),
+    );
+    assert_eq!(
+        stand_in::post(addr, &event, Some(WEBHOOK_SECRET)),
+        Some(202)
+    );
 }
 
 /// Updates `app` until the session's link is known, for at most 10 s.
@@ -660,38 +712,6 @@ fn a_question_with_options_is_posted_as_a_select() {
     );
 }
 
-/// A stand-in whose reads of the session's prompts find none at first,
-/// then `later` (each a prompt's body, its author `Ana`, a stop when
-/// `None`), then nothing new.
-fn prompting(later: &'static [Option<&'static str>]) -> StandIn {
-    let read = std::sync::atomic::AtomicUsize::new(0);
-    StandIn::scripted(move |request, _| {
-        if !request.query().starts_with("query Activities") {
-            return None;
-        }
-        let nodes: Vec<Value> = match read.fetch_add(1, std::sync::atomic::Ordering::SeqCst) {
-            0 => Vec::new(),
-            _ => later
-                .iter()
-                .enumerate()
-                .map(|(at, body)| {
-                    let at_time = format!("2026-01-01T00:00:0{at}.000Z");
-                    let id = format!("prompt-{at}");
-                    stand_in::prompt(
-                        &id,
-                        &at_time,
-                        "Ana",
-                        body.unwrap_or_default(),
-                        body.is_none(),
-                    )
-                })
-                .rev()
-                .collect(),
-        };
-        Some(stand_in::reply(stand_in::activities(&nodes)))
-    })
-}
-
 /// Updates `app` until `done` holds, for at most 10 s.
 fn update_until(app: &mut App, done: impl Fn(&App) -> bool) {
     for _ in 0..1000 {
@@ -712,14 +732,16 @@ fn a_persons_message_goes_to_the_main_agent_and_is_acknowledged() {
     let Ok(runtime) = tokio::runtime::Runtime::new() else {
         return;
     };
-    let linear = prompting(&[Some("Use sqlite, please.\nAnd keep it small.")]);
+    let linear = StandIn::start();
     let mut app = active_app(&linear.url, "", &runtime);
-    poll_every(&mut app, Duration::from_millis(50));
+    let addr = listen(&mut app);
     app.init_resource::<Delivered>().add_observer(
         |deliver: On<Deliver>, mut delivered: ResMut<Delivered>| {
             delivered.0.push((deliver.entity, deliver.message.clone()));
         },
     );
+    wait_until_started(&mut app);
+    ana_says(&addr, "p1", Some("Use sqlite, please.\nAnd keep it small."));
     update_until(&mut app, |app| {
         app.world()
             .get_resource::<Delivered>()
@@ -759,12 +781,14 @@ fn a_stop_from_linear_exits_as_a_signal_and_posts_only_the_stop() {
     let Ok(runtime) = tokio::runtime::Runtime::new() else {
         return;
     };
-    let linear = prompting(&[None]);
+    let linear = StandIn::start();
     let mut app = active_app(&linear.url, PLAN, &runtime);
-    poll_every(&mut app, Duration::from_millis(50));
+    let addr = listen(&mut app);
     app.add_observer(|exit: On<Exit>, mut commands: Commands| {
         commands.insert_resource(exit.0.clone());
     });
+    wait_until_started(&mut app);
+    ana_says(&addr, "p1", None);
     update_until(&mut app, |app| {
         app.world().contains_resource::<ExitReason>()
     });

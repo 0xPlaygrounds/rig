@@ -1,5 +1,6 @@
 //! A stand-in for Linear's API on a local port: it keeps every request it
 //! gets and answers each as Linear would, unless a test scripts otherwise.
+//! It also posts Linear's webhooks to the run's webhook port.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -194,8 +195,6 @@ pub(crate) fn linear(request: &Request) -> Reply {
                 ] } },
             },
         })
-    } else if query.contains("query Activities") {
-        activities(&[])
     } else if query.contains("issue(id:") {
         json!({ "issue": {
             "id": "issue-uuid",
@@ -228,25 +227,87 @@ pub(crate) fn linear(request: &Request) -> Reply {
     (200, Vec::new(), json!({ "data": data }).to_string())
 }
 
-/// The `data` of a read of the session's activities that finds `nodes`,
-/// with no page after.
-pub(crate) fn activities(nodes: &[Value]) -> Value {
-    json!({ "agentSession": { "activities": {
-        "nodes": nodes,
-        "pageInfo": { "hasNextPage": false, "endCursor": null },
-    } } })
-}
-
-/// A prompt activity as Linear reads it back: `id`, created at `at`, by
-/// `by`, saying `body`, a stop when `stop`.
-pub(crate) fn prompt(id: &str, at: &str, by: &str, body: &str, stop: bool) -> Value {
+/// A prompt node as the attach reads it: `id`, created at `at`, by `by`
+/// (an app when `None`), saying `body`, a stop when `stop`.
+pub(crate) fn prompt(id: &str, at: &str, by: Option<&str>, body: &str, stop: bool) -> Value {
     json!({
         "id": id,
         "createdAt": at,
         "signal": if stop { json!("stop") } else { Value::Null },
-        "user": { "name": by },
+        "user": { "name": by.unwrap_or("Rigged Intern"), "app": by.is_none() },
         "content": { "__typename": "AgentActivityPromptContent", "body": body },
     })
+}
+
+/// The signing secret of the stand-in's webhook.
+pub(crate) const WEBHOOK_SECRET: &str = "whsec";
+
+/// A free local address for a webhook port.
+pub(crate) fn free_addr() -> String {
+    TcpListener::bind("127.0.0.1:0")
+        .and_then(|listener| listener.local_addr())
+        .map_or_else(|_| "127.0.0.1:9".to_owned(), |addr| addr.to_string())
+}
+
+/// The `prompted` webhook of the prompt `id` on `session`, by `by`, saying
+/// `body`, a stop when `stop`, sent now.
+pub(crate) fn prompted(session: &str, id: &str, by: &str, body: &str, stop: bool) -> Value {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |now| now.as_millis());
+    json!({
+        "type": "AgentSessionEvent",
+        "action": "prompted",
+        "webhookTimestamp": now as f64,
+        "agentSession": { "id": session },
+        "agentActivity": {
+            "id": id,
+            "agentSessionId": session,
+            "createdAt": "2026-01-01T00:10:00.000Z",
+            "signal": if stop { json!("stop") } else { Value::Null },
+            "content": { "type": "prompt", "body": body },
+            "user": { "name": by },
+        },
+    })
+}
+
+/// The hex HMAC-SHA256 of `body` with `secret`, as Linear signs it.
+pub(crate) fn sign(secret: &str, body: &str) -> String {
+    use hmac::{Hmac, KeyInit, Mac};
+    let Ok(mut mac) = Hmac::<sha2::Sha256>::new_from_slice(secret.as_bytes()) else {
+        return String::new();
+    };
+    mac.update(body.as_bytes());
+    let tag = mac.finalize().into_bytes();
+    tag.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+/// Posts `event` to the webhook port at `addr`, signed with `secret` when
+/// given, as soon as the port takes it (within 10 s): the status.
+pub(crate) fn post(addr: &str, event: &Value, secret: Option<&str>) -> Option<u16> {
+    let body = event.to_string();
+    let signature = secret
+        .map(|secret| format!("linear-signature: {}\r\n", sign(secret, &body)))
+        .unwrap_or_default();
+    let request = format!(
+        "POST {} HTTP/1.1\r\nhost: {addr}\r\ncontent-type: application/json\r\n\
+         content-length: {}\r\n{signature}connection: close\r\n\r\n{body}",
+        crate::webhook::PATH,
+        body.len()
+    );
+    let mut stream = None;
+    for _ in 0..1000 {
+        if let Ok(open) = TcpStream::connect(addr) {
+            stream = Some(open);
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    let mut stream = stream?;
+    stream.write_all(request.as_bytes()).ok()?;
+    let mut status = String::new();
+    BufReader::new(stream).read_line(&mut status).ok()?;
+    status.split_whitespace().nth(1)?.parse().ok()
 }
 
 /// A whole reply of `data`.

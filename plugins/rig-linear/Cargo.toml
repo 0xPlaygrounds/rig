@@ -14,9 +14,13 @@ workspace = true
 [dependencies]
 # The queue between the app and the task that sends to Linear.
 async-channel = { workspace = true }
+# The webhook port.
+axum = { workspace = true }
 bevy_ecs = { workspace = true }
 bevy_log = { workspace = true }
 bevy_reflect = { workspace = true }
+# The webhook's signature.
+hmac = { workspace = true }
 rig-basics = { path = "../rig-basics", version = "0.47.1", default-features = false }
 rig-core = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness", version = "0.47.1" }
@@ -25,8 +29,9 @@ rig-reqwest = { workspace = true }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+sha2 = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["rt", "time"] }
+tokio = { workspace = true, features = ["macros", "net", "rt", "time"] }
 # The plan file.
 toml = { workspace = true }
 # The client credentials form.

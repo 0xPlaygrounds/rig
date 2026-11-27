@@ -3,8 +3,10 @@
 //! to the agent or stop it from there. The plugin does nothing, and sends
 //! nothing, unless it has both a token (the secret `linear`, or
 //! `linear-client-id` and `linear-client-secret`) and a target
-//! (`--linear-issue`, `--linear-session` or their variables). The crate's
-//! README lists the settings, the plan file and what is sent and read when.
+//! (`--linear-issue`, `--linear-session` or their variables). A person's
+//! messages and stops reach the run through a port it opens for Linear's
+//! webhooks, which whatever receives them forwards. The crate's README
+//! lists the settings, the plan file and what is sent and heard when.
 //!
 //! ```no_run
 //! use rig_harness::prelude::*;
@@ -34,12 +36,13 @@ pub use crate::plan::PlanStep;
 use crate::activity::{Activity, Call, Content, Redactor, Reply, head, pull_request};
 use crate::api::{Credentials, Link};
 use crate::plan::{End, Plan};
-use crate::send::{Config, Job, Started, Target, Told};
+use crate::send::{Config, Job, Listen, Started, Target, Told};
 
 mod activity;
 mod api;
 mod plan;
 mod send;
+mod webhook;
 
 #[cfg(test)]
 mod tests;
@@ -68,6 +71,10 @@ pub const CLAIM_ENV: &str = "RIG_LINEAR_CLAIM";
 /// The variable naming a TOML plan file, which replaces `[linear] plan`.
 pub const PLAN_ENV: &str = "RIG_LINEAR_PLAN";
 
+/// The variable naming the address of the webhook port, which replaces
+/// `[linear] listen`.
+pub const LISTEN_ENV: &str = "RIG_LINEAR_LISTEN";
+
 /// The secret holding an access token: an OAuth or app token, or a
 /// personal API key.
 pub const TOKEN_SECRET: &str = "linear";
@@ -77,6 +84,10 @@ pub const CLIENT_ID_SECRET: &str = "linear-client-id";
 
 /// The secret holding an OAuth application's client secret.
 pub const CLIENT_SECRET_SECRET: &str = "linear-client-secret";
+
+/// The secret holding the signing secret of the webhook whose requests the
+/// webhook port takes.
+pub const WEBHOOK_SECRET_SECRET: &str = "linear-webhook-secret";
 
 /// The tool with which the agent ends the run.
 pub const OUTCOME_TOOL: &str = "report_outcome";
@@ -157,9 +168,10 @@ pub struct LinearSettings {
     /// Minutes without a request after which a heartbeat thought goes, so
     /// the session does not go stale; 10 by default.
     pub heartbeat_minutes: u64,
-    /// Seconds between two reads of the session's new prompts, for a
-    /// person's message or stop; 15 by default, 0 for none.
-    pub poll_seconds: u64,
+    /// The address, such as `0.0.0.0:8787`, on which the run takes the
+    /// session's `prompted` webhooks, for a person's message or stop, unless
+    /// [`LISTEN_ENV`] names one; none by default.
+    pub listen: Option<String>,
     /// The scopes the client credentials ask for, comma-separated;
     /// [`DEFAULT_SCOPE`] by default.
     pub scope: String,
@@ -172,7 +184,7 @@ impl Default for LinearSettings {
         Self {
             api_url: DEFAULT_API_URL.to_owned(),
             heartbeat_minutes: 10,
-            poll_seconds: 15,
+            listen: None,
             scope: DEFAULT_SCOPE.to_owned(),
             plan: Vec::new(),
         }
@@ -508,7 +520,9 @@ fn configure(
     let token = secret(TOKEN_SECRET);
     let client_id = secret(CLIENT_ID_SECRET);
     let client_secret = secret(CLIENT_SECRET_SECRET);
-    let redactor = Redactor::new(token.iter().chain(client_secret.iter()).cloned());
+    let webhook_secret = secret(WEBHOOK_SECRET_SECRET);
+    let redactor =
+        Redactor::new((token.iter().chain(&client_secret).chain(&webhook_secret)).cloned());
     let credentials = match token {
         Some(token) => Credentials::Token(token),
         None => Credentials::Client {
@@ -528,6 +542,20 @@ fn configure(
         None => settings.plan.clone(),
     };
     let plan_json = (!plan.is_empty()).then(|| Plan::new(plan.clone()).json());
+    let listen = match (
+        given(env(LISTEN_ENV)).or_else(|| given(settings.listen.clone())),
+        webhook_secret,
+    ) {
+        (Some(addr), Some(secret)) => Some(Listen { addr, secret }),
+        (Some(addr), None) => {
+            warn!(
+                "Linear: no secret {WEBHOOK_SECRET_SECRET}, so the webhook port {addr} is not \
+                 opened and no prompt reaches the run"
+            );
+            None
+        }
+        (None, _) => None,
+    };
     Some(Setup {
         config: Config {
             api_url: settings.api_url.clone(),
@@ -536,7 +564,7 @@ fn configure(
             plan: plan_json,
             heartbeat: Duration::from_secs(settings.heartbeat_minutes.max(1) * 60),
             spacing: SPACING,
-            poll: (settings.poll_seconds > 0).then(|| Duration::from_secs(settings.poll_seconds)),
+            listen,
             claim,
         },
         plan,
