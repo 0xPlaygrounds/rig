@@ -297,6 +297,7 @@ google-cloud-gax = "1"
 google-cloud-aiplatform-v1 = { version = "1.8", default-features = false, features = [
     "prediction-service",
 ] }
+hmac = "0.13"
 http = "1"
 http-body = "1"
 httpdate = "1"

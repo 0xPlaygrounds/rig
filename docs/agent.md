@@ -943,6 +943,15 @@ serves the Agent Client Protocol on stdin and stdout, so an editor such as Zed
 uses rig's models, tools, sessions and slash commands: `rig plugin enable
 rig_acp::AcpPlugin`. Its README has the editor's settings.
 
+The optional [`rig-linear`](../plugins/rig-linear) plugin shows a run on a
+Linear issue as an agent session: its plan, notes, tool calls and result. The
+people watching can write to the agent or stop it from the session, through
+the Linear webhooks a port of the run takes, and `--linear-claim` delegates the
+issue to the app and starts it. It sends nothing without a token and
+`--linear-issue` or `--linear-session`:
+`rig plugin enable rig_linear::LinearPlugin`. Its README lists the secrets,
+settings, plan file and the webhooks it takes.
+
 The optional [`rig-bridge`](../plugins/rig-bridge) plugin adds `claude-code/*`,
 `grok-build/*`, `antigravity/*`, `codex/*`, `muse/*` and `copilot-cli/*` models,
 answered by the Claude Code, Grok Build, Antigravity, Codex, Meta AI Muse and

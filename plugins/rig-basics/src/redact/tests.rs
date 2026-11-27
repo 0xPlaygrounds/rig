@@ -1168,3 +1168,42 @@ fn a_secret_learned_late_is_found_in_what_came_before() {
         "{shown}"
     );
 }
+
+#[test]
+fn effect_records_are_redacted_without_effect_log_and_before_downstream_readers() {
+    #[derive(Resource, Default)]
+    struct Seen(Vec<String>);
+
+    let mut app = App::new();
+    app.add_message::<EffectRecorded>()
+        .init_resource::<Seen>()
+        .add_plugins(RedactPlugin)
+        .add_systems(
+            Last,
+            (|mut records: MessageReader<EffectRecorded>, mut seen: ResMut<Seen>| {
+                for EffectRecorded(record) in records.read() {
+                    if let Ok(text) = serde_json::to_string(record) {
+                        seen.0.push(text);
+                    }
+                }
+            })
+            .after(StopTurnsOnExit)
+            .after(RecordRedactSystems),
+        );
+    app.finish();
+    let kind = EffectKind::ToolCall {
+        name: "shell".to_owned(),
+        args: json!({ "command": "echo ghp_abcdefghijklmnopqrstuvwxyz0123456789" }).to_string(),
+    };
+    let outcome = Outcome::from(ToolResult::success(ToolOutput::text("ok"))).0;
+    let record = EffectRecord::new(EffectId::from_raw(1), "test".into(), kind, outcome);
+    app.world_mut().write_message(EffectRecorded(record));
+    app.update();
+    let seen = app.world().resource::<Seen>().0.clone();
+    assert_eq!(seen.len(), 1);
+    let recorded = seen.first().map(String::as_str).unwrap_or_default();
+    assert!(
+        recorded.contains("‹SECRET_") && !recorded.contains("ghp_"),
+        "{recorded}"
+    );
+}

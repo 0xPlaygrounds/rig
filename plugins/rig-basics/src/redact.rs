@@ -80,6 +80,13 @@ pub struct RedactPlugin;
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RedactSystems;
 
+/// In `Last`, after [`StopTurnsOnExit`]: systems that scrub secrets from
+/// [`rig_core::effect::EffectRecord`] messages ([`EffectRecorded`]) before
+/// plugins read or persist them. A plugin that reads `EffectRecorded` in
+/// `Last` goes `.after(RecordRedactSystems)`.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct RecordRedactSystems;
+
 /// The run's secrets, shared with the calls that stream and run off the
 /// main thread. Never saved.
 #[derive(Resource, Clone, Default)]
@@ -172,8 +179,7 @@ impl Plugin for RedactPlugin {
                         .before(RunExitSystems)
                         .before(StopTurnsOnExit),
                     (
-                        redact_records
-                            .run_if(resource_exists::<crate::telemetry::effect_log::EffectLog>),
+                        redact_records.in_set(RecordRedactSystems),
                         // Every number handed out, the exit's too, is saved.
                         keep_count,
                     )

@@ -52,6 +52,7 @@ pub(crate) const HARNESS_PACKAGES: &[&str] = &[
     "rig-watch",
     "rig-mcp-client",
     "rig-acp",
+    "rig-linear",
     "rig-harness-test-support",
     "rig-defaults-test-support",
 ];
