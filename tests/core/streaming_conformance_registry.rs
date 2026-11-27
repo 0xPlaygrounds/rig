@@ -13,7 +13,7 @@
 //! built out of the `WIRE_FAMILY` const the macro emits *inside each expanded
 //! suite*, so a disabled suite is a compile error in the file that hosts it.
 //!
-//! The remaining seam is binary boundaries: four suites compile into test
+//! The remaining seam is binary boundaries: five suites compile into test
 //! binaries other than this one and therefore cannot be linked here. They are
 //! enumerated in [`OUT_OF_BINARY_FAMILIES`], each naming the verification
 //! check that actually executes it — and
@@ -85,6 +85,14 @@ const OUT_OF_BINARY_FAMILIES: &[OutOfBinaryFamily] = &[
         ci_selector: Some("test(/^streaming_conformance::/)"),
         ci_package: Some("rig-gemini-grpc"),
         reason: "rig-gemini-grpc is a separate package; the facade does not depend on it",
+    },
+    OutOfBinaryFamily {
+        family: "vertexai",
+        suite_file: "crates/rig-vertexai/tests/integration/streaming_conformance.rs",
+        ci_check: GUARD_CHECK,
+        ci_selector: Some("test(/^streaming_conformance::/)"),
+        ci_package: Some("rig-vertexai"),
+        reason: "rig-vertexai is a separate package; its conformance suite lives in its own integration binary",
     },
     OutOfBinaryFamily {
         family: "bedrock",

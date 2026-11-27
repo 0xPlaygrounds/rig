@@ -291,10 +291,13 @@ futures = "0.3"
 futures-timer = "3"
 glob = "0.3"
 google-cloud-auth = "1"
-google-cloud-gax = "1"
+# 1.15: `streaming::ResponseStream`.
+google-cloud-gax = "1.15"
 # 1.7: `ThinkingLevel`, `ImageConfig`, `FunctionResponse{Blob,FileData}`.
 # 1.8: `generate_content_response::UsageMetadata::tool_use_prompt_tokens_details`.
-google-cloud-aiplatform-v1 = { version = "1.8", default-features = false, features = [
+# 1.17: `PredictionService::stream_generate_content`.
+google-cloud-aiplatform-v1 = { version = "1.17", default-features = false, features = [
+    "default-rustls-provider",
     "prediction-service",
 ] }
 http = "1"

@@ -177,6 +177,7 @@ pub const WIRE_FAMILIES: &[&str] = &[
     "gemini_rest",
     "gemini_interactions",
     "gemini_grpc",
+    "vertexai",
     "xai",
     "copilot",
     "bedrock",

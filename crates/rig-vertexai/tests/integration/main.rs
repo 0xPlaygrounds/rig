@@ -5,5 +5,6 @@ mod history_conformance;
 mod raw_api;
 mod runtime_ownership;
 mod sdk_boundary;
+mod streaming_conformance;
 #[path = "../support/mod.rs"]
 mod support;
