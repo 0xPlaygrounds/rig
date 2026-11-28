@@ -62,6 +62,7 @@ pub(crate) const OPENAI_DIALECTS: &[&openai::wire::Dialect] = &[
     &openai::wire::OPENCODE_GO,
     &crate::providers::xai::DIALECT,
     &crate::providers::chatgpt::DIALECT,
+    &crate::providers::chatgpt::siwc::DIALECT,
     &crate::providers::copilot::wire::DIALECT,
 ];
 
