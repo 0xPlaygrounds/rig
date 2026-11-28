@@ -258,6 +258,17 @@ async fn failed_handshake_keeps_the_typed_rmcp_error() {
     assert!(matches!(result, Err(McpClientError::Connection(_))));
 }
 
+#[test]
+fn handler_timeout_reports_the_default_and_every_override() {
+    let handler = McpClientHandler::new(ClientConfig::default(), ToolServer::new().run());
+    assert_eq!(handler.timeout(), Some(DEFAULT_MCP_TOOL_TIMEOUT));
+
+    let handler = handler.with_timeout(Duration::from_secs(5));
+    assert_eq!(handler.timeout(), Some(Duration::from_secs(5)));
+
+    assert_eq!(handler.with_timeout(None).timeout(), None);
+}
+
 #[tokio::test]
 async fn refresh_activity_is_bounded_and_coalesces_excess_notifications() {
     let handler = McpClientHandler::new(ClientConfig::default(), ToolServer::new().run());
